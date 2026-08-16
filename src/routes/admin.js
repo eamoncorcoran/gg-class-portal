@@ -18,6 +18,8 @@ import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
 import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
+import { listMaterials } from '../materials.js';
+import { listThreads, getThread, createThread, createPost } from '../community.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -143,15 +145,28 @@ router.post('/classes', asyncRoute(async (req, res) => {
 }));
 
 router.patch('/classes/:id', asyncRoute(async (req, res) => {
-  const parsed = z.object({ programmeName: z.string().min(2).optional(), dayOfWeek: z.coerce.number().int().min(1).max(7).optional(), startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(), timezone: z.string().min(3).optional(), active: z.boolean().optional() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid class settings.' });
+  const parsed = z.object({
+    programmeName: z.string().min(2).optional(),
+    dayOfWeek: z.coerce.number().int().min(1).max(7).optional(),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    timezone: z.string().min(3).optional(),
+    active: z.boolean().optional(),
+    // Emptying the field clears the link, so the banner disappears rather than
+    // offering students a button that goes nowhere.
+    joinUrl: z.string().url().or(z.literal('')).nullable().optional(),
+    joinNote: z.string().max(200).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid class settings. A class link must be a full https:// address.' });
   const current = await one('SELECT * FROM classes WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Class not found.' });
   const data = parsed.data;
+  const joinUrl = data.joinUrl === undefined ? current.join_url : (data.joinUrl || null);
   const row = await one(
-    `UPDATE classes SET programme_name=$1,day_of_week=$2,start_time=$3,timezone=$4,active=$5,updated_at=now()
-     WHERE id=$6 RETURNING *`,
-    [data.programmeName ?? current.programme_name, data.dayOfWeek ?? current.day_of_week, data.startTime ?? String(current.start_time).slice(0,5), data.timezone ?? current.timezone, data.active ?? current.active, current.id],
+    `UPDATE classes SET programme_name=$1,day_of_week=$2,start_time=$3,timezone=$4,active=$5,
+       join_url=$6,join_note=$7,updated_at=now()
+     WHERE id=$8 RETURNING *`,
+    [data.programmeName ?? current.programme_name, data.dayOfWeek ?? current.day_of_week, data.startTime ?? String(current.start_time).slice(0,5), data.timezone ?? current.timezone, data.active ?? current.active,
+     joinUrl, data.joinNote ?? current.join_note, current.id],
   );
   await ensureWeeksForClass(row);
   await audit({ actorId: req.user.id, action: 'class.updated', entityType: 'class', entityId: row.id, metadata: data, ip: req.ip });
@@ -1132,6 +1147,169 @@ router.get('/audit', asyncRoute(async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500);
   const result = await query(`SELECT al.*,u.name actor_name FROM audit_logs al LEFT JOIN users u ON u.id=al.actor_id ORDER BY al.created_at DESC LIMIT $1`, [limit]);
   res.json(result.rows);
+}));
+
+/* ------------------------------------------------------------------
+   Course materials
+   ------------------------------------------------------------------ */
+
+/* Unpublished rows come back here and nowhere else, so next week's notes can be
+   loaded in advance without appearing on anybody's screen early. */
+router.get('/materials/:classId', asyncRoute(async (req, res) => {
+  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  const [materials, weeks] = await Promise.all([
+    listMaterials({ classId: klass.id, publishedOnly: false }),
+    query('SELECT id, week_start FROM weeks WHERE class_id=$1 ORDER BY week_start DESC', [klass.id]),
+  ]);
+  res.json({ class: { ...klass, label: classLabel(klass) }, materials, weeks: weeks.rows });
+}));
+
+const materialInput = z.object({
+  classId: z.string().uuid(),
+  weekId: z.string().uuid().nullable().optional(),
+  kind: z.enum(['file', 'link', 'loom']),
+  title: z.string().trim().min(2).max(200),
+  description: z.string().max(2000).optional().default(''),
+  url: z.string().url(),
+  fileName: z.string().max(200).nullable().optional(),
+  mimeType: z.string().max(200).nullable().optional(),
+  sizeBytes: z.coerce.number().int().min(0).optional().default(0),
+  published: z.boolean().optional().default(true),
+});
+
+router.post('/materials', asyncRoute(async (req, res) => {
+  const parsed = materialInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the material a title and either a file or a full https:// link.' });
+  const data = parsed.data;
+  const klass = await one('SELECT id FROM classes WHERE id=$1', [data.classId]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  // Newest within its week sits at the top, which is where a just-added item is
+  // looked for.
+  const next = await one(
+    `SELECT COALESCE(min(position),0)-1 position FROM materials WHERE class_id=$1 AND week_id IS NOT DISTINCT FROM $2`,
+    [data.classId, data.weekId || null],
+  );
+  const row = await one(
+    `INSERT INTO materials(class_id,week_id,kind,title,description,url,file_name,mime_type,size_bytes,published,position,created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [data.classId, data.weekId || null, data.kind, data.title, data.description, data.url,
+     data.fileName || null, data.mimeType || null, data.sizeBytes, data.published, next.position, req.user.id],
+  );
+  await audit({ actorId: req.user.id, action: 'material.created', entityType: 'material', entityId: row.id, metadata: { classId: data.classId, kind: data.kind }, ip: req.ip });
+  res.status(201).json(row);
+}));
+
+router.patch('/materials/:id', asyncRoute(async (req, res) => {
+  const parsed = materialInput.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid material.' });
+  const current = await one('SELECT * FROM materials WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Material not found.' });
+  const data = parsed.data;
+  const row = await one(
+    `UPDATE materials SET week_id=$1,title=$2,description=$3,url=$4,published=$5,updated_at=now()
+     WHERE id=$6 RETURNING *`,
+    [data.weekId === undefined ? current.week_id : (data.weekId || null),
+     data.title ?? current.title, data.description ?? current.description,
+     data.url ?? current.url, data.published ?? current.published, current.id],
+  );
+  await audit({ actorId: req.user.id, action: 'material.updated', entityType: 'material', entityId: row.id, ip: req.ip });
+  res.json(row);
+}));
+
+router.delete('/materials/:id', asyncRoute(async (req, res) => {
+  const current = await one('SELECT * FROM materials WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Material not found.' });
+  // The uploaded file goes with it. Nothing else points at it, and leaving orphans
+  // on disk is how an uploads directory becomes impossible to reason about.
+  if (current.kind === 'file' && String(current.url).startsWith('/uploads/')) {
+    await fs.unlink(path.join(config.uploadDir, path.basename(current.url))).catch(() => {});
+  }
+  await query('DELETE FROM materials WHERE id=$1', [current.id]);
+  await audit({ actorId: req.user.id, action: 'material.deleted', entityType: 'material', entityId: current.id, metadata: { title: current.title }, ip: req.ip });
+  res.status(204).end();
+}));
+
+/* ------------------------------------------------------------------
+   Class board
+   ------------------------------------------------------------------ */
+
+router.get('/community/:classId', asyncRoute(async (req, res) => {
+  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  // Removed threads stay listed for the administrator, greyed, with a way back.
+  const threads = await listThreads({ classId: klass.id, includeDeleted: true });
+  res.json({ class: { ...klass, label: classLabel(klass) }, threads });
+}));
+
+router.get('/community/thread/:id', asyncRoute(async (req, res) => {
+  const thread = await getThread({ threadId: req.params.id, includeDeleted: true });
+  if (!thread) return res.status(404).json({ error: 'Thread not found.' });
+  res.json(thread);
+}));
+
+router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    title: z.string().trim().min(2).max(200),
+    body: z.string().trim().min(1).max(20000),
+    pinned: z.boolean().optional().default(false),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the post a title and a message.' });
+  const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.classId]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  const row = await createThread({ classId: klass.id, authorId: req.user.id, title: parsed.data.title, body: parsed.data.body });
+  if (parsed.data.pinned) await query('UPDATE discussion_threads SET pinned=true WHERE id=$1', [row.id]);
+  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
+  res.status(201).json({ ...row, pinned: parsed.data.pinned });
+}));
+
+router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
+  const parsed = z.object({ body: z.string().trim().min(1).max(20000) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Write a reply before sending.' });
+  const thread = await one('SELECT * FROM discussion_threads WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
+  if (!thread) return res.status(404).json({ error: 'Thread not found.' });
+  // A locked thread still takes a reply from the teacher: locking is for ending a
+  // conversation, and the last word is usually theirs.
+  const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body });
+  res.status(201).json(row);
+}));
+
+/* Pin, lock and remove. Everything reversible, and every use recorded. */
+router.patch('/community/thread/:id', asyncRoute(async (req, res) => {
+  const parsed = z.object({ pinned: z.boolean().optional(), locked: z.boolean().optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid thread change.' });
+  const current = await one('SELECT * FROM discussion_threads WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Thread not found.' });
+  const row = await one(
+    `UPDATE discussion_threads SET pinned=$1,locked=$2,updated_at=now() WHERE id=$3 RETURNING *`,
+    [parsed.data.pinned ?? current.pinned, parsed.data.locked ?? current.locked, current.id],
+  );
+  await audit({ actorId: req.user.id, action: 'community.thread_updated', entityType: 'thread', entityId: row.id, metadata: parsed.data, ip: req.ip });
+  res.json(row);
+}));
+
+router.post('/community/thread/:id/removal', asyncRoute(async (req, res) => {
+  const parsed = z.object({ removed: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Say whether to remove or restore.' });
+  const row = await one(
+    `UPDATE discussion_threads SET deleted_at=$1,deleted_by=$2,updated_at=now() WHERE id=$3 RETURNING *`,
+    [parsed.data.removed ? new Date() : null, parsed.data.removed ? req.user.id : null, req.params.id],
+  );
+  if (!row) return res.status(404).json({ error: 'Thread not found.' });
+  await audit({ actorId: req.user.id, action: parsed.data.removed ? 'community.thread_removed' : 'community.thread_restored', entityType: 'thread', entityId: row.id, ip: req.ip });
+  res.json(row);
+}));
+
+router.post('/community/post/:id/removal', asyncRoute(async (req, res) => {
+  const parsed = z.object({ removed: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Say whether to remove or restore.' });
+  const row = await one(
+    `UPDATE discussion_posts SET deleted_at=$1,deleted_by=$2,updated_at=now() WHERE id=$3 RETURNING *`,
+    [parsed.data.removed ? new Date() : null, parsed.data.removed ? req.user.id : null, req.params.id],
+  );
+  if (!row) return res.status(404).json({ error: 'Reply not found.' });
+  await audit({ actorId: req.user.id, action: parsed.data.removed ? 'community.post_removed' : 'community.post_restored', entityType: 'post', entityId: row.id, ip: req.ip });
+  res.json(row);
 }));
 
 export default router;

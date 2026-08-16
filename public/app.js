@@ -31,6 +31,11 @@ const state = {
   activeReview: null,
   checkinForm: null,
   homeworkForm: null,
+  materials: null,
+  materialsClassId: null,
+  community: null,
+  communityClassId: null,
+  communityThread: null,
 };
 
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -53,6 +58,11 @@ const svg = {
   mic: `<svg viewBox="0 0 24 24" fill="none"><path d="M19 10v1a7 7 0 0 1-14 0v-1m7 8v4m0-4a4 4 0 0 1-4-4V6a4 4 0 1 1 8 0v8a4 4 0 0 1-4 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   stop: `<svg viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>`,
   note: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 7h8M8 11h8M8 15h4m-4 6h8.2c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C21 18.72 21 17.88 21 16.2V7.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C18.72 3 17.88 3 16.2 3H7.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C3 5.28 3 6.12 3 7.8v8.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C5.28 21 6.12 21 7.8 21Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  video: `<svg viewBox="0 0 24 24" fill="none"><path d="m17 9.5 3.223-2.148c.402-.268.603-.402.769-.395a.5.5 0 0 1 .372.195c.103.13.103.372.103.856v7.984c0 .484 0 .726-.103.856a.5.5 0 0 1-.372.195c-.166.007-.367-.127-.769-.395L17 14.5m-11.8 4h7.6c1.12 0 1.68 0 2.108-.218a2 2 0 0 0 .874-.874C16 16.98 16 16.42 16 15.3V8.7c0-1.12 0-1.68-.218-2.108a2 2 0 0 0-.874-.874C14.48 5.5 13.92 5.5 12.8 5.5H5.2c-1.12 0-1.68 0-2.108.218a2 2 0 0 0-.874.874C2 7.02 2 7.58 2 8.7v6.6c0 1.12 0 1.68.218 2.108a2 2 0 0 0 .874.874c.428.218.988.218 2.108.218Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  library: `<svg viewBox="0 0 24 24" fill="none"><path d="M22 19V8.2c0-1.12 0-1.68-.218-2.108a2 2 0 0 0-.874-.874C20.48 5 19.92 5 18.8 5h-4.024c-.489 0-.733 0-.963-.055a2 2 0 0 1-.578-.24c-.201-.123-.374-.296-.72-.642l-.03-.03c-.346-.346-.519-.519-.72-.642a2 2 0 0 0-.579-.24C10.957 3.15 10.713 3.15 10.224 3.15H5.2c-1.12 0-1.68 0-2.108.218a2 2 0 0 0-.874.874C2 4.67 2 5.23 2 6.35V19m20 0a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2m20 0-2.5-6.5M2 19l2.5-6.5m3 0h9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  board: `<svg viewBox="0 0 24 24" fill="none"><path d="M7 9h6m-6 4h9m-9.2 7 2.494 2.494c.253.253.38.38.524.427a.7.7 0 0 0 .432 0c.145-.047.271-.174.524-.427L13 20h2.2c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  link: `<svg viewBox="0 0 24 24" fill="none"><path d="M14 7h1.5a4.5 4.5 0 1 1 0 9H14m-4 0H8.5a4.5 4.5 0 1 1 0-9H10m-1.5 4.5h7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  pin: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 15v7m-2.879-8.879 1.293-1.293c.2-.2.3-.3.363-.418a1 1 0 0 0 .107-.34c.014-.132-.006-.27-.045-.548l-.34-2.377c-.05-.354-.076-.53-.043-.702a1 1 0 0 1 .155-.375c.098-.145.245-.254.539-.474l2.35-1.762c.35-.263.526-.394.62-.567a1 1 0 0 0 .116-.549c-.016-.196-.12-.39-.33-.777l-.128-.236c-.192-.354-.288-.53-.433-.64a1 1 0 0 0-.457-.187c-.18-.026-.37.02-.752.114L6.4 3.86c-.53.13-.795.195-.96.348a1 1 0 0 0-.31.63c-.02.223.096.469.328.96l.101.215c.18.38.27.571.41.7a1 1 0 0 0 .43.234c.184.045.392.02.807-.03l2.31-.28c.29-.036.436-.054.572-.032a1 1 0 0 1 .38.15c.116.076.213.19.407.417l1.192 1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 /* ------------------------------------------------------------------
@@ -430,13 +440,16 @@ function closeModal() {
   state.homeworkForm = null;
 }
 
-function openDrawer({ title, subtitle, body, footer, onOpen }) {
+/* A drawer without a footer is a drawer whose actions sit inline in the body,
+   which is how the board reads. Defaulting to an empty string keeps that case
+   from printing the word "undefined" along the bottom edge. */
+function openDrawer({ title, subtitle, body, footer = '', onOpen }) {
   modalRoot.innerHTML = `
     <div class="overlay open" data-close-drawer></div>
     <aside class="drawer open">
       <header class="drawer-head"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(subtitle)}</p></div><button class="close" aria-label="Close" data-close-drawer>${svg.x}</button></header>
       <div class="drawer-body">${body}</div>
-      <footer class="drawer-footer">${footer}</footer>
+      ${footer ? `<footer class="drawer-footer">${footer}</footer>` : ''}
     </aside>`;
   modalRoot.querySelectorAll('[data-close-drawer]').forEach((element) => element.addEventListener('click', closeModal));
   onOpen?.(modalRoot.querySelector('.drawer'));
@@ -992,6 +1005,8 @@ function adminNav() {
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.book, 'Homework')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
+      ${adminNavButton('materials', svg.library, 'Course materials')}
+      ${adminNavButton('community', svg.board, 'Class board')}
       ${adminNavButton('attendance', svg.upload, 'Attendance upload')}
       ${adminNavButton('reminders', svg.mail, 'Email reminders')}
       ${adminNavButton('ai', svg.spark, 'OpenAI & prompts')}
@@ -1008,10 +1023,25 @@ function bindShellNavigation() {
     if (button.dataset.classId) state.activeClassId = button.dataset.classId;
     await renderAdmin();
   }));
-  document.querySelectorAll('[data-student-view]').forEach((button) => button.addEventListener('click', () => {
-    state.view = button.dataset.studentView;
-    renderStudent();
-  }));
+  document.querySelectorAll('[data-student-view]').forEach((button) => button.addEventListener('click', () => showStudentView(button.dataset.studentView)));
+}
+
+/* Two of the student screens need their own fetch. Opening the board is also what
+   clears its badge: marking each thread read separately would leave a count that
+   never quite reaches zero. */
+async function showStudentView(view) {
+  state.view = view;
+  try {
+    if (view === 'materials') state.materials = await api('/api/student/materials');
+    if (view === 'community') {
+      state.community = await api('/api/student/community');
+      if (state.studentData.communityUnread) {
+        await api('/api/student/community/read', { method: 'POST' });
+        state.studentData.communityUnread = 0;
+      }
+    }
+  } catch (error) { showToast(error.message, 'error'); }
+  renderStudent();
 }
 
 async function loadAdmin() {
@@ -1049,6 +1079,16 @@ async function renderAdmin() {
       state.checkinClassId ||= state.classes[0]?.id || null;
       state.teachingWeeks = state.checkinClassId ? await api(`/api/admin/teaching-weeks?classId=${state.checkinClassId}`) : [];
       title = 'Weekly check-ins'; content = checkinsView();
+    } else if (state.view === 'materials') {
+      state.classes = await api('/api/admin/classes');
+      state.materialsClassId ||= state.activeClassId || state.classes[0]?.id || null;
+      state.materials = state.materialsClassId ? await api(`/api/admin/materials/${state.materialsClassId}`) : null;
+      title = 'Course materials'; content = materialsView();
+    } else if (state.view === 'community') {
+      state.classes = await api('/api/admin/classes');
+      state.communityClassId ||= state.activeClassId || state.classes[0]?.id || null;
+      state.community = state.communityClassId ? await api(`/api/admin/community/${state.communityClassId}`) : null;
+      title = 'Class board'; content = communityView();
     } else if (state.view === 'attendance') {
       state.classes = await api('/api/admin/classes');
       title = 'Attendance upload'; content = attendanceView();
@@ -1298,8 +1338,8 @@ function peopleView() {
     <div class="tabs"><button class="tab active" data-people-tab="classes">Classes</button><button class="tab" data-people-tab="students">Students</button></div>
     <section id="classes-tab"><div class="class-grid">${state.classes.map((klass) => `
       <article class="card class-card"><div class="card-actions"><div><h3>${escapeHtml(classLabel(klass))}</h3><p>Separate tracker, attendance and homework.</p></div><button class="btn small" data-open-class="${klass.id}">Open tracker</button></div>
-      <div class="mini-stats"><span class="mini-stat">${klass.student_count || 0} students</span><span class="mini-stat">${escapeHtml(klass.timezone)}</span></div>
-      <div class="actions stack-top"><button class="btn small danger" data-delete-class="${klass.id}">Delete class</button></div></article>`).join('') || '<div class="empty-state"><h3>No classes yet</h3><p>Add your first class to begin.</p></div>'}</div></section>
+      <div class="mini-stats"><span class="mini-stat">${klass.student_count || 0} students</span><span class="mini-stat">${escapeHtml(klass.timezone)}</span><span class="mini-stat ${klass.join_url ? 'good' : ''}">${klass.join_url ? 'Class link set' : 'No class link'}</span></div>
+      <div class="actions stack-top"><button class="btn small" data-class-link="${klass.id}">${svg.video} Class link</button><button class="btn small danger" data-delete-class="${klass.id}">Delete class</button></div></article>`).join('') || '<div class="empty-state"><h3>No classes yet</h3><p>Add your first class to begin.</p></div>'}</div></section>
     <section id="students-tab" class="hidden"><div class="card table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Email</th><th>Current class</th><th>Login</th><th></th></tr></thead><tbody>
       ${state.students.map((student) => `<tr><td><button class="text-link strong-link" data-open-student="${student.id}">${escapeHtml(student.name)}</button></td><td>${escapeHtml(student.email)}</td><td><select class="select" data-student-class="${student.id}">${state.classes.map((klass) => `<option value="${klass.id}" ${student.class_id === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}</select></td><td>${student.last_login_at ? `<span class="pill green">Last login ${fmtDate(student.last_login_at)}</span>` : '<span class="pill orange">Invite pending</span>'}</td><td><div class="row-actions"><button class="btn small" data-open-student="${student.id}">${svg.note} Notes</button><button class="btn small" data-resend="${student.id}">Resend invite</button><button class="btn small" data-reset-student="${student.id}">Reset password</button></div></td></tr>`).join('')}
     </tbody></table></div></section>`;
@@ -1747,6 +1787,302 @@ function bindCheckins() {
   }));
 }
 
+/* ------------------------------------------------------------------
+   Course materials
+   ------------------------------------------------------------------ */
+
+const MATERIAL_ICONS = { file: 'note', link: 'link', loom: 'video' };
+
+/* The library, grouped the way a student reads it: course-wide first, then each
+   teaching week newest first. Unpublished rows sit in place rather than in a
+   separate list, so the gap they will fill is visible while they are being
+   prepared. */
+function materialsView() {
+  const data = state.materials;
+  const rows = data?.materials || [];
+  const weeks = data?.weeks || [];
+  const weekLabel = new Map(weeks.map((week) => [week.id, fmtWeek(week.week_start)]));
+  const published = rows.filter((row) => row.published).length;
+
+  const group = (items) => `<div class="material-list">${items.map((row) => `
+    <article class="material-row ${row.published ? '' : 'is-draft'}">
+      <span class="material-icon">${svg[MATERIAL_ICONS[row.kind] || 'note']}</span>
+      <div class="material-copy">
+        <strong>${escapeHtml(row.title)}</strong>
+        ${row.description ? `<p>${escapeHtml(row.description)}</p>` : ''}
+        <span class="muted small">${escapeHtml(row.kind === 'file' ? (row.file_name || 'File') : row.kind === 'loom' ? 'Loom video' : 'Link')}${row.published ? '' : ' · not published'}</span>
+      </div>
+      <div class="row-actions">
+        <a class="btn small" href="${escapeHtml(row.url)}" target="_blank" rel="noopener noreferrer">Open</a>
+        <button class="btn small" data-material-publish="${row.id}" data-published="${row.published}">${row.published ? 'Unpublish' : 'Publish'}</button>
+        <button class="btn small danger" data-material-delete="${row.id}">Delete</button>
+      </div>
+    </article>`).join('')}</div>`;
+
+  const courseWide = rows.filter((row) => !row.week_id);
+  const byWeek = new Map();
+  rows.filter((row) => row.week_id).forEach((row) => {
+    byWeek.set(row.week_id, [...(byWeek.get(row.week_id) || []), row]);
+  });
+  const weekOrder = weeks.filter((week) => byWeek.has(week.id));
+
+  return `${pageHeader('Course materials', 'Library', 'Notes, recordings and links that stay available all year. Homework resources are separate and live with their assignment.',
+    `<button class="btn primary" id="add-material">Add material</button>`)}
+    <div class="card toolbar">
+      <div class="toolbar-group">
+        <select class="select" id="materials-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.materialsClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
+        <span class="muted small">${rows.length} item${rows.length === 1 ? '' : 's'} · ${published} published</span>
+      </div>
+    </div>
+    ${rows.length ? `
+      ${courseWide.length ? `<section class="card"><div class="section-title">Whole course</div>${group(courseWide)}</section>` : ''}
+      ${weekOrder.map((week) => `<section class="card"><div class="section-title">Week of ${escapeHtml(weekLabel.get(week.id) || '')}</div>${group(byWeek.get(week.id))}</section>`).join('')}
+    ` : '<div class="empty-state"><h3>Nothing in the library yet</h3><p>Add the notes, slides or recordings for a week and they stay here for the rest of the course.</p></div>'}`;
+}
+
+function openMaterialModal() {
+  const weeks = state.materials?.weeks || [];
+  modal({
+    title: 'Add material',
+    subtitle: 'A file you upload, a link, or a Loom video.',
+    body: `<form id="material-form">
+      <div class="form-field"><label>Title</label><input name="title" required placeholder="Week 3 notes"></div>
+      <div class="form-field"><label>Description, optional</label><textarea name="description" rows="2" placeholder="What this is and when to use it"></textarea></div>
+      <div class="form-field"><label>Week</label><select name="weekId"><option value="">Whole course, not one week</option>${weeks.map((week) => `<option value="${week.id}">Week of ${escapeHtml(fmtWeek(week.week_start))}</option>`).join('')}</select></div>
+      <div class="form-field"><label>Type</label><select name="kind" id="material-kind"><option value="file">Upload a file</option><option value="link">Link</option><option value="loom">Loom video</option></select></div>
+      <div class="form-field" id="material-file-field"><label>File</label><input name="file" type="file"></div>
+      <div class="form-field hidden" id="material-url-field"><label>Address</label><input name="url" type="url" placeholder="https://"></div>
+      <label class="check-row"><input type="checkbox" name="published" checked> Publish to students now</label>
+    </form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-material">Add to library</button>`,
+    onOpen() {
+      const kind = document.getElementById('material-kind');
+      kind.addEventListener('change', () => {
+        const isFile = kind.value === 'file';
+        document.getElementById('material-file-field').classList.toggle('hidden', !isFile);
+        document.getElementById('material-url-field').classList.toggle('hidden', isFile);
+      });
+      document.getElementById('save-material').addEventListener('click', async () => {
+        const form = document.getElementById('material-form');
+        const data = new FormData(form);
+        const body = {
+          classId: state.materialsClassId,
+          weekId: data.get('weekId') || null,
+          kind: data.get('kind'),
+          title: String(data.get('title') || '').trim(),
+          description: String(data.get('description') || '').trim(),
+          published: form.published.checked,
+        };
+        try {
+          if (body.kind === 'file') {
+            const file = form.file.files[0];
+            if (!file) return showToast('Choose a file to upload.', 'error');
+            const upload = new FormData();
+            upload.append('files', file);
+            const result = await api('/api/admin/uploads', { method: 'POST', body: upload });
+            const uploaded = result.files[0];
+            Object.assign(body, { url: uploaded.url, fileName: uploaded.fileName, mimeType: uploaded.mimeType, sizeBytes: file.size });
+          } else {
+            body.url = String(data.get('url') || '').trim();
+            if (!body.url) return showToast('Paste the address first.', 'error');
+          }
+          await api('/api/admin/materials', { method: 'POST', body });
+          closeModal(); await renderAdmin(); showToast('Added to the library');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* ------------------------------------------------------------------
+   Class board
+   ------------------------------------------------------------------ */
+
+/* Removed threads stay in the administrator's list, greyed, with a way back.
+   Moderation that cannot be undone is moderation nobody uses confidently. */
+function communityView() {
+  const threads = state.community?.threads || [];
+  const live = threads.filter((row) => !row.deleted_at);
+  return `${pageHeader('Class board', 'Discussion', 'One board per class. Students post questions and answer each other; you can pin, close or remove anything.',
+    `<button class="btn primary" id="new-thread">Start a post</button>`)}
+    <div class="card toolbar">
+      <div class="toolbar-group">
+        <select class="select" id="community-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
+        <span class="muted small">${live.length} conversation${live.length === 1 ? '' : 's'}</span>
+      </div>
+    </div>
+    ${threads.length ? `<section class="card"><div class="thread-list">${threads.map((thread) => threadRow(thread, true)).join('')}</div></section>`
+      : `<div class="empty-state"><h3>The board is empty</h3><p>Start it off with something worth replying to — a question about the last class, or where to find this week's notes. An empty board stays empty until somebody goes first.</p></div>`}`;
+}
+
+function threadRow(thread, admin = false) {
+  const replies = thread.reply_count || 0;
+  const last = thread.last_reply_at || thread.created_at;
+  return `<article class="thread-row ${thread.deleted_at ? 'is-removed' : ''}" data-open-thread="${thread.id}">
+    <div class="thread-main">
+      <strong>${thread.pinned ? `<span class="thread-pin" title="Pinned">${svg.pin}</span>` : ''}${escapeHtml(thread.title)}</strong>
+      <p>${escapeHtml(String(thread.body || '').slice(0, 160))}${String(thread.body || '').length > 160 ? '…' : ''}</p>
+      <span class="muted small">${escapeHtml(thread.author?.name || 'Removed account')}${thread.author?.role === 'admin' ? ' · Teacher' : ''} · ${escapeHtml(fmtDate(last, { dateStyle: 'medium' }))}</span>
+    </div>
+    <div class="thread-meta">
+      ${thread.locked ? '<span class="pill">Closed</span>' : ''}
+      ${thread.deleted_at && admin ? '<span class="pill red">Removed</span>' : ''}
+      <span class="pill">${replies} ${replies === 1 ? 'reply' : 'replies'}</span>
+    </div>
+  </article>`;
+}
+
+/* One thread, opened in the side drawer the review queue already uses, so
+   reading the board never loses your place in the list. */
+async function openThread(threadId) {
+  const admin = state.user.role === 'admin';
+  let thread;
+  try { thread = await api(`${admin ? '/api/admin' : '/api/student'}/community/thread/${threadId}`); }
+  catch (error) { return showToast(error.message, 'error'); }
+  state.communityThread = thread;
+  renderThreadDrawer();
+}
+
+function threadMessage(message, admin, isOpening = false) {
+  const removed = Boolean(message.deleted_at);
+  return `<article class="post ${removed ? 'is-removed' : ''} ${isOpening ? 'is-opening' : ''}">
+    <div class="post-head">
+      <span class="avatar small">${initials(message.author?.name || '?')}</span>
+      <div><strong>${escapeHtml(message.author?.name || 'Removed account')}</strong>${message.author?.role === 'admin' ? '<span class="pill green">Teacher</span>' : ''}
+      <span class="muted small">${escapeHtml(fmtDate(message.created_at, { dateStyle: 'medium', time: true }))}</span></div>
+      ${admin && !isOpening ? `<button class="btn small ${removed ? '' : 'danger'}" data-post-removal="${message.id}" data-removed="${removed}">${removed ? 'Restore' : 'Remove'}</button>` : ''}
+    </div>
+    ${removed ? '<p class="muted small">This reply was removed.</p>' : `<div class="post-body">${escapeHtml(message.body).replace(/\n/g, '<br>')}</div>`}
+  </article>`;
+}
+
+function renderThreadDrawer() {
+  const thread = state.communityThread;
+  if (!thread) return;
+  const admin = state.user.role === 'admin';
+  const withdrawn = Boolean(state.studentData?.withdrawnAt);
+  const canReply = admin || (!thread.locked && !withdrawn);
+  openDrawer({
+    title: thread.title,
+    subtitle: `${thread.author?.name || 'Removed account'} · ${fmtDate(thread.created_at, { dateStyle: 'medium' })}${thread.locked ? ' · closed to replies' : ''}`,
+    body: `
+      ${admin ? `<div class="drawer-toolbar">
+        <button class="btn small" data-thread-pin="${thread.id}" data-pinned="${thread.pinned}">${thread.pinned ? 'Unpin' : 'Pin to top'}</button>
+        <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close to replies'}</button>
+        <button class="btn small ${thread.deleted_at ? '' : 'danger'}" data-thread-removal="${thread.id}" data-removed="${Boolean(thread.deleted_at)}">${thread.deleted_at ? 'Restore post' : 'Remove post'}</button>
+      </div>` : ''}
+      ${threadMessage({ ...thread, created_at: thread.created_at }, admin, true)}
+      <div class="section-title">${thread.posts.length} ${thread.posts.length === 1 ? 'reply' : 'replies'}</div>
+      <div class="post-list">${thread.posts.map((post) => threadMessage(post, admin)).join('') || '<p class="muted small">No replies yet.</p>'}</div>
+      ${canReply ? `<div class="reply-box">
+        <label class="field-label" for="reply-body">Your reply</label>
+        ${dictateButton('reply-body')}
+        <textarea id="reply-body" rows="4" placeholder="Write a reply"></textarea>
+        <button class="btn primary" id="send-reply">Send reply</button>
+      </div>` : `<p class="muted small stack-top">${withdrawn ? 'You have withdrawn from this course, so posting is closed.' : 'This conversation has been closed to new replies.'}</p>`}`,
+    onOpen() {
+      bindDictation();
+      document.getElementById('send-reply')?.addEventListener('click', async () => {
+        const body = document.getElementById('reply-body').value.trim();
+        if (!body) return showToast('Write a reply before sending.', 'error');
+        try {
+          await api(`${admin ? '/api/admin' : '/api/student'}/community/thread/${thread.id}/replies`, { method: 'POST', body: { body } });
+          await openThread(thread.id);
+          showToast('Reply sent');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+      document.querySelector('[data-thread-pin]')?.addEventListener('click', (event) =>
+        updateThread(thread.id, { pinned: event.currentTarget.dataset.pinned !== 'true' }));
+      document.querySelector('[data-thread-lock]')?.addEventListener('click', (event) =>
+        updateThread(thread.id, { locked: event.currentTarget.dataset.locked !== 'true' }));
+      document.querySelector('[data-thread-removal]')?.addEventListener('click', async (event) => {
+        const removed = event.currentTarget.dataset.removed !== 'true';
+        if (removed && !(await askConfirm({
+          title: 'Remove this post?',
+          message: 'Students stop seeing it immediately. The replies are kept and you can restore the whole thread at any time.',
+          confirmLabel: 'Remove', danger: true,
+        }))) return;
+        try {
+          await api(`/api/admin/community/thread/${thread.id}/removal`, { method: 'POST', body: { removed } });
+          await openThread(thread.id); await renderAdmin();
+          showToast(removed ? 'Post removed' : 'Post restored');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+      document.querySelectorAll('[data-post-removal]').forEach((button) => button.addEventListener('click', async () => {
+        try {
+          await api(`/api/admin/community/post/${button.dataset.postRemoval}/removal`, { method: 'POST', body: { removed: button.dataset.removed !== 'true' } });
+          await openThread(thread.id);
+        } catch (error) { showToast(error.message, 'error'); }
+      }));
+    },
+  });
+}
+
+async function updateThread(threadId, body) {
+  try {
+    await api(`/api/admin/community/thread/${threadId}`, { method: 'PATCH', body });
+    await openThread(threadId);
+    await renderAdmin();
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+function openNewThreadModal() {
+  const admin = state.user.role === 'admin';
+  modal({
+    title: 'Start a post',
+    subtitle: admin ? 'Posted to this class board under your name.' : 'Everyone in your class can see this and reply.',
+    body: `<form id="thread-form">
+      <div class="form-field"><label>Title</label><input name="title" required placeholder="A question about the tuiseal ginideach"></div>
+      <div class="form-field"><label>Message</label>${dictateButton('thread-body')}<textarea id="thread-body" name="body" rows="6" required></textarea></div>
+      ${admin ? '<label class="check-row"><input type="checkbox" name="pinned"> Pin to the top of the board</label>' : ''}
+    </form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-thread">Post</button>`,
+    onOpen() {
+      bindDictation();
+      document.getElementById('save-thread').addEventListener('click', async () => {
+        const form = document.getElementById('thread-form');
+        const data = new FormData(form);
+        const body = { title: String(data.get('title') || '').trim(), body: String(data.get('body') || '').trim() };
+        if (!body.title || !body.body) return showToast('Give your post a title and a message.', 'error');
+        if (admin) body.pinned = form.pinned.checked;
+        try {
+          await api(admin ? `/api/admin/community/${state.communityClassId}/threads` : '/api/student/community/threads', { method: 'POST', body });
+          closeModal();
+          if (admin) await renderAdmin(); else await showStudentView('community');
+          showToast('Posted');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* The weekly class link. Lives on the class rather than on each week, because a
+   recurring meeting has one link for the term and asking again every week is a
+   weekly chance to forget. */
+function openClassLinkModal(classId) {
+  const klass = state.classes.find((row) => row.id === classId);
+  if (!klass) return;
+  modal({
+    title: 'Class link',
+    subtitle: `${classLabel(klass)} · shown to students on their deadlines screen`,
+    body: `<form id="class-link-form">
+      <div class="form-field"><label>Join address</label><input name="joinUrl" type="url" value="${escapeHtml(klass.join_url || '')}" placeholder="https://us02web.zoom.us/j/..."></div>
+      <div class="form-field"><label>Note, optional</label><input name="joinNote" maxlength="200" value="${escapeHtml(klass.join_note || '')}" placeholder="Passcode 4821"></div>
+      <p class="muted small">Students see this on every screen, with the wording changing as the class approaches: the day and time all week, a countdown from twelve hours out, then “Happening now”. Clearing the address removes the banner rather than leaving a button that goes nowhere.</p>
+    </form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-class-link">Save link</button>`,
+    onOpen() {
+      document.getElementById('save-class-link').addEventListener('click', async () => {
+        const data = new FormData(document.getElementById('class-link-form'));
+        try {
+          await api(`/api/admin/classes/${classId}`, { method: 'PATCH', body: { joinUrl: String(data.get('joinUrl') || '').trim(), joinNote: String(data.get('joinNote') || '').trim() } });
+          closeModal(); await renderAdmin(); showToast('Class link saved');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
 function attendanceView() {
   return `${pageHeader('Attendance', 'Upload webinar attendance', 'Import a Zoom or webinar CSV for one class and teaching week.')}
     <section class="card" style="max-width:760px"><div class="card-header"><div><h2>Attendance import</h2><p>Students are matched by email first, then by exact name.</p></div></div>
@@ -1866,6 +2202,24 @@ function bindAdminView() {
   document.getElementById('import-students')?.addEventListener('click', openStudentImportModal);
   document.querySelectorAll('[data-open-class]').forEach((button) => button.addEventListener('click', () => { state.activeClassId = button.dataset.openClass; state.view = 'tracker'; renderAdmin(); }));
   document.querySelectorAll('[data-delete-class]').forEach((button) => button.addEventListener('click', () => confirmDeleteClass(button.dataset.deleteClass)));
+  document.querySelectorAll('[data-class-link]').forEach((button) => button.addEventListener('click', () => openClassLinkModal(button.dataset.classLink)));
+  document.getElementById('materials-class')?.addEventListener('change', (event) => { state.materialsClassId = event.target.value; renderAdmin(); });
+  document.getElementById('add-material')?.addEventListener('click', openMaterialModal);
+  document.querySelectorAll('[data-material-publish]').forEach((button) => button.addEventListener('click', async () => {
+    try {
+      await api(`/api/admin/materials/${button.dataset.materialPublish}`, { method: 'PATCH', body: { published: button.dataset.published !== 'true' } });
+      await renderAdmin();
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+  document.querySelectorAll('[data-material-delete]').forEach((button) => button.addEventListener('click', async () => {
+    const ok = await askConfirm({ title: 'Delete this material?', message: 'Students lose access immediately, and an uploaded file is removed from the server. This cannot be undone.', confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
+    try { await api(`/api/admin/materials/${button.dataset.materialDelete}`, { method: 'DELETE' }); await renderAdmin(); showToast('Deleted'); }
+    catch (error) { showToast(error.message, 'error'); }
+  }));
+  document.getElementById('community-class')?.addEventListener('change', (event) => { state.communityClassId = event.target.value; renderAdmin(); });
+  document.getElementById('new-thread')?.addEventListener('click', openNewThreadModal);
+  document.querySelectorAll('[data-open-thread]').forEach((row) => row.addEventListener('click', () => openThread(row.dataset.openThread)));
   document.querySelectorAll('[data-student-class]').forEach((select) => select.addEventListener('change', async () => {
     try { await api(`/api/admin/students/${select.dataset.studentClass}`, { method: 'PATCH', body: { classId: select.value } }); showToast('Student moved'); }
     catch (error) { showToast(error.message, 'error'); }
@@ -2800,6 +3154,8 @@ function studentNav() {
   return `<div class="nav-label">My course</div><nav class="nav">
     ${studentNavButton('calendar', svg.calendar, 'Deadlines')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
+    ${studentNavButton('materials', svg.library, 'Materials')}
+    ${studentNavButton('community', svg.board, 'Class board', state.studentData?.communityUnread || 0)}
   </nav>`;
 }
 
@@ -2813,19 +3169,100 @@ async function loadStudent() {
   renderStudent();
 }
 
+const STUDENT_TITLES = { tracker: 'Weekly tracker', materials: 'Materials', community: 'Class board', calendar: 'Deadlines' };
+
 function renderStudent() {
   let content = '';
   if (!state.studentData.class && state.view !== 'account') {
     content = `${studentHero()}<div class="empty-state"><h3>You are not in a class yet</h3><p>Your account is active but has not been added to a class group. Contact Gaeilgeoir Guides and they will add you.</p></div>`;
   } else if (state.view === 'tracker') content = studentTrackerView();
+  else if (state.view === 'materials') content = studentMaterialsView();
+  else if (state.view === 'community') content = studentCommunityView();
   else content = studentCalendarView();
-  shell({ nav: studentNav(), content, title: state.view === 'tracker' ? 'Weekly tracker' : 'Deadlines', roleLabel: 'Student', notificationCount: state.studentData.notifications });
+  shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Deadlines', roleLabel: 'Student', notificationCount: state.studentData.notifications });
   bindStudentView();
 }
 
+/* The class link, shown where a student already goes on the evening of a class.
+   It appears twelve hours out and stays until the session is over, so the button
+   is there when it is wanted and gone the rest of the week — a permanent Join
+   button is one more thing on the screen that is usually wrong. */
+function nextClassBanner() {
+  const next = state.studentData?.nextClass;
+  if (!next) return '';
+  const when = next.live
+    ? 'Happening now'
+    : next.soon
+      ? `Starts ${next.minutesAway < 60 ? `in ${next.minutesAway} minute${next.minutesAway === 1 ? '' : 's'}` : `in ${Math.round(next.minutesAway / 60)} hours`}`
+      : `Next class ${fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' })}`;
+  // The button is there whenever there is a link at all — somebody checking on a
+  // Sunday to find the room should not be told to come back tomorrow. What the
+  // hours change is the urgency of the wording above it.
+  if (!next.joinUrl && !next.live && !next.soon) return '';
+  return `<section class="class-banner ${next.live ? 'is-live' : ''}">
+    <span class="class-banner-icon">${svg.video}</span>
+    <div class="class-banner-copy">
+      <strong>${escapeHtml(when)}</strong>
+      <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(timezoneAbbreviation(next.timezone))}${next.note ? ` · ${escapeHtml(next.note)}` : ''}</span>
+    </div>
+    ${next.joinUrl
+      ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
+      : '<span class="muted small">No link yet</span>'}
+  </section>`;
+}
+
+/* The library. Grouped by week, newest first, because somebody looking for
+   something is nearly always looking for the most recent thing. */
+function studentMaterialsView() {
+  const rows = state.materials?.materials || [];
+  const groups = new Map();
+  rows.filter((row) => row.week_id).forEach((row) => {
+    const key = String(row.week_start || '').slice(0, 10);
+    groups.set(key, [...(groups.get(key) || []), row]);
+  });
+  const courseWide = rows.filter((row) => !row.week_id);
+  const weeks = [...groups.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+
+  const list = (items) => `<div class="material-list">${items.map((row) => `
+    <a class="material-row is-link" href="${escapeHtml(row.url)}" target="_blank" rel="noopener noreferrer">
+      <span class="material-icon">${svg[MATERIAL_ICONS[row.kind] || 'note']}</span>
+      <div class="material-copy">
+        <strong>${escapeHtml(row.title)}</strong>
+        ${row.description ? `<p>${escapeHtml(row.description)}</p>` : ''}
+        <span class="muted small">${escapeHtml(row.kind === 'file' ? (row.file_name || 'File') : row.kind === 'loom' ? 'Loom video' : 'Link')}</span>
+      </div>
+    </a>`).join('')}</div>`;
+
+  return `${studentHero()}
+    ${rows.length ? `
+      ${courseWide.length ? `<section class="card"><div class="section-title">Whole course</div>${list(courseWide)}</section>` : ''}
+      ${weeks.map(([weekStart, items]) => `<section class="card"><div class="section-title">Week of ${escapeHtml(fmtWeek(weekStart))}</div>${list(items)}</section>`).join('')}`
+      : '<div class="empty-state"><h3>No materials yet</h3><p>Notes, recordings and links appear here as your teacher adds them.</p></div>'}`;
+}
+
+function studentCommunityView() {
+  const threads = state.community?.threads || [];
+  return `${studentHero()}
+    <div class="board-head">
+      <p class="muted small">Ask a question, answer somebody else's, or share something useful. Everyone in ${escapeHtml(state.studentData.class?.label || 'your class')} can see this.</p>
+      <button class="btn primary" id="student-new-thread">Start a post</button>
+    </div>
+    ${threads.length
+      ? `<section class="card"><div class="thread-list">${threads.map((thread) => threadRow(thread)).join('')}</div></section>`
+      : `<div class="empty-state"><h3>Nothing here yet</h3><p>Be the first. A question you think is too simple is usually the one three other people were also wondering about.</p></div>`}`;
+}
+
+const STUDENT_HERO_COPY = {
+  materials: { title: 'here are your course materials', line: 'Notes, recordings and links for every week, kept in one place.' },
+  community: { title: 'here is your class board', line: 'Ask a question or answer somebody else. Your teacher reads it too.' },
+};
+
 function studentHero() {
-  return `<section class="student-hero"><div><h1>Hi ${escapeHtml(state.user.name.split(' ')[0])}, here are your deadlines</h1><p>Complete check-ins and homework, then view your returned teacher feedback.</p></div>${state.studentData.class ? `<span class="hero-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</section>
-  ${studentGoals()}`;
+  const copy = STUDENT_HERO_COPY[state.view]
+    || { title: 'here are your deadlines', line: 'Complete check-ins and homework, then view your returned teacher feedback.' };
+  return `<section class="student-hero"><div><h1>Hi ${escapeHtml(state.user.name.split(' ')[0])}, ${escapeHtml(copy.title)}</h1><p>${escapeHtml(copy.line)}</p></div>${state.studentData.class ? `<span class="hero-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</section>
+  ${nextClassBanner()}
+  ${state.view === 'materials' || state.view === 'community' ? '' : studentGoals()}`;
 }
 
 /* The server works this out in src/status.js, so the counting rule lives in one
@@ -3173,6 +3610,8 @@ function bindStudentView() {
   document.getElementById('new-password')?.addEventListener('input', (event) => updatePasswordRules(event.target.value));
   document.getElementById('student-logout')?.addEventListener('click', logout);
   document.getElementById('open-withdrawal')?.addEventListener('click', openWithdrawalForm);
+  document.getElementById('student-new-thread')?.addEventListener('click', openNewThreadModal);
+  document.querySelectorAll('[data-open-thread]').forEach((row) => row.addEventListener('click', () => openThread(row.dataset.openThread)));
 }
 
 function openStudentItem(dataset) {

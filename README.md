@@ -1,4 +1,4 @@
-# Gaeilgeoir Guides Homework Portal V23
+# Gaeilgeoir Guides Homework Portal V28
 
 
 A private internal SaaS application for managing Gaeilgeoir Guides classes, student accounts, weekly attendance, check-ins, homework, deadlines, reminders and returned teacher feedback.
@@ -324,6 +324,72 @@ the people still on the course.
 - Due in 30 minutes reminder
 - GoHighLevel webhook, SMTP or console delivery
 - Editable templates and test-email controls
+
+### The weekly class link
+
+**Classes & students → Class link** takes a join address and an optional note.
+Students then see a banner on every screen, and the wording changes as the class
+approaches:
+
+| When | What it reads |
+| --- | --- |
+| Most of the week | `Next class Mon 17 Aug, 19:00` |
+| Inside twelve hours | `Starts in 4 hours` |
+| From the start time until two hours later | `Happening now` |
+
+The button is there whenever a link is set, not only near the hour — somebody
+checking on a Sunday to find the room should not be told to come back tomorrow.
+Clearing the address removes the banner rather than leaving a button that goes
+nowhere.
+
+Nothing about the schedule is stored week by week. The class already carries a
+day, a time and a timezone, so the next sitting is worked out from those; there
+is no weekly field to forget to fill in. A single session that moves to a
+different room can override the link on its own week, and every other week falls
+back to the class link. Times resolve in the **class** timezone, so a student
+reading from abroad is still told when the Dublin class starts.
+
+### Course materials
+
+**Course materials** is the library: notes, slide decks, recordings and links
+that stay available for the year. This is not the same thing as the resources
+attached to an assignment — those exist to support one piece of work and leave
+the screen once it has been handed in. These stay put, which is what somebody
+revising in May actually needs.
+
+- A material is an uploaded file, a link, or a Loom video
+- Each one belongs to a teaching week, or to the whole course
+- Unpublished material is visible to you alone, so next week's notes can be
+  prepared in advance without appearing early
+- Students see it grouped by week, newest first
+
+### The class board
+
+**Class board** is one discussion board per class. A question about Monday's
+lesson is noise to the Thursday group, so the boards are separate and a student
+can only ever reach the board of the class they are in.
+
+It is deliberately plain: a thread has a title and an opening message, and
+everything after it is a reply in order. No categories, no nesting, no likes. A
+board of a dozen to forty adults does not have enough traffic to fill separate
+rooms, and empty rooms make a quiet board look abandoned rather than new.
+
+Nothing is anonymous and nothing is editable after posting. On a board this size,
+knowing your name is on it is most of what keeps it civil.
+
+**Moderation.** You can pin a thread to the top, close it to new replies, or
+remove a thread or a single reply. Removal is a soft delete: students stop seeing
+it immediately, you keep seeing it greyed with a way back, and the surrounding
+replies keep their shape rather than becoming answers to nothing. Every use is
+recorded in the audit log. A closed thread still takes a reply from you, because
+closing a conversation usually means having the last word in it.
+
+**The badge** counts threads and replies written by somebody else since that
+person last opened the board, and opening the board clears it. Your own message
+never comes back at you as something new to read, which is the fastest way to
+teach somebody to ignore a badge.
+
+Withdrawn students keep reading and lose posting, like everywhere else.
 
 ## Local deployment with Docker
 
@@ -721,3 +787,33 @@ security- or data-shaped against a running server rather than the preview alone.
   administrator's tracker, where it means the work is waiting on you. `Submitted`
   and `Returned` are both green and told apart by the label, with the counted
   badge on returned work until it is opened.
+
+## V28 changes
+
+Three additions, all of which sit alongside the existing work rather than
+changing it. Nothing about check-ins, homework, attendance or feedback moved.
+
+- **The weekly class link.** A join address on the class, shown to students as a
+  banner whose wording tightens as the class approaches. Worked out from the day,
+  time and timezone the class already carries, so there is no weekly field to
+  keep filling in. A single week can override the link; every other week falls
+  back to the class one.
+- **Course materials.** A per-class library of files, links and Loom videos,
+  grouped by teaching week or held at course level. Unpublished items stay
+  invisible to students so next week's notes can be loaded in advance.
+- **The class board.** One discussion board per class, with pin, close and
+  reversible removal for the administrator, and an unread badge that only counts
+  what somebody else wrote.
+
+Also in this release:
+
+- A drawer opened without a footer no longer prints the word `undefined` along
+  its bottom edge. This affected any future drawer whose actions sit inline in
+  the body, which is how the board reads.
+- `tests/classtime.test.js`, `tests/materials.test.js` and
+  `tests/community.test.js` cover the new logic. The board tests need a database
+  and run under `RUN_DB_TESTS=1` like the other database tests.
+- The preview mock carries its own copy of the next-class calculation, and
+  `tests/preview-mock.test.js` now holds it level with the server's, the same way
+  it already does for student progress.
+- Migrations `009_class_join_link`, `010_materials` and `011_community`.

@@ -715,3 +715,57 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .report-table td{padding:9px 10px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
 .report-table tr:last-child td{border-bottom:0}
 .report-table tr.is-withdrawn{opacity:.6}
+
+/* ------------------------------------------------------------------
+   The class link, the library and the board.
+   ------------------------------------------------------------------ */
+
+/* Shown only in the hours around a class, so it can afford to be loud. */
+.class-banner{display:flex;align-items:center;gap:14px;padding:14px 18px;margin:0 0 18px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--surface);box-shadow:var(--shadow-xs)}
+.class-banner.is-live{border-color:var(--brand-200);background:linear-gradient(135deg,#fbfef9,#f3faef)}
+.class-banner-icon{width:38px;height:38px;flex:0 0 auto;display:grid;place-items:center;border-radius:999px;background:var(--brand-50);border:1px solid var(--brand-200);color:var(--brand-700)}
+.class-banner-icon svg{width:19px;height:19px}
+.class-banner-copy{flex:1;min-width:0;display:grid;gap:3px}
+.class-banner-copy strong{font-size:14px;font-weight:680;letter-spacing:-.02em}
+.class-banner-copy span{color:var(--text-tertiary);font-size:12px}
+.class-banner.is-live .class-banner-copy strong{color:var(--brand-800)}
+
+.material-list{display:grid;gap:8px}
+.material-row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);text-decoration:none;color:inherit}
+.material-row.is-link:hover{border-color:var(--brand-300);background:var(--brand-25)}
+.material-row.is-draft{background:var(--gray-50);border-style:dashed}
+.material-icon{width:32px;height:32px;flex:0 0 auto;display:grid;place-items:center;border-radius:var(--radius-sm);background:var(--gray-50);border:1px solid var(--border);color:var(--text-secondary)}
+.material-icon svg{width:16px;height:16px}
+.material-copy{flex:1;min-width:0;display:grid;gap:3px}
+.material-copy strong{font-size:13.5px;font-weight:650;letter-spacing:-.01em}
+.material-copy p{margin:0;color:var(--text-tertiary);font-size:12px;line-height:1.45}
+
+.board-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 14px}
+.board-head p{margin:0;max-width:60ch}
+.thread-list{display:grid}
+.thread-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--gray-100);cursor:pointer}
+.thread-row:last-child{border-bottom:0}
+.thread-row:hover{background:var(--gray-25)}
+.thread-row.is-removed{opacity:.55}
+.thread-main{flex:1;min-width:0;display:grid;gap:4px}
+.thread-main strong{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:660;letter-spacing:-.02em}
+.thread-main p{margin:0;color:var(--text-tertiary);font-size:12.5px;line-height:1.45}
+.thread-pin{display:inline-grid;place-items:center;color:var(--brand-600)}
+.thread-pin svg{width:13px;height:13px}
+.thread-meta{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+
+.post-list{display:grid;gap:12px}
+.post{padding:13px 15px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+.post.is-opening{background:var(--gray-25);border-color:var(--border-strong)}
+.post.is-removed{opacity:.6;border-style:dashed}
+.post-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.post-head>div{flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.post-head strong{font-size:12.5px;font-weight:660}
+.avatar.small{width:28px;height:28px;font-size:9px}
+.post-body{color:var(--text-secondary);font-size:13px;line-height:1.55;word-wrap:break-word}
+.reply-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.reply-box .btn{margin-top:10px}
+.drawer-toolbar{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.check-row{display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:12px;font-weight:600}
+.check-row input{width:auto}
+.mini-stat.good{background:var(--success-50);border-color:var(--success-100);color:var(--success-700)}

@@ -11,6 +11,9 @@ import { ensureWeeksForClass } from '../weeks.js';
 import { withVoiceNote, withVoiceNotes } from '../voice.js';
 import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
+import { nextClassAt, joinLinkFor } from '../classtime.js';
+import { listMaterials } from '../materials.js';
+import { listThreads, getThread, createThread, createPost, unreadCount, markRead } from '../community.js';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -127,12 +130,25 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
   const notifications =
     checkinsResult.rows.filter((row) => row.status === 'returned' && !row.feedback_read_at).length +
     homeworkResult.rows.filter((row) => row.status === 'returned' && !row.feedback_read_at).length;
+
+  /* The next class and the link to join it. Worked out from the class day, time
+     and timezone rather than stored, so there is no weekly row to forget to fill
+     in. The week the sitting falls in is looked up separately because it may be
+     ahead of the weeks a student can otherwise see. */
+  const next = nextClassAt(klass);
+  const overrideWeeks = next
+    ? (await query('SELECT week_start, join_url FROM weeks WHERE class_id=$1 AND week_start=$2', [klass.id, next.weekStart])).rows
+    : [];
+  const community = await unreadCount({ userId: req.user.id, classId: klass.id });
+
   res.json({
     student: req.user,
     class: {
       ...klass,
       label: `${klass.programme_name} | ${['','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][klass.day_of_week]} | ${String(klass.start_time).slice(0,5)}`,
     },
+    nextClass: next ? { ...next, joinUrl: joinLinkFor(klass, overrideWeeks, next), note: klass.join_note || null } : null,
+    communityUnread: community,
     weeks: weeksResult.rows,
     attendance: attendanceResult.rows,
     checkins: withVoiceNotes(checkinsResult.rows, 'checkin'),
@@ -533,6 +549,83 @@ router.delete('/dismissals/:kind/:refId', asyncRoute(async (req, res) => {
   await query('DELETE FROM dismissed_deadlines WHERE student_id=$1 AND kind=$2 AND ref_id=$3',
     [req.user.id, parsed.data.kind, parsed.data.refId]);
   res.status(204).end();
+}));
+
+/* The course library. Only published material, and only for the class this
+   student is actually in. */
+router.get('/materials', asyncRoute(async (req, res) => {
+  const klass = await studentClass(req.user.id);
+  if (!klass) return res.json({ materials: [] });
+  res.json({ materials: await listMaterials({ classId: klass.id, publishedOnly: true }) });
+}));
+
+/* ------------------------------------------------------------------
+   The class board
+   ------------------------------------------------------------------ */
+
+/* Everything below is scoped to the one class this student belongs to. There is
+   no route that takes a class id from the caller, so there is nothing to tamper
+   with to read another group's board. */
+async function boardClass(req, res) {
+  const klass = await studentClass(req.user.id);
+  if (!klass) {
+    res.status(404).json({ error: 'You are not in a class yet.' });
+    return null;
+  }
+  return klass;
+}
+
+router.get('/community', asyncRoute(async (req, res) => {
+  const klass = await boardClass(req, res);
+  if (!klass) return;
+  const threads = await listThreads({ classId: klass.id });
+  res.json({ threads, unread: await unreadCount({ userId: req.user.id, classId: klass.id }) });
+}));
+
+/* Opening the board is what clears the badge, not opening each thread. */
+router.post('/community/read', asyncRoute(async (req, res) => {
+  const klass = await boardClass(req, res);
+  if (!klass) return;
+  await markRead({ userId: req.user.id, classId: klass.id });
+  res.json({ ok: true, unread: 0 });
+}));
+
+router.get('/community/thread/:id', asyncRoute(async (req, res) => {
+  const klass = await boardClass(req, res);
+  if (!klass) return;
+  const thread = await getThread({ threadId: req.params.id });
+  if (!thread || thread.class_id !== klass.id) return res.status(404).json({ error: 'Post not found.' });
+  res.json(thread);
+}));
+
+router.post('/community/threads', asyncRoute(async (req, res) => {
+  const klass = await boardClass(req, res);
+  if (!klass) return;
+  if (await refuseIfWithdrawn(req, res)) return;
+  const parsed = z.object({
+    title: z.string().trim().min(2).max(200),
+    body: z.string().trim().min(1).max(20000),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give your post a title and a message.' });
+  const row = await createThread({ classId: klass.id, authorId: req.user.id, title: parsed.data.title, body: parsed.data.body });
+  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
+  res.status(201).json(row);
+}));
+
+router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
+  const klass = await boardClass(req, res);
+  if (!klass) return;
+  if (await refuseIfWithdrawn(req, res)) return;
+  const parsed = z.object({ body: z.string().trim().min(1).max(20000) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Write a reply before sending.' });
+  const thread = await one(
+    'SELECT * FROM discussion_threads WHERE id=$1 AND class_id=$2 AND deleted_at IS NULL',
+    [req.params.id, klass.id],
+  );
+  if (!thread) return res.status(404).json({ error: 'Post not found.' });
+  if (thread.locked) return res.status(409).json({ error: 'This conversation has been closed to new replies.' });
+  const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body });
+  res.status(201).json(row);
 }));
 
 export default router;

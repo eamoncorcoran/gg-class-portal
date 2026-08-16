@@ -11,9 +11,10 @@ test('database migrations create the core application tables', { skip: process.e
     const result = await pool.query(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema='public' AND table_name=ANY($1::text[])`,
-      [['users','sessions','classes','weeks','checkins','assignments','homework_submissions','app_settings']],
+      [['users','sessions','classes','weeks','checkins','assignments','homework_submissions','app_settings',
+        'materials','discussion_threads','discussion_posts','discussion_reads']],
     );
-    assert.equal(result.rows.length, 8);
+    assert.equal(result.rows.length, 12);
   } finally {
     await pool.end();
   }

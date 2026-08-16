@@ -16,8 +16,8 @@
 
   function seed() {
     const classes = [
-      { id:'c1', programme_name:'Irish for Primary Teaching', day_of_week:1, start_time:'19:00', timezone:'Europe/Dublin', active:true, created_at:iso('2026-06-01'), student_count:5, label:'Irish for Primary Teaching | Monday | 19:00' },
-      { id:'c2', programme_name:'Irish for Primary Teaching', day_of_week:4, start_time:'19:00', timezone:'Europe/Dublin', active:true, created_at:iso('2026-06-02'), student_count:2, label:'Irish for Primary Teaching | Thursday | 19:00' },
+      { id:'c1', programme_name:'Irish for Primary Teaching', day_of_week:1, start_time:'19:00', timezone:'Europe/Dublin', active:true, created_at:iso('2026-06-01'), student_count:5, label:'Irish for Primary Teaching | Monday | 19:00', join_url:'https://us02web.zoom.us/j/8123456789', join_note:'Passcode 4821' },
+      { id:'c2', programme_name:'Irish for Primary Teaching', day_of_week:4, start_time:'19:00', timezone:'Europe/Dublin', active:true, created_at:iso('2026-06-02'), student_count:2, label:'Irish for Primary Teaching | Thursday | 19:00', join_url:null, join_note:null },
     ];
     const users = [
       { id:'admin1', role:'admin', name:'Éamon Corcoran', email:'admin@gaeilgeoirguides.com', mustChangePassword:false, active:true },
@@ -83,9 +83,33 @@
       { id:'hw-s1-a4', student_id:'s1', assignment_id:'a4', status:'draft', answers:['Oscail do leabhar. Dún an doras. Éist liom.','',''], current_question:0, feedback_state:'none' },
     ];
 
+    const materials = [
+      { id:'m1', class_id:'c1', week_id:null, kind:'link', title:'An Caighdeán Oifigiúil, the standard', description:'The reference every correction on this course is measured against. Worth bookmarking.', url:'https://data.oireachtas.ie', file_name:null, mime_type:null, size_bytes:0, published:true, position:0, created_at:iso('2026-06-02') },
+      { id:'m2', class_id:'c1', week_id:null, kind:'file', title:'Course outline and reading list', description:'Every week of the term at a glance.', url:'#', file_name:'Course-outline.pdf', mime_type:'application/pdf', size_bytes:184320, published:true, position:1, created_at:iso('2026-06-02') },
+      { id:'m3', class_id:'c1', week_id:'w4', kind:'file', title:'Week 4 notes: classroom phrases', description:'The phrase list we worked through, with the pronunciation notes added.', url:'#', file_name:'Week-4-phrases.pdf', mime_type:'application/pdf', size_bytes:242688, published:true, position:0, created_at:iso('2026-08-03') },
+      { id:'m4', class_id:'c1', week_id:'w4', kind:'loom', title:'Week 4 recording', description:'The full session, in case you missed it or want to go back over the second half.', url:'https://www.loom.com/share/preview', file_name:null, mime_type:null, size_bytes:0, published:true, position:1, created_at:iso('2026-08-04') },
+      { id:'m5', class_id:'c1', week_id:'w3', kind:'file', title:'Week 3 notes: the conditional', description:'', url:'#', file_name:'Week-3-conditional.pdf', mime_type:'application/pdf', size_bytes:198656, published:true, position:0, created_at:iso('2026-07-27') },
+      { id:'m6', class_id:'c1', week_id:null, kind:'file', title:'Week 5 notes, not finished', description:'Draft. Publish once the examples are added.', url:'#', file_name:'Week-5-draft.pdf', mime_type:'application/pdf', size_bytes:51200, published:false, position:2, created_at:iso('2026-08-08') },
+    ];
+
+    const threads = [
+      { id:'t1', class_id:'c1', author_id:'admin1', title:'Start here: how this board works', body:'Use this for anything you would otherwise email me about the course. If you are stuck on something, post it here rather than sitting with it for a week. Somebody else in the group is nearly always wondering the same thing, and answering it once helps everyone.\n\nI read everything here.', pinned:true, locked:false, deleted_at:null, created_at:iso('2026-06-05T09:00:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
+      { id:'t2', class_id:'c1', author_id:'s2', title:'When do we use an tuiseal ginideach after a verbal noun?', body:'I keep getting this wrong in the homework. Is there a simple rule for when the noun after ag + verbal noun goes into the genitive, or is it just something you learn case by case?', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-06T20:10:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
+      { id:'t3', class_id:'c1', author_id:'s4', title:'Study group before the TEG exam?', body:'Is anyone interested in meeting on a Saturday morning to practise the oral? I was thinking every second week. Happy to set up the call if there is interest.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T11:00:00Z'), last_activity_at:iso('2026-08-08T18:45:00Z') },
+      { id:'t4', class_id:'c1', author_id:'s3', title:'Posted in the wrong place', body:'Sorry, meant to send this privately.', pinned:false, locked:false, deleted_at:iso('2026-08-05T10:00:00Z'), created_at:iso('2026-08-05T09:00:00Z'), last_activity_at:iso('2026-08-05T09:00:00Z') },
+    ];
+
+    const posts = [
+      { id:'p1', thread_id:'t2', author_id:'s1', body:'I had the same question last term. The way it was explained to me is that the noun after ag + verbal noun behaves like it is being possessed by the action, so it takes the genitive.', deleted_at:null, created_at:iso('2026-08-07T08:30:00Z') },
+      { id:'p2', thread_id:'t2', author_id:'admin1', body:'That is close, and it is a good instinct. The rule of thumb: after a verbal noun, a following definite noun usually goes into an tuiseal ginideach — ag déanamh na hoibre, ag léamh an leabhair. Where it trips people up is that an indefinite noun often does not change at all: ag déanamh obair bhaile.\n\nI will bring three examples to Monday and we will work through them aloud.', deleted_at:null, created_at:iso('2026-08-07T19:20:00Z') },
+      { id:'p3', thread_id:'t3', author_id:'s5', body:'I would be interested. Saturday mornings suit me better than evenings.', deleted_at:null, created_at:iso('2026-08-08T14:00:00Z') },
+      { id:'p4', thread_id:'t3', author_id:'s1', body:'Count me in too.', deleted_at:null, created_at:iso('2026-08-08T18:45:00Z') },
+    ];
+
     return {
       sessionUserId:'admin1',
       users, classes, weeks, assignments, attendance, checkins, homework, notes:[], withdrawals:[], homeworkFiles:[], dismissals:[],
+      materials, threads, posts, reads:[],
       settings:{
         email:{provider:'console',fromName:'Gaeilgeoir Guides',fromAddress:'support@gaeilgeoirguides.com',replyTo:'support@gaeilgeoirguides.com',webhookUrl:'',smtpHost:'',smtpUser:'',configured:false},
         reminders:{
@@ -112,7 +136,7 @@
           generalFeedbackPrompt:'Give friendly, concise teacher feedback in 2 to 3 lines.'
         }
       },
-      counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50}
+      counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,material:10,thread:10,post:10}
     };
   }
 
@@ -140,6 +164,17 @@
       if (stored.settings[key] == null) stored.settings[key] = value;
     }
     if(!Array.isArray(stored.dismissals)) stored.dismissals=[];
+    // The library and the board arrived after some browsers had already stored a
+    // preview. Seed them rather than leaving the new screens permanently empty.
+    if(!Array.isArray(stored.materials)) stored.materials=fresh.materials;
+    if(!Array.isArray(stored.threads)) stored.threads=fresh.threads;
+    if(!Array.isArray(stored.posts)) stored.posts=fresh.posts;
+    if(!Array.isArray(stored.reads)) stored.reads=[];
+    (stored.classes || []).forEach((klass) => {
+      const seeded=fresh.classes.find((row)=>row.id===klass.id);
+      if(klass.join_url===undefined) klass.join_url=seeded?.join_url??null;
+      if(klass.join_note===undefined) klass.join_note=seeded?.join_note??null;
+    });
     // Fields added to existing rows after they were first written.
     (stored.weeks || []).forEach((week) => {
       if (week.checkin_hard_deadline === undefined) week.checkin_hard_deadline = true;
@@ -253,6 +288,87 @@
     };
   }
 
+  /* Materials and the class board. Mirrors src/materials.js and src/community.js
+     closely enough that the screens behave the same here as they do on a server. */
+  function previewStudent(user){return user.role==='student'?user:db.users.find((item)=>item.id==='s1');}
+  function materialRows(classId,publishedOnly){
+    const weekOf=new Map(db.weeks.map((week)=>[week.id,week.week_start]));
+    return (db.materials||[]).filter((row)=>row.class_id===classId&&(!publishedOnly||row.published))
+      .map((row)=>({...row,week_start:row.week_id?weekOf.get(row.week_id)||null:null}))
+      .sort((a,b)=>{
+        if(!a.week_start&&b.week_start)return -1;
+        if(a.week_start&&!b.week_start)return 1;
+        if(a.week_start!==b.week_start)return a.week_start<b.week_start?-1:1;
+        return a.position-b.position;
+      });
+  }
+  function authorOf(id){
+    const row=db.users.find((item)=>item.id===id);
+    return row?{id:row.id,name:row.name,role:row.role}:null;
+  }
+  function threadRows(classId,includeDeleted){
+    return (db.threads||[]).filter((row)=>row.class_id===classId&&(includeDeleted||!row.deleted_at))
+      .map((row)=>{
+        const replies=(db.posts||[]).filter((post)=>post.thread_id===row.id&&!post.deleted_at);
+        return {...row,author:authorOf(row.author_id),reply_count:replies.length,
+          last_reply_at:replies.length?replies[replies.length-1].created_at:null};
+      })
+      .sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(a.last_activity_at<b.last_activity_at?1:-1));
+  }
+  function threadDetail(id,includeDeleted){
+    const row=(db.threads||[]).find((item)=>item.id===id&&(includeDeleted||!item.deleted_at));
+    if(!row)return null;
+    const posts=(db.posts||[]).filter((post)=>post.thread_id===id&&(includeDeleted||!post.deleted_at))
+      .map((post)=>({...post,author:authorOf(post.author_id)}));
+    return {...row,author:authorOf(row.author_id),posts};
+  }
+  function newThread(classId,authorId,body){
+    const now=new RealDate(PREVIEW_NOW).toISOString();
+    const row={id:`t${db.counters.thread=(db.counters.thread||10)+1}`,class_id:classId,author_id:authorId,
+      title:body.title,body:body.body,pinned:false,locked:false,deleted_at:null,created_at:now,last_activity_at:now};
+    db.threads.push(row);save();return row;
+  }
+  function newReply(threadId,authorId,body){
+    const now=new RealDate(PREVIEW_NOW).toISOString();
+    const row={id:`p${db.counters.post=(db.counters.post||10)+1}`,thread_id:threadId,author_id:authorId,
+      body:body.body,deleted_at:null,created_at:now};
+    db.posts.push(row);
+    const thread=db.threads.find((item)=>item.id===threadId);
+    if(thread)thread.last_activity_at=now;
+    save();return row;
+  }
+  /* Counts what somebody else wrote since this person last opened the board. Your
+     own message coming back as "1 new" teaches people to ignore the badge. */
+  function previewUnread(student){
+    const seen=(db.reads||[]).find((row)=>row.user_id===student.id&&row.class_id===student.class_id);
+    const since=seen?new RealDate(seen.last_seen_at).getTime():0;
+    const threads=(db.threads||[]).filter((row)=>row.class_id===student.class_id&&!row.deleted_at);
+    const threadIds=new Set(threads.map((row)=>row.id));
+    return threads.filter((row)=>row.author_id!==student.id&&new RealDate(row.created_at).getTime()>since).length
+      +(db.posts||[]).filter((row)=>threadIds.has(row.thread_id)&&!row.deleted_at&&row.author_id!==student.id
+        &&new RealDate(row.created_at).getTime()>since).length;
+  }
+
+  /* The next sitting of a class, worked out the same way src/classtime.js does it
+     on the server: from the class day, time and timezone rather than a stored row. */
+  function previewNextClass(klass){
+    if(!klass?.day_of_week||!klass?.start_time)return null;
+    const [hour,minute]=String(klass.start_time).split(':').map(Number);
+    // The preview clock is fixed, so this only has to be right for one instant.
+    const now=new RealDate(PREVIEW_NOW);
+    const day=now.getUTCDay()===0?7:now.getUTCDay();
+    const daysAhead=(Number(klass.day_of_week)-day+7)%7;
+    const start=new RealDate(now);
+    start.setUTCDate(now.getUTCDate()+daysAhead);
+    // Europe/Dublin is UTC+1 in August, so 19:00 local is 18:00 UTC.
+    start.setUTCHours(hour-1,minute,0,0);
+    if(start.getTime()+120*60000<now.getTime())start.setUTCDate(start.getUTCDate()+7);
+    const minutesAway=Math.round((start.getTime()-now.getTime())/60000);
+    return {startsAt:start.toISOString(),timezone:klass.timezone||'Europe/Dublin',minutesAway,
+      live:minutesAway<=0,soon:minutesAway>0&&minutesAway<=12*60,
+      joinUrl:klass.join_url||null,note:klass.join_note||null};
+  }
+
   const originalFetch=window.fetch.bind(window);
   window.fetch=async (input,options={})=>{
     const url=new URL(typeof input==='string'?input:input.url, document.baseURI || location.href);
@@ -285,7 +401,9 @@
     let params=match(path,'/api/admin/classes/:id');
     if(params&&method==='PATCH'){
       const row=db.classes.find((item)=>item.id===params.id);if(!row)return error('Class not found',404);
-      if(body.programmeName)row.programme_name=body.programmeName;if(body.dayOfWeek)row.day_of_week=Number(body.dayOfWeek);if(body.startTime)row.start_time=body.startTime;if(body.timezone)row.timezone=body.timezone;if(body.active!==undefined)row.active=body.active;row.label=classLabel(row);save();return json(row);
+      if(body.programmeName)row.programme_name=body.programmeName;if(body.dayOfWeek)row.day_of_week=Number(body.dayOfWeek);if(body.startTime)row.start_time=body.startTime;if(body.timezone)row.timezone=body.timezone;if(body.active!==undefined)row.active=body.active;
+      if(body.joinUrl!==undefined)row.join_url=body.joinUrl||null;if(body.joinNote!==undefined)row.join_note=body.joinNote||null;
+      row.label=classLabel(row);save();return json(row);
     }
     if(path==='/api/admin/students'&&method==='GET') return json(studentRows(url.searchParams.get('classId')));
     if(path==='/api/admin/students'&&method==='POST'){
@@ -688,7 +806,7 @@
       const checkins=db.checkins.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id));
       const homework=db.homework.filter((item)=>item.student_id===student.id&&assignmentIds.has(item.assignment_id));
       const notifications=checkins.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length+homework.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length;
-      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
+      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass),communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
     }
     if(path==='/api/student/dismissals'&&method==='POST'){
       const student=user.role==='student'?user:db.users.find((u)=>u.id==='s1');
@@ -751,6 +869,87 @@
     }
     params=match(path,'/api/student/homework/:id/read-feedback');
     if(params&&method==='POST'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Feedback not found',404);row.feedback_read_at=new RealDate(PREVIEW_NOW).toISOString();save();return json(row);}
+
+    /* Course materials and the class board. */
+    params=match(path,'/api/admin/materials/:classId');
+    if(params&&method==='GET'){
+      const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
+      return json({class:{...klass,label:classLabel(klass)},materials:materialRows(params.classId,false),
+        weeks:db.weeks.filter((item)=>item.class_id===params.classId).map((item)=>({id:item.id,week_start:item.week_start})).sort((a,b)=>a.week_start<b.week_start?1:-1)});
+    }
+    if(path==='/api/admin/materials'&&method==='POST'){
+      const row={id:`m${db.counters.material=(db.counters.material||10)+1}`,class_id:body.classId,week_id:body.weekId||null,kind:body.kind,
+        title:body.title,description:body.description||'',url:body.url,file_name:body.fileName||null,mime_type:body.mimeType||null,
+        size_bytes:body.sizeBytes||0,published:body.published!==false,position:-1,created_at:new RealDate(PREVIEW_NOW).toISOString()};
+      db.materials.push(row);save();return json(row,201);
+    }
+    params=match(path,'/api/admin/materials/:id');
+    if(params&&method==='PATCH'){
+      const row=db.materials.find((item)=>item.id===params.id);if(!row)return error('Material not found',404);
+      if(body.title!==undefined)row.title=body.title;if(body.description!==undefined)row.description=body.description;
+      if(body.weekId!==undefined)row.week_id=body.weekId||null;if(body.url!==undefined)row.url=body.url;
+      if(body.published!==undefined)row.published=body.published;save();return json(row);
+    }
+    if(params&&method==='DELETE'){
+      db.materials=db.materials.filter((item)=>item.id!==params.id);save();return new Response(null,{status:204});
+    }
+    if(path==='/api/admin/uploads'&&method==='POST') return json({files:[{fileName:'Uploaded-file.pdf',mimeType:'application/pdf',url:'#'}]},201);
+
+    params=match(path,'/api/admin/community/:classId');
+    if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
+      const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
+      return json({class:{...klass,label:classLabel(klass)},threads:threadRows(params.classId,true)});
+    }
+    params=match(path,'/api/admin/community/thread/:id');
+    if(params&&method==='GET'){const thread=threadDetail(params.id,true);return thread?json(thread):error('Thread not found',404);}
+    if(params&&method==='PATCH'){
+      const row=db.threads.find((item)=>item.id===params.id);if(!row)return error('Thread not found',404);
+      if(body.pinned!==undefined)row.pinned=body.pinned;if(body.locked!==undefined)row.locked=body.locked;save();return json(row);
+    }
+    params=match(path,'/api/admin/community/:classId/threads');
+    if(params&&method==='POST'){
+      const row=newThread(params.classId,user.id,body);row.pinned=Boolean(body.pinned);save();return json(row,201);
+    }
+    params=match(path,'/api/admin/community/thread/:id/replies');
+    if(params&&method==='POST') return json(newReply(params.id,user.id,body),201);
+    params=match(path,'/api/admin/community/thread/:id/removal');
+    if(params&&method==='POST'){
+      const row=db.threads.find((item)=>item.id===params.id);if(!row)return error('Thread not found',404);
+      row.deleted_at=body.removed?new RealDate(PREVIEW_NOW).toISOString():null;save();return json(row);
+    }
+    params=match(path,'/api/admin/community/post/:id/removal');
+    if(params&&method==='POST'){
+      const row=db.posts.find((item)=>item.id===params.id);if(!row)return error('Reply not found',404);
+      row.deleted_at=body.removed?new RealDate(PREVIEW_NOW).toISOString():null;save();return json(row);
+    }
+
+    if(path==='/api/student/materials'&&method==='GET'){
+      const student=previewStudent(user);
+      return json({materials:materialRows(student.class_id,true)});
+    }
+    if(path==='/api/student/community'&&method==='GET'){
+      const student=previewStudent(user);
+      return json({threads:threadRows(student.class_id,false),unread:previewUnread(student)});
+    }
+    if(path==='/api/student/community/read'&&method==='POST'){
+      const student=previewStudent(user);
+      updateOrInsert(db.reads,(item)=>item.user_id===student.id&&item.class_id===student.class_id,
+        {user_id:student.id,class_id:student.class_id,last_seen_at:new RealDate(PREVIEW_NOW).toISOString()});
+      save();return json({ok:true,unread:0});
+    }
+    params=match(path,'/api/student/community/thread/:id');
+    if(params&&method==='GET'){const thread=threadDetail(params.id,false);return thread?json(thread):error('Post not found',404);}
+    if(path==='/api/student/community/threads'&&method==='POST'){
+      const student=previewStudent(user);
+      return json(newThread(student.class_id,student.id,body),201);
+    }
+    params=match(path,'/api/student/community/thread/:id/replies');
+    if(params&&method==='POST'){
+      const thread=db.threads.find((item)=>item.id===params.id);
+      if(!thread||thread.deleted_at)return error('Post not found',404);
+      if(thread.locked)return error('This conversation has been closed to new replies.',409);
+      return json(newReply(params.id,previewStudent(user).id,body),201);
+    }
 
     return error(`Preview route not implemented: ${method} ${path}`,404);
   };
