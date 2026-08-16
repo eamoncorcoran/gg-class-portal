@@ -1,0 +1,11 @@
+{
+  "product": "Gaeilgeoir Guides Student Support",
+  "version": "12.0.0",
+  "generated": "2026-08-03",
+  "runtime": "Node.js 22 + PostgreSQL 16",
+  "entrypoint": "server.js",
+  "healthcheck": "/api/health",
+  "public_signup": false,
+  "session": "rolling persistent secure cookie",
+  "student_checkin_release": "Friday 15:00 in class timezone"
+}

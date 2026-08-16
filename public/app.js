@@ -1,0 +1,3523 @@
+
+const app = document.getElementById('app');
+const modalRoot = document.getElementById('modal-root');
+const toastRoot = document.getElementById('toast-root');
+
+const state = {
+  user: null,
+  view: null,
+  classes: [],
+  students: [],
+  assignments: [],
+  settings: null,
+  activeClassId: null,
+  tracker: null,
+  filter: 'all',
+  trackerSearch: '',
+  engagementItem: null,
+  calendarMonth: null,
+  assignmentView: 'calendar',
+  assignmentMonth: null,
+  assignmentClassId: null,
+  checkinClassId: null,
+  scheduleSkips: new Set(),
+  showArchived: false,
+  teachingWeeks: [],
+  profile: null,
+  engagement: null,
+  studentData: null,
+  reviewQueue: [],
+  reviewIndex: 0,
+  activeReview: null,
+  checkinForm: null,
+  homeworkForm: null,
+};
+
+const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const svg = {
+  camera: `<svg viewBox="0 0 24 24" fill="none"><path d="M2 8.377c0-.35 0-.525.015-.673a3 3 0 0 1 2.69-2.69C4.851 5 5.035 5 5.404 5c.143 0 .214 0 .274-.004a2 2 0 0 0 1.735-1.25c.023-.056.044-.12.086-.246.042-.127.063-.19.086-.246a2 2 0 0 1 1.735-1.25C9.38 2 9.448 2 9.58 2h4.838c.133 0 .2 0 .26.004a2 2 0 0 1 1.735 1.25c.023.056.044.12.086.246.042.127.063.19.086.246a2 2 0 0 0 1.735 1.25c.06.004.131.004.273.004.37 0 .554 0 .702.015a3 3 0 0 1 2.69 2.69c.014.147.014.322.014.672V16.2c0 1.68 0 2.52-.327 3.162a3 3 0 0 1-1.311 1.311C19.72 21 18.88 21 17.2 21H6.8c-1.68 0-2.52 0-3.162-.327a3 3 0 0 1-1.311-1.311C2 18.72 2 17.88 2 16.2V8.377Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 16.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  book: `<svg viewBox="0 0 24 24" fill="none"><path d="m12 21-.1-.15c-.695-1.042-1.042-1.563-1.5-1.94a4 4 0 0 0-1.378-.737C8.453 18 7.827 18 6.575 18H5.2c-1.12 0-1.68 0-2.108-.218a2 2 0 0 1-.874-.874C2 16.48 2 15.92 2 14.8V6.2c0-1.12 0-1.68.218-2.108a2 2 0 0 1 .874-.874C3.52 3 4.08 3 5.2 3h.4c2.24 0 3.36 0 4.216.436a4 4 0 0 1 1.748 1.748C12 6.04 12 7.16 12 9.4M12 21V9.4M12 21l.1-.15c.695-1.042 1.042-1.563 1.5-1.94a3.999 3.999 0 0 1 1.378-.737C15.547 18 16.173 18 17.425 18H18.8c1.12 0 1.68 0 2.108-.218a2 2 0 0 0 .874-.874C22 16.48 22 15.92 22 14.8V6.2c0-1.12 0-1.68-.218-2.108a2 2 0 0 0-.874-.874C20.48 3 19.92 3 18.8 3h-.4c-2.24 0-3.36 0-4.216.436a4 4 0 0 0-1.748 1.748C12 6.04 12 7.16 12 9.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  talk: `<svg viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-11.555 7.934c-.174-.066-.26-.1-.33-.116a.901.901 0 0 0-.186-.024 2.314 2.314 0 0 0-.303.021l-5.12.53c-.49.05-.733.075-.877-.013a.5.5 0 0 1-.234-.35c-.026-.166.09-.382.324-.814l1.636-3.027c.134-.25.202-.374.232-.494a.899.899 0 0 0 .028-.326c-.01-.123-.064-.283-.172-.604A8.5 8.5 0 1 1 21 11.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  users: `<svg viewBox="0 0 24 24" fill="none"><path d="M22 21v-2a4.002 4.002 0 0 0-3-3.874M15.5 3.291a4.001 4.001 0 0 1 0 7.418M17 21c0-1.864 0-2.796-.305-3.53a4 4 0 0 0-2.164-2.165C13.796 15 12.864 15 11 15H8c-1.864 0-2.796 0-3.53.305a4 4 0 0 0-2.166 2.164C2 18.204 2 19.136 2 21M13.5 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  grid: `<svg viewBox="0 0 24 24" fill="none"><path d="M8.4 3H4.6c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C3 3.76 3 4.04 3 4.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C3.76 10 4.04 10 4.6 10h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C10 9.24 10 8.96 10 8.4V4.6c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C9.24 3 8.96 3 8.4 3Zm11 0h-3.8c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C14 3.76 14 4.04 14 4.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C14.76 10 15.04 10 15.6 10h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C21 9.24 21 8.96 21 8.4V4.6c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C20.24 3 19.96 3 19.4 3Zm0 11h-3.8c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C14 14.76 14 15.04 14 15.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C14.76 21 15.04 21 15.6 21h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C21 20.24 21 19.96 21 19.4v-3.8c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C20.24 14 19.96 14 19.4 14Zm-11 0H4.6c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C3 14.76 3 15.04 3 15.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C3.76 21 4.04 21 4.6 21h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C10 20.24 10 19.96 10 19.4v-3.8c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C9.24 14 8.96 14 8.4 14Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  mail: `<svg viewBox="0 0 24 24" fill="none"><path d="m2 7 8.165 5.715c.661.463.992.695 1.351.784a2 2 0 0 0 .968 0c.36-.09.69-.32 1.351-.784L22 7M6.8 20h10.4c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C22 17.72 22 16.88 22 15.2V8.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C19.72 4 18.88 4 17.2 4H6.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C2 6.28 2 7.12 2 8.8v6.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  spark: `<svg viewBox="0 0 24 24" fill="none"><path d="M4.5 22v-5m0-10V2M2 4.5h5m-5 15h5M13 3l-1.734 4.509c-.282.733-.423 1.1-.643 1.408a3 3 0 0 1-.706.707c-.308.219-.675.36-1.408.642L4 12l4.509 1.734c.733.282 1.1.423 1.408.643.273.194.512.433.707.706.219.308.36.675.642 1.408L13 21l1.734-4.509c.282-.733.423-1.1.643-1.408.194-.273.433-.512.706-.707.308-.219.675-.36 1.408-.642L22 12l-4.509-1.734c-.733-.282-1.1-.423-1.408-.642a3 3 0 0 1-.706-.707c-.22-.308-.36-.675-.643-1.408L13 3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  upload: `<svg viewBox="0 0 24 24" fill="none"><path d="m8 16 4-4m0 0 4 4m-4-4v9m8-4.257A5.5 5.5 0 0 0 16.5 7a.62.62 0 0 1-.534-.302 7.5 7.5 0 1 0-11.78 9.096" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24" fill="none"><path d="M15.05 9H5.5a2.5 2.5 0 0 1 0-5h9.55m-6.1 16h9.55a2.5 2.5 0 0 0 0-5H8.95M3 17.5a3.5 3.5 0 1 0 7 0 3.5 3.5 0 0 0-7 0Zm18-11a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  logout: `<svg viewBox="0 0 24 24" fill="none"><path d="m16 17 5-5m0 0-5-5m5 5H9m0-9H7.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C3 5.28 3 6.12 3 7.8v8.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C5.28 21 6.12 21 7.8 21H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  calendar: `<svg viewBox="0 0 24 24" fill="none"><path d="M21 10H3m13-8v4M8 2v4m-.2 16h8.4c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C21 19.72 21 18.88 21 17.2V8.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C18.72 4 17.88 4 16.2 4H7.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C3 6.28 3 7.12 3 8.8v8.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C5.28 22 6.12 22 7.8 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  lock: `<svg viewBox="0 0 24 24" fill="none"><path d="M17 10V8A5 5 0 0 0 7 8v2m5 4.5v2M8.8 21h6.4c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C20 18.72 20 17.88 20 16.2v-1.4c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C17.72 10 16.88 10 15.2 10H8.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C4 12.28 4 13.12 4 14.8v1.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C6.28 21 7.12 21 8.8 21Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 20h9M3 20h1.675c.489 0 .733 0 .964-.055.204-.05.399-.13.578-.24.201-.123.374-.296.72-.642L19.5 6.5a2.121 2.121 0 0 0-3-3L3.937 16.063c-.346.346-.519.519-.642.72a2 2 0 0 0-.24.578c-.055.23-.055.475-.055.965V20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  mic: `<svg viewBox="0 0 24 24" fill="none"><path d="M19 10v1a7 7 0 0 1-14 0v-1m7 8v4m0-4a4 4 0 0 1-4-4V6a4 4 0 1 1 8 0v8a4 4 0 0 1-4 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  stop: `<svg viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>`,
+  note: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 7h8M8 11h8M8 15h4m-4 6h8.2c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C21 18.72 21 17.88 21 16.2V7.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C18.72 3 17.88 3 16.2 3H7.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C3 5.28 3 6.12 3 7.8v8.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C5.28 21 6.12 21 7.8 21Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+};
+
+/* ------------------------------------------------------------------
+   Voice: recording, dictation and voice notes.
+
+   One recorder drives both features. Dictation sends the audio to the server,
+   which transcribes and cleans it and returns text — the same pipeline as the
+   VoiceKey keyboard, so both tools produce the same voice. A voice note keeps
+   the audio itself and attaches it to the returned feedback.
+   ------------------------------------------------------------------ */
+
+/** Formats a duration the way a voice message does: 0:07, 1:24. */
+function fmtDuration(seconds) {
+  const total = Math.max(0, Math.round(seconds || 0));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** The best container this browser will actually produce. Safari only does mp4. */
+function preferredAudioType() {
+  if (typeof MediaRecorder === 'undefined') return '';
+  return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    .find((type) => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function voiceSupported() {
+  return Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== 'undefined';
+}
+
+/**
+ * A single active recording. Only one runs at a time so two microphones can never
+ * compete, and the track is always stopped so the browser's recording indicator
+ * goes away even when something throws.
+ */
+let activeRecorder = null;
+
+async function startRecording({ onTick, onLevel } = {}) {
+  if (!voiceSupported()) throw new Error('This browser cannot record audio. Try Chrome, Edge or Safari.');
+  if (activeRecorder) await activeRecorder.stop().catch(() => {});
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (error) {
+    if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
+      throw new Error('Microphone access was blocked. Allow it for this site in your browser settings, then try again.');
+    }
+    if (error.name === 'NotFoundError') throw new Error('No microphone was found.');
+    throw new Error('The microphone could not be started.');
+  }
+
+  const mimeType = preferredAudioType();
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const chunks = [];
+  const startedAt = Date.now();
+  recorder.addEventListener('dataavailable', (event) => { if (event.data?.size) chunks.push(event.data); });
+
+  // Live level meter, so it is obvious the microphone is actually hearing something.
+  let audioContext = null, levelTimer = null;
+  if (onLevel && typeof AudioContext !== 'undefined') {
+    try {
+      audioContext = new AudioContext();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      audioContext.createMediaStreamSource(stream).connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      levelTimer = setInterval(() => {
+        analyser.getByteTimeDomainData(data);
+        let peak = 0;
+        for (const value of data) peak = Math.max(peak, Math.abs(value - 128));
+        onLevel(Math.min(1, peak / 60));
+      }, 100);
+    } catch { audioContext = null; }
+  }
+
+  const tickTimer = onTick ? setInterval(() => onTick((Date.now() - startedAt) / 1000), 250) : null;
+  const cleanUp = () => {
+    clearInterval(tickTimer); clearInterval(levelTimer);
+    stream.getTracks().forEach((track) => track.stop());
+    audioContext?.close().catch(() => {});
+    if (activeRecorder?.handle === recorder) activeRecorder = null;
+  };
+
+  recorder.start();
+
+  const handle = {
+    handle: recorder,
+    get seconds() { return (Date.now() - startedAt) / 1000; },
+    cancel() { try { recorder.stop(); } catch {} cleanUp(); },
+    stop() {
+      return new Promise((resolve, reject) => {
+        recorder.addEventListener('error', (event) => { cleanUp(); reject(event.error || new Error('Recording failed.')); }, { once: true });
+        recorder.addEventListener('stop', () => {
+          const seconds = (Date.now() - startedAt) / 1000;
+          cleanUp();
+          const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || 'audio/webm' });
+          if (!blob.size) return reject(new Error('Nothing was recorded.'));
+          resolve({ blob, seconds });
+        }, { once: true });
+        try { recorder.stop(); } catch (error) { cleanUp(); reject(error); }
+      });
+    },
+  };
+  activeRecorder = handle;
+  return handle;
+}
+
+function audioFileName(blob) {
+  const base = String(blob.type).split(';')[0];
+  return `recording${{ 'audio/webm': '.webm', 'audio/mp4': '.mp4', 'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/wav': '.wav' }[base] || '.webm'}`;
+}
+
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+}
+
+function initials(name = '') {
+  return name.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+}
+
+const FALLBACK_TIMEZONE = 'Europe/Dublin';
+
+/* Deadlines belong to the class, not to whoever happens to be looking at them.
+   Everything is formatted in the class timezone so a teacher marking work abroad
+   sees the same closing time as the students it applies to. */
+function classTimezone() {
+  return state.tracker?.class?.timezone || state.studentData?.class?.timezone || FALLBACK_TIMEZONE;
+}
+
+function timezoneOffsetMinutes(date, timeZone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date).map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour) % 24, Number(parts.minute), Number(parts.second));
+  return (asUtc - Math.floor(date.getTime() / 1000) * 1000) / 60000;
+}
+
+/** ISO instant to the "YYYY-MM-DDTHH:mm" a datetime-local input expects, read in the class timezone. */
+function toZonedInput(value, timeZone = classTimezone()) {
+  const date = value instanceof Date ? value : new Date(value);
+  return new Date(date.getTime() + timezoneOffsetMinutes(date, timeZone) * 60000).toISOString().slice(0, 16);
+}
+
+/** The reverse: a wall-clock value typed into a datetime-local input, read in the class timezone. */
+function fromZonedInput(text, timeZone = classTimezone()) {
+  const naive = new Date(`${text}:00Z`).getTime();
+  if (!Number.isFinite(naive)) return new Date().toISOString();
+  let instant = naive - timezoneOffsetMinutes(new Date(naive), timeZone) * 60000;
+  instant = naive - timezoneOffsetMinutes(new Date(instant), timeZone) * 60000;
+  return new Date(instant).toISOString();
+}
+
+/* Intl refuses to mix the dateStyle/timeStyle shorthands with individual
+   components, so the weekday variant spells every field out. */
+function fmtDate(value, options = {}) {
+  if (!value) return '—';
+  const timeZone = options.timeZone || classTimezone();
+  if (options.timeOnly) {
+    return new Intl.DateTimeFormat('en-IE', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(new Date(value));
+  }
+  const format = options.weekday
+    ? {
+        weekday: 'short', day: 'numeric', month: 'short',
+        ...(options.dateStyle === 'short' ? {} : { year: 'numeric' }),
+        ...(options.time ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } : {}),
+      }
+    : {
+        dateStyle: options.dateStyle || 'medium',
+        ...(options.time ? { timeStyle: 'short' } : {}),
+      };
+  // en-IE puts a comma after the weekday, which reads badly next to the one
+  // before the time: "Sun, 19 Jul, 20:00" becomes "Sun 19 Jul, 20:00".
+  return new Intl.DateTimeFormat('en-IE', { ...format, timeZone }).format(new Date(value)).replace(/^(\p{L}{2,4}),\s/u, '$1 ');
+}
+
+/* week_start is a calendar day ("2026-07-20"). Older records may still arrive as
+   a full timestamp, so take the date part either way and read it as UTC noon,
+   which keeps the day stable in every timezone. */
+function fmtWeek(value) {
+  if (!value) return '';
+  const day = String(value).slice(0, 10);
+  const date = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(date);
+}
+
+function timezoneAbbreviation(timeZone = classTimezone()) {
+  const parts = new Intl.DateTimeFormat('en-IE', { timeZone, timeZoneName: 'short' }).formatToParts(new Date());
+  return parts.find((part) => part.type === 'timeZoneName')?.value || '';
+}
+
+function classLabel(row) {
+  if (!row) return '';
+  return row.label || `${row.programme_name} | ${DAY_NAMES[Number(row.day_of_week)]} | ${String(row.start_time).slice(0, 5)}`;
+}
+
+function showToast(message, type = '', undo = null) {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  // An action gets longer on screen, because it is no use if it vanishes first.
+  if (undo) {
+    const button = document.createElement('button');
+    button.className = 'toast-action';
+    button.textContent = undo.label;
+    button.addEventListener('click', () => { toast.remove(); undo.action(); });
+    toast.append(button);
+  }
+  toastRoot.append(toast);
+  setTimeout(() => toast.remove(), undo ? 7000 : 3200);
+}
+
+const wantsStillness = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* Handing work in should feel like something. Drawn here rather than pulled from
+   a library because the content security policy blocks outside hosts, and a
+   celebration that depends on the network is one that fails when the wifi does. */
+function celebrate({ big = false } = {}) {
+  if (wantsStillness()) return;
+  const canvas = document.createElement('canvas');
+  canvas.className = 'confetti-canvas';
+  canvas.setAttribute('aria-hidden', 'true');
+  document.body.append(canvas);
+
+  const context = canvas.getContext('2d');
+  const density = Math.min(window.devicePixelRatio || 1, 2);
+  const fit = () => {
+    canvas.width = window.innerWidth * density;
+    canvas.height = window.innerHeight * density;
+    context.setTransform(density, 0, 0, density, 0, 0);
+  };
+  fit();
+  window.addEventListener('resize', fit);
+
+  const COLOURS = ['#50AF37', '#17b26a', '#067647', '#f79009', '#dcfae6', '#ffffff'];
+  const pieces = [];
+  const burst = (x, y, count, power) => {
+    for (let index = 0; index < count; index += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = power * (0.45 + Math.random() * 0.85);
+      pieces.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - power * 0.55,
+        width: 5 + Math.random() * 6,
+        height: 8 + Math.random() * 7,
+        colour: COLOURS[Math.floor(Math.random() * COLOURS.length)],
+        rotation: Math.random() * Math.PI,
+        spin: (Math.random() - 0.5) * 0.32,
+        life: 1,
+        fade: 0.006 + Math.random() * 0.006,
+      });
+    }
+  };
+
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const scale = big ? 1.5 : 1;
+  burst(width * 0.5, height * 0.42, Math.round(70 * scale), 11);
+  setTimeout(() => burst(width * 0.14, height * 0.72, Math.round(45 * scale), 13), 130);
+  setTimeout(() => burst(width * 0.86, height * 0.72, Math.round(45 * scale), 13), 220);
+  if (big) setTimeout(() => burst(width * 0.5, height * 0.3, 60, 12), 380);
+
+  let frame;
+  const tick = () => {
+    context.clearRect(0, 0, width, height);
+    for (let index = pieces.length - 1; index >= 0; index -= 1) {
+      const piece = pieces[index];
+      piece.vy += 0.24;          // gravity
+      piece.vx *= 0.99;          // air
+      piece.vy *= 0.99;
+      piece.x += piece.vx;
+      piece.y += piece.vy;
+      piece.rotation += piece.spin;
+      piece.life -= piece.fade;
+      if (piece.life <= 0 || piece.y > height + 60) { pieces.splice(index, 1); continue; }
+      context.save();
+      context.globalAlpha = Math.max(0, Math.min(1, piece.life));
+      context.translate(piece.x, piece.y);
+      context.rotate(piece.rotation);
+      context.fillStyle = piece.colour;
+      context.fillRect(-piece.width / 2, -piece.height / 2, piece.width, piece.height);
+      context.restore();
+    }
+    if (pieces.length) { frame = requestAnimationFrame(tick); return; }
+    cancelAnimationFrame(frame);
+    window.removeEventListener('resize', fit);
+    canvas.remove();
+  };
+  frame = requestAnimationFrame(tick);
+}
+
+async function api(url, options = {}) {
+  const config = { credentials: 'same-origin', ...options, headers: { ...(options.headers || {}) } };
+  if (config.body && !(config.body instanceof FormData) && typeof config.body !== 'string') {
+    config.headers['Content-Type'] = 'application/json';
+    config.body = JSON.stringify(config.body);
+  }
+  const response = await fetch(url, config);
+  if (response.status === 204) return null;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Something went wrong.');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+/* The logo already carries the Gaeilgeoir Guides wordmark, so the lockup pairs it
+   with the product name rather than repeating the company name in text.
+   On the dark sign-in panel it sits on a white chip, because the artwork has a
+   navy and green palette that disappears against the green ground. */
+const LOGO_SRC = window.__GG_LOGO__ || '/logo.webp';
+
+function brandLockup(large = false, onDark = false) {
+  return `<div class="brand-lockup ${large ? 'large' : ''} ${onDark ? 'on-dark' : ''}">
+    <img class="brand-logo" src="${LOGO_SRC}" alt="Gaeilgeoir Guides">
+    <span class="brand-sub">Homework<br>Portal</span>
+  </div>`;
+}
+
+function modal({ title, subtitle = '', body, footer = '', wide = false, onOpen }) {
+  modalRoot.innerHTML = `
+    <div class="overlay open" data-close-modal></div>
+    <section class="modal open ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
+      <header class="modal-head"><div><h2>${escapeHtml(title)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div><button class="close" aria-label="Close" data-close-modal>${svg.x}</button></header>
+      <div class="modal-body">${body}</div>
+      ${footer ? `<footer class="modal-footer">${footer}</footer>` : ''}
+    </section>`;
+  modalRoot.querySelectorAll('[data-close-modal]').forEach((element) => element.addEventListener('click', closeModal));
+  onOpen?.(modalRoot.querySelector('.modal'));
+}
+
+
+/* The browser's own confirm() is blocked inside sandboxed iframes — the call just
+   returns false and the action silently does nothing, with no error to explain
+   it. This asks in the page instead, so a confirmation always appears and always
+   looks like the rest of the application. It sits in its own layer above
+   whatever is already open, so a half-written note or draft survives the answer. */
+function askConfirm({ title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false }) {
+  return new Promise((resolve) => {
+    const layer = document.createElement('div');
+    layer.className = 'confirm-layer';
+    layer.innerHTML = `
+      <div class="overlay open" data-confirm-cancel></div>
+      <section class="modal open confirm-modal" role="alertdialog" aria-modal="true">
+        <header class="modal-head"><div><h2>${escapeHtml(title)}</h2></div></header>
+        <div class="modal-body"><p class="confirm-message">${escapeHtml(message)}</p></div>
+        <footer class="modal-footer">
+          <button class="btn" data-confirm-cancel>${escapeHtml(cancelLabel)}</button>
+          <button class="btn ${danger ? 'danger' : 'primary'}" data-confirm-ok>${escapeHtml(confirmLabel)}</button>
+        </footer>
+      </section>`;
+    const settle = (answer) => {
+      document.removeEventListener('keydown', onKey, true);
+      layer.remove();
+      resolve(answer);
+    };
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      settle(false);
+    };
+    document.addEventListener('keydown', onKey, true);
+    layer.querySelectorAll('[data-confirm-cancel]').forEach((element) => element.addEventListener('click', () => settle(false)));
+    layer.querySelector('[data-confirm-ok]').addEventListener('click', () => settle(true));
+    document.body.append(layer);
+    layer.querySelector('[data-confirm-ok]').focus();
+  });
+}
+
+function closeModal() {
+  modalRoot.innerHTML = '';
+  state.checkinForm = null;
+  state.homeworkForm = null;
+}
+
+function openDrawer({ title, subtitle, body, footer, onOpen }) {
+  modalRoot.innerHTML = `
+    <div class="overlay open" data-close-drawer></div>
+    <aside class="drawer open">
+      <header class="drawer-head"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(subtitle)}</p></div><button class="close" aria-label="Close" data-close-drawer>${svg.x}</button></header>
+      <div class="drawer-body">${body}</div>
+      <footer class="drawer-footer">${footer}</footer>
+    </aside>`;
+  modalRoot.querySelectorAll('[data-close-drawer]').forEach((element) => element.addEventListener('click', closeModal));
+  onOpen?.(modalRoot.querySelector('.drawer'));
+}
+
+/* One status tile: a fixed 32px icon over a single line of label text.
+   The two sit in fixed grid rows so every tile in a row shares a baseline no
+   matter how long the label is. `hint` becomes the hover tooltip. */
+function statusIcon({ tone, icon, label, hint, unread = false }) {
+  const title = hint || label;
+  const badge = unread ? '<span class="unread-badge" aria-label="1 new">1</span>' : '';
+  return `<span class="status-icon ${tone}">${svg[icon] || ''}${badge}</span><span class="status-label" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
+}
+
+/* A dictate button that sits above a textarea. `mode` is 'light' for the Irish
+   corrections box, where the cleanup model must not touch the Irish being taught. */
+function dictateButton(targetId, mode = 'full') {
+  if (!voiceSupported()) return '';
+  return `<button type="button" class="dictate-btn" data-dictate-for="${targetId}" data-dictate-mode="${mode}" title="Dictate this${mode === 'light' ? '. Irish wording is left exactly as you say it.' : ''}">
+    ${svg.mic}<span class="dictate-label">Dictate</span><span class="dictate-timer"></span>
+  </button>`;
+}
+
+/** Wires every dictate button currently on screen. Safe to call after any render. */
+function bindDictation(root = document) {
+  root.querySelectorAll('[data-dictate-for]').forEach((button) => {
+    if (button.dataset.bound) return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', () => toggleDictation(button));
+  });
+}
+
+async function toggleDictation(button) {
+  const target = document.getElementById(button.dataset.dictateFor);
+  if (!target) return;
+  const label = button.querySelector('.dictate-label');
+  const timer = button.querySelector('.dictate-timer');
+
+  if (button.dataset.state === 'recording') {
+    const recorder = button.__recorder;
+    button.dataset.state = 'working';
+    button.classList.remove('is-recording');
+    button.classList.add('is-working');
+    label.textContent = 'Transcribing';
+    timer.textContent = '';
+    try {
+      const { blob, seconds } = await recorder.stop();
+      if (seconds < 0.6) throw new Error('That recording was too short.');
+      const form = new FormData();
+      form.append('audio', blob, audioFileName(blob));
+      form.append('mode', button.dataset.dictateMode || 'full');
+      const result = await api('/api/admin/dictate', { method: 'POST', body: form });
+      insertDictatedText(target, result.text);
+      showToast(result.cleaned ? 'Dictation added' : 'Dictation added without cleanup', result.cleaned ? '' : 'error');
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      button.dataset.state = '';
+      button.classList.remove('is-working');
+      label.textContent = 'Dictate';
+      button.__recorder = null;
+    }
+    return;
+  }
+
+  try {
+    button.__recorder = await startRecording({
+      onTick: (seconds) => { timer.textContent = fmtDuration(seconds); },
+    });
+    button.dataset.state = 'recording';
+    button.classList.add('is-recording');
+    label.textContent = 'Stop';
+    timer.textContent = '0:00';
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+/** Drops dictated text in at the cursor, keeping a sensible space or blank line. */
+function insertDictatedText(target, text) {
+  if (!text) return;
+  const before = target.value.slice(0, target.selectionStart ?? target.value.length);
+  const after = target.value.slice(target.selectionEnd ?? target.value.length);
+  const needsGap = before.trim() && !/\n\s*$/.test(before);
+  const joined = `${before}${needsGap ? (before.endsWith(' ') ? '' : ' ') : ''}${text}${after ? '' : ''}`;
+  target.value = joined + after;
+  const caret = joined.length;
+  target.focus();
+  target.setSelectionRange(caret, caret);
+  target.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/* The voice note block in the review drawer: record, play back, re-record, remove.
+   A note can carry the whole reply, so the written boxes may be left empty. */
+function voiceNoteBlock(record) {
+  const type = record.type === 'checkin' ? 'checkin' : 'homework';
+  const row = type === 'checkin' ? record.checkin : record.homework;
+  const note = row?.voice_note;
+  if (!voiceSupported() && !note) {
+    return '<div class="voice-note-card"><div class="muted small">This browser cannot record audio, so voice notes are unavailable here.</div></div>';
+  }
+  return `<div class="voice-note-card" id="voice-note-card" data-voice-type="${type}" data-voice-id="${row.id}">
+    <div class="voice-note-head">
+      <span class="voice-note-title">${svg.mic} Voice note</span>
+      <span class="muted small" id="voice-note-hint">${note ? `Recorded ${escapeHtml(fmtDate(note.recordedAt, { time: true, weekday: true, dateStyle: 'short' }))}` : 'Optional. Students hear this alongside your written feedback.'}</span>
+    </div>
+    <div class="voice-note-body" id="voice-note-body">${note ? voiceNotePlayer(note, true) : voiceNoteRecorder()}</div>
+  </div>`;
+}
+
+function voiceNotePlayer(note, admin = false) {
+  return `<div class="voice-player">
+    <audio controls preload="none" src="${escapeHtml(note.url)}"></audio>
+    <span class="voice-length">${fmtDuration(note.seconds)}</span>
+    ${admin ? '<button type="button" class="btn small" id="voice-note-rerecord">Re-record</button><button type="button" class="btn small danger" id="voice-note-delete">Remove</button>' : ''}
+  </div>`;
+}
+
+function voiceNoteRecorder() {
+  return `<div class="voice-recorder">
+    <button type="button" class="btn record-btn" id="voice-note-record">${svg.mic} Record a voice note</button>
+    <span class="record-status" id="voice-note-status"></span>
+    <span class="level-meter" id="voice-note-level"><i></i></span>
+  </div>`;
+}
+
+let voiceNoteRecording = null;
+
+function bindVoiceNote() {
+  const card = document.getElementById('voice-note-card');
+  if (!card) return;
+  const body = document.getElementById('voice-note-body');
+  const type = card.dataset.voiceType;
+  const id = card.dataset.voiceId;
+
+  document.getElementById('voice-note-rerecord')?.addEventListener('click', () => {
+    body.innerHTML = voiceNoteRecorder();
+    bindVoiceNote();
+  });
+
+  document.getElementById('voice-note-delete')?.addEventListener('click', async () => {
+    if (!await askConfirm({ title: 'Remove this voice note?', message: 'The recording is deleted and the student will no longer hear it.', confirmLabel: 'Remove', danger: true })) return;
+    try {
+      const row = await api(`/api/admin/voice-note/${type}/${id}`, { method: 'DELETE' });
+      applyVoiceNoteRow(row);
+      body.innerHTML = voiceNoteRecorder();
+      document.getElementById('voice-note-hint').textContent = 'Optional. Students hear this alongside your written feedback.';
+      bindVoiceNote();
+      showToast('Voice note removed');
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+
+  const button = document.getElementById('voice-note-record');
+  if (!button) return;
+  const status = document.getElementById('voice-note-status');
+  const level = document.getElementById('voice-note-level');
+
+  button.addEventListener('click', async () => {
+    if (voiceNoteRecording) {
+      button.disabled = true;
+      status.textContent = 'Saving…';
+      level.classList.remove('is-live');
+      try {
+        const { blob, seconds } = await voiceNoteRecording.stop();
+        voiceNoteRecording = null;
+        if (seconds < 0.6) throw new Error('That recording was too short.');
+        const form = new FormData();
+        form.append('audio', blob, audioFileName(blob));
+        form.append('seconds', String(Math.round(seconds)));
+        const row = await api(`/api/admin/voice-note/${type}/${id}`, { method: 'POST', body: form });
+        applyVoiceNoteRow(row);
+        body.innerHTML = voiceNotePlayer(row.voice_note, true);
+        document.getElementById('voice-note-hint').textContent = `Recorded ${fmtDate(row.voice_note.recordedAt, { time: true, weekday: true, dateStyle: 'short' })}`;
+        bindVoiceNote();
+        showToast('Voice note saved');
+      } catch (error) {
+        voiceNoteRecording = null;
+        showToast(error.message, 'error');
+        button.disabled = false;
+        button.classList.remove('is-recording');
+        button.innerHTML = `${svg.mic} Record a voice note`;
+        status.textContent = '';
+      }
+      return;
+    }
+    try {
+      voiceNoteRecording = await startRecording({
+        onTick: (seconds) => { status.textContent = fmtDuration(seconds); },
+        onLevel: (value) => { level.style.setProperty('--level', value.toFixed(2)); },
+      });
+      level.classList.add('is-live');
+      button.classList.add('is-recording');
+      button.innerHTML = `${svg.stop} Stop recording`;
+      status.textContent = '0:00';
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+}
+
+/** Keeps the in-memory tracker row in step with the server after a voice-note change. */
+function applyVoiceNoteRow(row) {
+  const record = state.activeReview;
+  if (!record) return;
+  const target = record.type === 'checkin' ? record.checkin : record.homework;
+  if (target) Object.assign(target, row);
+}
+
+function effectiveDeadline(assignment) {
+  const deadline = new Date(assignment.deadline_at).getTime();
+  const reopened = assignment.reopened_until ? new Date(assignment.reopened_until).getTime() : 0;
+  return Math.max(deadline, reopened || 0);
+}
+
+/* Work is still open when the deadline is soft, whatever the clock says. Showing
+   it as missed while the server would still accept the submission is worse than
+   showing it as late. */
+function assignmentClosed(assignment, now = Date.now()) {
+  return assignment.hard_deadline !== false && now > effectiveDeadline(assignment);
+}
+
+function attendanceState(attendance) {
+  if (attendance?.status === 'live') return { tone: 'green', icon: 'camera', label: 'Live', hint: 'Attended live' };
+  if (!attendance || attendance.status === 'unknown') return { tone: 'grey', icon: 'camera', label: 'No record', hint: 'No attendance recorded for this week yet' };
+  return { tone: 'red', icon: 'x', label: 'Not live', hint: 'Did not attend live. Watching the recording does not count.' };
+}
+
+/* Student-facing colours. Orange is reserved for the teacher's own tracker, where
+   it means "this is waiting on you". From a student's side, handing work in is a
+   good outcome, so submitted is green and the label carries the difference. */
+function homeworkState(submission, assignment, now = Date.now()) {
+  if (submission?.status === 'returned') return { tone: 'green', icon: 'book', label: 'Returned', hint: 'Corrections and feedback have been returned. Open it to read them.' };
+  if (submission?.status === 'submitted') return { tone: 'green', icon: 'book', label: 'Submitted', hint: 'Submitted. Open it to see what you sent.' };
+  if (assignmentClosed(assignment, now)) return { tone: 'red', icon: 'x', label: 'Missed', hint: 'The deadline passed without a submission' };
+  if (now > effectiveDeadline(assignment)) return { tone: 'grey', icon: 'book', label: 'Open, late', hint: 'Past the deadline but still accepting submissions' };
+  return { tone: 'grey', icon: 'book', label: 'To do', hint: 'Open and not submitted yet' };
+}
+
+function checkinState(checkin, week, now = Date.now()) {
+  if (checkin?.status === 'returned') return { tone: 'green', icon: 'talk', label: 'Returned', hint: 'Your teacher has replied. Open it to read the reply.' };
+  if (checkin?.status === 'submitted') return { tone: 'green', icon: 'talk', label: 'Submitted', hint: 'Submitted. Open it to see what you sent.' };
+  if (week.checkin_enabled === false) return { tone: 'grey', icon: 'talk', label: 'Off', hint: 'No check-in was set for this week' };
+  if (now > new Date(week.checkin_due_at).getTime()) {
+    // A soft deadline keeps accepting late check-ins, so it is not a miss.
+    return week.checkin_hard_deadline === false
+      ? { tone: 'grey', icon: 'talk', label: 'Open, late', hint: 'Past the deadline but still accepting check-ins' }
+      : { tone: 'red', icon: 'x', label: 'Missed', hint: 'The check-in deadline passed without a submission' };
+  }
+  return { tone: 'grey', icon: 'talk', label: 'To do', hint: 'Open and not submitted yet' };
+}
+
+/* Authentication */
+function renderAuth(mode = 'login', message = '') {
+  const resetToken = new URLSearchParams(location.search).get('reset');
+  if (resetToken) mode = 'reset';
+  const copy = {
+    login: ['Welcome back', 'Sign in to see your homework, your check-in and your feedback.'],
+    forgot: ['Reset your password', 'Enter your email and we will send a secure reset link.'],
+    reset: ['Choose a new password', 'This reset link expires after one hour.'],
+    change: ['Protect your account', 'Choose your own strong password before continuing.'],
+  }[mode];
+  app.innerHTML = `
+    <main class="auth-shell">
+      <section class="auth-art">
+        ${brandLockup(false, true)}
+        <div class="auth-copy">
+          <h1>Homework Portal</h1>
+          <p>Everything for your Irish course in one place: your weekly check-in, your homework, and the corrections and feedback that come back to you.</p>
+          <div class="auth-feature-list">
+            <div class="auth-feature"><span>✓</span><span>See what is due and when, and work through it one question at a time.</span></div>
+            <div class="auth-feature"><span>✓</span><span>Your answers save as you go, so you can stop and pick it up later.</span></div>
+            <div class="auth-feature"><span>✓</span><span>Read your corrections and listen back to your teacher's voice notes.</span></div>
+          </div>
+        </div>
+        <figure class="auth-proverb">
+          <blockquote lang="ga">Tá Gaeilge bhriste níos fearr ná Béarla cliste!</blockquote>
+          <figcaption>Broken Irish is better than clever English.</figcaption>
+        </figure>
+      </section>
+      <section class="auth-form-side">
+        <div class="auth-card">
+          ${brandLockup()}
+          <h2>${copy[0]}</h2><p>${copy[1]}</p>
+          <div id="auth-message">${message ? `<div class="success-banner">${escapeHtml(message)}</div>` : ''}</div>
+          ${mode === 'login' ? loginForm() : mode === 'forgot' ? forgotForm() : mode === 'reset' ? resetForm(resetToken) : changePasswordForm(true)}
+        </div>
+      </section>
+    </main>`;
+  bindAuth(mode);
+}
+
+function loginForm() {
+  return `<form id="login-form">
+    <div class="form-field"><label>Email address</label><input name="email" type="email" autocomplete="email" required></div>
+    <div class="form-field"><div class="input-row"><label>Password</label><button class="text-link" type="button" id="forgot-link">Forgot password?</button></div><input name="password" type="password" autocomplete="current-password" required></div>
+    <button class="btn primary auth-submit" type="submit">Sign in</button>
+    <p class="auth-note">Your account is created by Gaeilgeoir Guides. Contact support if you have not received your login details.</p>
+  </form>`;
+}
+
+function forgotForm() {
+  return `<form id="forgot-form">
+    <div class="form-field"><label>Email address</label><input name="email" type="email" autocomplete="email" required></div>
+    <button class="btn primary auth-submit" type="submit">Send reset link</button>
+    <button class="text-link" style="margin-top:16px" type="button" id="back-login">Back to sign in</button>
+  </form>`;
+}
+
+function resetForm(token) {
+  return `<form id="reset-form" data-token="${escapeHtml(token || '')}">
+    <div class="form-field"><label>New password</label><input id="new-password" name="password" type="password" autocomplete="new-password" required></div>
+    ${passwordRules()}
+    <button class="btn primary auth-submit" type="submit">Set new password</button>
+  </form>`;
+}
+
+function changePasswordForm(firstLogin = false) {
+  return `<form id="change-password-form">
+    <div class="form-field"><label>${firstLogin ? 'Temporary password' : 'Current password'}</label><input name="currentPassword" type="password" autocomplete="current-password" required></div>
+    <div class="form-field"><label>New password</label><input id="new-password" name="newPassword" type="password" autocomplete="new-password" required></div>
+    ${passwordRules()}
+    <button class="btn primary auth-submit" type="submit">Save new password</button>
+    ${firstLogin ? '<p class="auth-note">You will remain signed in on this device after changing your password.</p>' : ''}
+  </form>`;
+}
+
+function passwordRules() {
+  return `<div class="password-rules" id="password-rules"><span data-rule="length">12+ characters</span><span data-rule="lower">Lowercase</span><span data-rule="upper">Uppercase</span><span data-rule="number">Number</span><span data-rule="symbol">Symbol</span></div>`;
+}
+
+function updatePasswordRules(value) {
+  const rules = {
+    length: value.length >= 12,
+    lower: /[a-z]/.test(value),
+    upper: /[A-Z]/.test(value),
+    number: /[0-9]/.test(value),
+    symbol: /[^A-Za-z0-9]/.test(value),
+  };
+  document.querySelectorAll('#password-rules [data-rule]').forEach((element) => element.classList.toggle('ok', rules[element.dataset.rule]));
+}
+
+function authError(error) {
+  document.getElementById('auth-message').innerHTML = `<div class="error-banner">${escapeHtml(error.message)}</div>`;
+}
+
+function bindAuth(mode) {
+  document.getElementById('forgot-link')?.addEventListener('click', () => renderAuth('forgot'));
+  document.getElementById('back-login')?.addEventListener('click', () => renderAuth('login'));
+  document.getElementById('new-password')?.addEventListener('input', (event) => updatePasswordRules(event.target.value));
+  document.getElementById('login-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const data = await api('/api/auth/login', { method: 'POST', body: { email: form.get('email'), password: form.get('password') } });
+      state.user = data.user;
+      try { history.replaceState({}, '', '/'); } catch {}
+      if (state.user.mustChangePassword) return renderAuth('change');
+      await loadApplication();
+    } catch (error) { authError(error); }
+  });
+  document.getElementById('forgot-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const data = await api('/api/auth/forgot-password', { method: 'POST', body: { email: form.get('email') } });
+      renderAuth('login', data.message);
+    } catch (error) { authError(error); }
+  });
+  document.getElementById('reset-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await api('/api/auth/reset-password', { method: 'POST', body: { token: event.currentTarget.dataset.token, newPassword: form.get('password') } });
+      try { history.replaceState({}, '', '/'); } catch {}
+      renderAuth('login', 'Your password was reset. You can now sign in.');
+    } catch (error) { authError(error); }
+  });
+  document.getElementById('change-password-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await api('/api/auth/change-password', { method: 'POST', body: { currentPassword: form.get('currentPassword'), newPassword: form.get('newPassword') } });
+      state.user.mustChangePassword = false;
+      await loadApplication();
+      showToast('Password changed');
+    } catch (error) { authError(error); }
+  });
+}
+
+/* Shell */
+function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
+  app.innerHTML = `
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">${brandLockup()}</div>
+        ${nav}
+        <div class="sidebar-footer">
+          <div class="avatar">${initials(state.user.name)}</div>
+          <div class="user-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(roleLabel)}</span></div>
+          <button class="icon-button" id="account-menu" aria-label="Account">${svg.settings}</button>
+        </div>
+      </aside>
+      <main class="main">
+        <header class="topbar">
+          <div class="breadcrumb"><span>Gaeilgeoir Guides</span><span>/</span><strong>${escapeHtml(title)}</strong></div>
+          <div class="top-actions">
+            ${notificationCount ? `<span class="nav-badge" title="${notificationCount} new piece${notificationCount === 1 ? '' : 's'} of feedback">${notificationCount}</span>` : ''}
+            <button class="user-chip" id="account-menu-top"><span class="avatar">${initials(state.user.name)}</span><span class="user-chip-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(roleLabel)}</span></span></button>
+          </div>
+        </header>
+        <div class="content">${content}</div>
+      </main>
+    </div>`;
+  document.getElementById('account-menu')?.addEventListener('click', openAccountModal);
+  document.getElementById('account-menu-top')?.addEventListener('click', openAccountModal);
+  bindShellNavigation();
+}
+
+/* Settings open from the name in the top right rather than the sidebar, which
+   keeps the sidebar to the two things a student is actually here to do.
+   Leaving the course sits two disclosures deep: present for anyone who needs it,
+   invisible to everyone who does not. */
+/* Feedback is only worth writing if it gets read. Nothing about this is visible
+   to students: they are told when new feedback arrives, never that opening it
+   is recorded. */
+async function openFeedbackReadReport() {
+  const classId = state.activeClassId || state.classes?.[0]?.id;
+  if (!classId) return showToast('Open a class first.', 'error');
+  let report;
+  try { report = await api(`/api/admin/reports/feedback-read/${classId}`); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  const { totals, students, unopened } = report;
+  const tone = totals.rate !== null && totals.rate >= 70 ? 'good' : 'warn';
+  const wait = totals.medianHoursToOpen === null
+    ? ''
+    : totals.medianHoursToOpen < 1
+      ? `Typically opened within the hour.`
+      : totals.medianHoursToOpen < 48
+        ? `Typically opened after about ${totals.medianHoursToOpen} hours.`
+        : `Typically opened after about ${Math.round(totals.medianHoursToOpen / 24)} days.`;
+
+  modal({
+    title: 'Feedback opened',
+    subtitle: `${report.class.label} · run ${fmtDate(report.generatedAt, { time: true })}`,
+    wide: true,
+    body: `
+      ${totals.returned === 0
+        ? '<div class="empty-state"><h3>Nothing returned yet</h3><p>This report fills in once you have returned feedback to somebody.</p></div>'
+        : `<div class="report-headline">
+             <div><div class="engagement-value">${totals.rate}%</div><div class="engagement-label">Opened</div></div>
+             <div class="report-headline-detail">
+               <div class="meter"><span class="${tone}" style="width:${totals.rate}%"></span></div>
+               <p class="muted small">${totals.opened} of ${totals.returned} returned pieces have been opened. ${escapeHtml(wait)}</p>
+             </div>
+           </div>
+           <div class="section-title">By student</div>
+           <table class="report-table">
+             <thead><tr><th>Student</th><th>Opened</th><th>Rate</th><th>Last opened</th></tr></thead>
+             <tbody>${students.map((row) => `<tr class="${row.withdrawn ? 'is-withdrawn' : ''}">
+               <td><button class="text-link" data-open-student="${row.id}">${escapeHtml(row.name)}</button>${row.withdrawn ? ' <span class="pill red">Withdrawn</span>' : ''}</td>
+               <td>${row.opened} of ${row.returned}</td>
+               <td>${row.rate === null ? '—' : `<span class="pill ${row.rate >= 70 ? 'green' : row.rate === 0 ? 'red' : 'orange'}">${row.rate}%</span>`}</td>
+               <td class="muted small">${row.lastOpened ? escapeHtml(fmtDate(row.lastOpened, { dateStyle: 'medium' })) : 'Never'}</td>
+             </tr>`).join('')}</tbody>
+           </table>
+           ${unopened.length ? `<div class="section-title">Never opened (${unopened.length})</div>
+             <table class="report-table">
+               <thead><tr><th>Student</th><th>Piece</th><th>Returned</th></tr></thead>
+               <tbody>${unopened.map((row) => `<tr>
+                 <td><button class="text-link" data-open-student="${row.studentId}">${escapeHtml(row.name)}</button></td>
+                 <td>${escapeHtml(row.title)}<span class="muted small"> · ${row.kind === 'checkin' ? 'check-in' : 'homework'}</span></td>
+                 <td class="muted small">${escapeHtml(fmtDate(row.returnedAt, { dateStyle: 'medium' }))}</td>
+               </tr>`).join('')}</tbody>
+             </table>` : '<div class="all-in stack-top">Everything you have returned has been opened.</div>'}`}`,
+    footer: `<button class="btn" id="copy-read-report">Copy as text</button><button class="btn primary" data-close-modal>Done</button>`,
+    onOpen() {
+      modalRoot.querySelectorAll('[data-open-student]').forEach((button) =>
+        button.addEventListener('click', () => openStudentProfile(button.dataset.openStudent)));
+      document.getElementById('copy-read-report').addEventListener('click', async () => {
+        const lines = [
+          `Feedback opened — ${report.class.label}`,
+          `${totals.opened} of ${totals.returned} opened (${totals.rate ?? 0}%)`,
+          '',
+          ...students.map((row) => `${row.name}: ${row.opened} of ${row.returned}${row.rate === null ? '' : ` (${row.rate}%)`}`),
+          ...(unopened.length ? ['', 'Never opened:', ...unopened.map((row) => `${row.name} — ${row.title}`)] : []),
+        ].join('\n');
+        try { await navigator.clipboard.writeText(lines); showToast('Report copied'); }
+        catch { showToast('Could not copy', 'error'); }
+      });
+    },
+  });
+}
+
+function openAccountModal() {
+  const student = state.user.role === 'student';
+  const withdrawn = state.studentData?.withdrawnAt;
+  modal({
+    title: 'Settings',
+    subtitle: `${state.user.name} · ${state.user.email}`,
+    body: `${changePasswordForm(false)}
+      ${student ? (withdrawn
+        ? `<div class="notice stack-top"><strong>You have withdrawn from this course.</strong><span>Recorded ${escapeHtml(fmtDate(withdrawn, { dateStyle: 'medium' }))}. No further work is expected and reminders have stopped. Everything you submitted is still here.</span></div>`
+        : `<details class="options-block stack-top">
+            <summary>Options</summary>
+            <div class="options-body">
+              <details class="options-block nested">
+                <summary>Stepping Back</summary>
+                <div class="options-body">
+                  <p>If you must step back from the course for whatever reason please fill in the below form.</p>
+                  <button class="btn" id="open-withdrawal">Course withdrawal form</button>
+                </div>
+              </details>
+            </div>
+          </details>`) : ''}
+      ${student ? '' : `<details class="options-block stack-top">
+        <summary>Reports</summary>
+        <div class="options-body">
+          <p>Run a report on the class you are currently looking at.</p>
+          <button class="btn" id="open-read-report">Feedback opened</button>
+        </div>
+      </details>`}`,
+    footer: `<button class="btn danger" id="logout-button">Log out</button><button class="btn" data-close-modal>Close</button>`,
+    onOpen() {
+      document.getElementById('new-password')?.addEventListener('input', (event) => updatePasswordRules(event.target.value));
+      document.getElementById('change-password-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        try {
+          await api('/api/auth/change-password', { method: 'POST', body: { currentPassword: form.get('currentPassword'), newPassword: form.get('newPassword') } });
+          closeModal(); showToast('Password changed');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+      document.getElementById('open-withdrawal')?.addEventListener('click', openWithdrawalForm);
+      document.getElementById('open-read-report')?.addEventListener('click', openFeedbackReadReport);
+      document.getElementById('logout-button').addEventListener('click', logout);
+    },
+  });
+}
+
+async function logout() {
+  await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  state.user = null; closeModal(); renderAuth('login');
+}
+
+/* Admin */
+function adminNav() {
+  const classButtons = state.classes.map((klass) => `
+    <button class="nav-button ${state.view === 'tracker' && state.activeClassId === klass.id ? 'active' : ''}" data-admin-view="tracker" data-class-id="${klass.id}">
+      <span class="nav-icon">${svg.grid}</span><span><strong style="display:block;font-size:11px">${escapeHtml(klass.programme_name)}</strong><small>${escapeHtml(DAY_NAMES[klass.day_of_week])} · ${escapeHtml(String(klass.start_time).slice(0, 5))}</small></span>
+    </button>`).join('');
+  return `
+    <div class="nav-label">Class trackers</div><nav class="nav">${classButtons}</nav>
+    <div class="nav-label">Manage</div><nav class="nav">
+      ${adminNavButton('people', svg.users, 'Classes & students')}
+      ${adminNavButton('assignments', svg.book, 'Homework')}
+      ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
+      ${adminNavButton('attendance', svg.upload, 'Attendance upload')}
+      ${adminNavButton('reminders', svg.mail, 'Email reminders')}
+      ${adminNavButton('ai', svg.spark, 'OpenAI & prompts')}
+    </nav>`;
+}
+
+function adminNavButton(view, icon, label) {
+  return `<button class="nav-button ${state.view === view ? 'active' : ''}" data-admin-view="${view}"><span class="nav-icon">${icon}</span>${label}</button>`;
+}
+
+function bindShellNavigation() {
+  document.querySelectorAll('[data-admin-view]').forEach((button) => button.addEventListener('click', async () => {
+    state.view = button.dataset.adminView;
+    if (button.dataset.classId) state.activeClassId = button.dataset.classId;
+    await renderAdmin();
+  }));
+  document.querySelectorAll('[data-student-view]').forEach((button) => button.addEventListener('click', () => {
+    state.view = button.dataset.studentView;
+    renderStudent();
+  }));
+}
+
+async function loadAdmin() {
+  const bootstrap = await api('/api/admin/bootstrap');
+  state.classes = bootstrap.classes;
+  state.activeClassId ||= state.classes[0]?.id || null;
+  state.view ||= state.activeClassId ? 'tracker' : 'people';
+  await renderAdmin();
+}
+
+async function renderAdmin() {
+  let content = '';
+  let title = 'Administration';
+  try {
+    if (state.view === 'tracker') {
+      if (!state.activeClassId) { state.view = 'people'; return renderAdmin(); }
+      [state.tracker, state.engagement] = await Promise.all([
+        api(`/api/admin/tracker/${state.activeClassId}`),
+        api(`/api/admin/engagement/${state.activeClassId}`).catch(() => null),
+      ]);
+      title = 'Weekly tracker'; content = adminTrackerView();
+    } else if (state.view === 'people') {
+      [state.classes, state.students, state.settings] = await Promise.all([api('/api/admin/classes'), api('/api/admin/students'), api('/api/settings')]);
+      title = 'Classes & students'; content = peopleView();
+    } else if (state.view === 'assignments') {
+      const query = state.showArchived ? '?includeArchived=true' : '';
+      [state.assignments, state.teachingWeeks, state.classes] = await Promise.all([
+        api(`/api/admin/assignments${query}`),
+        api('/api/admin/teaching-weeks'),
+        api('/api/admin/classes'),
+      ]);
+      title = 'Homework'; content = assignmentsView();
+    } else if (state.view === 'checkins') {
+      state.classes = await api('/api/admin/classes');
+      state.checkinClassId ||= state.classes[0]?.id || null;
+      state.teachingWeeks = state.checkinClassId ? await api(`/api/admin/teaching-weeks?classId=${state.checkinClassId}`) : [];
+      title = 'Weekly check-ins'; content = checkinsView();
+    } else if (state.view === 'attendance') {
+      state.classes = await api('/api/admin/classes');
+      title = 'Attendance upload'; content = attendanceView();
+    } else if (state.view === 'reminders' || state.view === 'ai') {
+      state.settings = await api('/api/settings');
+      title = state.view === 'reminders' ? 'Email reminders' : 'OpenAI & prompts';
+      content = state.view === 'reminders' ? remindersView() : aiSettingsView();
+    }
+    shell({ nav: adminNav(), content, title, roleLabel: 'Administrator' });
+    bindAdminView();
+  } catch (error) {
+    showToast(error.message, 'error');
+    if (error.status === 401) renderAuth('login');
+  }
+}
+
+function pageHeader(kicker, title, subtitle, actions = '') {
+  return `<div class="page-header"><div><div class="page-kicker">${escapeHtml(kicker)}</div><h1 class="page-title">${escapeHtml(title)}</h1><p class="page-subtitle">${escapeHtml(subtitle)}</p></div><div class="actions">${actions}</div></div>`;
+}
+
+function trackerMaps() {
+  const attendance = new Map(state.tracker.attendance.map((row) => [`${row.student_id}:${row.week_id}`, row]));
+  const checkins = new Map(state.tracker.checkins.map((row) => [`${row.student_id}:${row.week_id}`, row]));
+  const homework = new Map(state.tracker.homework.map((row) => [`${row.student_id}:${row.assignment_id}`, row]));
+  // A week can carry more than one assignment. Keeping a list rather than a single
+  // value stops the second one disappearing from the tracker entirely.
+  const assignmentsByWeek = new Map();
+  state.tracker.assignments.forEach((assignment) => {
+    if (!assignment.week_id) return;
+    assignmentsByWeek.set(assignment.week_id, [...(assignmentsByWeek.get(assignment.week_id) || []), assignment]);
+  });
+  return { attendance, checkins, homework, assignmentsByWeek };
+}
+
+const ADMIN_ICON = { checkin: 'talk', homework: 'book' };
+
+function adminTrackerState(type, record, deadline, assignment = null, week = null) {
+  if (type === 'attendance') return attendanceState(record);
+  const icon = ADMIN_ICON[type];
+  const noun = type === 'homework' ? 'Homework' : 'Check-in';
+  if (record?.status === 'returned') return { tone: 'green', icon, label: 'Returned', hint: `${noun} feedback has been returned to the student` };
+  if (record?.status === 'submitted') {
+    return record.feedback_state === 'ai_drafted'
+      ? { tone: 'orange', icon, label: 'Draft ready', hint: `${noun} submitted. An AI draft is ready for you to edit and return.`, attention: true }
+      : { tone: 'orange', icon, label: 'To review', hint: `${noun} submitted and waiting for your reply`, attention: true };
+  }
+  if (assignment && !assignmentClosed(assignment)) {
+    return Date.now() > effectiveDeadline(assignment)
+      ? { tone: 'grey', icon, label: 'Open, late', hint: 'Past the deadline but still accepting submissions' }
+      : { tone: 'grey', icon, label: 'Open', hint: `${noun} open and not submitted yet` };
+  }
+  if (week && week.checkin_enabled === false) return { tone: 'grey', icon, label: 'Off', hint: 'No check-in was set for this week' };
+  if (week && week.checkin_hard_deadline === false && Date.now() > new Date(deadline).getTime()) {
+    return { tone: 'grey', icon, label: 'Open, late', hint: 'Past the deadline but still accepting check-ins' };
+  }
+  if (Date.now() > new Date(deadline).getTime()) return { tone: 'red', icon: 'x', label: 'Missed', hint: `The deadline passed with no ${noun.toLowerCase()}` };
+  return { tone: 'grey', icon, label: 'Open', hint: `${noun} open and not submitted yet` };
+}
+
+function adminTrackerView() {
+  const t = state.tracker;
+  const maps = trackerMaps();
+  const submittedCheckins = t.checkins.filter((row) => row.status === 'submitted').length;
+  const submittedHomework = t.homework.filter((row) => row.status === 'submitted').length;
+  const liveCount = t.attendance.filter((row) => row.status === 'live').length;
+  const thisMonday = toZonedInput(new Date()).slice(0, 10);
+  const weeks = t.weeks.filter((week) => String(week.week_start).slice(0, 10) <= thisMonday || new Date(week.checkin_release_at) <= new Date());
+  const currentWeekId = weeks.at(-1)?.id;
+  const toReview = submittedCheckins + submittedHomework;
+  return `
+    ${pageHeader('Class workspace', t.class.label, `A separate weekly tracker for this class. Times shown in ${escapeHtml(classTimezone())}.`, `<button class="btn" id="open-attendance">Upload attendance</button><button class="btn primary" id="new-assignment">Assign homework</button>`)}
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Students</div><div class="stat-value">${t.students.length}</div><div class="stat-note">Active in this class</div></div>
+      <div class="stat ${submittedCheckins ? 'warning' : ''}"><div class="stat-label">Check-ins to review</div><div class="stat-value">${submittedCheckins}</div><div class="stat-note">Ready for teacher review</div></div>
+      <div class="stat ${submittedHomework ? 'warning' : ''}"><div class="stat-label">Homework to review</div><div class="stat-value">${submittedHomework}</div><div class="stat-note">Awaiting teacher feedback</div></div>
+      <div class="stat accent"><div class="stat-label">Live attendance records</div><div class="stat-value">${liveCount}</div><div class="stat-note">Across visible weeks</div></div>
+    </div>
+    ${engagementPanel()}
+    <div class="card toolbar">
+      <div class="toolbar-group"><div class="search-box"><span>⌕</span><input id="tracker-search" placeholder="Search students" value="${escapeHtml(state.trackerSearch || '')}"></div>
+        <button class="filter-chip ${state.filter === 'all' ? 'active' : ''}" data-filter="all">All</button><button class="filter-chip ${state.filter === 'attention' ? 'active' : ''}" data-filter="attention">Needs review${toReview ? ` (${toReview})` : ''}</button><button class="filter-chip ${state.filter === 'missing' ? 'active' : ''}" data-filter="missing">Missing</button>
+      </div><div class="toolbar-group"><span class="empty-note hidden" id="tracker-empty-note"></span><button class="btn small" id="jump-latest">Jump to latest week →</button></div>
+    </div>
+    <section class="card tracker-card">
+      <div class="tracker-scroll" id="tracker-scroll"><table class="tracker-table">
+        <thead><tr><th class="student-head">Student</th>${weeks.map((week) => weekHeadCell(week, maps, currentWeekId)).join('')}</tr></thead>
+        <tbody id="tracker-body">${t.students.map((student) => adminStudentRow(student, weeks, maps, currentWeekId)).join('')}</tbody>
+      </table></div>
+      ${trackerLegend()}
+    </section>`;
+}
+
+/* Column headings. The three per-week actions are labelled with their own icon
+   rather than a repeated block of uppercase words: the same camera, speech and
+   book glyphs appear in the cells below and are explained in the legend, so the
+   header stays readable across a dozen columns instead of becoming noise. */
+function weekHeadCell(week, maps, currentWeekId) {
+  const assignments = maps.assignmentsByWeek.get(week.id) || [];
+  const columns = [
+    { icon: 'camera', label: 'Attendance' },
+    { icon: 'talk', label: 'Check-in' },
+    ...assignments.map((assignment) => ({ icon: 'book', label: assignment.title })),
+  ];
+  const isCurrent = week.id === currentWeekId;
+  return `<th class="week-head ${isCurrent ? 'is-current' : ''}" scope="col">
+    <div class="week-head-inner">
+      <div class="week-name" title="Week beginning ${escapeHtml(fmtDate(`${String(week.week_start).slice(0, 10)}T12:00:00Z`, { timeZone: 'UTC' }))}">${fmtWeek(week.week_start)}${isCurrent ? '<span class="week-now">Now</span>' : ''}</div>
+      <div class="week-due">Check-in due ${escapeHtml(fmtDate(week.checkin_due_at, { time: true, weekday: true, dateStyle: 'short' }))}</div>
+    </div>
+    <div class="week-cols" style="--cols:${columns.length}">
+      ${columns.map((column) => `<span class="week-col" title="${escapeHtml(column.label)}" aria-label="${escapeHtml(column.label)}">${svg[column.icon]}</span>`).join('')}
+    </div>
+  </th>`;
+}
+
+function legendKey(tone, icon, label) {
+  return `<span class="legend-item"><span class="legend-icon ${tone}">${svg[icon]}</span>${escapeHtml(label)}</span>`;
+}
+
+function trackerLegend(role = 'admin') {
+  const states = role === 'admin'
+    ? [['grey', 'book', 'Open'], ['orange', 'book', 'Needs your review'], ['green', 'book', 'Returned'], ['red', 'x', 'Missed or absent']]
+    : [['grey', 'book', 'To do'], ['green', 'book', 'Submitted or returned'], ['none', 'book', 'No homework set'], ['red', 'x', 'Missed or absent']];
+  return `<div class="legend">
+    <div class="legend-group"><span class="legend-title">Columns</span>
+      ${legendKey('plain', 'camera', 'Attendance')}${legendKey('plain', 'talk', 'Check-in')}${legendKey('plain', 'book', 'Homework')}
+    </div>
+    <div class="legend-group"><span class="legend-title">Status</span>
+      ${states.map(([tone, icon, label]) => legendKey(tone, icon, label)).join('')}
+    </div>
+  </div>`;
+}
+
+/* How the class is actually going: how many are still on it, and how much of the
+   work that was genuinely due has come in. Both figures ignore weeks that were
+   switched off and people who have left, because counting either would flatter
+   the number into meaning nothing. */
+function engagementPanel() {
+  const data = state.engagement;
+  if (!data) return '';
+  const { people, expected, retention, completion, withdrawals } = data;
+  const bar = (value, tone) => `<div class="meter"><span class="${tone}" style="width:${Math.max(0, Math.min(100, value || 0))}%"></span></div>`;
+
+  return `<section class="card engagement">
+    <div class="card-header"><div><h2>How the class is going</h2><p>Weeks you switched off and students who have withdrawn are left out of both figures.</p></div></div>
+    <div class="card-body engagement-grid">
+      <div class="engagement-stat">
+        <div class="engagement-value">${retention === null ? '—' : `${retention}%`}</div>
+        <div class="engagement-label">Still on the course</div>
+        ${bar(retention, retention !== null && retention >= 80 ? 'good' : 'warn')}
+        <div class="engagement-note">${people.active} of ${people.total} student${people.total === 1 ? '' : 's'}${people.withdrawn ? ` · ${people.withdrawn} withdrawn` : ''}</div>
+      </div>
+      <div class="engagement-stat">
+        <div class="engagement-value">${completion === null ? '—' : `${completion}%`}</div>
+        <div class="engagement-label">Work submitted</div>
+        ${bar(completion, completion !== null && completion >= 70 ? 'good' : 'warn')}
+        <div class="engagement-note">${expected.submitted} of ${expected.expected} due so far · ${expected.checkins_due} check-in${expected.checkins_due === 1 ? '' : 's'} and ${expected.assignments_due} assignment${expected.assignments_due === 1 ? '' : 's'} released</div>
+      </div>
+      ${itemBreakdown(data)}
+      ${withdrawals.length ? `<div class="engagement-stat wide">
+        <div class="engagement-label">Withdrawals</div>
+        <ul class="withdrawal-list">${withdrawals.slice(0, 5).map((row) => `<li>
+          <button class="text-link" data-open-student="${row.student_id}">${escapeHtml(row.name)}</button>
+          <span>${escapeHtml(row.reason)}</span>
+          <small>${escapeHtml(fmtDate(row.submitted_at, { dateStyle: 'medium' }))}</small>
+        </li>`).join('')}</ul>
+        ${withdrawals.length > 5 ? `<div class="engagement-note">and ${withdrawals.length - 5} more</div>` : ''}
+      </div>` : ''}
+    </div>
+  </section>`;
+}
+
+/* The headline figure averages the whole term, so a week where half the class
+   vanished disappears into it. This answers the narrower question instead: of
+   this one check-in, or this one assignment, who actually did it. */
+function itemBreakdown(data) {
+  const items = data.items || [];
+  if (!items.length) return '';
+  const key = (item) => `${item.kind}:${item.id}`;
+  const chosen = items.find((item) => key(item) === state.engagementItem) || items[0];
+  const tone = chosen.rate !== null && chosen.rate >= 70 ? 'good' : 'warn';
+  const outstanding = chosen.missing || [];
+
+  return `<div class="engagement-stat wide breakdown">
+    <div class="breakdown-head">
+      <div class="engagement-label">One check-in or assignment at a time</div>
+      <select id="engagement-item" aria-label="Choose a check-in or assignment">
+        ${items.map((item) => `<option value="${key(item)}"${key(item) === key(chosen) ? ' selected' : ''}>${escapeHtml(itemName(item))}</option>`).join('')}
+      </select>
+    </div>
+    <div class="breakdown-body">
+      <div class="breakdown-figure">
+        <div class="engagement-value">${chosen.rate === null ? '—' : `${chosen.rate}%`}</div>
+        <div class="engagement-note">${chosen.submitted} of ${chosen.expected} submitted${chosen.dueAt ? ` · due ${escapeHtml(fmtDate(chosen.dueAt, { time: true }))}` : ''}</div>
+        <div class="meter"><span class="${tone}" style="width:${Math.max(0, Math.min(100, chosen.rate || 0))}%"></span></div>
+      </div>
+      <div class="breakdown-missing">
+        ${outstanding.length
+          ? `<div class="engagement-label">Still to submit (${outstanding.length})</div>
+             <div class="missing-names">${outstanding.map((person) => `<button class="text-link" data-open-student="${person.id}">${escapeHtml(person.name)}</button>`).join('')}</div>`
+          : '<div class="all-in">Everyone has submitted this one.</div>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+function itemName(item) {
+  if (item.kind === 'homework') return `Homework · ${item.label}`;
+  const week = fmtWeek(item.weekStart);
+  return `Check-in · week of ${week}${item.label ? ` (${item.label})` : ''}`;
+}
+
+function adminStudentRow(student, weeks, maps, currentWeekId) {
+  const hasAttention = weeks.some((week) => {
+    const assignments = maps.assignmentsByWeek.get(week.id) || [];
+    return maps.checkins.get(`${student.id}:${week.id}`)?.status === 'submitted' ||
+      assignments.some((assignment) => maps.homework.get(`${student.id}:${assignment.id}`)?.status === 'submitted');
+  });
+  const hasMissing = weeks.some((week) => {
+    const assignments = maps.assignmentsByWeek.get(week.id) || [];
+    return (Date.now() > new Date(week.checkin_due_at).getTime() && !maps.checkins.get(`${student.id}:${week.id}`)) ||
+      assignments.some((assignment) => assignmentClosed(assignment) && !maps.homework.get(`${student.id}:${assignment.id}`));
+  });
+  return `<tr class="${student.withdrawn_at ? 'is-withdrawn' : ''}" data-name="${escapeHtml(`${student.name} ${student.email}`.toLowerCase())}" data-attention="${hasAttention && !student.withdrawn_at}" data-missing="${hasMissing && !student.withdrawn_at}">
+    <th class="student-column ${student.withdrawn_at ? 'has-withdrawn' : ''}" scope="row"><button class="student-cell" data-open-student="${student.id}" title="Open ${escapeHtml(student.name)}'s profile and notes"><div class="student-avatar">${initials(student.name)}</div><div><div class="student-name">${escapeHtml(student.name)}${student.withdrawn_at ? '<span class="pill red">Withdrawn</span>' : ''}</div><div class="student-email">${student.withdrawn_at ? escapeHtml(`Left ${fmtDate(student.withdrawn_at, { dateStyle: 'medium' })}`) : escapeHtml(student.email)}</div></div><span class="student-cell-go">${svg.note}</span></button></th>
+    ${weeks.map((week) => {
+      const assignments = maps.assignmentsByWeek.get(week.id) || [];
+      const cells = [
+        { state: adminTrackerState('attendance', maps.attendance.get(`${student.id}:${week.id}`)), type: 'attendance', extra: '' },
+        { state: adminTrackerState('checkin', maps.checkins.get(`${student.id}:${week.id}`), week.checkin_due_at, null, week), type: 'checkin', extra: '' },
+        ...assignments.map((assignment) => ({
+          state: adminTrackerState('homework', maps.homework.get(`${student.id}:${assignment.id}`), assignment.reopened_until || assignment.deadline_at, assignment),
+          type: 'homework',
+          extra: ` data-assignment-id="${assignment.id}"`,
+        })),
+      ];
+      return `<td class="week-data ${week.id === currentWeekId ? 'is-current' : ''}"><div class="wk-cell" style="--cols:${cells.length}">
+        ${cells.map((cell) => `<button class="wk-action ${cell.state.attention ? 'needs-review' : ''}" data-review-type="${cell.type}" data-student-id="${student.id}" data-week-id="${week.id}"${cell.extra} aria-label="${escapeHtml(`${student.name}, week of ${fmtWeek(week.week_start)}: ${cell.state.hint || cell.state.label}`)}">${statusIcon(cell.state)}</button>`).join('')}
+      </div></td>`;
+    }).join('')}</tr>`;
+}
+
+function peopleView() {
+  return `
+    ${pageHeader('Administration', 'Classes and students', 'Create class groups, invite students and manage access.', `<button class="btn" id="add-class">Add class</button><button class="btn" id="add-student">Add student</button><button class="btn primary" id="import-students">Upload students</button>`)}
+    ${emailModeBanner()}
+    <div class="tabs"><button class="tab active" data-people-tab="classes">Classes</button><button class="tab" data-people-tab="students">Students</button></div>
+    <section id="classes-tab"><div class="class-grid">${state.classes.map((klass) => `
+      <article class="card class-card"><div class="card-actions"><div><h3>${escapeHtml(classLabel(klass))}</h3><p>Separate tracker, attendance and homework.</p></div><button class="btn small" data-open-class="${klass.id}">Open tracker</button></div>
+      <div class="mini-stats"><span class="mini-stat">${klass.student_count || 0} students</span><span class="mini-stat">${escapeHtml(klass.timezone)}</span></div>
+      <div class="actions stack-top"><button class="btn small danger" data-delete-class="${klass.id}">Delete class</button></div></article>`).join('') || '<div class="empty-state"><h3>No classes yet</h3><p>Add your first class to begin.</p></div>'}</div></section>
+    <section id="students-tab" class="hidden"><div class="card table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Email</th><th>Current class</th><th>Login</th><th></th></tr></thead><tbody>
+      ${state.students.map((student) => `<tr><td><button class="text-link strong-link" data-open-student="${student.id}">${escapeHtml(student.name)}</button></td><td>${escapeHtml(student.email)}</td><td><select class="select" data-student-class="${student.id}">${state.classes.map((klass) => `<option value="${klass.id}" ${student.class_id === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}</select></td><td>${student.last_login_at ? `<span class="pill green">Last login ${fmtDate(student.last_login_at)}</span>` : '<span class="pill orange">Invite pending</span>'}</td><td><div class="row-actions"><button class="btn small" data-open-student="${student.id}">${svg.note} Notes</button><button class="btn small" data-resend="${student.id}">Resend invite</button><button class="btn small" data-reset-student="${student.id}">Reset password</button></div></td></tr>`).join('')}
+    </tbody></table></div></section>`;
+}
+
+/* Homework is planned week by week, so the default view is a calendar rather than
+   a list. Teaching weeks are drawn in behind the deadlines, which means a week with
+   no homework reads as a deliberate gap rather than as missing data. */
+/* Console mode is the silent failure: accounts get created, invitations get
+   "sent", and nothing arrives. Say so on the screen where students are added. */
+function emailModeBanner() {
+  if (state.settings?.email?.provider && state.settings.email.provider !== 'console') return '';
+  return `<div class="notice warning">
+    <strong>Invitation emails are not being delivered.</strong>
+    <span>Email is in test mode, so new students are created but never receive their login. Set up SMTP or the GoHighLevel webhook under Email reminders, send a test email, then add or re-invite your students.</span>
+    <button class="btn small" data-admin-view="reminders">Set up email</button>
+  </div>`;
+}
+
+async function confirmDeleteClass(id) {
+  let impact;
+  try { impact = await api(`/api/admin/classes/${id}/impact`); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  const work = impact.checkins + impact.submissions;
+  modal({
+    title: `Delete “${impact.class.label}”?`,
+    subtitle: 'This cannot be undone.',
+    body: `
+      <p class="muted small">Deleting a class removes its whole history. The students themselves are kept and simply end up without a class, but everything they did here goes.</p>
+      <div class="detail-grid">
+        <div class="detail"><small>Students enrolled</small><strong>${impact.students}</strong></div>
+        <div class="detail"><small>Teaching weeks</small><strong>${impact.weeks}</strong></div>
+        <div class="detail"><small>Assignments</small><strong>${impact.assignments}</strong></div>
+        <div class="detail"><small>Attendance records</small><strong>${impact.attendance}</strong></div>
+        <div class="detail"><small>Check-ins submitted</small><strong>${impact.checkins}</strong></div>
+        <div class="detail"><small>Homework submitted</small><strong>${impact.submissions}</strong></div>
+      </div>
+      ${work ? `<div class="error-banner stack-top"><strong>${work} piece${work === 1 ? '' : 's'} of student work will be deleted permanently.</strong></div>` : '<p class="muted small stack-top">No student work has been submitted in this class, so it can be deleted cleanly.</p>'}`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn danger" id="confirm-delete-class">Delete${work ? ` and remove ${work} piece${work === 1 ? '' : 's'} of work` : ''}</button>`,
+    onOpen() {
+      document.getElementById('confirm-delete-class').addEventListener('click', async () => {
+        try {
+          await api(`/api/admin/classes/${id}?confirmWork=${work}`, { method: 'DELETE' });
+          closeModal();
+          if (state.activeClassId === id) state.activeClassId = null;
+          state.view = 'people';
+          await loadAdmin();
+          showToast('Class deleted');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function assignmentsView() {
+  const classes = state.classes || [];
+  const filter = state.assignmentClassId || '';
+  const visible = state.assignments.filter((row) => !filter || row.class_id === filter);
+  const archivedCount = visible.filter((row) => row.status === 'archived').length;
+
+  const actions = `
+    <button class="btn" id="calendar-subscribe">${svg.calendar} Add to calendar</button>
+    <button class="btn primary" id="create-assignment">Create assignment</button>`;
+
+  return `
+    ${pageHeader('Coursework', 'Homework', 'Plan the term week by week. Click a day to set homework, click an assignment to edit it.', actions)}
+    <div class="card toolbar">
+      <div class="toolbar-group">
+        <div class="view-switch">
+          <button class="view-tab ${state.assignmentView !== 'list' ? 'active' : ''}" data-assignment-view="calendar">${svg.calendar} Calendar</button>
+          <button class="view-tab ${state.assignmentView === 'list' ? 'active' : ''}" data-assignment-view="list">${svg.grid} List</button>
+        </div>
+        <select class="select" id="assignment-class-filter">
+          <option value="">All classes</option>
+          ${classes.map((klass) => `<option value="${klass.id}" ${filter === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}
+        </select>
+      </div>
+      <div class="toolbar-group">
+        <label class="toggle-row"><span class="toggle"><input id="show-archived" type="checkbox" ${state.showArchived ? 'checked' : ''}><span></span></span>Show archived${archivedCount ? ` (${archivedCount})` : ''}</label>
+      </div>
+    </div>
+    ${state.assignmentView === 'list' ? assignmentListView(visible) : assignmentCalendarView(visible)}`;
+}
+
+function assignmentCalendarView(assignments) {
+  const cursor = state.assignmentMonth ? new Date(state.assignmentMonth) : new Date();
+  const year = cursor.getFullYear(), month = cursor.getMonth();
+  const first = new Date(year, month, 1), days = new Date(year, month + 1, 0).getDate();
+  const offset = (first.getDay() + 6) % 7;
+  const today = zonedDateParts(new Date());
+  const filter = state.assignmentClassId || '';
+
+  // Which calendar days belong to a teaching week, and which of those weeks
+  // already carry homework. Two classes can share the same dates, so each day
+  // collects every week covering it rather than keeping only the last one.
+  const weeks = (state.teachingWeeks || []).filter((week) => !filter || week.class_id === filter);
+  /* A week counts as having homework when a deadline actually falls inside it.
+     Linking an assignment to a teaching week is optional, so going by the link
+     alone would label a week empty while its deadlines sit there in plain sight. */
+  const weekHasHomework = new Set();
+  weeks.forEach((week) => {
+    const start = new Date(`${String(week.week_start).slice(0, 10)}T00:00:00Z`).getTime();
+    const end = start + 7 * 86400000;
+    const covered = assignments.some((assignment) => {
+      if (assignment.week_id === week.id) return true;
+      if (assignment.class_id !== week.class_id) return false;
+      const due = new Date(assignment.reopened_until || assignment.deadline_at).getTime();
+      return due >= start && due < end;
+    });
+    if (covered) weekHasHomework.add(week.id);
+  });
+  const weekDays = new Map();
+  const emptyWeekStarts = new Map();
+  weeks.forEach((week) => {
+    const start = new Date(`${String(week.week_start).slice(0, 10)}T12:00:00Z`);
+    const hasHomework = weekHasHomework.has(week.id);
+    for (let i = 0; i < 7; i += 1) {
+      const day = new Date(start.getTime() + i * 86400000);
+      if (day.getUTCFullYear() !== year || day.getUTCMonth() !== month) continue;
+      const entry = weekDays.get(day.getUTCDate()) || { weeks: [], hasHomework: false };
+      entry.weeks.push(week);
+      // A day only counts as "nothing set" when no class covering it has homework.
+      entry.hasHomework = entry.hasHomework || hasHomework;
+      weekDays.set(day.getUTCDate(), entry);
+      // The label goes on the first day of the week that falls inside this month.
+      if (!hasHomework && !emptyWeekStarts.has(week.id)) emptyWeekStarts.set(week.id, { day: day.getUTCDate(), week });
+    }
+  });
+  // Only label a week as empty if nothing in it carries homework on any day.
+  const emptyLabels = new Map();
+  emptyWeekStarts.forEach(({ day, week }) => {
+    if (weekDays.get(day)?.hasHomework) return;
+    emptyLabels.set(day, [...(emptyLabels.get(day) || []), week]);
+  });
+
+  const events = new Map();
+  assignments.forEach((assignment) => {
+    const when = zonedDateParts(assignment.reopened_until || assignment.deadline_at);
+    if (when.year !== year || when.month !== month) return;
+    const closed = assignmentClosed(assignment);
+    const tone = assignment.status === 'archived' ? 'archived' : closed ? 'closed' : 'open';
+    events.set(when.day, [...(events.get(when.day) || []), `<button class="calendar-event assignment ${tone}" data-edit-assignment="${assignment.id}" title="${escapeHtml(`${assignment.title} — due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, weekday: true, dateStyle: 'short' })}`)}">
+      <span class="event-time">${escapeHtml(fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, timeOnly: true }))}</span>
+      <span class="event-title">${escapeHtml(assignment.title)}</span>
+    </button>`]);
+  });
+
+  const cells = [];
+  for (let i = 0; i < offset; i += 1) cells.push('<div class="calendar-day is-empty"></div>');
+  for (let day = 1; day <= days; day += 1) {
+    const teaching = weekDays.get(day);
+    const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const isToday = today.year === year && today.month === month && today.day === day;
+    const empty = emptyLabels.get(day);
+    cells.push(`<div class="calendar-day ${isToday ? 'is-today' : ''} ${teaching ? 'is-teaching' : ''}">
+      <div class="calendar-day-head"><span class="calendar-number">${day}</span>
+        <button class="day-add" data-add-on="${iso}" title="Set homework due ${escapeHtml(fmtDate(`${iso}T12:00:00Z`, { timeZone: 'UTC' }))}" aria-label="Set homework due on ${day}">+</button>
+      </div>
+      ${empty ? `<span class="no-homework-chip" title="${escapeHtml(empty.map((week) => week.classLabel).join(', '))}">No homework this week</span>` : ''}
+      ${(events.get(day) || []).join('')}
+    </div>`);
+  }
+
+  const withoutHomework = emptyLabels.size;
+
+  return `<section class="card calendar assignment-calendar">
+    <div class="calendar-head">
+      <h2>${new Intl.DateTimeFormat('en-IE', { month: 'long', year: 'numeric' }).format(first)}</h2>
+      <div class="calendar-nav"><button class="btn small" data-assignment-step="-1" aria-label="Previous month">←</button><button class="btn small" data-assignment-step="0">Today</button><button class="btn small" data-assignment-step="1" aria-label="Next month">→</button></div>
+    </div>
+    <div class="calendar-grid">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day) => `<div class="calendar-name">${day}</div>`).join('')}${cells.join('')}</div>
+    <div class="legend">
+      <div class="legend-group"><span class="legend-title">Deadlines</span>
+        <span class="legend-item"><span class="legend-swatch open"></span>Open</span>
+        <span class="legend-item"><span class="legend-swatch closed"></span>Closed</span>
+        <span class="legend-item"><span class="legend-swatch archived"></span>Archived</span>
+      </div>
+      <div class="legend-group"><span class="legend-title">Weeks</span>
+        <span class="legend-item"><span class="legend-swatch teaching"></span>Teaching week</span>
+        <span class="legend-item"><span class="legend-swatch none"></span>No homework this week${withoutHomework ? ` (${withoutHomework} this month)` : ''}</span>
+      </div>
+    </div>
+  </section>`;
+}
+
+function assignmentListView(assignments) {
+  if (!assignments.length) return '<div class="empty-state"><h3>No homework yet</h3><p>Create the first assignment, or click a day on the calendar.</p></div>';
+  return `<div class="assignment-grid">${assignments.map((assignment) => {
+    const archived = assignment.status === 'archived';
+    const closed = assignmentClosed(assignment);
+    return `<article class="card assignment-card ${archived ? 'is-archived' : ''}">
+      <div class="card-actions"><div><h3>${escapeHtml(assignment.title)}${archived ? '<span class="pill">Archived</span>' : ''}</h3><p>${escapeHtml(assignment.classLabel || '')}</p></div>
+      <span class="pill ${archived ? '' : closed ? 'red' : 'green'}">${escapeHtml(fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, weekday: true, dateStyle: 'short' }))}</span></div>
+      <div class="mini-stats"><span class="mini-stat">${assignment.questions?.length || 0} questions</span><span class="mini-stat">${assignment.resources?.length || 0} files</span><span class="mini-stat">${assignment.hard_deadline ? 'Hard deadline' : 'Open submissions'}</span></div>
+      <div class="actions stack-top">
+        <button class="btn small" data-edit-assignment="${assignment.id}">${svg.edit} Edit</button>
+        ${assignment.hard_deadline && !archived ? `<button class="btn small" data-reopen-assignment="${assignment.id}">Reopen</button>` : ''}
+        <a class="btn small" href="/api/admin/assignments/${assignment.id}/calendar.ics" download>${svg.calendar} .ics</a>
+        <button class="btn small" data-archive-assignment="${assignment.id}" data-archived="${archived}">${archived ? 'Restore' : 'Archive'}</button>
+        <button class="btn small danger" data-delete-assignment="${assignment.id}">Delete</button>
+      </div>
+    </article>`;
+  }).join('')}</div>`;
+}
+
+/* Weekly check-ins are not automatic in the sense of unstoppable: every week has
+   its own switch, its own opening and closing time, and its own choice of hard or
+   soft deadline. Christmas week just gets turned off. */
+function checkinsView() {
+  const klass = state.classes.find((row) => row.id === state.checkinClassId);
+  const weeks = state.teachingWeeks || [];
+  const today = toZonedInput(new Date()).slice(0, 10);
+  const upcoming = weeks.filter((week) => String(week.week_start).slice(0, 10) >= today).length;
+  const off = weeks.filter((week) => week.checkin_enabled === false).length;
+
+  return `${pageHeader('Weekly check-ins', 'Check-in schedule', `Every week has its own switch and its own deadline. Times in ${escapeHtml(classTimezone())}.`,
+    `<button class="btn" id="checkin-bulk-off">Turn off selected</button><button class="btn" id="checkin-bulk-on">Turn on selected</button><button class="btn primary" id="checkin-schedule">Create check-ins</button>`)}
+    <div class="card toolbar">
+      <div class="toolbar-group">
+        <select class="select" id="checkin-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.checkinClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
+        <span class="muted small">${weeks.length} weeks · ${upcoming} still to come · ${off} switched off</span>
+      </div>
+      <div class="toolbar-group"><button class="btn small" id="checkin-select-none">Clear selection</button></div>
+    </div>
+    <section class="card table-wrap">
+      <table class="data-table checkin-table">
+        <thead><tr>
+          <th class="pick"><input type="checkbox" id="checkin-select-all" aria-label="Select every week"></th>
+          <th>Week</th><th>Check-in</th><th>Opens</th><th>Closes</th><th>Deadline</th><th>Note</th><th></th>
+        </tr></thead>
+        <tbody>${weeks.map((week) => checkinRow(week, today)).join('') || '<tr><td colspan="8"><div class="empty-state"><h3>No weeks yet</h3><p>Weeks are generated automatically once a class exists.</p></div></td></tr>'}</tbody>
+      </table>
+    </section>
+    <p class="muted small stack-top">A <strong>soft</strong> deadline keeps accepting check-ins after it closes, and the tracker shows them as “Open, late” rather than missed. A <strong>hard</strong> deadline closes the form. Switching a week off means no check-in is expected at all, and the tracker shows “Off”.</p>`;
+}
+
+function checkinRow(week, today) {
+  const past = String(week.week_start).slice(0, 10) < today;
+  const disabled = week.checkin_enabled === false;
+  return `<tr class="${disabled ? 'is-off' : ''} ${past ? 'is-past' : ''}" data-week-row="${week.id}">
+    <td class="pick"><input type="checkbox" class="week-pick" value="${week.id}" aria-label="Select week of ${escapeHtml(fmtWeek(week.week_start))}"></td>
+    <td><strong>${escapeHtml(fmtWeek(week.week_start))}</strong>${past ? '<span class="muted small"> · past</span>' : ''}</td>
+    <td><label class="toggle-row"><span class="toggle"><input type="checkbox" data-week-enabled="${week.id}" ${disabled ? '' : 'checked'}><span></span></span>${disabled ? 'Off' : 'On'}</label></td>
+    <td><input type="datetime-local" class="compact" data-week-release="${week.id}" value="${toZonedInput(week.checkin_release_at)}" ${disabled ? 'disabled' : ''}></td>
+    <td><input type="datetime-local" class="compact" data-week-due="${week.id}" value="${toZonedInput(week.checkin_due_at)}" ${disabled ? 'disabled' : ''}></td>
+    <td><select class="select compact" data-week-hard="${week.id}" ${disabled ? 'disabled' : ''}>
+      <option value="hard" ${week.checkin_hard_deadline === false ? '' : 'selected'}>Hard</option>
+      <option value="soft" ${week.checkin_hard_deadline === false ? 'selected' : ''}>Soft</option>
+    </select></td>
+    <td><input class="compact" data-week-label="${week.id}" value="${escapeHtml(week.label || '')}" placeholder="e.g. Christmas week" ${disabled ? '' : ''}></td>
+    <td><button class="btn small" data-week-save="${week.id}">Save</button></td>
+  </tr>`;
+}
+
+const DAY_CHOICES = [1,2,3,4,5,6,7].map((value) => ({ value, label: DAY_NAMES[value] }));
+
+/* Build a term's worth of check-ins in one pass: pick the range and the weekly
+   times, then look at exactly which weeks it will create and switch off the ones
+   you do not want, before anything is written. */
+function openCheckinScheduleModal() {
+  const klass = state.classes.find((row) => row.id === state.checkinClassId);
+  const today = toZonedInput(new Date()).slice(0, 10);
+  const inTwelveWeeks = toZonedInput(new Date(Date.now() + 12 * 7 * 86400000)).slice(0, 10);
+  state.scheduleSkips = new Set();
+
+  const dayOptions = (selected) => DAY_CHOICES.map((day) => `<option value="${day.value}" ${day.value === selected ? 'selected' : ''}>${day.label}</option>`).join('');
+
+  modal({
+    title: 'Create check-ins',
+    subtitle: klass ? classLabel(klass) : '',
+    wide: true,
+    body: `
+      <div class="schedule-grid">
+        <div class="form-field"><label for="sched-start">First week</label><input id="sched-start" type="date" value="${today}"></div>
+        <div class="form-field"><label for="sched-end">Last week</label><input id="sched-end" type="date" value="${inTwelveWeeks}"></div>
+      </div>
+      <div class="schedule-grid">
+        <div class="form-field"><label for="sched-release-day">Opens to students</label>
+          <div class="inline-fields"><select id="sched-release-day">${dayOptions(5)}</select><input id="sched-release-time" type="time" value="14:00"></div>
+          <div class="muted small">Students cannot see a check-in before this.</div>
+        </div>
+        <div class="form-field"><label for="sched-due-day">Closes</label>
+          <div class="inline-fields"><select id="sched-due-day">${dayOptions(7)}</select><input id="sched-due-time" type="time" value="20:00"></div>
+          <div class="muted small">Times are ${escapeHtml(classTimezone())}.</div>
+        </div>
+      </div>
+      <label class="toggle-row"><span class="toggle"><input id="sched-hard" type="checkbox" checked><span></span></span>Hard deadline, the form closes when it is due</label>
+      <div class="section-title">Weeks this will create</div>
+      <p class="muted small">Untick any week you do not want a check-in to go out. It stays on the tracker as a teaching week, but nothing is asked of the students.</p>
+      <div id="sched-preview" class="schedule-preview"></div>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="sched-apply">Create check-ins</button>`,
+    onOpen() {
+      const refresh = () => renderSchedulePreview();
+      ['sched-start','sched-end','sched-release-day','sched-release-time','sched-due-day','sched-due-time'].forEach((id) => {
+        document.getElementById(id).addEventListener('change', refresh);
+      });
+      renderSchedulePreview();
+      document.getElementById('sched-apply').addEventListener('click', applyCheckinSchedule);
+    },
+  });
+}
+
+/** Every Monday between the two dates, so the exceptions can be picked by eye. */
+function scheduleWeeks() {
+  const start = document.getElementById('sched-start').value;
+  const end = document.getElementById('sched-end').value;
+  if (!start || !end) return [];
+  const toMonday = (value) => {
+    const date = new Date(`${value}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    return date;
+  };
+  const first = toMonday(start), last = toMonday(end);
+  if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime()) || last < first) return [];
+  const weeks = [];
+  for (let cursor = first; cursor <= last && weeks.length <= 106; cursor = new Date(cursor.getTime() + 7 * 86400000)) {
+    weeks.push(cursor.toISOString().slice(0, 10));
+  }
+  return weeks;
+}
+
+function renderSchedulePreview() {
+  const target = document.getElementById('sched-preview');
+  const weeks = scheduleWeeks();
+  const releaseDay = Number(document.getElementById('sched-release-day').value);
+  const releaseTime = document.getElementById('sched-release-time').value || '14:00';
+  const dueDay = Number(document.getElementById('sched-due-day').value);
+  const dueTime = document.getElementById('sched-due-time').value || '20:00';
+
+  if (!weeks.length) {
+    target.innerHTML = '<div class="empty-state"><h3>No weeks in that range</h3><p>Check the first and last week.</p></div>';
+    return;
+  }
+  if (weeks.length > 105) {
+    target.innerHTML = '<div class="error-banner">That range covers more than two years. Choose a shorter run.</div>';
+    return;
+  }
+
+  const dayLabel = (monday, day) => {
+    const date = new Date(`${monday}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + day - 1);
+    return new Intl.DateTimeFormat('en-IE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(date);
+  };
+  const on = weeks.filter((week) => !state.scheduleSkips.has(week)).length;
+
+  target.innerHTML = `<div class="schedule-summary"><strong>${on} check-in${on === 1 ? '' : 's'}</strong> across ${weeks.length} week${weeks.length === 1 ? '' : 's'}${weeks.length - on ? ` · ${weeks.length - on} skipped` : ''}</div>
+    <ul class="schedule-list">${weeks.map((week) => {
+      const skipped = state.scheduleSkips.has(week);
+      return `<li class="${skipped ? 'is-skipped' : ''}">
+        <label class="toggle-row"><span class="toggle"><input type="checkbox" data-sched-week="${week}" ${skipped ? '' : 'checked'}><span></span></span>
+          <span class="schedule-week"><strong>Week of ${escapeHtml(fmtWeek(week))}</strong>
+          <span>${skipped ? 'No check-in this week' : `Opens ${escapeHtml(dayLabel(week, releaseDay))} at ${escapeHtml(releaseTime)} · closes ${escapeHtml(dayLabel(week, dueDay))} at ${escapeHtml(dueTime)}`}</span></span>
+        </label>
+      </li>`;
+    }).join('')}</ul>`;
+
+  target.querySelectorAll('[data-sched-week]').forEach((box) => box.addEventListener('change', () => {
+    if (box.checked) state.scheduleSkips.delete(box.dataset.schedWeek);
+    else state.scheduleSkips.add(box.dataset.schedWeek);
+    renderSchedulePreview();
+  }));
+}
+
+async function applyCheckinSchedule() {
+  const weeks = scheduleWeeks();
+  if (!weeks.length) return showToast('Choose a first and last week', 'error');
+  const [releaseHour, releaseMinute] = (document.getElementById('sched-release-time').value || '14:00').split(':').map(Number);
+  const [dueHour, dueMinute] = (document.getElementById('sched-due-time').value || '20:00').split(':').map(Number);
+  const button = document.getElementById('sched-apply');
+  button.disabled = true; button.textContent = 'Creating…';
+  try {
+    const result = await api(`/api/admin/classes/${state.checkinClassId}/checkin-schedule`, {
+      method: 'POST',
+      body: {
+        startDate: weeks[0],
+        endDate: weeks.at(-1),
+        skipWeekStarts: [...state.scheduleSkips],
+        releaseDay: Number(document.getElementById('sched-release-day').value),
+        releaseHour, releaseMinute,
+        dueDay: Number(document.getElementById('sched-due-day').value),
+        dueHour, dueMinute,
+        hardDeadline: document.getElementById('sched-hard').checked,
+      },
+    });
+    closeModal();
+    await renderAdmin();
+    showToast(`${result.created} week${result.created === 1 ? '' : 's'} created, ${result.updated} updated${result.skipped ? `, ${result.skipped} left switched off` : ''}`);
+  } catch (error) {
+    showToast(error.message, 'error');
+    button.disabled = false; button.textContent = 'Create check-ins';
+  }
+}
+
+function bindCheckins() {
+  const classSelect = document.getElementById('checkin-class');
+  if (!classSelect) return;
+  classSelect.addEventListener('change', async () => { state.checkinClassId = classSelect.value; await renderAdmin(); });
+  document.getElementById('checkin-select-all')?.addEventListener('change', (event) => {
+    document.querySelectorAll('.week-pick').forEach((box) => { box.checked = event.target.checked; });
+  });
+  document.getElementById('checkin-select-none')?.addEventListener('click', () => {
+    document.querySelectorAll('.week-pick').forEach((box) => { box.checked = false; });
+    document.getElementById('checkin-select-all').checked = false;
+  });
+
+  const picked = () => [...document.querySelectorAll('.week-pick:checked')].map((box) => box.value);
+  const bulk = async (enabled) => {
+    const weekIds = picked();
+    if (!weekIds.length) return showToast('Select some weeks first', 'error');
+    try {
+      const result = await api('/api/admin/weeks/bulk-checkin', { method: 'POST', body: { weekIds, enabled } });
+      await renderAdmin();
+      showToast(`${result.updated} week${result.updated === 1 ? '' : 's'} turned ${enabled ? 'on' : 'off'}`);
+    } catch (error) { showToast(error.message, 'error'); }
+  };
+  document.getElementById('checkin-schedule')?.addEventListener('click', openCheckinScheduleModal);
+  document.getElementById('checkin-bulk-off')?.addEventListener('click', () => bulk(false));
+  document.getElementById('checkin-bulk-on')?.addEventListener('click', () => bulk(true));
+
+  // Toggling a week takes effect immediately; the times need an explicit save.
+  document.querySelectorAll('[data-week-enabled]').forEach((box) => box.addEventListener('change', async () => {
+    try {
+      await api(`/api/admin/weeks/${box.dataset.weekEnabled}/checkin`, { method: 'PUT', body: { enabled: box.checked } });
+      await renderAdmin();
+      showToast(box.checked ? 'Check-in switched on' : 'Check-in switched off for that week');
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+
+  document.querySelectorAll('[data-week-save]').forEach((button) => button.addEventListener('click', async () => {
+    const id = button.dataset.weekSave;
+    const value = (attribute) => document.querySelector(`[data-week-${attribute}="${id}"]`);
+    try {
+      await api(`/api/admin/weeks/${id}/checkin`, {
+        method: 'PUT',
+        body: {
+          releaseAt: fromZonedInput(value('release').value),
+          dueAt: fromZonedInput(value('due').value),
+          hardDeadline: value('hard').value === 'hard',
+          label: value('label').value.trim() || null,
+        },
+      });
+      showToast('Week saved');
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+}
+
+function attendanceView() {
+  return `${pageHeader('Attendance', 'Upload webinar attendance', 'Import a Zoom or webinar CSV for one class and teaching week.')}
+    <section class="card" style="max-width:760px"><div class="card-header"><div><h2>Attendance import</h2><p>Students are matched by email first, then by exact name.</p></div></div>
+    <form class="card-body" id="attendance-form">
+      <div class="form-field"><label>Class</label><select name="classId" id="attendance-class" required>${state.classes.map((klass) => `<option value="${klass.id}">${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div>
+      <div class="form-field"><label>Teaching week</label><select name="weekId" id="attendance-week" required><option value="">Choose a class first</option></select></div>
+      <div class="form-field"><label>Minutes required for attended live</label><input type="number" name="liveThresholdMinutes" value="30" min="1" required></div>
+      <div class="form-field"><label>Attendance CSV</label><input type="file" name="file" accept=".csv,text/csv" required></div>
+      <button class="btn primary" type="submit">Import attendance</button>
+    </form></section>`;
+}
+
+function remindersView() {
+  const reminders = state.settings.reminders || {};
+  const nudge = state.settings.nudge || {};
+  const email = state.settings.email || {};
+  const template = (key, title, timing) => {
+    const value = reminders[key] || {};
+    return `<div class="template-box"><div class="template-head"><div><strong>${title}</strong><div class="muted small">${timing}</div></div><label class="toggle-row"><span class="toggle"><input type="checkbox" data-reminder-enabled="${key}" ${value.enabled !== false ? 'checked' : ''}><span></span></span>Enabled</label></div>
+      <div class="form-field"><label>Subject</label><input data-reminder-subject="${key}" value="${escapeHtml(value.subject || '')}"></div>
+      <div class="form-field"><label>Email body</label><textarea data-reminder-body="${key}">${escapeHtml(value.body || '')}</textarea></div></div>`;
+  };
+  return `${pageHeader('Automation', 'Email reminders', 'Configure the delivery provider, templates and automatic deadline sequence.', `<button class="btn" id="run-reminders">Run reminder check</button><button class="btn primary" id="save-reminders">Save settings</button>`)}
+    <div class="settings-grid"><div class="settings-stack">
+      <section class="card"><div class="card-header"><div><h2>Delivery settings</h2><p>Use a GoHighLevel webhook, SMTP or console mode.</p></div></div><div class="card-body">
+        <div class="setting-row"><div class="setting-copy"><strong>Provider</strong><span>Console mode logs email locally without sending.</span></div><div><select id="email-provider"><option value="console" ${email.provider === 'console' ? 'selected' : ''}>Console / test</option><option value="ghl_webhook" ${email.provider === 'ghl_webhook' ? 'selected' : ''}>GoHighLevel webhook</option><option value="smtp" ${email.provider === 'smtp' ? 'selected' : ''}>SMTP</option></select></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>Sender</strong><span>Name, email and reply-to address.</span></div><div><div class="form-field"><input id="email-from-name" value="${escapeHtml(email.fromName || 'Gaeilgeoir Guides')}" placeholder="Sender name"></div><div class="form-field"><input id="email-from-address" type="email" value="${escapeHtml(email.fromAddress || '')}" placeholder="Sender email"></div><div class="form-field"><input id="email-reply-to" type="email" value="${escapeHtml(email.replyTo || '')}" placeholder="Reply-to"></div></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>GoHighLevel webhook</strong><span>Receives the complete email payload.</span></div><div><input id="email-webhook" type="url" value="${escapeHtml(email.webhookUrl || '')}" placeholder="https://..."></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>SMTP</strong><span>Optional direct email delivery. Port 465 normally needs implicit TLS; 587 does not.</span></div><div><div class="form-field"><input id="smtp-host" value="${escapeHtml(email.smtpHost || '')}" placeholder="SMTP host"></div><div class="form-field"><input id="smtp-port" type="number" min="1" max="65535" value="${escapeHtml(String(email.smtpPort || 587))}" placeholder="Port"></div><div class="form-field"><input id="smtp-user" value="${escapeHtml(email.smtpUser || '')}" placeholder="SMTP user"></div><div class="form-field"><input id="smtp-password" type="password" placeholder="Leave blank to keep current password"></div><label class="toggle-row"><span class="toggle"><input id="smtp-secure" type="checkbox" ${email.smtpSecure ? 'checked' : ''}><span></span></span>Use implicit TLS</label></div></div>
+      </div><div class="card-footer"><button class="btn" id="test-email">Send test email</button><button class="btn primary" id="save-email">Save email settings</button></div></section>
+      <section class="card"><div class="card-header"><div><h2>One-off reminders</h2><p>The wording you start from when you chase a single student from the tracker. Every send is editable first.</p></div></div><div class="card-body">
+        <div class="form-field"><label>Missed check-in, subject</label><input id="nudge-checkin-subject" value="${escapeHtml(nudge.checkinSubject || '')}"></div>
+        <div class="form-field"><label>Missed check-in, message</label><textarea id="nudge-checkin-body" class="tall">${escapeHtml(nudge.checkinBody || '')}</textarea></div>
+        <div class="form-field"><label>Missed homework, subject</label><input id="nudge-homework-subject" value="${escapeHtml(nudge.homeworkSubject || '')}"></div>
+        <div class="form-field"><label>Missed homework, message</label><textarea id="nudge-homework-body" class="tall">${escapeHtml(nudge.homeworkBody || '')}</textarea></div>
+        <div class="muted small">Available here: <span class="resource-chip">{{first_name}}</span><span class="resource-chip">{{item_title}}</span><span class="resource-chip">{{deadline}}</span><span class="resource-chip">{{link}}</span></div>
+      </div><div class="card-footer"><button class="btn primary" id="save-nudge">Save reminder wording</button></div></section>
+
+      <section class="card"><div class="card-header"><div><h2>Automatic deadline sequence</h2><p>Only students who have not submitted receive these.</p></div><label class="toggle-row"><span class="toggle"><input id="reminders-enabled" type="checkbox" ${reminders.enabled !== false ? 'checked' : ''}><span></span></span>Enabled</label></div><div class="card-body">
+        ${template('tomorrow', 'Due tomorrow', '24 hours before deadline')}${template('twoHours', 'Due in 2 hours', '2 hours before deadline')}${template('thirtyMinutes', 'Due in 30 minutes', '30 minutes before deadline')}
+      </div></section>
+    </div><aside class="settings-stack"><section class="card"><div class="card-header"><div><h3>Available variables</h3><p>Use these in subject lines and email bodies.</p></div></div><div class="card-body"><span class="resource-chip">{{first_name}}</span><span class="resource-chip">{{assignment_title}}</span><span class="resource-chip">{{deadline_time}}</span><span class="resource-chip">{{assignment_link}}</span></div></section></aside></div>`;
+}
+
+/* Dictation settings mirror the VoiceKey app: which models to use, which language
+   to pin, and the personal dictionary that biases both the speech model and the
+   cleanup pass toward the terms this course actually uses. */
+function dictationSettingsCard() {
+  const dictation = state.settings.dictation || {};
+  const voicePrompts = state.settings.voicePrompts || {};
+  const dictionary = Array.isArray(dictation.dictionary) ? dictation.dictionary : [];
+  return `<section class="card"><div class="card-header"><div><h2>Dictation and voice notes</h2><p>Speech is transcribed, then cleaned into the words you would have typed. Same pipeline as VoiceKey.</p></div></div><div class="card-body">
+    <div class="setting-row"><div class="setting-copy"><strong>Speech model</strong><span>Used to turn your recording into a transcript.</span></div><div><input id="dictation-transcribe-model" value="${escapeHtml(dictation.transcribeModel || 'gpt-4o-transcribe')}"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Cleanup model</strong><span>Turns the raw transcript into finished text.</span></div><div><input id="dictation-cleanup-model" value="${escapeHtml(dictation.cleanupModel || 'gpt-4.1-mini')}"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Language</strong><span>Auto handles English with Irish words mixed in, which is what most feedback looks like.</span></div><div><select id="dictation-language">
+      <option value="auto" ${(dictation.language || 'auto') === 'auto' ? 'selected' : ''}>Auto detect</option>
+      <option value="en" ${dictation.language === 'en' ? 'selected' : ''}>English</option>
+      <option value="ga" ${dictation.language === 'ga' ? 'selected' : ''}>Irish</option>
+    </select></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Personal dictionary</strong><span>Names and terms speech recognition tends to mishear. One per line.</span></div><div><textarea id="dictation-dictionary" class="tall">${escapeHtml(dictionary.join('\n'))}</textarea></div></div>
+    <div class="form-field"><label>Cleanup instructions</label><textarea id="voice-cleanup-prompt" class="tall">${escapeHtml(voicePrompts.cleanupPrompt || '')}</textarea><div class="muted small">Used for check-in replies, general feedback and student notes.</div></div>
+    <div class="form-field"><label>Light cleanup, for Irish corrections</label><textarea id="voice-light-prompt">${escapeHtml(voicePrompts.lightPrompt || '')}</textarea><div class="muted small">Punctuation only. This must never rewrite the Irish being taught.</div></div>
+  </div></section>`;
+}
+
+function aiSettingsView() {
+  const prompts = state.settings.prompts || {};
+  const openai = state.settings.openai || {};
+  return `${pageHeader('Feedback drafting', 'OpenAI and correction prompts', 'AI drafting starts only after a student submits actual work.', `<button class="btn" id="test-openai">Test connection</button><button class="btn primary" id="save-ai">Save configuration</button>`)}
+    <div class="settings-grid"><div class="settings-stack">
+      <section class="card"><div class="card-header"><div><h2>OpenAI connection</h2><p>The API key is encrypted server-side and never returned to the browser.</p></div></div><div class="card-body">
+        <div class="connection"><span class="connection-dot ${openai.configured ? 'ok' : ''}"></span><div><strong>${openai.configured ? 'Connected' : 'Not configured'}</strong><span>${openai.configured ? `Using ${escapeHtml(openai.model)}` : 'Add a server-side API key.'}</span></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="openai-key" type="password" placeholder="sk-..."></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used for check-in and homework feedback.</span></div><div><input id="openai-model" value="${escapeHtml(openai.model || 'gpt-5.6')}"></div></div>
+      </div></section>
+      <section class="card"><div class="card-header"><div><h2>Teacher prompts</h2><p>These instructions are combined with the student's actual answers.</p></div></div><div class="card-body">
+        <div class="form-field"><label>Weekly check-in response</label><textarea id="checkin-prompt">${escapeHtml(prompts.checkinPrompt || '')}</textarea></div>
+        <div class="form-field"><label>Irish corrections, An Caighdeán Oifigiúil</label><textarea id="correction-prompt" class="tall">${escapeHtml(prompts.correctionPrompt || '')}</textarea></div>
+        <div class="form-field"><label>General teacher feedback</label><textarea id="general-prompt">${escapeHtml(prompts.generalFeedbackPrompt || '')}</textarea></div>
+      </div></section>
+      ${dictationSettingsCard()}
+    </div><aside class="settings-stack"><section class="card"><div class="card-header"><div><h3>Draft lifecycle</h3><p>Clear states on the teacher side.</p></div></div><div class="card-body">
+      <div class="connection"><span class="connection-dot ok"></span><div><strong>Submission-triggered only</strong><span>No reply is drafted for missing work.</span></div></div>
+      <div class="mini-stats"><span class="mini-stat">AI drafted</span><span class="mini-stat">Teacher edited</span><span class="mini-stat">Returned</span></div>
+      <p class="muted small"><span class="kbd">←</span> <span class="kbd">→</span> moves through submissions. <span class="kbd">Enter</span> submits feedback. <span class="kbd">Shift</span> + <span class="kbd">Enter</span> adds a line.</p>
+    </div></section></aside></div>`;
+}
+
+/* Admin bindings and modals */
+function bindAdminView() {
+  document.getElementById('open-attendance')?.addEventListener('click', () => { state.view = 'attendance'; renderAdmin(); });
+  document.getElementById('new-assignment')?.addEventListener('click', () => openAssignmentModal(null, state.activeClassId));
+  document.getElementById('create-assignment')?.addEventListener('click', () => openAssignmentModal());
+  document.getElementById('tracker-search')?.addEventListener('input', filterTracker);
+  document.querySelectorAll('[data-filter]').forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-filter]').forEach((item) => item.classList.remove('active'));
+    button.classList.add('active'); state.filter = button.dataset.filter; filterTracker();
+  }));
+  document.getElementById('jump-latest')?.addEventListener('click', () => { const scroll = document.getElementById('tracker-scroll'); scroll.scrollTo({ left: scroll.scrollWidth, behavior: 'smooth' }); });
+  document.getElementById('engagement-item')?.addEventListener('change', (event) => {
+    state.engagementItem = event.target.value;
+    // Only the one card changes, so redraw it rather than the whole tracker.
+    const card = document.querySelector('.card.engagement');
+    if (!card) return renderAdmin();
+    card.outerHTML = engagementPanel();
+    bindAdminView();
+  });
+  document.querySelectorAll('[data-review-type]').forEach((button) => button.addEventListener('click', () => openReview(button.dataset)));
+  document.querySelectorAll('[data-open-student]').forEach((button) => button.addEventListener('click', () => openStudentProfile(button.dataset.openStudent)));
+  document.querySelectorAll('[data-people-tab]').forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-people-tab]').forEach((item) => item.classList.remove('active')); button.classList.add('active');
+    document.getElementById('classes-tab').classList.toggle('hidden', button.dataset.peopleTab !== 'classes');
+    document.getElementById('students-tab').classList.toggle('hidden', button.dataset.peopleTab !== 'students');
+  }));
+  document.getElementById('add-class')?.addEventListener('click', openClassModal);
+  document.getElementById('add-student')?.addEventListener('click', openStudentModal);
+  document.getElementById('import-students')?.addEventListener('click', openStudentImportModal);
+  document.querySelectorAll('[data-open-class]').forEach((button) => button.addEventListener('click', () => { state.activeClassId = button.dataset.openClass; state.view = 'tracker'; renderAdmin(); }));
+  document.querySelectorAll('[data-delete-class]').forEach((button) => button.addEventListener('click', () => confirmDeleteClass(button.dataset.deleteClass)));
+  document.querySelectorAll('[data-student-class]').forEach((select) => select.addEventListener('change', async () => {
+    try { await api(`/api/admin/students/${select.dataset.studentClass}`, { method: 'PATCH', body: { classId: select.value } }); showToast('Student moved'); }
+    catch (error) { showToast(error.message, 'error'); }
+  }));
+  document.querySelectorAll('[data-resend]').forEach((button) => button.addEventListener('click', () => studentAccessAction(button.dataset.resend, 'resend-invite')));
+  document.querySelectorAll('[data-reset-student]').forEach((button) => button.addEventListener('click', () => studentAccessAction(button.dataset.resetStudent, 'reset-password')));
+  document.querySelectorAll('[data-edit-assignment]').forEach((button) => button.addEventListener('click', () => openAssignmentModal(state.assignments.find((item) => item.id === button.dataset.editAssignment))));
+  document.querySelectorAll('[data-reopen-assignment]').forEach((button) => button.addEventListener('click', () => openReopenModal(button.dataset.reopenAssignment)));
+  bindAssignmentCalendar();
+  bindAttendance();
+  bindCheckins();
+  bindReminderSettings();
+  bindAISettings();
+}
+
+function filterTracker() {
+  state.trackerSearch = document.getElementById('tracker-search')?.value || '';
+  const query = state.trackerSearch.toLowerCase().trim();
+  let visible = 0;
+  document.querySelectorAll('#tracker-body tr').forEach((row) => {
+    const matchesSearch = row.dataset.name.includes(query);
+    const matchesFilter = state.filter === 'all' || (state.filter === 'attention' && row.dataset.attention === 'true') || (state.filter === 'missing' && row.dataset.missing === 'true');
+    const show = matchesSearch && matchesFilter;
+    row.classList.toggle('hidden', !show);
+    if (show) visible += 1;
+  });
+  const note = document.getElementById('tracker-empty-note');
+  if (note) {
+    note.textContent = visible ? '' : 'No students match this view.';
+    note.classList.toggle('hidden', Boolean(visible));
+  }
+}
+
+async function studentAccessAction(id, action) {
+  const ok = await askConfirm(action === 'reset-password'
+    ? { title: 'Reset this password?', message: 'A new temporary password is generated and emailed to the student. Their current password stops working and they are signed out everywhere.', confirmLabel: 'Reset and email' }
+    : { title: 'Resend the invitation?', message: 'A fresh temporary password is generated and emailed. Their current password stops working and they are signed out everywhere.', confirmLabel: 'Resend invitation' });
+  if (!ok) return;
+  try { const data = await api(`/api/admin/students/${id}/${action}`, { method: 'POST' }); showToast(data.message || 'Email sent'); }
+  catch (error) { showToast(error.message, 'error'); }
+}
+
+function openClassModal() {
+  modal({
+    title: 'Add class', subtitle: 'Creates a separate weekly tracker and assignment stream.',
+    body: `<form id="class-form"><div class="form-field"><label>Programme name</label><input name="programmeName" value="Irish for Primary Teaching" required></div><div class="form-field"><label>Day</label><select name="dayOfWeek">${DAY_NAMES.slice(1).map((day, index) => `<option value="${index + 1}">${day}</option>`).join('')}</select></div><div class="form-field"><label>Start time</label><input name="startTime" type="time" value="19:00" required></div><div class="form-field"><label>Timezone</label><input name="timezone" value="Europe/Dublin" required></div></form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-class">Add class</button>`,
+    onOpen() {
+      document.getElementById('save-class').addEventListener('click', async () => {
+        const form = new FormData(document.getElementById('class-form'));
+        try {
+          const klass = await api('/api/admin/classes', { method: 'POST', body: Object.fromEntries(form) });
+          closeModal(); state.classes.push(klass); state.activeClassId = klass.id; state.view = 'tracker'; await renderAdmin(); showToast('Class created');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function openStudentModal() {
+  modal({
+    title: 'Add student', subtitle: 'A strong temporary password will be generated and emailed automatically.',
+    body: `<form id="student-form"><div class="form-field"><label>Full name</label><input name="name" required></div><div class="form-field"><label>Email</label><input name="email" type="email" required></div><div class="form-field"><label>Class</label><select name="classId">${state.classes.map((klass) => `<option value="${klass.id}">${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div></form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-student">Create account and send email</button>`,
+    onOpen() {
+      document.getElementById('save-student').addEventListener('click', async () => {
+        const form = Object.fromEntries(new FormData(document.getElementById('student-form')));
+        try {
+          const result = await api('/api/admin/students', { method: 'POST', body: form });
+          closeModal(); await renderAdmin();
+          const console_ = state.settings?.email?.provider === 'console' || !state.settings?.email?.provider;
+          if (result.emailStatus !== 'sent') showToast('Student created, but the invitation email failed to send. Use Resend invite once email is working.', 'error');
+          else if (console_) showToast('Student created. Email is in test mode, so no invitation was actually delivered.', 'error');
+          else showToast('Student created and their login emailed');
+        }
+        catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function openStudentImportModal() {
+  modal({
+    title: 'Upload students', subtitle: 'CSV headings: Name, Email and Class. Each new student is emailed a temporary password.',
+    body: `<form id="student-import-form"><div class="form-field"><label>Default class, optional</label><select name="classId"><option value="">Use the Class column</option>${state.classes.map((klass) => `<option value="${klass.id}">${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div><div class="form-field"><label>Student CSV</label><input name="file" type="file" accept=".csv,text/csv" required></div></form><div id="import-results"></div>`,
+    footer: `<button class="btn" data-close-modal>Close</button><button class="btn primary" id="run-import">Import and invite</button>`,
+    onOpen() {
+      document.getElementById('run-import').addEventListener('click', async () => {
+        const form = new FormData(document.getElementById('student-import-form'));
+        try {
+          const result = await api('/api/admin/students/import', { method: 'POST', body: form });
+          document.getElementById('import-results').innerHTML = `<div class="success-banner">${result.created} of ${result.total} students created.</div><div class="table-wrap"><table class="data-table"><tbody>${result.results.map((row) => `<tr><td>${escapeHtml(row.name || row.email)}</td><td><span class="pill ${row.status === 'created' ? 'green' : 'red'}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.error || row.emailStatus || '')}</td></tr>`).join('')}</tbody></table></div>`;
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
+  const questions = assignment?.questions?.length ? assignment.questions : [{ prompt: '', imageUrl: '', required: true }];
+  const resources = assignment?.resources || [];
+  return `<form id="assignment-form">
+    <div class="form-field"><label>Class</label><select name="classId" ${assignment ? 'disabled' : ''}>${state.classes.map((klass) => `<option value="${klass.id}" ${(assignment?.class_id || defaultClassId) === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div>
+    <div class="form-field"><label>Teaching week, optional</label><select name="weekId" id="assignment-week"><option value="">No weekly tracker column</option></select></div>
+    <div class="form-field"><label>Title</label><input name="title" value="${escapeHtml(assignment?.title || '')}" required></div>
+    <div class="form-field"><label>Instructions</label><textarea name="instructions">${escapeHtml(assignment?.instructions || '')}</textarea></div>
+    <div class="form-field"><label>Loom share or embed URL</label><input name="loomUrl" type="url" value="${escapeHtml(assignment?.loom_url || '')}" placeholder="https://www.loom.com/share/..."></div>
+    <div class="form-field"><label>Visible from</label><input name="visibleAt" type="datetime-local" value="${toZonedInput(assignment?.visible_at || new Date())}" required><div class="muted small">Times are ${escapeHtml(classTimezone())} (${escapeHtml(timezoneAbbreviation())}).</div></div>
+    <div class="form-field"><label>Deadline</label><input name="deadlineAt" type="datetime-local" value="${assignment?.deadline_at ? toZonedInput(assignment.deadline_at) : (prefillDeadline || toZonedInput(new Date(Date.now() + 7 * 86400000)))}" required></div>
+    <div class="input-row"><label class="toggle-row"><span class="toggle"><input name="hardDeadline" type="checkbox" ${assignment?.hard_deadline !== false ? 'checked' : ''}><span></span></span>Hard deadline</label><label class="toggle-row"><span class="toggle"><input name="remindersEnabled" type="checkbox" ${assignment?.reminders_enabled !== false ? 'checked' : ''}><span></span></span>Email reminders</label></div>
+    ${uploadSettingsBlock(assignment)}
+    <div class="section-title">Files students can use</div><div class="form-field"><input id="assignment-files" type="file" multiple></div><div id="resource-list">${resources.map((resource) => `<span class="resource-chip" data-existing-resource='${escapeHtml(JSON.stringify({ fileName: resource.fileName || resource.filename, fileUrl: resource.fileUrl || resource.fileurl, mimeType: resource.mimeType || resource.mimetype || '' }))}'>${escapeHtml(resource.fileName || resource.filename)}</span>`).join('')}</div>
+    <div class="section-title">Rolling questions</div><div id="question-list">${questions.map((question, index) => questionBuilder(question, index)).join('')}</div><button class="btn small" type="button" id="add-question">Add question</button>
+  </form>`;
+}
+
+const FILE_TYPE_CHOICES = [
+  { value: 'image', label: 'Photos and images', hint: 'A photo or scan of handwritten work' },
+  { value: 'pdf', label: 'PDF', hint: 'Scans and exported documents' },
+  { value: 'word', label: 'Word documents', hint: '.docx from Word, Pages or Google Docs' },
+  { value: 'text', label: 'Plain text', hint: '.txt files' },
+];
+
+/* Whether this assignment takes files at all, and which ones. Anything uploaded
+   is read into text on arrival, so a photo of handwriting still goes through the
+   Irish corrections the same as typed work. */
+function uploadSettingsBlock(assignment) {
+  const allowed = assignment?.accepted_file_types || ['image', 'pdf'];
+  const on = Boolean(assignment?.allow_uploads);
+  return `<div class="upload-settings ${on ? 'is-on' : ''}" id="upload-settings">
+    <label class="toggle-row"><span class="toggle"><input name="allowUploads" type="checkbox" ${on ? 'checked' : ''}><span></span></span>Let students upload files with this homework</label>
+    <div class="upload-settings-body" ${on ? '' : 'hidden'}>
+      <p class="muted small">Uploads are read into text automatically, so a photo of handwritten Irish goes through the same corrections as anything typed in.</p>
+      <div class="file-type-grid">${FILE_TYPE_CHOICES.map((choice) => `
+        <label class="file-type"><input type="checkbox" data-file-type="${choice.value}" ${allowed.includes(choice.value) ? 'checked' : ''}>
+          <span><strong>${escapeHtml(choice.label)}</strong><small>${escapeHtml(choice.hint)}</small></span></label>`).join('')}</div>
+      <div class="upload-settings-row">
+        <label class="toggle-row"><span class="toggle"><input name="uploadsRequired" type="checkbox" ${assignment?.uploads_required ? 'checked' : ''}><span></span></span>A file must be uploaded to submit</label>
+        <label class="inline-number">Up to <input name="maxFiles" type="number" min="1" max="10" value="${Number(assignment?.max_files || 3)}"> file(s)</label>
+      </div>
+    </div>
+  </div>`;
+}
+
+function questionBuilder(question, index) {
+  return `<div class="question-builder" data-question><div class="question-builder-head"><strong>Question <span data-question-number>${index + 1}</span></strong><button type="button" class="text-link" data-remove-question>Remove</button></div><div class="form-field"><label>Question</label><textarea data-question-prompt required>${escapeHtml(question.prompt || '')}</textarea></div><div class="form-field"><label>Embedded image, optional</label><input data-question-image type="url" value="${escapeHtml(question.imageUrl || question.image_url || '')}" placeholder="Existing image URL"><input data-question-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-top:7px"></div><label class="toggle-row"><span class="toggle"><input data-question-required type="checkbox" ${question.required !== false ? 'checked' : ''}><span></span></span>Required</label></div>`;
+}
+
+
+async function loadAssignmentWeeks(classId, selected = '') {
+  if (!classId) return;
+  const tracker = await api(`/api/admin/tracker/${classId}`);
+  const select = document.getElementById('assignment-week');
+  select.innerHTML = `<option value="">No weekly tracker column</option>${tracker.weeks.map((week) => `<option value="${week.id}" ${selected === week.id ? 'selected' : ''}>Week of ${fmtWeek(week.week_start)}</option>`).join('')}`;
+}
+
+function openAssignmentModal(assignment = null, defaultClassId = null, prefillDeadline = null) {
+  modal({
+    title: assignment ? 'Edit assignment' : 'Create assignment', subtitle: 'Students complete multiple questions one at a time. Drafts save automatically.', wide: true,
+    body: assignmentForm(assignment, defaultClassId, prefillDeadline),
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-assignment">${assignment ? 'Save changes' : 'Publish assignment'}</button>`,
+    onOpen() {
+      const form = document.getElementById('assignment-form');
+      loadAssignmentWeeks(assignment?.class_id || defaultClassId || form.classId.value, assignment?.week_id || '');
+      form.classId?.addEventListener('change', () => loadAssignmentWeeks(form.classId.value));
+      document.getElementById('add-question').addEventListener('click', () => {
+        document.getElementById('question-list').insertAdjacentHTML('beforeend', questionBuilder({}, document.querySelectorAll('[data-question]').length));
+        bindQuestionRemoval();
+      });
+      bindQuestionRemoval();
+      const uploadToggle = form.allowUploads;
+      const uploadBody = document.querySelector('.upload-settings-body');
+      uploadToggle.addEventListener('change', () => {
+        uploadBody.hidden = !uploadToggle.checked;
+        document.getElementById('upload-settings').classList.toggle('is-on', uploadToggle.checked);
+      });
+      document.getElementById('save-assignment').addEventListener('click', async () => {
+        try {
+          const filesInput = document.getElementById('assignment-files');
+          const resources = [...document.querySelectorAll('[data-existing-resource]')].map((element) => JSON.parse(element.dataset.existingResource));
+          if (filesInput.files.length) {
+            const upload = new FormData();
+            [...filesInput.files].forEach((file) => upload.append('files', file));
+            const uploaded = await api('/api/admin/uploads', { method: 'POST', body: upload });
+            resources.push(...uploaded.files);
+          }
+          const fd = new FormData(form);
+          const questionElements = [...document.querySelectorAll('[data-question]')];
+          const questions = [];
+          for (const element of questionElements) {
+            let imageUrl = element.querySelector('[data-question-image]').value || null;
+            const imageFile = element.querySelector('[data-question-image-file]').files[0];
+            if (imageFile) {
+              const imageUpload = new FormData();
+              imageUpload.append('files', imageFile);
+              const uploadedImage = await api('/api/admin/uploads', { method: 'POST', body: imageUpload });
+              imageUrl = uploadedImage.files[0]?.url || imageUrl;
+            }
+            questions.push({
+              prompt: element.querySelector('[data-question-prompt]').value,
+              imageUrl,
+              required: element.querySelector('[data-question-required]').checked,
+            });
+          }
+          const payload = {
+            classId: assignment?.class_id || fd.get('classId'), weekId: fd.get('weekId') || null,
+            title: fd.get('title'), instructions: fd.get('instructions'), loomUrl: fd.get('loomUrl') || null,
+            visibleAt: fromZonedInput(fd.get('visibleAt')), deadlineAt: fromZonedInput(fd.get('deadlineAt')),
+            hardDeadline: form.hardDeadline.checked, remindersEnabled: form.remindersEnabled.checked,
+            allowUploads: form.allowUploads.checked,
+            uploadsRequired: form.uploadsRequired.checked,
+            acceptedFileTypes: [...document.querySelectorAll('[data-file-type]:checked')].map((box) => box.dataset.fileType),
+            maxFiles: Number(form.maxFiles.value) || 3,
+            status: assignment?.status || 'published', questions, resources,
+          };
+          await api(assignment ? `/api/admin/assignments/${assignment.id}` : '/api/admin/assignments', { method: assignment ? 'PUT' : 'POST', body: payload });
+          closeModal(); await renderAdmin(); showToast(assignment ? 'Assignment updated' : 'Assignment published');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function bindQuestionRemoval() {
+  document.querySelectorAll('[data-remove-question]').forEach((button) => {
+    button.onclick = () => {
+      if (document.querySelectorAll('[data-question]').length <= 1) return showToast('At least one question is required', 'error');
+      button.closest('[data-question]').remove();
+      document.querySelectorAll('[data-question-number]').forEach((element, index) => { element.textContent = index + 1; });
+    };
+  });
+}
+
+function bindAssignmentCalendar() {
+  document.querySelectorAll('[data-assignment-view]').forEach((button) => button.addEventListener('click', async () => {
+    state.assignmentView = button.dataset.assignmentView;
+    await renderAdmin();
+  }));
+  document.querySelectorAll('[data-assignment-step]').forEach((button) => button.addEventListener('click', async () => {
+    const step = Number(button.dataset.assignmentStep);
+    if (!step) state.assignmentMonth = null;
+    else {
+      const cursor = state.assignmentMonth ? new Date(state.assignmentMonth) : new Date();
+      state.assignmentMonth = new Date(cursor.getFullYear(), cursor.getMonth() + step, 1).toISOString();
+    }
+    await renderAdmin();
+  }));
+  document.getElementById('assignment-class-filter')?.addEventListener('change', async (event) => {
+    state.assignmentClassId = event.target.value || null;
+    await renderAdmin();
+  });
+  document.getElementById('show-archived')?.addEventListener('change', async (event) => {
+    state.showArchived = event.target.checked;
+    await renderAdmin();
+  });
+  // Clicking a day opens the create form with that deadline already filled in.
+  document.querySelectorAll('[data-add-on]').forEach((button) => button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openAssignmentModal(null, state.assignmentClassId, `${button.dataset.addOn}T18:00`);
+  }));
+  document.querySelectorAll('[data-archive-assignment]').forEach((button) => button.addEventListener('click', async () => {
+    const archived = button.dataset.archived === 'true';
+    try {
+      await api(`/api/admin/assignments/${button.dataset.archiveAssignment}/archive`, { method: 'POST', body: { archived: !archived } });
+      await renderAdmin();
+      showToast(archived ? 'Assignment restored' : 'Assignment archived');
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+  document.querySelectorAll('[data-delete-assignment]').forEach((button) => button.addEventListener('click', () => confirmDeleteAssignment(button.dataset.deleteAssignment)));
+  document.getElementById('calendar-subscribe')?.addEventListener('click', openCalendarSubscribeModal);
+}
+
+/* Deleting takes the students' work with it, so the count comes first and archive
+   is offered as the thing you probably meant. */
+async function confirmDeleteAssignment(id) {
+  let impact;
+  try { impact = await api(`/api/admin/assignments/${id}/impact`); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  const { submissions, returned, drafts, assignment } = impact;
+  const detail = submissions
+    ? `<div class="error-banner"><strong>${submissions} student submission${submissions === 1 ? '' : 's'} will be deleted permanently.</strong>${returned ? ` ${returned} of ${returned === 1 ? 'them has' : 'them have'} already had feedback returned.` : ''}</div>
+       <p class="muted small">Archiving keeps the work and the feedback, and removes the assignment from the tracker and from what students see. That is usually what you want.</p>`
+    : `<p class="muted small">Nothing has been submitted${drafts ? `, though ${drafts} student${drafts === 1 ? ' has' : 's have'} an unfinished draft` : ''}. This assignment can be deleted cleanly.</p>`;
+
+  modal({
+    title: `Delete “${assignment.title}”?`,
+    subtitle: 'This cannot be undone.',
+    body: detail,
+    footer: `<button class="btn" data-close-modal>Cancel</button>
+      ${submissions ? `<button class="btn" id="archive-instead">Archive instead</button>` : ''}
+      <button class="btn danger" id="confirm-delete">Delete${submissions ? ` and remove ${submissions} submission${submissions === 1 ? '' : 's'}` : ''}</button>`,
+    onOpen() {
+      document.getElementById('archive-instead')?.addEventListener('click', async () => {
+        try {
+          await api(`/api/admin/assignments/${id}/archive`, { method: 'POST', body: { archived: true } });
+          closeModal(); await renderAdmin(); showToast('Assignment archived, submissions kept');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+      document.getElementById('confirm-delete').addEventListener('click', async () => {
+        try {
+          await api(`/api/admin/assignments/${id}?confirmSubmissions=${submissions}`, { method: 'DELETE' });
+          closeModal(); await renderAdmin(); showToast('Assignment deleted');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* Subscribing beats downloading: the calendar app re-reads the feed, so a moved
+   deadline or a new assignment turns up without anyone adding it again. */
+async function openCalendarSubscribeModal() {
+  let feed;
+  try { feed = await api('/api/admin/calendar-feed'); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  const webcal = feed.url.replace(/^https?:/, 'webcal:');
+  modal({
+    title: 'Add deadlines to your calendar',
+    subtitle: 'Subscribe once and it stays up to date on its own.',
+    body: `
+      <p class="muted small">This link is private to you. Anyone who has it can read your deadlines, so treat it like a password.</p>
+      <div class="form-field"><label for="feed-url">Your calendar link</label><input id="feed-url" readonly value="${escapeHtml(feed.url)}"></div>
+      <div class="actions"><button class="btn" id="copy-feed">Copy link</button><a class="btn primary" href="${escapeHtml(webcal)}">Open in your calendar app</a></div>
+      <div class="section-title">How to add it</div>
+      <ul class="how-to">
+        <li><strong>iPhone or Mac:</strong> tap <em>Open in your calendar app</em>, or Calendar → File → New Calendar Subscription and paste the link.</li>
+        <li><strong>Google Calendar:</strong> Other calendars → From URL → paste the link.</li>
+        <li><strong>Outlook:</strong> Add calendar → Subscribe from web → paste the link.</li>
+      </ul>
+      <p class="muted small">Calendar apps refresh on their own schedule, often only every few hours. The feed carries every published deadline across your classes.</p>`,
+    footer: `<button class="btn danger" id="rotate-feed">Reset link</button><button class="btn primary" data-close-modal>Done</button>`,
+    onOpen() {
+      document.getElementById('copy-feed').addEventListener('click', async () => {
+        const input = document.getElementById('feed-url');
+        try { await navigator.clipboard.writeText(input.value); showToast('Link copied'); }
+        catch { input.select(); showToast('Press Cmd+C to copy'); }
+      });
+      document.getElementById('rotate-feed').addEventListener('click', async () => {
+        if (!await askConfirm({ title: 'Reset your calendar link?', message: 'Any calendar already subscribed stops updating until you add the new link. Use this if you think someone else has the old one.', confirmLabel: 'Reset link', danger: true })) return;
+        try {
+          const next = await api('/api/admin/calendar-feed/rotate', { method: 'POST' });
+          document.getElementById('feed-url').value = next.url;
+          showToast('Link reset. Re-add it in your calendar app.');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function openReopenModal(id) {
+  modal({
+    title: 'Reopen assignment', subtitle: 'Set a new closing time for students who still need to submit.',
+    body: `<div class="form-field"><label>Reopen until</label><input id="reopen-until" type="datetime-local" value="${toZonedInput(new Date(Date.now() + 2 * 86400000))}"><div class="muted small">Times are ${escapeHtml(classTimezone())} (${escapeHtml(timezoneAbbreviation())}).</div></div>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="confirm-reopen">Reopen assignment</button>`,
+    onOpen() {
+      document.getElementById('confirm-reopen').addEventListener('click', async () => {
+        try { await api(`/api/admin/assignments/${id}/reopen`, { method: 'POST', body: { reopenedUntil: fromZonedInput(document.getElementById('reopen-until').value) } }); closeModal(); await renderAdmin(); showToast('Assignment reopened'); }
+        catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function bindAttendance() {
+  const classSelect = document.getElementById('attendance-class');
+  if (!classSelect) return;
+  const loadWeeks = async () => {
+    const data = await api(`/api/admin/tracker/${classSelect.value}`);
+    document.getElementById('attendance-week').innerHTML = data.weeks.map((week) => `<option value="${week.id}">Week of ${fmtWeek(week.week_start)}</option>`).join('');
+  };
+  classSelect.addEventListener('change', loadWeeks); loadWeeks();
+  document.getElementById('attendance-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      const result = await api('/api/admin/attendance/import', { method: 'POST', body: new FormData(event.currentTarget) });
+      modal({ title: 'Attendance imported', subtitle: `${result.rows.filter((row) => row.matched).length} students matched`, body: `<div class="table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Status</th><th>Minutes</th></tr></thead><tbody>${result.rows.map((row) => `<tr><td>${escapeHtml(row.name || row.email || 'Unknown')}</td><td><span class="pill ${row.matched ? 'green' : 'red'}">${row.matched ? escapeHtml(row.status) : 'Unmatched'}</span></td><td>${row.minutes ?? '—'}</td></tr>`).join('')}</tbody></table></div>`, footer: `<button class="btn primary" data-close-modal>Done</button>` });
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+}
+
+function bindReminderSettings() {
+  document.getElementById('save-reminders')?.addEventListener('click', saveReminders);
+  document.getElementById('save-nudge')?.addEventListener('click', async () => {
+    try {
+      await api('/api/settings/nudge', { method: 'PUT', body: {
+        checkinSubject: document.getElementById('nudge-checkin-subject').value,
+        checkinBody: document.getElementById('nudge-checkin-body').value,
+        homeworkSubject: document.getElementById('nudge-homework-subject').value,
+        homeworkBody: document.getElementById('nudge-homework-body').value,
+      } });
+      showToast('Reminder wording saved');
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+  document.getElementById('save-email')?.addEventListener('click', saveEmailSettings);
+  document.getElementById('test-email')?.addEventListener('click', testEmail);
+  document.getElementById('run-reminders')?.addEventListener('click', async () => {
+    try { await api('/api/admin/reminders/run', { method: 'POST' }); showToast('Reminder cycle completed'); }
+    catch (error) { showToast(error.message, 'error'); }
+  });
+}
+
+async function saveReminders() {
+  const data = { enabled: document.getElementById('reminders-enabled').checked };
+  ['tomorrow', 'twoHours', 'thirtyMinutes'].forEach((key) => {
+    data[key] = { enabled: document.querySelector(`[data-reminder-enabled="${key}"]`).checked, subject: document.querySelector(`[data-reminder-subject="${key}"]`).value, body: document.querySelector(`[data-reminder-body="${key}"]`).value };
+  });
+  try { await api('/api/settings/reminders', { method: 'PUT', body: data }); showToast('Reminder sequence saved'); }
+  catch (error) { showToast(error.message, 'error'); }
+}
+
+async function saveEmailSettings() {
+  const data = {
+    provider: document.getElementById('email-provider').value, fromName: document.getElementById('email-from-name').value,
+    fromAddress: document.getElementById('email-from-address').value, replyTo: document.getElementById('email-reply-to').value,
+    webhookUrl: document.getElementById('email-webhook').value, smtpHost: document.getElementById('smtp-host').value,
+    smtpPort: Number(document.getElementById('smtp-port').value) || 587,
+    smtpSecure: document.getElementById('smtp-secure').checked,
+    smtpUser: document.getElementById('smtp-user').value, smtpPassword: document.getElementById('smtp-password').value,
+  };
+  try { await api('/api/settings/email', { method: 'PUT', body: data }); showToast('Email settings saved'); }
+  catch (error) { showToast(error.message, 'error'); }
+}
+
+function testEmail() {
+  modal({
+    title: 'Send test email', body: `<div class="form-field"><label>Recipient</label><input id="test-email-address" type="email" value="${escapeHtml(state.user.email)}"></div>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="send-test-email">Send test</button>`,
+    onOpen() {
+      document.getElementById('send-test-email').addEventListener('click', async () => {
+        try { await api('/api/settings/email/test', { method: 'POST', body: { to: document.getElementById('test-email-address').value } }); closeModal(); showToast('Test email sent'); }
+        catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function bindAISettings() {
+  document.getElementById('save-ai')?.addEventListener('click', async () => {
+    try {
+      await api('/api/settings/openai', { method: 'PUT', body: { apiKey: document.getElementById('openai-key').value || undefined, model: document.getElementById('openai-model').value } });
+      await api('/api/settings/prompts', { method: 'PUT', body: { checkinPrompt: document.getElementById('checkin-prompt').value, correctionPrompt: document.getElementById('correction-prompt').value, generalFeedbackPrompt: document.getElementById('general-prompt').value } });
+      await api('/api/settings/dictation', { method: 'PUT', body: {
+        transcribeModel: document.getElementById('dictation-transcribe-model').value,
+        cleanupModel: document.getElementById('dictation-cleanup-model').value,
+        language: document.getElementById('dictation-language').value,
+        dictionary: document.getElementById('dictation-dictionary').value.split('\n').map((line) => line.trim()).filter(Boolean),
+        cleanupPrompt: document.getElementById('voice-cleanup-prompt').value,
+        lightPrompt: document.getElementById('voice-light-prompt').value,
+      } });
+      showToast('OpenAI configuration saved'); await renderAdmin();
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+  document.getElementById('test-openai')?.addEventListener('click', async () => {
+    try { const result = await api('/api/settings/openai/test', { method: 'POST' }); modal({ title: 'OpenAI connection successful', body: `<div class="feedback-box"><h3>Draft preview</h3><p>${escapeHtml(result.preview)}</p></div>`, footer: `<button class="btn primary" data-close-modal>Done</button>` }); }
+    catch (error) { showToast(error.message, 'error'); }
+  });
+}
+
+/* ------------------------------------------------------------------
+   Student profile: the record of one student, plus the private notes an
+   administrator keeps about them. Students never see any of this.
+   ------------------------------------------------------------------ */
+async function openStudentProfile(studentId) {
+  try {
+    const data = await api(`/api/admin/students/${studentId}/profile`);
+    state.profile = data;
+    renderStudentProfile();
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+function renderStudentProfile() {
+  const { student, notes, stats } = state.profile;
+  const attendanceRate = stats?.recorded_weeks ? Math.round((stats.live_weeks / stats.recorded_weeks) * 100) : null;
+  openDrawer({
+    title: student.name,
+    subtitle: `${student.email}${student.classLabel ? ` · ${student.classLabel}` : ''}`,
+    body: `
+      <div class="detail-grid">
+        <div class="detail"><small>Live attendance</small><strong>${attendanceRate === null ? 'No records yet' : `${attendanceRate}% of ${stats.recorded_weeks} weeks`}</strong></div>
+        <div class="detail"><small>Check-ins submitted</small><strong>${stats?.checkins_submitted ?? 0}</strong></div>
+        <div class="detail"><small>Homework submitted</small><strong>${stats?.homework_submitted ?? 0}</strong></div>
+        <div class="detail"><small>Average understanding</small><strong>${stats?.avg_understanding ? `${stats.avg_understanding}/10` : '—'}</strong></div>
+        <div class="detail"><small>Average confidence</small><strong>${stats?.avg_confidence ? `${stats.avg_confidence}/10` : '—'}</strong></div>
+        <div class="detail"><small>Last login</small><strong>${student.last_login_at ? escapeHtml(fmtDate(student.last_login_at, { time: true })) : 'Never signed in'}</strong></div>
+      </div>
+
+      ${state.profile.withdrawal ? withdrawalSummary(state.profile.withdrawal) : ''}
+
+      <div class="section-title">Add a note</div>
+      <div class="form-field">
+        <div class="input-row"><label for="new-note">Private to the Gaeilgeoir Guides team</label>${dictateButton('new-note')}</div>
+        <textarea id="new-note" placeholder="A phone call, a reason for an absence, something to follow up on."></textarea>
+      </div>
+      <div class="note-compose">
+        <label class="toggle-row"><span class="toggle"><input id="new-note-pinned" type="checkbox"><span></span></span>Pin to the top</label>
+        <button class="btn primary small" id="save-note">Save note</button>
+      </div>
+
+      <div class="section-title">Notes${notes.length ? ` (${notes.length})` : ''}</div>
+      <div id="note-list">${notes.length ? notes.map(noteCard).join('') : '<div class="empty-state"><h3>No notes yet</h3><p>Anything you log here stays private to your team.</p></div>'}</div>`,
+    footer: `<div class="muted small">${svg.lock} Never visible to the student</div><div class="actions"><button class="btn" data-close-drawer>Close</button></div>`,
+    onOpen: bindStudentProfile,
+  });
+}
+
+function withdrawalSummary(row) {
+  const rating = (value) => (value ? `${value}/5` : '—');
+  return `<div class="withdrawal-card">
+    <header><strong>Withdrew from the course</strong><span>${escapeHtml(fmtDate(row.submitted_at, { time: true, weekday: true, dateStyle: 'short' }))}</span></header>
+    <p class="withdrawal-reason">${escapeHtml(row.reason)}</p>
+    ${row.detail ? `<p>${escapeHtml(row.detail)}</p>` : ''}
+    <div class="withdrawal-ratings">
+      <span>Overall <strong>${rating(row.overall_rating)}</strong></span>
+      <span>Teaching <strong>${rating(row.teaching_rating)}</strong></span>
+      <span>Materials <strong>${rating(row.materials_rating)}</strong></span>
+      ${row.pace ? `<span>Pace <strong>${escapeHtml(row.pace)}</strong></span>` : ''}
+      ${row.would_recommend ? `<span>Would recommend <strong>${escapeHtml(row.would_recommend)}</strong></span>` : ''}
+    </div>
+    ${row.what_worked ? `<div class="withdrawal-answer"><small>What worked</small><p>${escapeHtml(row.what_worked)}</p></div>` : ''}
+    ${row.what_to_improve ? `<div class="withdrawal-answer"><small>What to change</small><p>${escapeHtml(row.what_to_improve)}</p></div>` : ''}
+    <div class="muted small">${row.may_contact ? 'Happy to be contacted about these answers.' : 'Did not want to be contacted about these answers.'}</div>
+  </div>`;
+}
+
+function noteCard(note) {
+  return `<article class="note-card ${note.pinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
+    <header><span>${escapeHtml(note.author_name || 'Gaeilgeoir Guides')} · ${escapeHtml(fmtDate(note.created_at, { time: true, weekday: true, dateStyle: 'short' }))}${note.pinned ? ' · Pinned' : ''}</span>
+      <span class="row-actions"><button class="text-link" data-pin-note="${note.id}">${note.pinned ? 'Unpin' : 'Pin'}</button><button class="text-link" data-delete-note="${note.id}">Delete</button></span>
+    </header>
+    <p>${escapeHtml(note.body)}</p>
+  </article>`;
+}
+
+function bindStudentProfile() {
+  bindDictation(modalRoot);
+  document.getElementById('save-note')?.addEventListener('click', async () => {
+    const body = document.getElementById('new-note').value.trim();
+    if (!body) return showToast('Write a note first', 'error');
+    try {
+      const note = await api(`/api/admin/students/${state.profile.student.id}/notes`, {
+        method: 'POST',
+        body: { body, pinned: document.getElementById('new-note-pinned').checked },
+      });
+      state.profile.notes.unshift(note);
+      state.profile.notes.sort((a, b) => Number(b.pinned) - Number(a.pinned) || new Date(b.created_at) - new Date(a.created_at));
+      renderStudentProfile();
+      showToast('Note saved');
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+  document.querySelectorAll('[data-pin-note]').forEach((button) => button.addEventListener('click', async () => {
+    const note = state.profile.notes.find((item) => item.id === button.dataset.pinNote);
+    try {
+      const updated = await api(`/api/admin/notes/${note.id}`, { method: 'PATCH', body: { pinned: !note.pinned } });
+      Object.assign(note, updated);
+      state.profile.notes.sort((a, b) => Number(b.pinned) - Number(a.pinned) || new Date(b.created_at) - new Date(a.created_at));
+      renderStudentProfile();
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+  document.querySelectorAll('[data-delete-note]').forEach((button) => button.addEventListener('click', async () => {
+    if (!await askConfirm({ title: 'Delete this note?', message: 'This cannot be undone.', confirmLabel: 'Delete', danger: true })) return;
+    try {
+      await api(`/api/admin/notes/${button.dataset.deleteNote}`, { method: 'DELETE' });
+      state.profile.notes = state.profile.notes.filter((item) => item.id !== button.dataset.deleteNote);
+      renderStudentProfile();
+      showToast('Note deleted');
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+}
+
+/* Review drawer */
+function recordForReview(dataset) {
+  const t = state.tracker;
+  const student = t.students.find((row) => row.id === dataset.studentId);
+  const week = t.weeks.find((row) => row.id === dataset.weekId);
+  const attendance = t.attendance.find((row) => row.student_id === dataset.studentId && row.week_id === dataset.weekId);
+  const checkin = t.checkins.find((row) => row.student_id === dataset.studentId && row.week_id === dataset.weekId);
+  const assignment = dataset.assignmentId ? t.assignments.find((row) => row.id === dataset.assignmentId) : null;
+  const homework = assignment ? t.homework.find((row) => row.student_id === dataset.studentId && row.assignment_id === assignment.id) : null;
+  return { type: dataset.reviewType, student, week, attendance, checkin, assignment, homework };
+}
+
+function openReview(dataset) {
+  const record = recordForReview(dataset);
+  state.activeReview = record;
+  if (record.type !== 'attendance') {
+    state.reviewQueue = buildReviewQueue(record.type, record.week.id, record.assignment?.id);
+    state.reviewIndex = Math.max(0, state.reviewQueue.findIndex((item) => item.student.id === record.student.id));
+  }
+  renderReviewDrawer();
+}
+
+function buildReviewQueue(type, weekId, assignmentId) {
+  return state.tracker.students.map((student) => recordForReview({ reviewType: type, studentId: student.id, weekId, assignmentId })).filter((record) => type === 'checkin' ? record.checkin?.status !== 'draft' && record.checkin : record.homework?.status !== 'draft' && record.homework);
+}
+
+function lifecycle(stateName) {
+  const labels = { none: 'No draft', generating: 'Generating', ai_drafted: 'AI drafted', teacher_edited: 'Teacher edited', returned: 'Submitted to student', failed: 'Draft failed' };
+  const notes = {
+    ai_drafted: 'Review and edit before sending.',
+    failed: 'The AI draft could not be generated. Write the reply yourself, or try again.',
+    none: 'No AI draft was generated for this submission.',
+  };
+  const retryable = ['failed', 'none', 'ai_drafted', 'teacher_edited'].includes(stateName);
+  return `<div class="lifecycle-row">
+    <span class="ai-state"><span class="pill ${stateName === 'returned' ? 'green' : stateName === 'failed' ? 'red' : 'orange'}">${escapeHtml(labels[stateName] || stateName)}</span></span>
+    ${notes[stateName] ? `<span class="muted small">${escapeHtml(notes[stateName])}</span>` : ''}
+    ${retryable ? `<button class="btn small" id="redraft-feedback">${svg.spark} ${stateName === 'failed' || stateName === 'none' ? 'Generate AI draft' : 'Regenerate draft'}</button>` : ''}
+  </div>`;
+}
+
+/* The AI draft can fail (OpenAI down, key rotated). Rather than leaving the
+   teacher to start from nothing, offer a retry that overwrites the draft. */
+async function redraftFeedback() {
+  const record = state.activeReview;
+  const isCheckin = record.type === 'checkin';
+  const row = isCheckin ? record.checkin : record.homework;
+  const button = document.getElementById('redraft-feedback');
+  if (!row || !button) return;
+  const existing = isCheckin
+    ? document.getElementById('checkin-feedback')?.value.trim()
+    : [document.getElementById('homework-corrections')?.value.trim(), document.getElementById('homework-general')?.value.trim()].filter(Boolean).join('');
+  if (existing && !await askConfirm({ title: 'Replace what is written?', message: 'A fresh AI draft overwrites the text currently in the box.', confirmLabel: 'Generate a new draft' })) return;
+  button.disabled = true;
+  button.textContent = 'Generating…';
+  try {
+    const updated = await api(`/api/admin/${isCheckin ? 'checkins' : 'homework'}/${row.id}/redraft`, { method: 'POST' });
+    Object.assign(row, updated);
+    renderReviewDrawer();
+    showToast('AI draft ready to review');
+  } catch (error) {
+    showToast(error.message, 'error');
+    button.disabled = false;
+    button.textContent = 'Generate AI draft';
+  }
+}
+
+function renderReviewDrawer() {
+  const record = state.activeReview;
+  const nav = record.type === 'attendance' ? '' : `<div class="review-nav"><button class="btn small" id="review-prev" ${state.reviewIndex <= 0 ? 'disabled' : ''}>← Previous</button><span class="small muted">${state.reviewIndex + 1} of ${state.reviewQueue.length}</span><button class="btn small" id="review-next" ${state.reviewIndex >= state.reviewQueue.length - 1 ? 'disabled' : ''}>Next →</button><span class="kbd">←</span><span class="kbd">→</span><span class="kbd">Enter</span></div>`;
+  let body = '', actions = '';
+  if (record.type === 'attendance') {
+    const current = record.attendance?.status || 'unknown';
+    const source = record.attendance?.source === 'csv' ? 'Imported from a CSV upload' : record.attendance ? 'Set by hand' : 'Nothing recorded yet';
+    body = `<div class="detail-grid">
+        <div class="detail"><small>Student</small><strong>${escapeHtml(record.student.name)}</strong></div>
+        <div class="detail"><small>Source</small><strong>${escapeHtml(source)}</strong></div>
+      </div>
+      <div class="stack-top">
+        <div class="form-field"><label for="attendance-status">Attendance status</label><select id="attendance-status">
+          <option value="live" ${current === 'live' ? 'selected' : ''}>Attended live</option>
+          <option value="partial" ${current === 'partial' ? 'selected' : ''}>Partially attended</option>
+          <option value="recording" ${current === 'recording' ? 'selected' : ''}>Watched the recording</option>
+          <option value="missed" ${current === 'missed' ? 'selected' : ''}>Did not attend</option>
+          <option value="unknown" ${current === 'unknown' ? 'selected' : ''}>Not recorded</option>
+        </select><div class="muted small">Only "attended live" shows as green on the tracker. Watching the recording does not count as live attendance.</div></div>
+        <div class="form-field"><label for="attendance-minutes">Minutes attended</label><input id="attendance-minutes" type="number" min="0" max="1440" value="${Number(record.attendance?.minutes || 0)}"></div>
+        <div class="form-field"><label for="attendance-notes">Internal notes</label><textarea id="attendance-notes" placeholder="Only you can see this.">${escapeHtml(record.attendance?.notes || '')}</textarea></div>
+      </div>`;
+    actions = `<button class="btn" data-close-drawer>Close</button><button class="btn primary" id="save-attendance-record">Save attendance</button>`;
+  } else if (record.type === 'checkin') {
+    const row = record.checkin;
+    if (!row || row.status === 'draft') {
+      body = `${missingWorkPanel(record, 'checkin')}`;
+      actions = `<button class="btn" data-close-drawer>Close</button><button class="btn primary" id="nudge-student">${svg.mail} Send a reminder</button>`;
+    } else {
+      const answers = row.answers || {};
+      body = `<div class="detail-grid"><div class="detail"><small>Understanding</small><strong>${answers.understanding || '—'}/10</strong></div><div class="detail"><small>Confidence</small><strong>${answers.confidence || '—'}/10</strong></div><div class="detail"><small>Reviewed material</small><strong>${escapeHtml(answers.reviewed || '—')}</strong></div><div class="detail"><small>Status</small><strong>${row.status === 'returned' ? 'Returned' : 'Submitted'}</strong></div></div>
+        <div class="section-title">Weekly win</div><div class="answer-box">${escapeHtml(answers.weeklyWin || 'No weekly win submitted.')}</div>
+        <div class="section-title">Support requested</div><div class="answer-box">${escapeHtml(answers.support || 'No support requested.')}</div>
+        ${lifecycle(row.feedback_state)}
+        <div class="form-field"><div class="input-row"><label for="checkin-feedback">Teacher response</label>${dictateButton('checkin-feedback')}</div><textarea id="checkin-feedback">${escapeHtml(row.teacher_feedback || row.ai_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
+        ${voiceNoteBlock(record)}`;
+      actions = `<button class="btn" id="save-checkin-draft">Save draft</button><button class="btn primary" id="return-checkin">${row.status === 'returned' ? 'Update submitted reply' : 'Submit reply'}</button>`;
+    }
+  } else {
+    const row = record.homework;
+    if (!row || row.status === 'draft') {
+      body = `${missingWorkPanel(record, 'homework')}`;
+      actions = `<button class="btn" data-close-drawer>Close</button><button class="btn primary" id="nudge-student">${svg.mail} Send a reminder</button>`;
+    } else {
+      const answers = Array.isArray(row.answers) ? row.answers : [];
+      body = `<div class="detail-grid"><div class="detail"><small>Assignment</small><strong>${escapeHtml(record.assignment.title)}</strong></div><div class="detail"><small>Questions answered</small><strong>${answers.filter((answer) => String(answer).trim()).length}/${record.assignment.questions.length}</strong></div></div>
+        ${record.assignment.questions.map((question, index) => `<div class="section-title">Question ${index + 1}</div><div class="answer-box"><strong>${escapeHtml(question.prompt)}</strong><br><br>${escapeHtml(answers[index] || 'No answer submitted.')}</div>`).join('')}
+        ${submittedFilesBlock(row.files)}
+        ${lifecycle(row.feedback_state)}
+        <div class="form-field"><div class="input-row"><label for="homework-corrections">1. Irish corrections</label>${dictateButton('homework-corrections', 'light')}</div><textarea class="corrections" id="homework-corrections">${escapeHtml(row.teacher_corrections || row.ai_corrections || '')}</textarea><div class="muted small">If there are no genuine errors, this should say “No Irish corrections needed.” Dictation here only adds punctuation, so your Irish is never rewritten.</div></div>
+        <div class="form-field"><div class="input-row"><label for="homework-general">2. General feedback</label>${dictateButton('homework-general')}</div><textarea id="homework-general">${escapeHtml(row.teacher_general_feedback || row.ai_general_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
+        ${voiceNoteBlock(record)}`;
+      actions = `<button class="btn" id="save-homework-draft">Save draft</button><button class="btn primary" id="return-homework">${row.status === 'returned' ? 'Update submitted feedback' : 'Submit feedback'}</button>`;
+    }
+  }
+  openDrawer({
+    title: `${record.student.name} · ${record.type === 'checkin' ? 'Weekly check-in' : record.type === 'homework' ? 'Homework' : 'Attendance'}`,
+    subtitle: `${fmtWeek(record.week.week_start)} · ${state.tracker.class.label}`,
+    body, footer: `<div>${nav}</div><div class="actions">${actions}</div>`,
+    onOpen: bindReviewDrawer,
+  });
+}
+
+/* What you see when you click a cell with nothing in it. The point of this screen
+   is not the absent feedback, it is deciding whether to chase the student. */
+function missingWorkPanel(record, type) {
+  const isCheckin = type === 'checkin';
+  const deadline = isCheckin ? record.week.checkin_due_at : (record.assignment.reopened_until || record.assignment.deadline_at);
+  const closed = isCheckin
+    ? record.week.checkin_hard_deadline !== false && Date.now() > new Date(deadline).getTime()
+    : assignmentClosed(record.assignment);
+  const draft = isCheckin ? record.checkin : record.homework;
+  const off = isCheckin && record.week.checkin_enabled === false;
+
+  return `<div class="detail-grid">
+      <div class="detail"><small>${isCheckin ? 'Week' : 'Assignment'}</small><strong>${escapeHtml(isCheckin ? `Week of ${fmtWeek(record.week.week_start)}` : record.assignment.title)}</strong></div>
+      <div class="detail"><small>${closed ? 'Closed' : 'Due'}</small><strong>${escapeHtml(fmtDate(deadline, { time: true, weekday: true, dateStyle: 'short' }))}</strong></div>
+    </div>
+    <div class="missing-panel ${off ? '' : closed ? 'is-closed' : 'is-open'}">
+      <span class="status-icon ${off ? 'grey' : closed ? 'red' : 'grey'}">${svg[off ? 'talk' : closed ? 'x' : (isCheckin ? 'talk' : 'book')]}</span>
+      <div>
+        <strong>${off ? 'No check-in was set for this week' : closed ? 'The deadline passed with nothing submitted' : 'Nothing submitted yet'}</strong>
+        <span>${off
+          ? 'This week was switched off, so nothing was expected.'
+          : draft
+            ? `${escapeHtml(record.student.name.split(' ')[0])} started it and saved a draft, but has not sent it.`
+            : `${escapeHtml(record.student.name.split(' ')[0])} has not opened it yet.`}
+          ${off ? '' : ' Feedback stays blank until something is submitted, and no AI draft is generated.'}</span>
+      </div>
+    </div>
+    <p class="muted small" id="nudge-history"></p>`;
+}
+
+async function openNudgeModal() {
+  const record = state.activeReview;
+  const isCheckin = record.type === 'checkin';
+  const settings = state.settings?.nudge ? state.settings : await api('/api/settings').catch(() => null);
+  const nudge = settings?.nudge || {};
+  const first = record.student.name.split(' ')[0];
+  const itemTitle = isCheckin ? `Week of ${fmtWeek(record.week.week_start)}` : record.assignment.title;
+  const deadline = fmtDate(isCheckin ? record.week.checkin_due_at : (record.assignment.reopened_until || record.assignment.deadline_at), { time: true, weekday: true, dateStyle: 'short' });
+  const fill = (template) => String(template || '')
+    .replace(/\{\{\s*first_name\s*\}\}/g, first)
+    .replace(/\{\{\s*item_title\s*\}\}/g, itemTitle)
+    .replace(/\{\{\s*deadline\s*\}\}/g, deadline)
+    .replace(/\{\{\s*link\s*\}\}/g, location.origin);
+
+  const subject = fill(isCheckin ? nudge.checkinSubject : nudge.homeworkSubject) || `A quick nudge about ${itemTitle}`;
+  const body = fill(isCheckin ? nudge.checkinBody : nudge.homeworkBody) || `Hi ${first},\n\n${itemTitle} has not come in yet. You can pick it up at ${location.origin}.`;
+
+  modal({
+    title: `Remind ${escapeHtml(first)}`,
+    subtitle: `${record.student.email} · ${itemTitle}`,
+    body: `<div class="form-field"><label for="nudge-subject">Subject</label><input id="nudge-subject" value="${escapeHtml(subject)}"></div>
+      <div class="form-field"><div class="input-row"><label for="nudge-body">Message</label>${dictateButton('nudge-body')}</div><textarea id="nudge-body" class="tall">${escapeHtml(body)}</textarea></div>
+      <p class="muted small">Edit anything before it goes. The wording you start from is on the Email reminders screen.</p>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="send-nudge">Send to ${escapeHtml(first)}</button>`,
+    onOpen() {
+      bindDictation(modalRoot);
+      document.getElementById('send-nudge').addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true; button.textContent = 'Sending…';
+        try {
+          const result = await api('/api/admin/nudge', {
+            method: 'POST',
+            body: {
+              studentId: record.student.id,
+              type: record.type,
+              weekId: isCheckin ? record.week.id : undefined,
+              assignmentId: isCheckin ? undefined : record.assignment.id,
+              subject: document.getElementById('nudge-subject').value,
+              body: document.getElementById('nudge-body').value,
+            },
+          });
+          closeModal();
+          showToast(result.status === 'simulated'
+            ? 'Email is in test mode, so nothing was actually delivered'
+            : `Reminder sent to ${result.to}`, result.status === 'simulated' ? 'error' : '');
+          loadNudgeHistory();
+        } catch (error) {
+          showToast(error.message, 'error');
+          button.disabled = false; button.textContent = `Send to ${first}`;
+        }
+      });
+    },
+  });
+}
+
+/** Shows when this student was last chased about this exact thing. */
+async function loadNudgeHistory() {
+  const target = document.getElementById('nudge-history');
+  const record = state.activeReview;
+  if (!target || !record) return;
+  const isCheckin = record.type === 'checkin';
+  const params = new URLSearchParams({ studentId: record.student.id, type: record.type });
+  if (isCheckin) params.set('weekId', record.week.id); else params.set('assignmentId', record.assignment.id);
+  try {
+    const { lastSentAt } = await api(`/api/admin/nudge/history?${params}`);
+    target.textContent = lastSentAt
+      ? `Last reminded ${fmtDate(lastSentAt, { time: true, weekday: true, dateStyle: 'short' })}.`
+      : 'No reminder sent about this yet.';
+  } catch { target.textContent = ''; }
+}
+
+/* What the student handed up, and the text that was read out of it — which is
+   what the corrections were actually generated from, so it is worth seeing. */
+function submittedFilesBlock(files) {
+  if (!files?.length) return '';
+  return `<div class="section-title">Uploaded work</div>
+    ${files.map((file) => `<div class="submitted-file">
+      <div class="submitted-file-head">
+        <a class="btn small" href="/api/media/homework-file/${file.id}" target="_blank" rel="noopener">${svg.book} ${escapeHtml(file.fileName)}</a>
+        <span class="muted small">${escapeHtml(fmtBytes(file.sizeBytes))}${file.extractionState === 'done' ? '' : file.extractionState === 'failed' ? ' · could not be read automatically' : ' · not read'}</span>
+      </div>
+      ${file.extractedText ? `<details class="extracted"><summary>What was read from it</summary><div class="answer-box">${escapeHtml(file.extractedText)}</div></details>` : ''}
+    </div>`).join('')}`;
+}
+
+function bindReviewDrawer() {
+  document.getElementById('review-prev')?.addEventListener('click', () => navigateReview(-1));
+  document.getElementById('review-next')?.addEventListener('click', () => navigateReview(1));
+  document.getElementById('save-checkin-draft')?.addEventListener('click', saveCheckinFeedback);
+  document.getElementById('return-checkin')?.addEventListener('click', () => submitReview('checkin'));
+  document.getElementById('save-homework-draft')?.addEventListener('click', saveHomeworkFeedback);
+  document.getElementById('return-homework')?.addEventListener('click', () => submitReview('homework'));
+  document.getElementById('save-attendance-record')?.addEventListener('click', saveManualAttendance);
+  document.getElementById('redraft-feedback')?.addEventListener('click', redraftFeedback);
+  document.getElementById('nudge-student')?.addEventListener('click', openNudgeModal);
+  if (document.getElementById('nudge-history')) loadNudgeHistory();
+  bindDictation(modalRoot);
+  bindVoiceNote();
+  const inputs = [document.getElementById('checkin-feedback'), document.getElementById('homework-corrections'), document.getElementById('homework-general')].filter(Boolean);
+  inputs.forEach((input) => input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submitReview(state.activeReview.type); }
+  }));
+}
+
+/* Registered once for the life of the page. An earlier version re-armed a
+   one-shot listener from inside the handler, so the first keystroke inside a
+   textarea consumed it and arrow-key navigation stopped working for the rest of
+   the review session. */
+function reviewKeyHandler(event) {
+  if (!document.querySelector('.drawer.open') || !state.activeReview || state.activeReview.type === 'attendance') return;
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+  if (event.key === 'ArrowLeft') { event.preventDefault(); navigateReview(-1); }
+  if (event.key === 'ArrowRight') { event.preventDefault(); navigateReview(1); }
+}
+document.addEventListener('keydown', reviewKeyHandler);
+
+function navigateReview(direction) {
+  const next = state.reviewIndex + direction;
+  if (next < 0 || next >= state.reviewQueue.length) return;
+  state.reviewIndex = next; state.activeReview = state.reviewQueue[next]; renderReviewDrawer();
+}
+
+async function saveManualAttendance() {
+  try {
+    const row = await api(`/api/admin/attendance/${state.activeReview.week.id}/${state.activeReview.student.id}`, {
+      method: 'PUT',
+      body: {
+        status: document.getElementById('attendance-status').value,
+        minutes: Number(document.getElementById('attendance-minutes').value) || 0,
+        notes: document.getElementById('attendance-notes').value,
+      },
+    });
+    const index = state.tracker.attendance.findIndex((item) => item.student_id === row.student_id && item.week_id === row.week_id);
+    if (index >= 0) state.tracker.attendance[index] = row; else state.tracker.attendance.push(row);
+    closeModal(); await renderAdmin(); showToast('Attendance updated');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function saveCheckinFeedback() {
+  try {
+    const row = await api(`/api/admin/checkins/${state.activeReview.checkin.id}/feedback-draft`, { method: 'PATCH', body: { feedback: document.getElementById('checkin-feedback').value } });
+    Object.assign(state.activeReview.checkin, row); showToast('Reply draft saved');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function saveHomeworkFeedback() {
+  try {
+    const row = await api(`/api/admin/homework/${state.activeReview.homework.id}/feedback-draft`, { method: 'PATCH', body: { corrections: document.getElementById('homework-corrections').value, generalFeedback: document.getElementById('homework-general').value } });
+    Object.assign(state.activeReview.homework, row); showToast('Feedback draft saved');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function submitReview(type) {
+  try {
+    if (type === 'checkin') {
+      const feedback = document.getElementById('checkin-feedback').value.trim();
+      const hasVoiceNote = Boolean(state.activeReview.checkin.voice_note);
+      if (!feedback && !hasVoiceNote) throw new Error('Write a reply or record a voice note first.');
+      const row = await api(`/api/admin/checkins/${state.activeReview.checkin.id}/return`, { method: 'POST', body: { feedback } });
+      Object.assign(state.activeReview.checkin, row);
+    } else {
+      const corrections = document.getElementById('homework-corrections').value.trim();
+      const generalFeedback = document.getElementById('homework-general').value.trim();
+      const hasVoiceNote = Boolean(state.activeReview.homework.voice_note);
+      if ((!corrections || !generalFeedback) && !hasVoiceNote) throw new Error('Complete both feedback sections, or record a voice note.');
+      const row = await api(`/api/admin/homework/${state.activeReview.homework.id}/return`, { method: 'POST', body: { corrections, generalFeedback } });
+      Object.assign(state.activeReview.homework, row);
+    }
+    showToast('Feedback submitted to student');
+    const current = state.reviewIndex;
+    const remaining = state.reviewQueue.filter((_, index) => index !== current);
+
+    /* Repaint the tracker straight away so the cell you just replied to turns
+       green. This used to wait until the review queue emptied, which meant
+       working through a batch left every finished cell still showing orange. */
+    await renderAdmin();
+
+    // renderAdmin replaced the tracker data, so the queue is re-resolved against
+    // the new rows rather than left pointing at the old ones.
+    state.reviewQueue = remaining
+      .map((item) => recordForReview({
+        reviewType: item.type,
+        studentId: item.student.id,
+        weekId: item.week.id,
+        assignmentId: item.assignment?.id,
+      }))
+      .filter((item) => (item.type === 'checkin' ? item.checkin : item.homework));
+
+    if (state.reviewQueue.length) {
+      state.reviewIndex = Math.min(current, state.reviewQueue.length - 1);
+      state.activeReview = state.reviewQueue[state.reviewIndex];
+      renderReviewDrawer();
+    } else {
+      closeModal();
+    }
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+/* Student */
+function studentNav() {
+  const notifications = state.studentData?.notifications || 0;
+  return `<div class="nav-label">My course</div><nav class="nav">
+    ${studentNavButton('calendar', svg.calendar, 'Deadlines')}
+    ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
+  </nav>`;
+}
+
+function studentNavButton(view, icon, label, badge = 0) {
+  return `<button class="nav-button ${state.view === view ? 'active' : ''}" data-student-view="${view}"><span class="nav-icon">${icon}</span>${label}${badge ? `<span class="nav-badge">${badge}</span>` : ''}</button>`;
+}
+
+async function loadStudent() {
+  state.studentData = await api('/api/student/bootstrap');
+  state.view ||= 'calendar';
+  renderStudent();
+}
+
+function renderStudent() {
+  let content = '';
+  if (!state.studentData.class && state.view !== 'account') {
+    content = `${studentHero()}<div class="empty-state"><h3>You are not in a class yet</h3><p>Your account is active but has not been added to a class group. Contact Gaeilgeoir Guides and they will add you.</p></div>`;
+  } else if (state.view === 'tracker') content = studentTrackerView();
+  else content = studentCalendarView();
+  shell({ nav: studentNav(), content, title: state.view === 'tracker' ? 'Weekly tracker' : 'Deadlines', roleLabel: 'Student', notificationCount: state.studentData.notifications });
+  bindStudentView();
+}
+
+function studentHero() {
+  return `<section class="student-hero"><div><h1>Hi ${escapeHtml(state.user.name.split(' ')[0])}, here are your deadlines</h1><p>Complete check-ins and homework, then view your returned teacher feedback.</p></div>${state.studentData.class ? `<span class="hero-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</section>
+  ${studentGoals()}`;
+}
+
+/* The server works this out in src/status.js, so the counting rule lives in one
+   place and is covered by tests. */
+function studentProgress() {
+  return state.studentData?.progress || { checkins: 0, homework: 0, total: 0, next: null, toNext: 0, towards: 0, justHit: null };
+}
+
+function studentGoals() {
+  const progress = studentProgress();
+  if (!progress.total) return '';
+  const chip = (value, label) => `<div class="goal"><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`;
+  return `<section class="goal-strip">
+    ${chip(progress.checkins, progress.checkins === 1 ? 'check-in done' : 'check-ins done')}
+    ${chip(progress.homework, progress.homework === 1 ? 'homework done' : 'homework done')}
+  </section>`;
+}
+
+/* Replaces the flat "thank you" that used to follow a submission. */
+function celebrationScreen({ title, line, progress, milestone }) {
+  celebrate({ big: Boolean(milestone) });
+  const milestoneLine = milestone
+    ? `<div class="celebrate-milestone">That is <strong>${milestone}</strong> pieces of work handed in. Sin obair mhaith.</div>`
+    : '';
+  modal({
+    title: '',
+    body: `<div class="celebrate">
+      <div class="celebrate-tick"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l8 8 15-16"/></svg></div>
+      <h2>${escapeHtml(title)}</h2>
+      <p>${escapeHtml(line)}</p>
+      ${milestoneLine}
+    </div>`,
+    footer: '<button class="btn primary" data-close-modal>Back to my deadlines</button>',
+  });
+}
+
+function studentMaps() {
+  const assignmentsByWeek = new Map();
+  state.studentData.assignments.forEach((assignment) => {
+    if (!assignment.week_id) return;
+    assignmentsByWeek.set(assignment.week_id, [...(assignmentsByWeek.get(assignment.week_id) || []), assignment]);
+  });
+  return {
+    attendance: new Map(state.studentData.attendance.map((row) => [row.week_id, row])),
+    checkins: new Map(state.studentData.checkins.map((row) => [row.week_id, row])),
+    homework: new Map(state.studentData.homework.map((row) => [row.assignment_id, row])),
+    assignmentsByWeek,
+  };
+}
+
+const itemRef = (item) => (item.type === 'checkin' ? item.week?.id : item.assignment?.id) || '';
+
+/* A hard deadline that has gone cannot be met, so leaving it in the list is a
+   reminder to do something impossible. Clearing it changes this student's list
+   and nothing else: the tracker still records the miss, and the teacher still
+   sees it. */
+function isDismissed(item) {
+  const ref = itemRef(item);
+  return (state.studentData?.dismissals || []).some((row) => row.kind === item.type && row.refId === ref);
+}
+
+async function dismissDeadline(kind, refId, title) {
+  try {
+    await api('/api/student/dismissals', { method: 'POST', body: { kind, refId } });
+  } catch (error) { return showToast(error.message, 'error'); }
+  state.studentData.dismissals = [...(state.studentData.dismissals || []), { kind, refId }];
+  renderStudent();
+  showToast(`Cleared. ${title} is still recorded in your tracker.`, '', {
+    label: 'Undo',
+    async action() {
+      try { await api(`/api/student/dismissals/${kind}/${refId}`, { method: 'DELETE' }); }
+      catch (error) { return showToast(error.message, 'error'); }
+      state.studentData.dismissals = (state.studentData.dismissals || [])
+        .filter((row) => !(row.kind === kind && row.refId === refId));
+      renderStudent();
+    },
+  });
+}
+
+function studentCalendarView() {
+  const maps = studentMaps();
+  const items = [];
+  state.studentData.weeks.forEach((week) => {
+    if (week.checkin_enabled && week.checkin_available) {
+      const checkin = maps.checkins.get(week.id);
+      items.push({ type: 'checkin', title: `Week of ${fmtWeek(week.week_start)} check-in`, due: week.checkin_due_at, status: checkinState(checkin, week), week, checkin, submitted: Boolean(checkin && checkin.status !== 'draft') });
+    }
+  });
+  state.studentData.assignments.forEach((assignment) => {
+    const submission = maps.homework.get(assignment.id);
+    items.push({ type: 'homework', title: assignment.title, due: assignment.reopened_until || assignment.deadline_at, status: homeworkState(submission, assignment), assignment, submission, submitted: Boolean(submission && submission.status !== 'draft') });
+  });
+
+  // Anything already handed in disappears from this list entirely — it is not work
+  // to do. What is left splits by whether the deadline has gone.
+  const outstanding = items.filter((item) => !item.submitted);
+  const upcoming = outstanding.filter((item) => item.status.tone !== 'red').sort((a, b) => new Date(a.due) - new Date(b.due));
+  const overdue = outstanding
+    .filter((item) => item.status.tone === 'red' && !isDismissed(item))
+    .sort((a, b) => new Date(b.due) - new Date(a.due));
+
+  const card = (item) => `<article class="deadline-card ${item.status.tone}">
+    ${item.status.tone === 'red' ? `<button class="deadline-dismiss" data-dismiss="${item.type}" data-ref="${itemRef(item)}" title="Clear this from your list" aria-label="Clear ${escapeHtml(item.title)} from your list">&times;</button>` : ''}
+    <small>${escapeHtml(fmtDate(item.due, { time: true, weekday: true, dateStyle: 'short' }))}</small>
+    <strong>${escapeHtml(item.title)}</strong>
+    <p>${escapeHtml(item.status.hint || item.status.label)}</p>
+    <button class="btn ${item.status.tone === 'red' ? '' : 'primary'} small" data-open-student-item="${item.type}" data-week-id="${item.week?.id || ''}" data-assignment-id="${item.assignment?.id || ''}">${item.status.tone === 'red' ? 'View' : 'Open'}</button>
+  </article>`;
+
+  return `${studentHero()}${studentTabs('calendar')}
+    <div class="student-layout"><section class="card calendar">${calendarHtml()}</section>
+    <div class="deadline-column">
+      ${overdue.length ? `<aside class="card overdue-card">
+        <div class="card-header"><div><h2>Overdue</h2><p>${overdue.length} deadline${overdue.length === 1 ? '' : 's'} passed without a submission.</p></div><span class="pill red">${overdue.length}</span></div>
+        <div class="card-body deadline-list">${overdue.map(card).join('')}</div>
+      </aside>` : ''}
+      <aside class="card"><div class="card-header"><div><h2>Upcoming work</h2><p>Still to do. Times in ${escapeHtml(classTimezone())}.</p></div></div>
+      <div class="card-body deadline-list">${upcoming.slice(0, 6).map(card).join('') || '<div class="empty-state"><h3>Nothing due</h3><p>You are fully up to date.</p></div>'}</div></aside>
+    </div></div>`;
+}
+
+/** Calendar day for an instant, read in the class timezone rather than the viewer's. */
+function zonedDateParts(value, timeZone = classTimezone()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  return { year: Number(parts.year), month: Number(parts.month) - 1, day: Number(parts.day) };
+}
+
+/** Calendar events carry their status colour, and the month can be paged. */
+function calendarHtml() {
+  const cursor = state.calendarMonth ? new Date(state.calendarMonth) : new Date();
+  const year = cursor.getFullYear(), month = cursor.getMonth();
+  const first = new Date(year, month, 1), days = new Date(year, month + 1, 0).getDate();
+  const offset = (first.getDay() + 6) % 7;
+  const today = zonedDateParts(new Date());
+  const isToday = (day) => today.year === year && today.month === month && today.day === day;
+  const maps = studentMaps();
+  const events = new Map();
+  const add = (dateValue, html) => {
+    // A Sunday 20:00 Dublin deadline must land on Sunday for everyone, including
+    // a student reading this from another timezone.
+    const when = zonedDateParts(dateValue);
+    if (when.year !== year || when.month !== month) return;
+    events.set(when.day, [...(events.get(when.day) || []), html]);
+  };
+  state.studentData.weeks.forEach((week) => {
+    if (!week.checkin_enabled || !week.checkin_available) return;
+    const checkin = maps.checkins.get(week.id);
+    const status = checkinState(checkin, week);
+    add(week.checkin_due_at, `<button class="calendar-event ${status.tone}" title="${escapeHtml(status.hint)}" data-open-student-item="checkin" data-week-id="${week.id}">${escapeHtml(checkin?.status === 'returned' ? 'Check-in feedback' : 'Check-in')}</button>`);
+  });
+  state.studentData.assignments.forEach((assignment) => {
+    const submission = maps.homework.get(assignment.id);
+    const status = homeworkState(submission, assignment);
+    add(assignment.reopened_until || assignment.deadline_at, `<button class="calendar-event ${status.tone}" title="${escapeHtml(status.hint)}" data-open-student-item="homework" data-assignment-id="${assignment.id}">${escapeHtml(submission?.status === 'returned' ? 'Homework feedback' : assignment.title)}</button>`);
+  });
+  const cells = [];
+  for (let i = 0; i < offset; i += 1) cells.push('<div class="calendar-day is-empty"></div>');
+  for (let day = 1; day <= days; day += 1) {
+    cells.push(`<div class="calendar-day ${isToday(day) ? 'is-today' : ''}"><div class="calendar-number">${day}</div>${(events.get(day) || []).join('')}</div>`);
+  }
+  return `<div class="calendar-head">
+      <h2>${new Intl.DateTimeFormat('en-IE', { month: 'long', year: 'numeric' }).format(first)}</h2>
+      <div class="calendar-nav"><button class="btn small" data-calendar-step="-1" aria-label="Previous month">←</button><button class="btn small" data-calendar-step="0">Today</button><button class="btn small" data-calendar-step="1" aria-label="Next month">→</button></div>
+    </div>
+    <div class="calendar-grid">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day) => `<div class="calendar-name">${day}</div>`).join('')}${cells.join('')}</div>`;
+}
+
+/* The student tracker is a grid of week cards rather than one very wide table row.
+   Each card holds up to three actions that always keep the same shape, so nothing
+   overflows on a phone and the newest week is the one you land on. */
+function studentTrackerView() {
+  const maps = studentMaps();
+  const weeks = [...state.studentData.weeks].reverse();
+  if (!weeks.length) {
+    return `${studentHero()}${studentTabs('tracker')}<div class="empty-state"><h3>Your tracker is empty</h3><p>Weeks appear here once your class has started. Check back after your first session.</p></div>`;
+  }
+  const currentWeekId = state.studentData.weeks.at(-1)?.id;
+  const cards = weeks.map((week) => {
+    const checkin = maps.checkins.get(week.id);
+    const assignments = maps.assignmentsByWeek.get(week.id) || [];
+    const isCurrent = week.id === currentWeekId;
+    const actions = [{
+      state: attendanceState(maps.attendance.get(week.id)),
+      name: 'Attendance',
+      disabled: true,
+      attributes: '',
+    }];
+    if (week.checkin_available) {
+      const unread = checkin?.status === 'returned' && !checkin.feedback_read_at;
+      actions.push({ state: { ...checkinState(checkin, week), unread }, name: 'Check-in', unread, attributes: `data-open-student-item="checkin" data-week-id="${week.id}"` });
+    }
+    if (assignments.length) {
+      assignments.forEach((assignment) => {
+        const homework = maps.homework.get(assignment.id);
+        const unread = homework?.status === 'returned' && !homework.feedback_read_at;
+        actions.push({ state: { ...homeworkState(homework, assignment), unread }, name: assignments.length > 1 ? assignment.title : 'Homework', unread, attributes: `data-open-student-item="homework" data-assignment-id="${assignment.id}"` });
+      });
+    } else {
+      // Some weeks carry homework and some do not. Leaving the slot out entirely
+      // made an empty week look identical to a week that had not loaded, so it
+      // now says so plainly.
+      actions.push({
+        state: { tone: 'none', icon: 'book', label: 'None set', hint: 'There is no homework for this week' },
+        name: 'Homework', disabled: true, attributes: '',
+      });
+    }
+    const needsAction = actions.some((action) => action.unread || action.state.tone === 'grey');
+    return `<article class="week-card ${needsAction ? 'is-open' : ''} ${isCurrent ? 'is-current' : ''}">
+      <header class="week-card-head">
+        <div><strong>Week of ${fmtWeek(week.week_start)}${isCurrent ? '<span class="week-now">This week</span>' : ''}</strong><span>Check-in due ${escapeHtml(fmtDate(week.checkin_due_at, { time: true, weekday: true, dateStyle: 'short' }))}</span></div>
+      </header>
+      <div class="week-card-actions" style="--cols:${actions.length}">
+        ${actions.map((action) => `<button class="wk-action ${action.unread ? 'has-news' : ''}" ${action.disabled ? 'disabled' : action.attributes} aria-label="${escapeHtml(`${action.name}: ${action.state.hint || action.state.label}`)}">
+          ${statusIcon(action.state)}<span class="wk-name">${escapeHtml(action.name)}</span>
+        </button>`).join('')}
+      </div>
+      ${week.checkin_available ? '' : `<p class="week-card-note">Your check-in opens ${escapeHtml(fmtDate(week.checkin_release_at, { time: true, weekday: true, dateStyle: 'short' }))}.</p>`}
+    </article>`;
+  }).join('');
+  return `${studentHero()}${studentTabs('tracker')}
+    <section class="card student-tracker">
+      <div class="week-card-grid">${cards}</div>
+      ${trackerLegend('student')}
+    </section>`;
+}
+
+function studentTabs(active) {
+  return `<div class="tabs">
+    <div class="tab-group"><button class="tab ${active === 'calendar' ? 'active' : ''}" data-student-view="calendar">Deadline calendar</button><button class="tab ${active === 'tracker' ? 'active' : ''}" data-student-view="tracker">My weekly tracker</button></div>
+  </div>`;
+}
+
+const WITHDRAWAL_REASONS = [
+  'Not enough time alongside work or family',
+  'The course was not what I expected',
+  'It moved too fast for me',
+  'It moved too slowly for me',
+  'Cost',
+  'Health or personal reasons',
+  'I got what I needed and I am finished',
+  'Something else',
+];
+
+/* The withdrawal form. One page rather than the rolling format used elsewhere:
+   somebody leaving should not be walked through eight separate screens. Only the
+   first question is required — every other answer is a favour they are doing us. */
+function openWithdrawalForm() {
+  const scale = (name, label) => `<div class="form-field"><label>${label}</label>
+    <div class="rating-row">${[1,2,3,4,5].map((value) => `<button type="button" class="rating" data-rating="${name}" data-value="${value}">${value}</button>`).join('')}
+    <span class="muted small">1 poor · 5 excellent</span></div></div>`;
+
+  modal({
+    title: 'Course withdrawal form',
+    subtitle: 'Only the first question is required.',
+    wide: true,
+    body: `<div class="withdrawal-form">
+      <div class="form-field"><label for="wd-reason">What is the main reason you are leaving?</label>
+        <select id="wd-reason">${WITHDRAWAL_REASONS.map((reason) => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join('')}</select></div>
+      <div class="form-field"><div class="input-row"><label for="wd-detail">Anything you would like to add?</label>${dictateButton('wd-detail')}</div>
+        <textarea id="wd-detail" placeholder="Optional. It stays between you and Gaeilgeoir Guides."></textarea></div>
+
+      <div class="section-title">How was the course?</div>
+      ${scale('overall', 'Overall')}
+      ${scale('teaching', 'The teaching')}
+      ${scale('materials', 'The materials and homework')}
+
+      <div class="form-field"><label for="wd-pace">How was the pace?</label>
+        <select id="wd-pace"><option value="">Prefer not to say</option><option>Too slow</option><option>About right</option><option>Too fast</option></select></div>
+      <div class="form-field"><label for="wd-worked">What worked well for you?</label><textarea id="wd-worked" placeholder="Optional"></textarea></div>
+      <div class="form-field"><label for="wd-improve">What would you change?</label><textarea id="wd-improve" placeholder="Optional"></textarea></div>
+      <div class="form-field"><label for="wd-recommend">Would you recommend Gaeilgeoir Guides to someone else?</label>
+        <select id="wd-recommend"><option value="">Prefer not to say</option><option>Yes</option><option>Maybe</option><option>No</option></select></div>
+      <label class="toggle-row"><span class="toggle"><input id="wd-contact" type="checkbox"><span></span></span>Éamon may contact me about my answers</label>
+
+      <div class="error-banner stack-top">Submitting this ends your place on the course. Reminders and new homework stop, and everything you have already done stays in your account.</div>
+    </div>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn danger" id="wd-submit">Submit and withdraw</button>`,
+    onOpen() {
+      bindDictation(modalRoot);
+      const ratings = {};
+      modalRoot.querySelectorAll('[data-rating]').forEach((button) => button.addEventListener('click', () => {
+        ratings[button.dataset.rating] = Number(button.dataset.value);
+        modalRoot.querySelectorAll(`[data-rating="${button.dataset.rating}"]`).forEach((peer) => {
+          peer.classList.toggle('selected', Number(peer.dataset.value) <= Number(button.dataset.value));
+        });
+      }));
+      document.getElementById('wd-submit').addEventListener('click', async (event) => {
+        if (!await askConfirm({ title: 'Submit the withdrawal form?', message: 'This ends your place on the course. Reminders and new homework stop. Everything you have already done stays in your account.', confirmLabel: 'Submit and withdraw', danger: true })) return;
+        const button = event.currentTarget;
+        button.disabled = true; button.textContent = 'Submitting…';
+        try {
+          await api('/api/student/withdrawal', { method: 'POST', body: {
+            reason: document.getElementById('wd-reason').value,
+            detail: document.getElementById('wd-detail').value,
+            overallRating: ratings.overall,
+            teachingRating: ratings.teaching,
+            materialsRating: ratings.materials,
+            pace: document.getElementById('wd-pace').value,
+            whatWorked: document.getElementById('wd-worked').value,
+            whatToImprove: document.getElementById('wd-improve').value,
+            wouldRecommend: document.getElementById('wd-recommend').value,
+            mayContact: document.getElementById('wd-contact').checked,
+          } });
+          closeModal();
+          state.studentData = await api('/api/student/bootstrap');
+          renderStudent();
+          modal({
+            title: 'Thank you',
+            body: '<div class="success-banner">Your withdrawal has been recorded. You will not receive any more reminders, and no further work is expected.</div><p class="muted small">Everything you submitted and every piece of feedback stays in your account. Go raibh míle maith agat, and the best of luck with the Gaeilge.</p>',
+            footer: '<button class="btn primary" data-close-modal>Close</button>',
+          });
+        } catch (error) {
+          showToast(error.message, 'error');
+          button.disabled = false; button.textContent = 'Submit and withdraw';
+        }
+      });
+    },
+  });
+}
+
+function bindStudentView() {
+  document.querySelectorAll('[data-open-student-item]').forEach((button) => button.addEventListener('click', () => openStudentItem(button.dataset)));
+  document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const title = button.closest('.deadline-card')?.querySelector('strong')?.textContent || 'It';
+    dismissDeadline(button.dataset.dismiss, button.dataset.ref, title);
+  }));
+  document.querySelectorAll('[data-calendar-step]').forEach((button) => button.addEventListener('click', () => {
+    const step = Number(button.dataset.calendarStep);
+    if (!step) {
+      state.calendarMonth = null;
+    } else {
+      const cursor = state.calendarMonth ? new Date(state.calendarMonth) : new Date();
+      state.calendarMonth = new Date(cursor.getFullYear(), cursor.getMonth() + step, 1).toISOString();
+    }
+    renderStudent();
+  }));
+  document.getElementById('change-password-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    try { await api('/api/auth/change-password', { method: 'POST', body: { currentPassword: form.get('currentPassword'), newPassword: form.get('newPassword') } }); showToast('Password changed'); event.currentTarget.reset(); }
+    catch (error) { showToast(error.message, 'error'); }
+  });
+  document.getElementById('new-password')?.addEventListener('input', (event) => updatePasswordRules(event.target.value));
+  document.getElementById('student-logout')?.addEventListener('click', logout);
+  document.getElementById('open-withdrawal')?.addEventListener('click', openWithdrawalForm);
+}
+
+function openStudentItem(dataset) {
+  const maps = studentMaps();
+  if (dataset.openStudentItem === 'checkin') {
+    const week = state.studentData.weeks.find((item) => item.id === dataset.weekId);
+    const checkin = maps.checkins.get(week.id);
+    if (checkin?.status === 'returned') return showCheckinFeedback(checkin, week);
+    if (checkin?.status === 'submitted') return modal({
+      title: 'Your check-in',
+      subtitle: `Week of ${fmtWeek(week.week_start)}`,
+      body: `<div class="success-banner">Submitted. Your teacher will reply here.</div>${submittedCheckinBlock(checkin)}`,
+      footer: '<button class="btn primary" data-close-modal>Done</button>',
+    });
+    if (Date.now() > new Date(week.checkin_due_at).getTime()) return showToast('This check-in deadline has passed', 'error');
+    openCheckinForm(week, checkin);
+  } else {
+    const assignment = state.studentData.assignments.find((item) => item.id === dataset.assignmentId);
+    const submission = maps.homework.get(assignment.id);
+    if (submission?.status === 'returned') return showHomeworkFeedback(submission, assignment);
+    if (submission?.status === 'submitted') return modal({
+      title: 'Your homework',
+      subtitle: assignment.title,
+      wide: true,
+      body: `<div class="success-banner">Submitted. Your teacher will return corrections and feedback here.</div>${submittedHomeworkBlock(assignment, submission)}`,
+      footer: '<button class="btn primary" data-close-modal>Done</button>',
+    });
+    openHomeworkForm(assignment, submission);
+  }
+}
+
+const checkinQuestions = [
+  { key: 'attendance', text: "Did you attend or watch this week's class?", type: 'choice', required: true, options: ['I attended live', 'I watched the recording', 'Not yet'] },
+  { key: 'reviewed', text: "Did you review this week's material?", type: 'choice', required: true, options: ['Yes', 'No'] },
+  { key: 'understanding', text: 'How well do you understand the material so far?', type: 'scale', required: true },
+  { key: 'confidence', text: 'How confident are you feeling right now?', type: 'scale', required: true },
+  { key: 'weeklyWin', text: "What's your weekly win?", description: 'Anything big or small to do with Irish.', type: 'text', required: true },
+  { key: 'support', text: 'Is there anything you are struggling with or need help with?', type: 'text', required: false },
+];
+
+function openCheckinForm(week, existing) {
+  state.checkinForm = { week, step: 0, answers: { ...(existing?.answers || {}) } };
+  renderCheckinStep();
+}
+
+function renderCheckinStep() {
+  const form = state.checkinForm;
+  const question = checkinQuestions[form.step];
+  const answer = form.answers[question.key];
+  let input = '';
+  if (question.type === 'choice') input = `<div class="choice-list">${question.options.map((option) => `<button class="choice ${answer === option ? 'selected' : ''}" data-checkin-choice="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join('')}</div>`;
+  else if (question.type === 'scale') input = `<div class="scale-list">${Array.from({ length: 10 }, (_, index) => index + 1).map((value) => `<button class="scale ${answer === value ? 'selected' : ''}" data-checkin-scale="${value}">${value}</button>`).join('')}</div>`;
+  else input = `<textarea id="checkin-text" placeholder="${question.required ? 'Type your answer' : 'Optional'}">${escapeHtml(answer || '')}</textarea>`;
+  modal({
+    title: 'Weekly check-in', subtitle: `Week of ${fmtWeek(form.week.week_start)}`,
+    body: `<div class="rolling-form"><div class="progress"><span style="width:${((form.step + 1) / checkinQuestions.length) * 100}%"></span></div><div class="rolling-stage"><div class="rolling-kicker">Question ${form.step + 1} of ${checkinQuestions.length}</div><div class="rolling-question">${escapeHtml(question.text)}</div>${question.description ? `<div class="required-note">${escapeHtml(question.description)}</div>` : `<div class="required-note">${question.required ? 'Required' : 'Optional'}</div>`}${input}<div id="rolling-error"></div></div><div class="rolling-footer"><button class="btn" id="checkin-back" ${form.step === 0 ? 'disabled' : ''}>Back</button><span class="save-indicator">Drafts save automatically</span><button class="btn primary" id="checkin-next">${form.step === checkinQuestions.length - 1 ? 'Submit check-in' : 'Save and continue'}</button></div></div>`,
+    onOpen() {
+      document.querySelectorAll('[data-checkin-choice]').forEach((button) => button.addEventListener('click', () => { form.answers[question.key] = button.dataset.checkinChoice; saveCheckinDraft(); renderCheckinStep(); }));
+      document.querySelectorAll('[data-checkin-scale]').forEach((button) => button.addEventListener('click', () => { form.answers[question.key] = Number(button.dataset.checkinScale); saveCheckinDraft(); renderCheckinStep(); }));
+      document.getElementById('checkin-text')?.addEventListener('input', debounce((event) => { form.answers[question.key] = event.target.value; saveCheckinDraft(); }, 500));
+      document.getElementById('checkin-back').addEventListener('click', () => { captureCheckinText(question); if (form.step > 0) { form.step -= 1; renderCheckinStep(); } });
+      document.getElementById('checkin-next').addEventListener('click', async () => {
+        captureCheckinText(question);
+        if (question.required && !String(form.answers[question.key] ?? '').trim()) {
+          document.getElementById('rolling-error').innerHTML = '<div class="error-banner" style="margin-top:10px">Please answer this question.</div>'; return;
+        }
+        await saveCheckinDraft();
+        if (form.step < checkinQuestions.length - 1) { form.step += 1; renderCheckinStep(); }
+        else submitCheckin();
+      });
+    },
+  });
+}
+
+function captureCheckinText(question) {
+  const input = document.getElementById('checkin-text');
+  if (input) state.checkinForm.answers[question.key] = input.value.trim();
+}
+
+async function saveCheckinDraft() {
+  if (!state.checkinForm) return;
+  try { await api(`/api/student/checkins/${state.checkinForm.week.id}/draft`, { method: 'PUT', body: { answers: state.checkinForm.answers } }); }
+  catch (error) { console.error(error); }
+}
+
+async function submitCheckin() {
+  try {
+    await api(`/api/student/checkins/${state.checkinForm.week.id}/submit`, { method: 'POST', body: { answers: state.checkinForm.answers } });
+    closeModal(); state.studentData = await api('/api/student/bootstrap'); renderStudent();
+    const progress = studentProgress();
+    celebrationScreen({
+      title: 'Check-in sent. Maith thú!',
+      line: 'Your teacher will read it and come back to you in your weekly tracker.',
+      progress, milestone: progress.justHit,
+    });
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function openHomeworkForm(assignment, submission) {
+  try {
+    const data = await api(`/api/student/assignments/${assignment.id}`);
+    state.homeworkForm = { assignment: data.assignment, submission: data.submission, step: data.submission?.current_question || 0, answers: Array.isArray(data.submission?.answers) ? [...data.submission.answers] : data.assignment.questions.map(() => ''), files: data.submission?.files || [] };
+    renderHomeworkStep();
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+function loomEmbed(url) {
+  if (!url) return '';
+  const match = url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
+  if (!match) return `<a class="btn small" target="_blank" rel="noopener" href="${escapeHtml(url)}">Open Loom video</a>`;
+  return `<iframe title="Assignment video" src="https://www.loom.com/embed/${match[1]}" style="width:100%;aspect-ratio:16/9;border:0;border-radius:10px;margin-bottom:14px" allowfullscreen></iframe>`;
+}
+
+function renderHomeworkStep() {
+  const form = state.homeworkForm, assignment = form.assignment, question = assignment.questions[form.step];
+  modal({
+    title: assignment.title, subtitle: `Due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true })}`, wide: true,
+    body: `<div class="rolling-form"><div class="progress"><span style="width:${((form.step + 1) / assignment.questions.length) * 100}%"></span></div><div class="rolling-stage">${form.step === 0 ? loomEmbed(assignment.loom_url) : ''}${form.step === 0 && assignment.resources.length ? `<div style="margin-bottom:14px">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}<div class="rolling-kicker">Question ${form.step + 1} of ${assignment.questions.length}</div><div class="rolling-question">${escapeHtml(question.prompt)}</div>${question.imageUrl ? `<img src="${escapeHtml(question.imageUrl)}" alt="" style="max-width:100%;max-height:260px;border-radius:10px;margin-bottom:13px">` : ''}<div class="required-note">${question.required ? 'Required' : 'Optional'}</div><textarea id="homework-answer" placeholder="Type your answer">${escapeHtml(form.answers[form.step] || '')}</textarea>${form.step === assignment.questions.length - 1 ? homeworkUploadPanel(assignment, form) : ''}<div id="rolling-error"></div></div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div><button class="btn" id="homework-back" ${form.step === 0 ? 'disabled' : ''}>Previous</button> <button class="btn primary" id="homework-next">${form.step === assignment.questions.length - 1 ? 'Submit homework' : 'Save and continue'}</button></div></div></div>`,
+    onOpen() {
+      const answer = document.getElementById('homework-answer');
+      bindHomeworkUploads();
+      answer.addEventListener('input', debounce(() => { form.answers[form.step] = answer.value; saveHomeworkDraft(); }, 500));
+      document.getElementById('homework-exit').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); closeModal(); });
+      document.getElementById('homework-back').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); if (form.step > 0) { form.step -= 1; renderHomeworkStep(); } });
+      document.getElementById('homework-next').addEventListener('click', async () => {
+        form.answers[form.step] = answer.value.trim();
+        if (question.required && !form.answers[form.step]) { document.getElementById('rolling-error').innerHTML = '<div class="error-banner" style="margin-top:10px">Please answer this question.</div>'; return; }
+        await saveHomeworkDraft();
+        if (form.step < assignment.questions.length - 1) { form.step += 1; renderHomeworkStep(); }
+        else submitHomework();
+      });
+    },
+  });
+}
+
+const FILE_TYPE_ACCEPT = {
+  image: '.jpg,.jpeg,.png,.webp,.heic,.heif',
+  pdf: '.pdf',
+  word: '.docx',
+  text: '.txt',
+};
+const FILE_TYPE_NAMES = { image: 'photos', pdf: 'PDFs', word: 'Word documents', text: 'text files' };
+
+function fmtBytes(bytes) {
+  if (!bytes) return '';
+  return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/* Where a student hands work up. Only shown when the teacher turned uploads on
+   for this assignment, and only accepting the formats they chose. */
+function homeworkUploadPanel(assignment, form) {
+  if (!assignment.allow_uploads) return '';
+  const types = assignment.accepted_file_types || [];
+  const files = form.files || [];
+  const accept = types.map((type) => FILE_TYPE_ACCEPT[type]).filter(Boolean).join(',');
+  const names = types.map((type) => FILE_TYPE_NAMES[type]).filter(Boolean);
+  const full = files.length >= (assignment.max_files || 3);
+
+  return `<div class="upload-panel" id="upload-panel">
+    <div class="upload-panel-head">
+      <strong>${assignment.uploads_required ? 'Upload your work' : 'Upload your work, optional'}</strong>
+      <span class="muted small">${names.length ? `Takes ${names.join(', ')}` : ''} · up to ${assignment.max_files || 3} file${(assignment.max_files || 3) === 1 ? '' : 's'}</span>
+    </div>
+    <div class="upload-list" id="upload-list">${files.map((file) => `
+      <div class="upload-item">
+        <span class="upload-name">${escapeHtml(file.fileName)}</span>
+        <span class="upload-meta">${escapeHtml(fmtBytes(file.sizeBytes))}${file.extractionState === 'done' ? ' · read' : file.extractionState === 'failed' ? ' · could not be read automatically' : ''}</span>
+        <button type="button" class="text-link" data-remove-file="${file.id}">Remove</button>
+      </div>`).join('') || '<div class="muted small">Nothing uploaded yet.</div>'}</div>
+    ${full ? `<div class="muted small">That is the maximum for this assignment.</div>`
+      : `<label class="upload-drop"><input type="file" id="homework-file" accept="${escapeHtml(accept)}" hidden>
+          <span>${svg.upload} Choose a file</span>
+          <small>A photo of handwritten work is grand. It is read automatically so your teacher can correct it.</small>
+        </label>`}
+    <div class="upload-status" id="upload-status"></div>
+  </div>`;
+}
+
+async function bindHomeworkUploads() {
+  const input = document.getElementById('homework-file');
+  const status = document.getElementById('upload-status');
+  const form = state.homeworkForm;
+
+  document.querySelectorAll('[data-remove-file]').forEach((button) => button.addEventListener('click', async () => {
+    try {
+      await api(`/api/student/files/${button.dataset.removeFile}`, { method: 'DELETE' });
+      form.files = (form.files || []).filter((file) => file.id !== button.dataset.removeFile);
+      renderHomeworkStep();
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+
+  input?.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    status.textContent = 'Uploading and reading your work…';
+    status.className = 'upload-status busy';
+    try {
+      const body = new FormData();
+      body.append('file', file, file.name);
+      const uploaded = await api(`/api/student/assignments/${form.assignment.id}/files`, { method: 'POST', body });
+      form.files = [...(form.files || []), uploaded];
+      renderHomeworkStep();
+      showToast(uploaded.extractionState === 'done' ? 'Uploaded and read' : 'Uploaded. Your teacher will read it themselves.');
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'upload-status error';
+    }
+  });
+}
+
+async function saveHomeworkDraft() {
+  const form = state.homeworkForm;
+  if (!form) return;
+  try { await api(`/api/student/assignments/${form.assignment.id}/draft`, { method: 'PUT', body: { answers: form.answers, currentQuestion: form.step } }); }
+  catch (error) { console.error(error); }
+}
+
+async function submitHomework() {
+  const form = state.homeworkForm;
+  try {
+    await api(`/api/student/assignments/${form.assignment.id}/submit`, { method: 'POST', body: { answers: form.answers } });
+    closeModal(); state.studentData = await api('/api/student/bootstrap'); renderStudent();
+    const progress = studentProgress();
+    celebrationScreen({
+      title: 'Homework in. Go hiontach!',
+      line: 'Corrections and feedback will appear in your weekly tracker once your teacher has been through it.',
+      progress, milestone: progress.justHit,
+    });
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function showCheckinFeedback(checkin, week) {
+  const wasUnread = !checkin.feedback_read_at;
+  await api(`/api/student/checkins/${checkin.id}/read-feedback`, { method: 'POST' }).catch(() => {});
+  checkin.feedback_read_at = new Date().toISOString();
+  if (wasUnread) {
+    state.studentData.notifications = Math.max(0, state.studentData.notifications - 1);
+    renderStudent();
+  }
+  const written = checkin.teacher_feedback || checkin.ai_feedback || '';
+  modal({
+    title: 'Your check-in feedback',
+    subtitle: `Week of ${fmtWeek(week.week_start)}`,
+    body: `${studentVoiceNote(checkin.voice_note)}
+      ${written ? `<div class="section-title">Feedback from your teacher</div><div class="feedback-box"><h3>✓ Feedback returned</h3><p>${escapeHtml(written)}</p></div>` : ''}
+      ${submittedCheckinBlock(checkin)}`,
+    footer: '<button class="btn primary" data-close-modal>Done</button>',
+  });
+}
+
+async function showHomeworkFeedback(submission, assignment) {
+  const wasUnread = !submission.feedback_read_at;
+  await api(`/api/student/homework/${submission.id}/read-feedback`, { method: 'POST' }).catch(() => {});
+  submission.feedback_read_at = new Date().toISOString();
+  if (wasUnread) {
+    state.studentData.notifications = Math.max(0, state.studentData.notifications - 1);
+    renderStudent();
+  }
+  const corrections = submission.teacher_corrections || submission.ai_corrections || '';
+  const general = submission.teacher_general_feedback || submission.ai_general_feedback || '';
+  modal({
+    title: assignment.title,
+    subtitle: 'Feedback from your teacher',
+    wide: true,
+    body: `${studentVoiceNote(submission.voice_note)}
+      ${corrections ? `<div class="section-title">Irish corrections</div><div class="answer-box corrections">${escapeHtml(corrections)}</div>` : ''}
+      ${general ? `<div class="section-title">General feedback</div><div class="feedback-box"><h3>✓ Feedback returned</h3><p>${escapeHtml(general)}</p></div>` : ''}
+      ${submittedHomeworkBlock(assignment, submission)}`,
+    footer: '<button class="btn primary" data-close-modal>Done</button>',
+  });
+}
+
+const CHECKIN_LABELS = {
+  attendance: "Did you attend or watch this week's class?",
+  reviewed: "Did you review this week's material?",
+  understanding: 'How well do you understand the material so far?',
+  confidence: 'How confident are you feeling?',
+  weeklyWin: "What's your weekly win?",
+  support: 'Anything you are struggling with?',
+};
+
+/* A student's own answers, read back to them. Once something is handed in the
+   first thing anyone wants to know is what they actually said. */
+function submittedCheckinBlock(checkin) {
+  const answers = checkin?.answers || {};
+  const rows = [
+    ['attendance', answers.attendance],
+    ['reviewed', answers.reviewed],
+    ['understanding', answers.understanding ? `${answers.understanding}/10` : ''],
+    ['confidence', answers.confidence ? `${answers.confidence}/10` : ''],
+    ['weeklyWin', answers.weeklyWin],
+    ['support', answers.support],
+  ].filter(([, value]) => String(value ?? '').trim());
+  if (!rows.length) return '';
+  return `<div class="section-title">What you sent</div>
+    <div class="my-answers">${rows.map(([key, value]) => `<div class="my-answer">
+      <small>${escapeHtml(CHECKIN_LABELS[key] || key)}</small>
+      <p>${escapeHtml(String(value))}</p>
+    </div>`).join('')}</div>`;
+}
+
+function submittedHomeworkBlock(assignment, submission) {
+  const answers = Array.isArray(submission?.answers) ? submission.answers : [];
+  const questions = assignment?.questions || [];
+  const files = submission?.files || [];
+  if (!questions.length && !files.length) return '';
+  return `<div class="section-title">What you sent</div>
+    <div class="my-answers">${questions.map((question, index) => `<div class="my-answer">
+      <small>${escapeHtml(question.prompt)}</small>
+      <p>${escapeHtml(answers[index] || 'You left this one blank.')}</p>
+    </div>`).join('')}
+    ${files.length ? `<div class="my-answer">
+      <small>Files you uploaded</small>
+      <div class="my-files">${files.map((file) => `<a class="btn small" href="/api/media/homework-file/${file.id}" target="_blank" rel="noopener">${svg.book} ${escapeHtml(file.fileName)}</a>`).join('')}</div>
+    </div>` : ''}</div>`;
+}
+
+function studentVoiceNote(note) {
+  if (!note) return '';
+  return `<div class="voice-note-card student">
+    <div class="voice-note-head"><span class="voice-note-title">${svg.mic} Voice note from your teacher</span><span class="muted small">${fmtDuration(note.seconds)}</span></div>
+    <div class="voice-note-body"><div class="voice-player"><audio controls preload="metadata" src="${escapeHtml(note.url)}"></audio></div></div>
+  </div>`;
+}
+
+function debounce(fn, delay) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
+}
+
+/* Bootstrap */
+async function loadApplication() {
+  if (state.user.role === 'admin') await loadAdmin();
+  else await loadStudent();
+}
+
+async function boot() {
+  try {
+    const data = await api('/api/auth/me');
+    state.user = data.user;
+    if (state.user.mustChangePassword) renderAuth('change');
+    else await loadApplication();
+  } catch {
+    renderAuth(new URLSearchParams(location.search).has('reset') ? 'reset' : 'login');
+  }
+}
+
+boot();

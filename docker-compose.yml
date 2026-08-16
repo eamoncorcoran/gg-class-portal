@@ -1,0 +1,41 @@
+# Local development stack. For the real server use docker-compose.prod.yml,
+# which adds HTTPS — without it nobody can sign in, because the session cookie
+# is marked Secure whenever NODE_ENV is production.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gaeilgeoir_support
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gaeilgeoir_support"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/gaeilgeoir_support
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads_data:/app/uploads
+      # Student work and teacher voice notes. Without this they exist only
+      # inside the container, and every rebuild throws them away.
+      - uploads_private_data:/app/uploads-private
+      # Nightly backups. Copy these off the server; see LAUNCH.md.
+      - backups_data:/app/backups
+volumes:
+  postgres_data:
+  backups_data:
+  uploads_data:
+  uploads_private_data:

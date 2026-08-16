@@ -1,0 +1,22 @@
+node_modules/
+
+# Secrets: encryption key, SMTP password, OpenAI key.
+.env
+.env.*
+!.env.example
+
+# Student-uploaded files and local database data.
+uploads/*
+!uploads/.gitkeep
+uploads-private/
+.data/
+pgdata/
+
+npm-debug.log*
+*.log
+.DS_Store
+
+# Local verification helper, not part of the app.
+.dbup.mjs
+.pgdata/
+backups/

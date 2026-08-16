@@ -1,0 +1,103 @@
+import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
+import { z } from 'zod';
+import { one, query, transaction } from '../db.js';
+import { asyncRoute } from '../middleware.js';
+import { createSession, destroySession, requireAuth } from '../session.js';
+import { generateStrongPassword, hashPassword, hashToken, passwordProblems, randomToken, verifyPassword } from '../security.js';
+import { sendPasswordChanged, sendPasswordReset } from '../email.js';
+import { audit } from '../audit.js';
+
+const router = Router();
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: true, legacyHeaders: false });
+const resetLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false });
+
+router.get('/me', asyncRoute(async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Not signed in.' });
+  res.json({ user: req.user });
+}));
+
+router.post('/login', loginLimiter, asyncRoute(async (req, res) => {
+  const parsed = z.object({ email: z.string().email(), password: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Enter a valid email and password.' });
+  const user = await one('SELECT * FROM users WHERE email=$1', [parsed.data.email.trim()]);
+  const valid = user?.active && await verifyPassword(user.password_hash, parsed.data.password);
+  if (!valid) {
+    await audit({ action: 'auth.login_failed', entityType: 'user', entityId: user?.id, metadata: { email: parsed.data.email }, ip: req.ip });
+    return res.status(401).json({ error: 'Email or password is incorrect.' });
+  }
+  await createSession(user.id, req, res);
+  await query('UPDATE users SET last_login_at=now(), updated_at=now() WHERE id=$1', [user.id]);
+  await audit({ actorId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, ip: req.ip });
+  res.json({ user: { id: user.id, role: user.role, name: user.name, email: user.email, mustChangePassword: user.must_change_password } });
+}));
+
+router.post('/logout', asyncRoute(async (req, res) => {
+  await destroySession(req, res);
+  res.status(204).end();
+}));
+
+router.post('/change-password', requireAuth, asyncRoute(async (req, res) => {
+  const parsed = z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Both password fields are required.' });
+  const problems = passwordProblems(parsed.data.newPassword);
+  if (problems.length) return res.status(400).json({ error: problems.join(' ') });
+  const user = await one('SELECT * FROM users WHERE id=$1', [req.user.id]);
+  if (!user || !await verifyPassword(user.password_hash, parsed.data.currentPassword)) {
+    return res.status(400).json({ error: 'Your current password is incorrect.' });
+  }
+  const nextHash = await hashPassword(parsed.data.newPassword);
+  await transaction(async (client) => {
+    await client.query('UPDATE users SET password_hash=$1, must_change_password=false, updated_at=now() WHERE id=$2', [nextHash, user.id]);
+    await client.query('DELETE FROM sessions WHERE user_id=$1 AND id<>$2', [user.id, req.user.sessionId]);
+  });
+  await sendPasswordChanged({ user }).catch((error) => console.error('Password confirmation email failed', error));
+  await audit({ actorId: user.id, action: 'auth.password_changed', entityType: 'user', entityId: user.id, ip: req.ip });
+  res.json({ ok: true });
+}));
+
+router.post('/forgot-password', resetLimiter, asyncRoute(async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  const user = await one('SELECT id,name,email FROM users WHERE email=$1 AND active=true', [email]);
+  if (user) {
+    const token = randomToken();
+    await query(
+      `INSERT INTO password_reset_tokens(user_id,token_hash,purpose,expires_at)
+       VALUES ($1,$2,'reset',now()+interval '1 hour')`,
+      [user.id, hashToken(token)],
+    );
+    await sendPasswordReset({ user, token }).catch((error) => console.error('Reset email failed', error));
+    await audit({ actorId: user.id, action: 'auth.password_reset_requested', entityType: 'user', entityId: user.id, ip: req.ip });
+  }
+  res.json({ ok: true, message: 'If that email exists, a reset link has been sent.' });
+}));
+
+router.post('/reset-password', resetLimiter, asyncRoute(async (req, res) => {
+  const parsed = z.object({ token: z.string().min(20), newPassword: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'The reset link or password is invalid.' });
+  const problems = passwordProblems(parsed.data.newPassword);
+  if (problems.length) return res.status(400).json({ error: problems.join(' ') });
+  const reset = await one(
+    `SELECT pr.id token_id, u.* FROM password_reset_tokens pr
+     JOIN users u ON u.id=pr.user_id
+     WHERE pr.token_hash=$1 AND pr.used_at IS NULL AND pr.expires_at>now()`,
+    [hashToken(parsed.data.token)],
+  );
+  if (!reset) return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
+  const nextHash = await hashPassword(parsed.data.newPassword);
+  await transaction(async (client) => {
+    await client.query('UPDATE users SET password_hash=$1,must_change_password=false,updated_at=now() WHERE id=$2', [nextHash, reset.id]);
+    await client.query('UPDATE password_reset_tokens SET used_at=now() WHERE id=$1', [reset.token_id]);
+    await client.query('DELETE FROM sessions WHERE user_id=$1', [reset.id]);
+  });
+  await sendPasswordChanged({ user: reset }).catch((error) => console.error('Password confirmation email failed', error));
+  await audit({ actorId: reset.id, action: 'auth.password_reset_completed', entityType: 'user', entityId: reset.id, ip: req.ip });
+  res.json({ ok: true });
+}));
+
+router.get('/password-policy', (_req, res) => {
+  const example = generateStrongPassword();
+  res.json({ minimumLength: 12, requirements: ['lowercase', 'uppercase', 'number', 'symbol'], exampleLength: example.length });
+});
+
+export default router;

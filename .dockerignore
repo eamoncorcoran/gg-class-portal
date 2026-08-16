@@ -1,0 +1,12 @@
+node_modules
+.env
+.git
+.data
+uploads/*
+!uploads/.gitkeep
+# Student work and voice notes never belong in an image.
+uploads-private/*
+!uploads-private/.gitkeep
+.pgdata
+preview.html
+backups

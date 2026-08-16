@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: gaeilgeoir-guides-student-support
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gaeilgeoir-guides-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: APP_URL
+        sync: false
+      - key: APP_ENCRYPTION_KEY
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+databases:
+  - name: gaeilgeoir-guides-db
+    plan: starter
+    databaseName: gaeilgeoir_support
+    user: gaeilgeoir_support

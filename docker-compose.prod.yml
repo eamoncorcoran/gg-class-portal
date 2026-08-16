@@ -1,0 +1,68 @@
+# The server stack. Caddy holds the certificate and speaks to the app over the
+# private network, so the app itself never publishes a port.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gaeilgeoir_support
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gaeilgeoir_support"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/gaeilgeoir_support
+    expose:
+      - "3000"
+    volumes:
+      - uploads_data:/app/uploads
+      # Student work and teacher voice notes. Without this they exist only
+      # inside the container, and every rebuild throws them away.
+      - uploads_private_data:/app/uploads-private
+      # Nightly backups. Copy these off the server; see LAUNCH.md.
+      - backups_data:/app/backups
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env, e.g. portal.gaeilgeoirguides.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The certificate lives here. Losing it means asking Let's Encrypt for a
+      # new one on every restart, which they rate limit.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  backups_data:
+  uploads_data:
+  uploads_private_data:
+  caddy_data:
+  caddy_config:

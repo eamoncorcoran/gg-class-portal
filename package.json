@@ -1,0 +1,40 @@
+{
+  "name": "gaeilgeoir-guides-internal-saas",
+  "version": "27.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "migrate": "node scripts/migrate.js",
+    "create-admin": "node scripts/create-admin.js",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check server.js && find src scripts public -name '*.js' -print0 | xargs -0 -n1 node --check",
+    "seed-demo": "node scripts/seed-demo.js",
+    "generate-key": "node scripts/generate-key.js",
+    "preflight": "node scripts/preflight.js",
+    "smoke": "node scripts/smoke.js",
+    "build:preview": "node scripts/build-preview.js",
+    "backup": "node scripts/backup.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "csv-parse": "^6.1.0",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "fflate": "^0.8.3",
+    "helmet": "^8.1.0",
+    "luxon": "^3.7.2",
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.6",
+    "openai": "^5.12.2",
+    "pg": "^8.16.3",
+    "zod": "^3.25.76"
+  },
+  "description": "Gaeilgeoir Guides internal student support platform: weekly tracker, check-ins, homework, attendance, deadline reminders and teacher feedback."
+}

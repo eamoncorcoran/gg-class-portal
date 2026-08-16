@@ -1,0 +1,23 @@
+# Caddy gets and renews the certificate on its own. Nothing to run by hand.
+{$APP_DOMAIN} {
+	encode gzip
+
+	# Homework uploads and voice notes are the largest things posted. Keep this
+	# comfortably above MAX_UPLOAD_MB or the browser gets a bare 413.
+	request_body {
+		max_size 30MB
+	}
+
+	reverse_proxy app:3000 {
+		# The app marks the session cookie Secure in production and needs to be
+		# told the original request arrived over HTTPS.
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MB
+			roll_keep 5
+		}
+	}
+}
