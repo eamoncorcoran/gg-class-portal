@@ -17,16 +17,41 @@ import { one, query } from './db.js';
    posting into a room and posting into a void is often a single click from one
    other person. */
 
-const AUTHOR = `jsonb_build_object('id',u.id,'name',u.name,'role',u.role)`;
+/* `avatar` is a boolean rather than a path: the picture itself is served from an
+   authenticated route keyed on the user id, so the feed only needs to know
+   whether there is one to ask for. */
+const AUTHOR = `jsonb_build_object('id',u.id,'name',u.name,'role',u.role,'avatar',u.avatar_path IS NOT NULL)`;
+
+const ATTACHMENTS = `COALESCE((SELECT json_agg(jsonb_build_object(
+    'id',a.id,'kind',a.kind,'url',a.url,'fileName',a.file_name,
+    'mimeType',a.mime_type,'sizeBytes',a.size_bytes
+  ) ORDER BY a.position, a.created_at)
+  FROM discussion_attachments a WHERE a.thread_id=t.id),'[]'::json) attachments`;
+
+/**
+ * Hot: comments, decayed by age.
+ *
+ * A post with eight comments this morning should sit above one with twelve from
+ * a month ago, because the point of the sort is "where is the conversation", not
+ * "what was popular once". The half-life is a day and a half, which on a weekly
+ * course keeps the current week's discussion on top without burying something
+ * from Friday by Sunday. Likes are deliberately not in it — they measure
+ * approval, and this is measuring activity.
+ */
+const HOT_SCORE = `
+  (SELECT count(*) FROM discussion_posts p WHERE p.thread_id=t.id AND p.deleted_at IS NULL)
+  / power(2, EXTRACT(EPOCH FROM (now() - t.last_activity_at)) / 129600.0)`;
 
 /* Counted in SQL rather than in the browser so a feed of forty posts is one
    query rather than forty. `liked` is per viewer, which is why every read takes
    a viewer id. */
 const THREAD_COLUMNS = `
   t.id, t.class_id, t.title, t.body, t.pinned, t.locked, t.created_at,
-  t.last_activity_at, t.deleted_at, t.category_id,
+  t.last_activity_at, t.deleted_at, t.category_id, t.published_at,
+  t.published_at > now() scheduled,
   ${AUTHOR} author,
   cat.name category_name,
+  ${ATTACHMENTS},
   (SELECT count(*)::int FROM discussion_posts p
     WHERE p.thread_id=t.id AND p.deleted_at IS NULL) comment_count,
   (SELECT count(*)::int FROM discussion_likes l
@@ -45,10 +70,13 @@ const THREAD_COLUMNS = `
  * board this quiet the most recent thing is nearly always the most relevant;
  * `top` sorts by likes for the occasional look back over what landed.
  */
-export async function listThreads({ classId, viewerId, includeDeleted = false, categoryId = null, sort = 'new' }) {
-  const order = sort === 'top'
-    ? 'like_count DESC, t.last_activity_at DESC'
-    : 't.last_activity_at DESC';
+export async function listThreads({
+  classId, viewerId, includeDeleted = false, includeScheduled = false,
+  categoryId = null, sort = 'new',
+}) {
+  const order = sort === 'hot'
+    ? `${HOT_SCORE} DESC, t.last_activity_at DESC`
+    : 't.published_at DESC';
   const result = await query(
     `SELECT ${THREAD_COLUMNS}
      FROM discussion_threads t
@@ -56,6 +84,7 @@ export async function listThreads({ classId, viewerId, includeDeleted = false, c
      LEFT JOIN discussion_categories cat ON cat.id=t.category_id
      WHERE t.class_id=$1
        ${includeDeleted ? '' : 'AND t.deleted_at IS NULL'}
+       ${includeScheduled ? '' : 'AND t.published_at <= now()'}
        ${categoryId ? 'AND t.category_id=$3' : ''}
      ORDER BY t.pinned DESC, ${order}`,
     categoryId ? [classId, viewerId, categoryId] : [classId, viewerId],
@@ -64,13 +93,15 @@ export async function listThreads({ classId, viewerId, includeDeleted = false, c
 }
 
 /** One post with its comments, each carrying its own like state. */
-export async function getThread({ threadId, viewerId, includeDeleted = false }) {
+export async function getThread({ threadId, viewerId, includeDeleted = false, includeScheduled = false }) {
   const thread = await one(
     `SELECT ${THREAD_COLUMNS}
      FROM discussion_threads t
      LEFT JOIN users u ON u.id=t.author_id
      LEFT JOIN discussion_categories cat ON cat.id=t.category_id
-     WHERE t.id=$1 ${includeDeleted ? '' : 'AND t.deleted_at IS NULL'}`,
+     WHERE t.id=$1
+       ${includeDeleted ? '' : 'AND t.deleted_at IS NULL'}
+       ${includeScheduled ? '' : 'AND t.published_at <= now()'}`,
     [threadId, viewerId],
   );
   if (!thread) return null;
@@ -109,12 +140,29 @@ export async function listCategories(classId) {
   return result.rows;
 }
 
-export async function createThread({ classId, authorId, title, body, categoryId = null }) {
-  return one(
-    `INSERT INTO discussion_threads(class_id,author_id,title,body,category_id,last_activity_at)
-     VALUES ($1,$2,$3,$4,$5,now()) RETURNING *`,
-    [classId, authorId, title, body, categoryId],
+export async function createThread({
+  classId, authorId, title, body, categoryId = null, publishedAt = null, attachments = [],
+}) {
+  const thread = await one(
+    `INSERT INTO discussion_threads(class_id,author_id,title,body,category_id,published_at,last_activity_at)
+     VALUES ($1,$2,$3,$4,$5,COALESCE($6,now()),COALESCE($6,now())) RETURNING *`,
+    [classId, authorId, title, body, categoryId, publishedAt],
   );
+  await addAttachments(thread.id, attachments);
+  return thread;
+}
+
+/* Attachments are written after the post they hang off, so a failure here costs
+   the attachment rather than the writing. */
+export async function addAttachments(threadId, attachments = []) {
+  for (const [index, item] of attachments.entries()) {
+    await query(
+      `INSERT INTO discussion_attachments(thread_id,kind,url,stored_name,file_name,mime_type,size_bytes,position)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [threadId, item.kind, item.url, item.storedName || null, item.fileName || null,
+       item.mimeType || null, item.sizeBytes || 0, index],
+    );
+  }
 }
 
 export async function createPost({ threadId, authorId, body }) {
@@ -171,10 +219,14 @@ export async function unreadCount({ userId, classId }) {
      SELECT
        (SELECT count(*)::int FROM discussion_threads t
          WHERE t.class_id=$2 AND t.deleted_at IS NULL AND t.author_id<>$1
-           AND t.created_at > COALESCE((SELECT last_seen_at FROM seen), 'epoch'::timestamptz))
+           AND t.published_at <= now()
+           -- Measured from when it appeared, not when it was written: a post
+           -- scheduled three days ago and released this morning is new today.
+           AND t.published_at > COALESCE((SELECT last_seen_at FROM seen), 'epoch'::timestamptz))
      + (SELECT count(*)::int FROM discussion_posts p
          JOIN discussion_threads t ON t.id=p.thread_id
          WHERE t.class_id=$2 AND t.deleted_at IS NULL AND p.deleted_at IS NULL AND p.author_id<>$1
+           AND t.published_at <= now()
            AND p.created_at > COALESCE((SELECT last_seen_at FROM seen), 'epoch'::timestamptz)) count`,
     [userId, classId],
   );

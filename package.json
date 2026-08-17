@@ -1,6 +1,6 @@
 {
   "name": "gaeilgeoir-guides-internal-saas",
-  "version": "28.0.0",
+  "version": "29.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -36,5 +36,5 @@
     "pg": "^8.16.3",
     "zod": "^3.25.76"
   },
-  "description": "Gaeilgeoir Guides internal student support platform: weekly tracker, check-ins, homework, attendance, course materials, class board, deadline reminders and teacher feedback."
+  "description": "Gaeilgeoir Guides Class Portal: weekly tracker, check-ins, homework, attendance, class community feed, deadline reminders and teacher feedback."
 }

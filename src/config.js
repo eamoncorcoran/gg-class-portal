@@ -22,6 +22,11 @@ export const config = Object.freeze({
   encryptionKey: process.env.APP_ENCRYPTION_KEY || '',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-5.6',
+  /* GIF search. Without a key the picker hides itself rather than offering a
+     button that returns nothing. A free Giphy key covers a class of this size
+     many times over. */
+  giphyApiKey: process.env.GIPHY_API_KEY || '',
+  giphyRating: process.env.GIPHY_RATING || 'pg',
   uploadDir: path.resolve(process.env.UPLOAD_DIR || './uploads'),
   /* Student work and teacher voice notes never go in uploadDir, because that
      directory is served publicly for assignment resources. They live here and

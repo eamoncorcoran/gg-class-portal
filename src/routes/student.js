@@ -12,7 +12,6 @@ import { withVoiceNote, withVoiceNotes } from '../voice.js';
 import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
 import { nextClassAt, joinLinkFor } from '../classtime.js';
-import { listMaterials } from '../materials.js';
 import { listThreads, getThread, createThread, createPost, unreadCount, markRead,
   listCategories, toggleLike, topContributors } from '../community.js';
 import multer from 'multer';
@@ -62,6 +61,29 @@ async function accessibleAssignment(studentId, assignmentId) {
     [studentId, assignmentId],
   );
 }
+
+/**
+ * Everything a student is allowed to see of a check-in or a submission.
+ *
+ * The `ai_*` columns and the `ai_drafted` state are working notes for the
+ * teacher: what the model proposed before it was read, edited and approved. What
+ * the student receives is the teacher's reply, because that is what it is by the
+ * time it reaches them — nobody returns a draft without reading it.
+ *
+ * Stripped on the way out rather than merely hidden in the interface, so opening
+ * the network tab reveals nothing the screen does not. `feedback_state` collapses
+ * to the only two states that mean anything from this side.
+ */
+function forStudent(row) {
+  if (!row) return row;
+  const {
+    ai_feedback: _f, ai_corrections: _c, ai_general_feedback: _g,
+    feedback_state: state, ...rest
+  } = row;
+  return { ...rest, feedback_state: state === 'returned' ? 'returned' : 'pending' };
+}
+
+const allForStudent = (rows = []) => rows.map(forStudent);
 
 /* Once someone has withdrawn, nothing more is asked of them. Their existing work
    and feedback stay exactly where they are. */
@@ -152,9 +174,9 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
     communityUnread: community,
     weeks: weeksResult.rows,
     attendance: attendanceResult.rows,
-    checkins: withVoiceNotes(checkinsResult.rows, 'checkin'),
+    checkins: allForStudent(withVoiceNotes(checkinsResult.rows, 'checkin')),
     assignments: assignmentsResult.rows,
-    homework: withVoiceNotes(homeworkResult.rows, 'homework'),
+    homework: allForStudent(withVoiceNotes(homeworkResult.rows, 'homework')),
     notifications,
     progress: studentProgress({ checkins: checkinsResult.rows, homework: homeworkResult.rows }),
     dismissals: dismissalsResult.rows.map((row) => ({ kind: row.kind, refId: row.ref_id })),
@@ -193,7 +215,7 @@ router.put('/checkins/:weekId/draft', asyncRoute(async (req, res) => {
      RETURNING *`,
     [week.id, req.user.id, JSON.stringify(parsed.data.answers)],
   );
-  res.json(row);
+  res.json(forStudent(row));
 }));
 
 router.post('/checkins/:weekId/submit', asyncRoute(async (req, res) => {
@@ -252,7 +274,7 @@ router.post('/checkins/:weekId/submit', asyncRoute(async (req, res) => {
     feedbackState = 'failed';
   }
   await audit({ actorId: req.user.id, action: 'checkin.submitted', entityType: 'checkin', entityId: row.id, ip: req.ip });
-  res.json({ ...row, feedback_state: feedbackState });
+  res.json(forStudent({ ...row, feedback_state: feedbackState }));
 }));
 
 router.post('/checkins/:id/read-feedback', asyncRoute(async (req, res) => {
@@ -262,7 +284,7 @@ router.post('/checkins/:id/read-feedback', asyncRoute(async (req, res) => {
     [req.params.id, req.user.id],
   );
   if (!row) return res.status(404).json({ error: 'Returned feedback not found.' });
-  res.json(withVoiceNote(row, 'checkin'));
+  res.json(forStudent(withVoiceNote(row, 'checkin')));
 }));
 
 router.get('/assignments/:id', asyncRoute(async (req, res) => {
@@ -276,7 +298,7 @@ router.get('/assignments/:id', asyncRoute(async (req, res) => {
      FROM homework_submissions hs WHERE hs.assignment_id=$1 AND hs.student_id=$2`,
     [assignment.id, req.user.id],
   );
-  res.json({ assignment: { ...assignment, open: assignmentOpen(assignment) }, submission: submission ? withVoiceNote(submission, 'homework') : null });
+  res.json({ assignment: { ...assignment, open: assignmentOpen(assignment) }, submission: submission ? forStudent(withVoiceNote(submission, 'homework')) : null });
 }));
 
 router.put('/assignments/:id/draft', asyncRoute(async (req, res) => {
@@ -298,7 +320,7 @@ router.put('/assignments/:id/draft', asyncRoute(async (req, res) => {
      RETURNING *`,
     [assignment.id, req.user.id, JSON.stringify(parsed.data.answers), parsed.data.currentQuestion],
   );
-  res.json(row);
+  res.json(forStudent(row));
 }));
 
 router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
@@ -367,7 +389,7 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
     feedbackState = 'failed';
   }
   await audit({ actorId: req.user.id, action: 'homework.submitted', entityType: 'homework_submission', entityId: row.id, ip: req.ip });
-  res.json({ ...row, feedback_state: feedbackState });
+  res.json(forStudent({ ...row, feedback_state: feedbackState }));
 }));
 
 router.post('/homework/:id/read-feedback', asyncRoute(async (req, res) => {
@@ -377,7 +399,7 @@ router.post('/homework/:id/read-feedback', asyncRoute(async (req, res) => {
     [req.params.id, req.user.id],
   );
   if (!row) return res.status(404).json({ error: 'Returned feedback not found.' });
-  res.json(withVoiceNote(row, 'homework'));
+  res.json(forStudent(withVoiceNote(row, 'homework')));
 }));
 
 /* Students subscribe to their own deadlines. The token is theirs alone and only
@@ -552,14 +574,6 @@ router.delete('/dismissals/:kind/:refId', asyncRoute(async (req, res) => {
   res.status(204).end();
 }));
 
-/* The course library. Only published material, and only for the class this
-   student is actually in. */
-router.get('/materials', asyncRoute(async (req, res) => {
-  const klass = await studentClass(req.user.id);
-  if (!klass) return res.json({ materials: [] });
-  res.json({ materials: await listMaterials({ classId: klass.id, publishedOnly: true }) });
-}));
-
 /* ------------------------------------------------------------------
    The class board
    ------------------------------------------------------------------ */
@@ -579,7 +593,7 @@ async function boardClass(req, res) {
 router.get('/community', asyncRoute(async (req, res) => {
   const klass = await boardClass(req, res);
   if (!klass) return;
-  const sort = req.query.sort === 'top' ? 'top' : 'new';
+  const sort = req.query.sort === 'hot' ? 'hot' : 'new';
   const categoryId = req.query.categoryId || null;
   const [threads, categories, contributors, members] = await Promise.all([
     listThreads({ classId: klass.id, viewerId: req.user.id, categoryId, sort }),
@@ -618,6 +632,12 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
     title: z.string().trim().min(2).max(200),
     body: z.string().trim().min(1).max(20000),
     categoryId: z.string().uuid().nullable().optional(),
+    /* A Loom link or a GIF, but never a file upload. Nothing a student sends
+       here reaches the disk. */
+    attachments: z.array(z.object({
+      kind: z.enum(['loom', 'gif']),
+      url: z.string().url(),
+    })).max(4).optional().default([]),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Give your post a title and a message.' });
   // A category from another class would put the post somewhere its own filters
@@ -628,6 +648,7 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
   const row = await createThread({
     classId: klass.id, authorId: req.user.id,
     title: parsed.data.title, body: parsed.data.body, categoryId: category?.id || null,
+    attachments: parsed.data.attachments,
   });
   await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
   res.status(201).json(row);

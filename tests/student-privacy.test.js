@@ -1,0 +1,105 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+/* Students must never be shown — or sent — anything implying their feedback was
+   drafted by a model. The interface hiding it is not enough on its own: the
+   network tab is one keystroke away, so the fields have to be gone from the
+   payload as well.
+
+   These read the source rather than a live server so they run anywhere, and they
+   fail loudly if somebody adds a student route that returns a raw row. */
+
+const studentRoutes = fs.readFileSync(new URL('../src/routes/student.js', import.meta.url), 'utf8');
+const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+
+test('every student response for a check-in or submission is sanitised', () => {
+  /* Any `res.json` in the student routes that hands back a row from `checkins`
+     or `homework_submissions` has to pass through forStudent first. Rather than
+     parse the file, assert on the shape: no bare `res.json(row)` survives. */
+  const bare = studentRoutes.match(/res\.json\(row\)/g) || [];
+  assert.equal(bare.length, 0, 'a student route returns a raw row: wrap it in forStudent');
+
+  const spread = studentRoutes.match(/res\.json\(\{ \.\.\.row/g) || [];
+  assert.equal(spread.length, 0, 'a student route spreads a raw row: wrap it in forStudent');
+});
+
+test('forStudent removes the drafting columns and the ai_drafted state', async () => {
+  /* Exercised directly by lifting the function out of the module, which avoids
+     needing a database to prove the shape of what it returns. */
+  const source = studentRoutes.slice(
+    studentRoutes.indexOf('function forStudent(row)'),
+    studentRoutes.indexOf('const allForStudent'),
+  );
+  assert.ok(source.length > 0, 'forStudent is no longer where this test expects it');
+  const forStudent = new Function(`${source}; return forStudent;`)();
+
+  const row = forStudent({
+    id: 'x',
+    status: 'returned',
+    teacher_feedback: 'Well done.',
+    ai_feedback: 'model text',
+    ai_corrections: 'model corrections',
+    ai_general_feedback: 'model general',
+    feedback_state: 'ai_drafted',
+  });
+
+  assert.equal('ai_feedback' in row, false);
+  assert.equal('ai_corrections' in row, false);
+  assert.equal('ai_general_feedback' in row, false);
+  assert.equal(row.feedback_state, 'pending');
+  // What the teacher actually approved still goes through untouched.
+  assert.equal(row.teacher_feedback, 'Well done.');
+
+  assert.equal(forStudent({ feedback_state: 'returned' }).feedback_state, 'returned');
+  assert.equal(forStudent({ feedback_state: 'generating' }).feedback_state, 'pending');
+  assert.equal(forStudent({ feedback_state: 'failed' }).feedback_state, 'pending');
+  assert.equal(forStudent(null), null);
+});
+
+test('the dictate button cannot render for a student', () => {
+  const start = app.indexOf('function dictateButton(');
+  assert.ok(start !== -1, 'dictateButton is gone');
+  const body = app.slice(start, start + 400);
+  assert.match(
+    body,
+    /state\.user\?\.role !== 'admin'\) return ''/,
+    'dictateButton must refuse to render for anybody who is not an administrator',
+  );
+});
+
+/** One top-level function body, bounded by the next top-level declaration. */
+function functionBody(name) {
+  const start = [`\nfunction ${name}(`, `\nasync function ${name}(`]
+    .map((marker) => app.indexOf(marker))
+    .filter((index) => index !== -1)
+    .sort((a, b) => a - b)[0];
+  if (start === undefined) return null;
+  const ends = ['\nfunction ', '\nasync function ', '\nconst ']
+    .map((marker) => app.indexOf(marker, start + 1))
+    .filter((index) => index > start);
+  return app.slice(start, ends.length ? Math.min(...ends) : app.length);
+}
+
+test('no student-facing copy mentions AI or drafting', () => {
+  // Every function that renders something only a student sees.
+  const names = [
+    'studentCommunityView', 'feedEmpty', 'studentHero', 'studentGoals',
+    'openWithdrawalForm', 'studentCalendarView', 'studentTrackerView',
+    'showCheckinFeedback', 'showHomeworkFeedback', 'celebrationScreen',
+    'avatarForm', 'feedPost', 'feedComment',
+  ];
+  const missing = names.filter((name) => !functionBody(name));
+  assert.deepEqual(missing, [], `these student views were renamed or removed: ${missing.join(', ')}`);
+  for (const name of names) {
+    assert.doesNotMatch(functionBody(name), /\bAI\b|artificial intelligence|OpenAI|auto-?generated|dictat/i,
+      `${name} renders something to a student that mentions AI or dictation`);
+  }
+});
+
+test('the student hero copy is present and says nothing about drafting', () => {
+  const start = app.indexOf('const STUDENT_HERO_COPY');
+  assert.ok(start !== -1, 'STUDENT_HERO_COPY is gone');
+  const block = app.slice(start, app.indexOf('};', start));
+  assert.doesNotMatch(block, /\bAI\b|draft/i);
+});

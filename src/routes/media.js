@@ -17,6 +17,19 @@ import { one } from '../db.js';
 const router = Router();
 router.use(requireAuth);
 
+/* Profile pictures. Everybody signed in can see everybody else's, because that
+   is the entire point of putting faces on the feed — but only people signed in,
+   which is why these are not in the public uploads path. */
+router.get('/avatar/:userId', asyncRoute(async (req, res) => {
+  const owner = await one('SELECT avatar_path, avatar_mime FROM users WHERE id=$1', [req.params.userId]);
+  const file = owner?.avatar_path ? resolveStored(owner.avatar_path) : null;
+  if (!file) return res.status(404).json({ error: 'No picture.' });
+  res.setHeader('Content-Type', owner.avatar_mime || 'image/jpeg');
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  fs.createReadStream(file).pipe(res);
+}));
+
 /* Private files live outside the publicly served uploads directory. Anything
    written before that separation existed is still read from the old location, so
    existing recordings keep playing. */

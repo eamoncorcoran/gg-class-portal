@@ -31,8 +31,6 @@ const state = {
   activeReview: null,
   checkinForm: null,
   homeworkForm: null,
-  materials: null,
-  materialsClassId: null,
   community: null,
   communityClassId: null,
   communityThread: null,
@@ -69,6 +67,9 @@ const svg = {
      both states keeps the button from changing size as it is clicked. */
   heart: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 7.694c-1.4-1.6-3.2-2.2-4.9-1.7-2.4.7-3.6 3.3-2.8 5.7.9 2.9 4.4 5.6 7.7 7.6 3.3-2 6.8-4.7 7.7-7.6.8-2.4-.4-5-2.8-5.7-1.7-.5-3.5.1-4.9 1.7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   comment: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 10.5h8M8 14h5m-6.2 6L9.3 22.5c.25.25.38.38.52.43a.7.7 0 0 0 .43 0c.15-.05.27-.18.52-.43L13 20h2.2c1.68 0 2.52 0 3.16-.33a3 3 0 0 0 1.31-1.31C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.33-3.16a3 3 0 0 0-1.31-1.31C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 0 0-1.31 1.31C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.33 3.16a3 3 0 0 0 1.31 1.31C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  gif: `<svg viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10.2 10.2a2.4 2.4 0 1 0 .3 3.4v-1.2H9.3M13.9 9.6v4.8M20 9.6h-2.9v4.8m0-2.7h2.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  play: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="2"/><path d="M10 8.6v6.8l5.5-3.4L10 8.6Z" fill="currentColor"/></svg>`,
+  camera2: `<svg viewBox="0 0 24 24" fill="none"><path d="M3 9.5A2.5 2.5 0 0 1 5.5 7h1.2c.5 0 .95-.28 1.17-.72l.66-1.31A1.5 1.5 0 0 1 9.87 4h4.26c.57 0 1.09.32 1.34.83l.66 1.31c.22.44.68.86 1.17.86h1.2A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-7Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="2"/></svg>`,
 };
 
 /* ------------------------------------------------------------------
@@ -386,7 +387,7 @@ const LOGO_SRC = window.__GG_LOGO__ || '/logo.webp';
 function brandLockup(large = false, onDark = false) {
   return `<div class="brand-lockup ${large ? 'large' : ''} ${onDark ? 'on-dark' : ''}">
     <img class="brand-logo" src="${LOGO_SRC}" alt="Gaeilgeoir Guides">
-    <span class="brand-sub">Homework<br>Portal</span>
+    <span class="brand-sub">Class<br>Portal</span>
   </div>`;
 }
 
@@ -472,7 +473,14 @@ function statusIcon({ tone, icon, label, hint, unread = false }) {
 
 /* A dictate button that sits above a textarea. `mode` is 'light' for the Irish
    corrections box, where the cleanup model must not touch the Irish being taught. */
+/* Dictation is a teacher tool and must never appear on a student screen. The
+   gate lives here rather than at each call site so that adding a dictate button
+   to something a student can see is not possible by accident: the button simply
+   does not render for them. Students are never shown anything — a control, a
+   label, a field in an API response — implying their feedback was drafted by a
+   model. */
 function dictateButton(targetId, mode = 'full') {
+  if (state.user?.role !== 'admin') return '';
   if (!voiceSupported()) return '';
   return `<button type="button" class="dictate-btn" data-dictate-for="${targetId}" data-dictate-mode="${mode}" title="Dictate this${mode === 'light' ? '. Irish wording is left exactly as you say it.' : ''}">
     ${svg.mic}<span class="dictate-label">Dictate</span><span class="dictate-timer"></span>
@@ -710,18 +718,19 @@ function renderAuth(mode = 'login', message = '') {
   const resetToken = new URLSearchParams(location.search).get('reset');
   if (resetToken) mode = 'reset';
   const copy = {
-    login: ['Welcome back', 'Sign in to see your homework, your check-in and your feedback.'],
+    login: ['Welcome back', 'Sign in to see your class, your homework and your feedback.'],
     forgot: ['Reset your password', 'Enter your email and we will send a secure reset link.'],
     reset: ['Choose a new password', 'This reset link expires after one hour.'],
     change: ['Protect your account', 'Choose your own strong password before continuing.'],
+    avatar: ['Add your photograph', 'One more thing, then you are in.'],
   }[mode];
   app.innerHTML = `
     <main class="auth-shell">
       <section class="auth-art">
         ${brandLockup(false, true)}
         <div class="auth-copy">
-          <h1>Homework Portal</h1>
-          <p>Everything for your Irish course in one place: your weekly check-in, your homework, and the corrections and feedback that come back to you.</p>
+          <h1>Class Portal</h1>
+          <p>Everything for your Irish course in one place: your class, your weekly check-in, your homework, and the corrections and feedback that come back to you.</p>
           <div class="auth-feature-list">
             <div class="auth-feature"><span>✓</span><span>See what is due and when, and work through it one question at a time.</span></div>
             <div class="auth-feature"><span>✓</span><span>Your answers save as you go, so you can stop and pick it up later.</span></div>
@@ -738,7 +747,11 @@ function renderAuth(mode = 'login', message = '') {
           ${brandLockup()}
           <h2>${copy[0]}</h2><p>${copy[1]}</p>
           <div id="auth-message">${message ? `<div class="success-banner">${escapeHtml(message)}</div>` : ''}</div>
-          ${mode === 'login' ? loginForm() : mode === 'forgot' ? forgotForm() : mode === 'reset' ? resetForm(resetToken) : changePasswordForm(true)}
+          ${mode === 'login' ? loginForm()
+            : mode === 'forgot' ? forgotForm()
+            : mode === 'reset' ? resetForm(resetToken)
+            : mode === 'avatar' ? avatarForm()
+            : changePasswordForm(true)}
         </div>
       </section>
     </main>`;
@@ -780,6 +793,26 @@ function changePasswordForm(firstLogin = false) {
   </form>`;
 }
 
+/* Asked for once, on the way in, after the password is set. Not skippable and
+   not buried in settings: a feed of faces only works if everybody has one, and
+   the only moment everybody reliably passes through is this one.
+
+   The picture is previewed before it is sent, because nobody should discover
+   what they uploaded by seeing it on the feed. */
+function avatarForm() {
+  return `<form id="avatar-form">
+    <div class="avatar-pick">
+      <div class="avatar-preview" id="avatar-preview">${svg.camera2}</div>
+      <div>
+        <button type="button" class="btn" id="choose-avatar">Choose a photograph</button>
+        <p class="muted small">A clear photo of your face. JPEG, PNG or WebP, up to 6MB. Your class sees it beside anything you post.</p>
+      </div>
+    </div>
+    <input type="file" id="avatar-input" accept="image/jpeg,image/png,image/webp" class="hidden">
+    <button class="btn primary auth-submit" type="submit" id="avatar-save" disabled>Save and continue</button>
+  </form>`;
+}
+
 function passwordRules() {
   return `<div class="password-rules" id="password-rules"><span data-rule="length">12+ characters</span><span data-rule="lower">Lowercase</span><span data-rule="upper">Uppercase</span><span data-rule="number">Number</span><span data-rule="symbol">Symbol</span></div>`;
 }
@@ -811,6 +844,7 @@ function bindAuth(mode) {
       state.user = data.user;
       try { history.replaceState({}, '', '/'); } catch {}
       if (state.user.mustChangePassword) return renderAuth('change');
+      if (state.user.mustSetAvatar && !state.user.hasAvatar) return renderAuth('avatar');
       await loadApplication();
     } catch (error) { authError(error); }
   });
@@ -837,9 +871,50 @@ function bindAuth(mode) {
     try {
       await api('/api/auth/change-password', { method: 'POST', body: { currentPassword: form.get('currentPassword'), newPassword: form.get('newPassword') } });
       state.user.mustChangePassword = false;
-      await loadApplication();
       showToast('Password changed');
+      // Straight on to the photograph rather than into the portal, so the ask
+      // lands while somebody is still in setting-up mode.
+      if (state.user.mustSetAvatar && !state.user.hasAvatar) return renderAuth('avatar');
+      await loadApplication();
     } catch (error) { authError(error); }
+  });
+
+  if (mode === 'avatar') bindAvatarForm();
+}
+
+function bindAvatarForm() {
+  const input = document.getElementById('avatar-input');
+  const preview = document.getElementById('avatar-preview');
+  const save = document.getElementById('avatar-save');
+  let chosen = null;
+
+  document.getElementById('choose-avatar').addEventListener('click', () => input.click());
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.size > 6 * 1024 * 1024) return showToast('That photograph is over 6MB. Try a smaller one.', 'error');
+    chosen = file;
+    // Shown before it is sent: nobody should find out what they uploaded by
+    // seeing it appear on the feed.
+    const reader = new FileReader();
+    reader.onload = () => { preview.innerHTML = `<img src="${reader.result}" alt="">`; };
+    reader.readAsDataURL(file);
+    save.disabled = false;
+  });
+
+  document.getElementById('avatar-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!chosen) return;
+    const form = new FormData();
+    form.append('avatar', chosen);
+    save.disabled = true;
+    try {
+      await api('/api/auth/avatar', { method: 'POST', body: form });
+      state.user.mustSetAvatar = false;
+      state.user.hasAvatar = true;
+      await loadApplication();
+      showToast('Go raibh maith agat');
+    } catch (error) { save.disabled = false; authError(error); }
   });
 }
 
@@ -851,7 +926,7 @@ function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
         <div class="sidebar-brand">${brandLockup()}</div>
         ${nav}
         <div class="sidebar-footer">
-          <div class="avatar">${initials(state.user.name)}</div>
+          ${boardAvatar(me(), 'sm')}
           <div class="user-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(roleLabel)}</span></div>
           <button class="icon-button" id="account-menu" aria-label="Account">${svg.settings}</button>
         </div>
@@ -861,7 +936,7 @@ function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
           <div class="breadcrumb"><span>Gaeilgeoir Guides</span><span>/</span><strong>${escapeHtml(title)}</strong></div>
           <div class="top-actions">
             ${notificationCount ? `<span class="nav-badge" title="${notificationCount} new piece${notificationCount === 1 ? '' : 's'} of feedback">${notificationCount}</span>` : ''}
-            <button class="user-chip" id="account-menu-top"><span class="avatar">${initials(state.user.name)}</span><span class="user-chip-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(roleLabel)}</span></span></button>
+            <button class="user-chip" id="account-menu-top">${boardAvatar(me(), 'sm')}<span class="user-chip-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(roleLabel)}</span></span></button>
           </div>
         </header>
         <div class="content">${content}</div>
@@ -1011,7 +1086,6 @@ function adminNav() {
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.book, 'Homework')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
-      ${adminNavButton('materials', svg.library, 'Course materials')}
       ${adminNavButton('community', svg.board, 'Class board')}
       ${adminNavButton('attendance', svg.upload, 'Attendance upload')}
       ${adminNavButton('reminders', svg.mail, 'Email reminders')}
@@ -1038,7 +1112,6 @@ function bindShellNavigation() {
 async function showStudentView(view) {
   state.view = view;
   try {
-    if (view === 'materials') state.materials = await api('/api/student/materials');
     if (view === 'community') {
       const params = new URLSearchParams();
       if (state.boardSort === 'top') params.set('sort', 'top');
@@ -1088,11 +1161,6 @@ async function renderAdmin() {
       state.checkinClassId ||= state.classes[0]?.id || null;
       state.teachingWeeks = state.checkinClassId ? await api(`/api/admin/teaching-weeks?classId=${state.checkinClassId}`) : [];
       title = 'Weekly check-ins'; content = checkinsView();
-    } else if (state.view === 'materials') {
-      state.classes = await api('/api/admin/classes');
-      state.materialsClassId ||= state.activeClassId || state.classes[0]?.id || null;
-      state.materials = state.materialsClassId ? await api(`/api/admin/materials/${state.materialsClassId}`) : null;
-      title = 'Course materials'; content = materialsView();
     } else if (state.view === 'community') {
       state.classes = await api('/api/admin/classes');
       state.communityClassId ||= state.activeClassId || state.classes[0]?.id || null;
@@ -1797,300 +1865,422 @@ function bindCheckins() {
 }
 
 /* ------------------------------------------------------------------
-   Course materials
+   The class feed.
+
+   One implementation serves both sides. The administrator gets moderation,
+   scheduling and file attachments; everything else — the composer, categories,
+   likes, comments, GIFs — is identical, because a teacher posting to their own
+   class is doing the same thing a student is.
    ------------------------------------------------------------------ */
 
-const MATERIAL_ICONS = { file: 'note', link: 'link', loom: 'video' };
+const AVATAR_COLOURS = ['#3f922c', '#1570ef', '#dc6803', '#6938ef', '#e04f16', '#0086c9', '#ba24d5'];
 
-/* The library, grouped the way a student reads it: course-wide first, then each
-   teaching week newest first. Unpublished rows sit in place rather than in a
-   separate list, so the gap they will fill is visible while they are being
-   prepared. */
-function materialsView() {
-  const data = state.materials;
-  const rows = data?.materials || [];
-  const weeks = data?.weeks || [];
-  const weekLabel = new Map(weeks.map((week) => [week.id, fmtWeek(week.week_start)]));
-  const published = rows.filter((row) => row.published).length;
-
-  const group = (items) => `<div class="material-list">${items.map((row) => `
-    <article class="material-row ${row.published ? '' : 'is-draft'}">
-      <span class="material-icon">${svg[MATERIAL_ICONS[row.kind] || 'note']}</span>
-      <div class="material-copy">
-        <strong>${escapeHtml(row.title)}</strong>
-        ${row.description ? `<p>${escapeHtml(row.description)}</p>` : ''}
-        <span class="muted small">${escapeHtml(row.kind === 'file' ? (row.file_name || 'File') : row.kind === 'loom' ? 'Loom video' : 'Link')}${row.published ? '' : ' · not published'}</span>
-      </div>
-      <div class="row-actions">
-        <a class="btn small" href="${escapeHtml(row.url)}" target="_blank" rel="noopener noreferrer">Open</a>
-        <button class="btn small" data-material-publish="${row.id}" data-published="${row.published}">${row.published ? 'Unpublish' : 'Publish'}</button>
-        <button class="btn small danger" data-material-delete="${row.id}">Delete</button>
-      </div>
-    </article>`).join('')}</div>`;
-
-  const courseWide = rows.filter((row) => !row.week_id);
-  const byWeek = new Map();
-  rows.filter((row) => row.week_id).forEach((row) => {
-    byWeek.set(row.week_id, [...(byWeek.get(row.week_id) || []), row]);
-  });
-  const weekOrder = weeks.filter((week) => byWeek.has(week.id));
-
-  return `${pageHeader('Course materials', 'Library', 'Notes, recordings and links that stay available all year. Homework resources are separate and live with their assignment.',
-    `<button class="btn primary" id="add-material">Add material</button>`)}
-    <div class="card toolbar">
-      <div class="toolbar-group">
-        <select class="select" id="materials-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.materialsClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
-        <span class="muted small">${rows.length} item${rows.length === 1 ? '' : 's'} · ${published} published</span>
-      </div>
-    </div>
-    ${rows.length ? `
-      ${courseWide.length ? `<section class="card"><div class="section-title">Whole course</div>${group(courseWide)}</section>` : ''}
-      ${weekOrder.map((week) => `<section class="card"><div class="section-title">Week of ${escapeHtml(weekLabel.get(week.id) || '')}</div>${group(byWeek.get(week.id))}</section>`).join('')}
-    ` : '<div class="empty-state"><h3>Nothing in the library yet</h3><p>Add the notes, slides or recordings for a week and they stay here for the rest of the course.</p></div>'}`;
+/* Somebody with a photograph gets their photograph. Somebody without gets
+   initials on a colour derived from their name, so the same person is the same
+   colour on every screen and every load. */
+function boardAvatar(author, size = '') {
+  const name = String(author?.name || '?');
+  let hash = 0;
+  for (let index = 0; index < name.length; index += 1) hash = (hash * 31 + name.charCodeAt(index)) >>> 0;
+  const colour = AVATAR_COLOURS[hash % AVATAR_COLOURS.length];
+  const fallback = `<span class="fa ${size} is-initials" style="background:${colour}">${escapeHtml(initials(name))}</span>`;
+  if (!author?.id || !author?.avatar) return fallback;
+  /* A picture that will not load — a file removed underneath us, or a preview
+     with no server behind it — falls back to initials rather than leaving the
+     broken-image glyph sitting in the middle of the feed. */
+  return `<img class="fa ${size}" src="/api/media/avatar/${author.id}" alt="${escapeHtml(name)}" loading="lazy"
+    onerror="this.outerHTML=this.dataset.fallback" data-fallback="${escapeHtml(fallback)}">`;
 }
 
-function openMaterialModal() {
-  const weeks = state.materials?.weeks || [];
+const me = () => ({ id: state.user?.id, name: state.user?.name, avatar: state.user?.hasAvatar });
+
+/* "3h" reads faster than a date when the point of the line is how recent
+   something is. Past a week the date comes back, because "63d" is not a unit
+   anybody thinks in. */
+function timeAgo(value) {
+  if (!value) return '';
+  const seconds = Math.round((Date.now() - new Date(value).getTime()) / 1000);
+  if (seconds < 45) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d`;
+  return fmtDate(value, { dateStyle: 'medium' });
+}
+
+/* When something is due to appear. Read by the teacher only. */
+function scheduledFor(value) {
+  const at = new Date(value).getTime();
+  const minutes = Math.round((at - Date.now()) / 60000);
+  if (minutes < 60) return `in ${Math.max(1, minutes)} min`;
+  if (minutes < 60 * 24) return `in ${Math.round(minutes / 60)}h`;
+  return fmtDate(value, { weekday: true, time: true, dateStyle: 'short' });
+}
+
+const boardApi = () => (state.user.role === 'admin' ? '/api/admin' : '/api/student');
+const isAdmin = () => state.user.role === 'admin';
+
+/* A Loom share link becomes an embed link. Anything that is not recognisably a
+   Loom URL is refused rather than dropped into an iframe. */
+function loomEmbedUrl(url) {
+  const match = String(url || '').match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
+  return match ? `https://www.loom.com/embed/${match[1]}` : null;
+}
+
+async function reloadBoard() {
+  const params = new URLSearchParams();
+  if (state.boardSort === 'hot') params.set('sort', 'hot');
+  if (state.boardCategoryId) params.set('categoryId', state.boardCategoryId);
+  const suffix = params.toString() ? `?${params}` : '';
+  try {
+    state.community = isAdmin()
+      ? await api(`/api/admin/community/${state.communityClassId}${suffix}`)
+      : await api(`/api/student/community${suffix}`);
+  } catch (error) { return showToast(error.message, 'error'); }
+  if (isAdmin()) {
+    shell({ nav: adminNav(), content: communityView(), title: 'Class board', roleLabel: 'Administrator' });
+    bindAdminView();
+  } else renderStudent();
+}
+
+/* ------------------------------------------------------------------
+   Composing
+   ------------------------------------------------------------------ */
+
+/* Attachments being staged for the post currently being written. Held here
+   rather than in the form because a GIF is chosen in a second dialog, and the
+   half-written post underneath has to survive that. */
+let draftAttachments = [];
+
+/* What the composer had in it when it was interrupted. Choosing a GIF opens a
+   second dialog over the first, and a dialog that throws away a half-written
+   post is worse than no GIF picker at all. */
+let composerDraft = null;
+
+function captureComposer() {
+  const form = document.getElementById('thread-form');
+  if (!form) return;
+  composerDraft = {
+    title: form.title.value,
+    body: form.body.value,
+    categoryId: form.categoryId?.value || null,
+    when: document.getElementById('composer-when')?.value || '',
+    pinned: Boolean(form.pinned?.checked),
+  };
+}
+
+function attachmentChip(item, index) {
+  const label = item.kind === 'file' ? (item.fileName || 'PDF')
+    : item.kind === 'loom' ? 'Loom video' : 'GIF';
+  const icon = item.kind === 'file' ? svg.note : item.kind === 'loom' ? svg.video : svg.gif;
+  return `<span class="chip-file">
+    ${item.kind === 'gif' ? `<img src="${escapeHtml(item.preview || item.url)}" alt="">` : icon}
+    <span>${escapeHtml(label)}</span>
+    <button type="button" class="chip-x" data-drop-attachment="${index}" aria-label="Remove">${svg.x}</button>
+  </span>`;
+}
+
+function renderDraftAttachments() {
+  const holder = document.getElementById('draft-attachments');
+  if (!holder) return;
+  holder.innerHTML = draftAttachments.map(attachmentChip).join('');
+  holder.classList.toggle('hidden', !draftAttachments.length);
+  holder.querySelectorAll('[data-drop-attachment]').forEach((button) => button.addEventListener('click', () => {
+    draftAttachments.splice(Number(button.dataset.dropAttachment), 1);
+    renderDraftAttachments();
+  }));
+}
+
+function openComposer({ restore = false } = {}) {
+  const categories = state.community?.categories || [];
+  const admin = isAdmin();
+  const draft = restore ? composerDraft : null;
+  if (!restore) { draftAttachments = []; composerDraft = null; }
   modal({
-    title: 'Add material',
-    subtitle: 'A file you upload, a link, or a Loom video.',
-    body: `<form id="material-form">
-      <div class="form-field"><label>Title</label><input name="title" required placeholder="Week 3 notes"></div>
-      <div class="form-field"><label>Description, optional</label><textarea name="description" rows="2" placeholder="What this is and when to use it"></textarea></div>
-      <div class="form-field"><label>Week</label><select name="weekId"><option value="">Whole course, not one week</option>${weeks.map((week) => `<option value="${week.id}">Week of ${escapeHtml(fmtWeek(week.week_start))}</option>`).join('')}</select></div>
-      <div class="form-field"><label>Type</label><select name="kind" id="material-kind"><option value="file">Upload a file</option><option value="link">Link</option><option value="loom">Loom video</option></select></div>
-      <div class="form-field" id="material-file-field"><label>File</label><input name="file" type="file"></div>
-      <div class="form-field hidden" id="material-url-field"><label>Address</label><input name="url" type="url" placeholder="https://"></div>
-      <label class="check-row"><input type="checkbox" name="published" checked> Publish to students now</label>
+    title: 'New post',
+    subtitle: admin ? 'Goes to this class feed under your name.' : 'Everyone in your class can see this.',
+    wide: true,
+    body: `<form id="thread-form" class="composer-form">
+      <input name="title" id="composer-title" placeholder="Say it in a line" autocomplete="off" required value="${escapeHtml(draft?.title || '')}">
+      ${dictateButton('composer-body')}
+      <textarea id="composer-body" name="body" rows="7" placeholder="What do you want to say?" required>${escapeHtml(draft?.body || '')}</textarea>
+      <div id="draft-attachments" class="chip-row hidden"></div>
+      <div class="composer-bar">
+        <div class="composer-tools">
+          ${admin ? `<button type="button" class="tool" id="attach-pdf" title="Attach a PDF">${svg.note}<span>PDF</span></button>` : ''}
+          <button type="button" class="tool" id="attach-loom" title="Add a Loom video">${svg.video}<span>Loom</span></button>
+          <button type="button" class="tool" id="attach-gif" title="Add a GIF">${svg.gif}<span>GIF</span></button>
+          <input type="file" id="pdf-input" accept="application/pdf" class="hidden">
+        </div>
+        ${categories.length ? `<select class="select compact" name="categoryId">${categories.map((row) => `<option value="${row.id}" ${row.id === (draft?.categoryId || state.boardCategoryId) ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')}</select>` : ''}
+      </div>
+      ${admin ? `<details class="schedule-block" ${draft?.when ? 'open' : ''}>
+        <summary>${svg.calendar} Schedule for later</summary>
+        <div class="schedule-body">
+          <label class="field-label" for="composer-when">Appears to students at</label>
+          <input type="datetime-local" id="composer-when" class="compact" value="${escapeHtml(draft?.when || '')}">
+          <p class="muted small">Times in ${escapeHtml(classTimezone())}. Until then it sits here marked Scheduled, and nobody is notified.</p>
+        </div>
+      </details>
+      <label class="check-row"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin to the top</label>` : ''}
     </form>`,
-    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-material">Add to library</button>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-thread">Post</button>`,
     onOpen() {
-      const kind = document.getElementById('material-kind');
-      kind.addEventListener('change', () => {
-        const isFile = kind.value === 'file';
-        document.getElementById('material-file-field').classList.toggle('hidden', !isFile);
-        document.getElementById('material-url-field').classList.toggle('hidden', isFile);
-      });
-      document.getElementById('save-material').addEventListener('click', async () => {
-        const form = document.getElementById('material-form');
-        const data = new FormData(form);
-        const body = {
-          classId: state.materialsClassId,
-          weekId: data.get('weekId') || null,
-          kind: data.get('kind'),
-          title: String(data.get('title') || '').trim(),
-          description: String(data.get('description') || '').trim(),
-          published: form.published.checked,
-        };
+      bindDictation();
+      renderDraftAttachments();
+      if (!draft) document.getElementById('composer-title')?.focus();
+      document.getElementById('attach-pdf')?.addEventListener('click', () => document.getElementById('pdf-input').click());
+      document.getElementById('pdf-input')?.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const form = new FormData();
+        form.append('file', file);
         try {
-          if (body.kind === 'file') {
-            const file = form.file.files[0];
-            if (!file) return showToast('Choose a file to upload.', 'error');
-            const upload = new FormData();
-            upload.append('files', file);
-            const result = await api('/api/admin/uploads', { method: 'POST', body: upload });
-            const uploaded = result.files[0];
-            Object.assign(body, { url: uploaded.url, fileName: uploaded.fileName, mimeType: uploaded.mimeType, sizeBytes: file.size });
-          } else {
-            body.url = String(data.get('url') || '').trim();
-            if (!body.url) return showToast('Paste the address first.', 'error');
-          }
-          await api('/api/admin/materials', { method: 'POST', body });
-          closeModal(); await renderAdmin(); showToast('Added to the library');
+          const uploaded = await api('/api/admin/community/attachments', { method: 'POST', body: form });
+          draftAttachments.push(uploaded);
+          renderDraftAttachments();
         } catch (error) { showToast(error.message, 'error'); }
+        event.target.value = '';
       });
+      document.getElementById('attach-loom')?.addEventListener('click', promptForLoom);
+      document.getElementById('attach-gif')?.addEventListener('click', () => { captureComposer(); openGifPicker(); });
+      document.getElementById('save-thread').addEventListener('click', submitComposer);
+    },
+  });
+}
+
+async function promptForLoom() {
+  const url = window.prompt('Paste the Loom share link');
+  if (!url) return;
+  if (!loomEmbedUrl(url)) return showToast('That does not look like a Loom link.', 'error');
+  draftAttachments.push({ kind: 'loom', url: url.trim() });
+  renderDraftAttachments();
+}
+
+async function submitComposer() {
+  const form = document.getElementById('thread-form');
+  const data = new FormData(form);
+  const body = {
+    title: String(data.get('title') || '').trim(),
+    body: String(data.get('body') || '').trim(),
+    categoryId: data.get('categoryId') || null,
+    attachments: draftAttachments.map(({ kind, url, storedName, fileName, mimeType, sizeBytes }) =>
+      (kind === 'file' ? { kind, url, storedName, fileName, mimeType, sizeBytes } : { kind, url })),
+  };
+  if (!body.title || !body.body) return showToast('Give your post a line and a message.', 'error');
+  if (isAdmin()) {
+    body.pinned = form.pinned.checked;
+    const when = document.getElementById('composer-when')?.value;
+    if (when) {
+      const at = fromZonedInput(when);
+      if (new Date(at).getTime() <= Date.now()) return showToast('Pick a time in the future, or post it now.', 'error');
+      body.publishedAt = at;
+    }
+  }
+  try {
+    await api(isAdmin() ? `/api/admin/community/${state.communityClassId}/threads` : '/api/student/community/threads',
+      { method: 'POST', body });
+    closeModal();
+    draftAttachments = [];
+    composerDraft = null;
+    await reloadBoard();
+    showToast(body.publishedAt ? 'Scheduled' : 'Posted');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+/* The GIF picker. Search runs through the server because the content security
+   policy will not let the browser talk to Giphy directly. */
+function openGifPicker() {
+  modal({
+    title: 'Add a GIF',
+    subtitle: 'Searches Giphy.',
+    wide: true,
+    body: `<input id="gif-q" placeholder="Search — try “maith thú”, “well done”, “tired”" autocomplete="off">
+      <div id="gif-results" class="gif-grid"><p class="muted small">Loading…</p></div>`,
+    footer: `<button class="btn" id="gif-back">Back to the post</button>`,
+    onOpen() {
+      document.getElementById('gif-back').addEventListener('click', () => openComposer({ restore: true }));
+      const results = document.getElementById('gif-results');
+      const load = async (query) => {
+        results.innerHTML = '<p class="muted small">Searching…</p>';
+        let payload;
+        try { payload = await api(`/api/gifs${query ? `?q=${encodeURIComponent(query)}` : ''}`); }
+        catch { results.innerHTML = '<p class="muted small">GIF search is unavailable right now.</p>'; return; }
+        if (!payload.configured) {
+          results.innerHTML = '<p class="muted small">GIF search is not set up. Add a GIPHY_API_KEY to the environment file and restart.</p>';
+          return;
+        }
+        if (!payload.results.length) { results.innerHTML = '<p class="muted small">Nothing found.</p>'; return; }
+        results.innerHTML = payload.results.map((gif) =>
+          `<button type="button" class="gif-pick" data-gif="${escapeHtml(gif.url)}" data-preview="${escapeHtml(gif.preview)}">
+            <img src="${escapeHtml(gif.preview)}" alt="${escapeHtml(gif.title)}" loading="lazy">
+          </button>`).join('');
+        results.querySelectorAll('[data-gif]').forEach((button) => button.addEventListener('click', () => {
+          draftAttachments.push({ kind: 'gif', url: button.dataset.gif, preview: button.dataset.preview });
+          // Back to the post, with every word of it still there.
+          openComposer({ restore: true });
+        }));
+      };
+      const search = document.getElementById('gif-q');
+      search.addEventListener('input', debounce(() => load(search.value.trim()), 400));
+      search.focus();
+      load('');
     },
   });
 }
 
 /* ------------------------------------------------------------------
-   The class feed.
-
-   One implementation serves both sides. The administrator gets the moderation
-   controls and sees removed posts greyed rather than gone; everything else — the
-   composer, the categories, the likes, the comments — is identical, because a
-   teacher posting to their own class is doing the same thing a student is.
+   Reading
    ------------------------------------------------------------------ */
 
-const BOARD_COLOURS = ['#50af37', '#2e90fa', '#f79009', '#7a5af8', '#ef6820', '#0ba5ec', '#dd2590'];
-
-/* An avatar needs to be the same colour for the same person every time or the
-   feed reads as a different set of people on every load. Derived from the name
-   rather than stored, which keeps it working for anybody who has not logged in
-   yet. */
-function boardAvatar(name = '', size = '') {
-  const text = String(name || '?');
-  let hash = 0;
-  for (let index = 0; index < text.length; index += 1) hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
-  const colour = BOARD_COLOURS[hash % BOARD_COLOURS.length];
-  return `<span class="feed-avatar ${size}" style="background:${colour}">${escapeHtml(initials(text))}</span>`;
+/* In the feed an attachment is a hint that there is more inside: a GIF plays
+   because a still GIF is pointless, a Loom shows as a strip rather than sixteen
+   iframes on one screen, and a PDF is a line you can open. */
+function attachmentsPreview(items = [], full = false) {
+  if (!items.length) return '';
+  return `<div class="att">${items.map((item) => {
+    if (item.kind === 'gif') return `<img class="att-gif" src="${escapeHtml(item.url)}" alt="GIF" loading="lazy">`;
+    if (item.kind === 'loom') {
+      const embed = loomEmbedUrl(item.url);
+      if (!embed) return '';
+      return full
+        ? `<div class="att-video"><iframe src="${escapeHtml(embed)}" allowfullscreen title="Loom video"></iframe></div>`
+        : `<a class="att-strip" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${svg.play}<span>Watch the Loom video</span></a>`;
+    }
+    return `<a class="att-strip" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
+      ${svg.note}<span>${escapeHtml(item.fileName || 'PDF')}</span><em>PDF</em></a>`;
+  }).join('')}</div>`;
 }
 
-/* "3h" reads faster than a date when the whole point of the line is how recent
-   something is. Anything past a week gets the date back, because "63d" is not a
-   unit anybody thinks in. */
-function timeAgo(value) {
-  if (!value) return '';
-  const seconds = Math.round((Date.now() - new Date(value).getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return fmtDate(value, { dateStyle: 'medium' });
-}
-
-const boardApi = () => (state.user.role === 'admin' ? '/api/admin' : '/api/student');
-const boardData = () => (state.user.role === 'admin' ? state.community : state.community);
-
-/* Reloads the feed in place. Both roles land here so a like or a new comment
-   updates the counts without bouncing the reader back to the top of the page. */
-async function reloadBoard() {
-  const admin = state.user.role === 'admin';
-  const params = new URLSearchParams();
-  if (state.boardSort === 'top') params.set('sort', 'top');
-  if (state.boardCategoryId) params.set('categoryId', state.boardCategoryId);
-  const suffix = params.toString() ? `?${params}` : '';
-  try {
-    state.community = admin
-      ? await api(`/api/admin/community/${state.communityClassId}${suffix}`)
-      : await api(`/api/student/community${suffix}`);
-  } catch (error) { return showToast(error.message, 'error'); }
-  if (admin) { shell({ nav: adminNav(), content: communityView(), title: 'Class board', roleLabel: 'Administrator' }); bindAdminView(); }
-  else renderStudent();
-}
-
-/* The composer. Collapsed it is one line that names the person and invites them
-   to write; a board whose only way in is a button labelled "Start a post" gets
-   noticeably fewer posts than one with a box already sitting there. */
-function feedComposer() {
-  return `<button class="feed-composer" id="open-composer">
-    ${boardAvatar(state.user.name)}
-    <span>Write something to the class…</span>
-  </button>`;
-}
-
-function categoryPills() {
-  const categories = boardData()?.categories || [];
-  if (!categories.length) return '';
-  const pill = (id, label, count) => `<button class="feed-pill ${(state.boardCategoryId || '') === id ? 'active' : ''}" data-board-category="${id}">${escapeHtml(label)}${count === undefined ? '' : `<span>${count}</span>`}</button>`;
-  const total = categories.reduce((sum, row) => sum + (row.thread_count || 0), 0);
-  return `<div class="feed-pills">
-    ${pill('', 'All', total)}
-    ${categories.map((row) => pill(row.id, row.name, row.thread_count)).join('')}
-    <span class="feed-pill-spacer"></span>
-    <button class="feed-sort ${state.boardSort === 'top' ? 'active' : ''}" data-board-sort="${state.boardSort === 'top' ? 'new' : 'top'}">
-      ${state.boardSort === 'top' ? 'Top' : 'Newest'}
-    </button>
-  </div>`;
-}
-
-/* One card in the feed. The footer is where a quiet board either reassures
-   somebody that they were read or does not: likes, comments and who spoke last
-   all sit on one line, in that order. */
-function feedCard(thread, admin) {
+function feedPost(thread, admin) {
   const comments = thread.comment_count || 0;
   const likes = thread.like_count || 0;
   const body = String(thread.body || '');
-  return `<article class="feed-card ${thread.deleted_at ? 'is-removed' : ''}" data-open-thread="${thread.id}">
-    <header class="feed-card-head">
-      ${boardAvatar(thread.author?.name)}
-      <div class="feed-byline">
-        <strong>${escapeHtml(thread.author?.name || 'Removed account')}</strong>
-        ${thread.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
-        <span class="feed-dot">·</span>
-        <span class="muted small">${escapeHtml(timeAgo(thread.created_at))}</span>
+  const clipped = body.length > 320;
+  return `<article class="post ${thread.deleted_at ? 'is-removed' : ''} ${thread.scheduled ? 'is-scheduled' : ''}" data-open-thread="${thread.id}">
+    <div class="post-top">
+      ${boardAvatar(thread.author)}
+      <div class="post-who">
+        <span class="post-name">${escapeHtml(thread.author?.name || 'Removed account')}${thread.author?.role === 'admin' ? '<i class="tag-teacher">Teacher</i>' : ''}</span>
+        <span class="post-meta">
+          ${thread.scheduled ? `<b class="tag-sched">Scheduled ${escapeHtml(scheduledFor(thread.published_at))}</b>` : escapeHtml(timeAgo(thread.published_at || thread.created_at))}
+          ${thread.category_name ? ` · ${escapeHtml(thread.category_name)}` : ''}
+          ${thread.pinned ? ' · <b>Pinned</b>' : ''}
+          ${thread.locked ? ' · Closed' : ''}
+          ${thread.deleted_at && admin ? ' · <b class="tag-removed">Removed</b>' : ''}
+        </span>
       </div>
-      <div class="feed-card-tags">
-        ${thread.pinned ? `<span class="feed-chip pinned">${svg.pin} Pinned</span>` : ''}
-        ${thread.locked ? '<span class="feed-chip">Closed</span>' : ''}
-        ${thread.deleted_at && admin ? '<span class="feed-chip removed">Removed</span>' : ''}
-        ${thread.category_name ? `<span class="feed-chip">${escapeHtml(thread.category_name)}</span>` : ''}
-      </div>
-    </header>
-    <h3 class="feed-title">${escapeHtml(thread.title)}</h3>
-    <p class="feed-body">${escapeHtml(body.slice(0, 280))}${body.length > 280 ? '…' : ''}</p>
-    <footer class="feed-card-foot">
-      <button class="feed-action ${thread.liked ? 'liked' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
+    </div>
+    <h3 class="post-title">${escapeHtml(thread.title)}</h3>
+    <p class="post-body">${escapeHtml(body.slice(0, 320))}${clipped ? '…' : ''}</p>
+    ${attachmentsPreview(thread.attachments)}
+    <div class="post-foot">
+      <button class="act ${thread.liked ? 'on' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
         ${svg.heart}<span>${likes || ''}</span>
       </button>
-      <span class="feed-action static">${svg.comment}<span>${comments || ''}</span></span>
+      <span class="act flat">${svg.comment}<span>${comments || ''}</span></span>
       ${thread.last_comment
-        ? `<span class="feed-last">Last comment by ${escapeHtml(thread.last_comment.name)} ${escapeHtml(timeAgo(thread.last_comment.at))}</span>`
+        ? `<span class="post-last">${escapeHtml(thread.last_comment.name.split(' ')[0])} commented ${escapeHtml(timeAgo(thread.last_comment.at))}</span>`
         : ''}
-    </footer>
+    </div>
   </article>`;
 }
 
-/* The right-hand column. The class card answers "where am I and when do we
-   meet"; the contributors list answers "is anybody else here", which on a board
-   of thirty is the question that decides whether somebody posts. */
-function feedSidebar() {
-  const data = boardData();
-  const klass = state.user.role === 'admin'
-    ? data?.class
-    : state.studentData?.class;
+function feedComposerBar() {
+  return `<button class="composer" id="open-composer">
+    ${boardAvatar(me())}
+    <span class="composer-hint">Write something to the class…</span>
+    <span class="composer-icons">${svg.note}${svg.video}${svg.gif}</span>
+  </button>`;
+}
+
+function feedFilters() {
+  const categories = state.community?.categories || [];
+  const active = state.boardCategoryId || '';
+  const chip = (id, label) => `<button class="cat ${active === id ? 'on' : ''}" data-board-category="${id}">${escapeHtml(label)}</button>`;
+  return `<div class="filters">
+    <div class="cats">
+      ${chip('', 'All')}
+      ${categories.map((row) => chip(row.id, row.name)).join('')}
+    </div>
+    <div class="sorts">
+      <button class="sort ${state.boardSort !== 'hot' ? 'on' : ''}" data-board-sort="new">Latest</button>
+      <button class="sort ${state.boardSort === 'hot' ? 'on' : ''}" data-board-sort="hot">Hot</button>
+    </div>
+  </div>`;
+}
+
+function feedSide() {
+  const data = state.community;
+  const klass = isAdmin() ? data?.class : state.studentData?.class;
   const next = state.studentData?.nextClass;
   const contributors = data?.contributors || [];
-  return `<aside class="feed-side">
-    <section class="feed-side-card">
-      <div class="feed-side-cover"></div>
-      <div class="feed-side-body">
-        <strong>${escapeHtml(klass?.programme_name || 'Your class')}</strong>
-        <p class="muted small">${escapeHtml(klass ? `${DAY_NAMES[klass.day_of_week]} · ${String(klass.start_time).slice(0, 5)}` : '')}</p>
-        <div class="feed-side-stats">
-          <div><strong>${data?.memberCount || 0}</strong><span>${(data?.memberCount || 0) === 1 ? 'member' : 'members'}</span></div>
-          <div><strong>${(data?.threads || []).filter((row) => !row.deleted_at).length}</strong><span>posts</span></div>
+  const posts = (data?.threads || []).filter((row) => !row.deleted_at && !row.scheduled).length;
+  return `<aside class="side">
+    <section class="side-card">
+      <div class="side-top">
+        <div class="side-mark">${escapeHtml(initials(klass?.programme_name || 'GG'))}</div>
+        <div>
+          <strong>${escapeHtml(klass?.programme_name || 'Your class')}</strong>
+          <span>${escapeHtml(klass ? `${DAY_NAMES[klass.day_of_week]}s at ${String(klass.start_time).slice(0, 5)}` : '')}</span>
         </div>
-        ${next?.joinUrl && state.user.role !== 'admin'
-          ? `<a class="btn primary feed-side-join" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
-          : ''}
       </div>
+      <dl class="side-stats">
+        <div><dt>Members</dt><dd>${data?.memberCount || 0}</dd></div>
+        <div><dt>Posts</dt><dd>${posts}</dd></div>
+      </dl>
+      ${next?.joinUrl && !isAdmin()
+        ? `<a class="btn primary side-join" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
+        : ''}
     </section>
-    <section class="feed-side-card">
-      <div class="feed-side-title">Most active this month</div>
+    <section class="side-card">
+      <h4>Most active this month</h4>
       ${contributors.length
-        ? `<ol class="feed-rank">${contributors.map((row, index) => `<li>
-            <span class="feed-rank-no">${index + 1}</span>
-            ${boardAvatar(row.name, 'small')}
-            <span class="feed-rank-name">${escapeHtml(row.name)}</span>
-            <span class="feed-rank-score">${row.total}</span>
+        ? `<ol class="rank">${contributors.map((row, index) => `<li>
+            <span class="rank-n">${index + 1}</span>
+            ${boardAvatar({ id: row.id, name: row.name, avatar: row.avatar }, 'sm')}
+            <span class="rank-name">${escapeHtml(row.name)}</span>
+            <span class="rank-v">${row.total}</span>
           </li>`).join('')}</ol>`
-        : '<p class="muted small feed-side-empty">Nobody has posted in the last thirty days.</p>'}
-      <p class="feed-side-note">Counts posts and comments written, not likes collected.</p>
+        : '<p class="side-empty">Nobody has posted in the last thirty days.</p>'}
+      <p class="side-foot">Counts what people wrote, not likes they collected.</p>
     </section>
   </aside>`;
 }
 
-function feedEmptyState(admin) {
+function feedEmpty(admin) {
   return `<div class="feed-empty">
-    <h3>${state.boardCategoryId ? 'Nothing in this category yet' : 'The feed is empty'}</h3>
+    <h3>${state.boardCategoryId ? 'Nothing here yet' : 'No posts yet'}</h3>
     <p>${admin
-      ? 'Start it off with something worth replying to — a question about the last class, or where to find this week’s notes. An empty board stays empty until somebody goes first, and it is usually easier for that somebody to be you.'
+      ? 'Start it off with something worth replying to — a question about the last class, or where to find this week’s notes. An empty feed stays empty until somebody goes first, and it is usually easier for that somebody to be you.'
       : 'Be the first. A question you think is too simple is usually the one three other people were also wondering about.'}</p>
   </div>`;
 }
 
 function feedLayout(admin) {
-  const threads = boardData()?.threads || [];
-  return `<div class="feed-layout">
-    <div class="feed-main">
-      ${feedComposer()}
-      ${categoryPills()}
-      ${threads.length ? threads.map((thread) => feedCard(thread, admin)).join('') : feedEmptyState(admin)}
+  const threads = state.community?.threads || [];
+  return `<div class="feed">
+    <div class="feed-col">
+      ${feedComposerBar()}
+      ${feedFilters()}
+      ${threads.length ? `<div class="posts">${threads.map((thread) => feedPost(thread, admin)).join('')}</div>` : feedEmpty(admin)}
     </div>
-    ${feedSidebar()}
+    ${feedSide()}
   </div>`;
 }
 
 function communityView() {
-  return `${pageHeader('Class board', 'Community', 'One feed per class. Students post, comment and like; you can pin, close or remove anything.',
-    `<button class="btn" id="manage-categories">Categories</button>`)}
-    <div class="card toolbar">
-      <div class="toolbar-group">
-        <select class="select" id="community-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
+  const classes = state.classes || [];
+  return `<div class="feed-head">
+      <div>
+        <h1>Community</h1>
+        <p>One feed per class. Pin, close, remove or schedule anything.</p>
+      </div>
+      <div class="feed-head-actions">
+        <select class="select" id="community-class">${classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
+        <button class="btn" id="manage-categories">Categories</button>
       </div>
     </div>
     ${feedLayout(true)}`;
@@ -2100,8 +2290,10 @@ function studentCommunityView() {
   return `${studentHero()}${feedLayout(false)}`;
 }
 
-/* Opening a post. A drawer rather than a full page: the feed stays behind it, so
-   reading three posts in a row never costs three scroll positions. */
+/* ------------------------------------------------------------------
+   One post
+   ------------------------------------------------------------------ */
+
 async function openThread(threadId) {
   let thread;
   try { thread = await api(`${boardApi()}/community/thread/${threadId}`); }
@@ -2112,19 +2304,18 @@ async function openThread(threadId) {
 
 function feedComment(comment, admin) {
   const removed = Boolean(comment.deleted_at);
-  return `<article class="feed-comment ${removed ? 'is-removed' : ''}">
-    ${boardAvatar(comment.author?.name, 'small')}
-    <div class="feed-comment-body">
-      <div class="feed-comment-head">
-        <strong>${escapeHtml(comment.author?.name || 'Removed account')}</strong>
-        ${comment.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
-        <span class="muted small">${escapeHtml(timeAgo(comment.created_at))}</span>
-        ${admin ? `<button class="text-link feed-remove" data-post-removal="${comment.id}" data-removed="${removed}">${removed ? 'Restore' : 'Remove'}</button>` : ''}
+  return `<article class="cmt ${removed ? 'is-removed' : ''}">
+    ${boardAvatar(comment.author, 'sm')}
+    <div class="cmt-body">
+      <div class="cmt-head">
+        <span class="post-name">${escapeHtml(comment.author?.name || 'Removed account')}${comment.author?.role === 'admin' ? '<i class="tag-teacher">Teacher</i>' : ''}</span>
+        <span class="post-meta">${escapeHtml(timeAgo(comment.created_at))}</span>
+        ${admin ? `<button class="cmt-remove" data-post-removal="${comment.id}" data-removed="${removed}">${removed ? 'Restore' : 'Remove'}</button>` : ''}
       </div>
       ${removed
-        ? '<p class="muted small">This comment was removed.</p>'
-        : `<div class="feed-comment-text">${escapeHtml(comment.body).replace(/\n/g, '<br>')}</div>
-           <button class="feed-action small ${comment.liked ? 'liked' : ''}" data-like="post" data-id="${comment.id}" aria-pressed="${Boolean(comment.liked)}">
+        ? '<p class="cmt-gone">This comment was removed.</p>'
+        : `<div class="cmt-text">${escapeHtml(comment.body).replace(/\n/g, '<br>')}</div>
+           <button class="act sm ${comment.liked ? 'on' : ''}" data-like="post" data-id="${comment.id}" aria-pressed="${Boolean(comment.liked)}">
              ${svg.heart}<span>${comment.like_count || ''}</span>
            </button>`}
     </div>
@@ -2134,43 +2325,45 @@ function feedComment(comment, admin) {
 function renderThreadDrawer() {
   const thread = state.communityThread;
   if (!thread) return;
-  const admin = state.user.role === 'admin';
+  const admin = isAdmin();
   const withdrawn = Boolean(state.studentData?.withdrawnAt);
   const canComment = admin || (!thread.locked && !withdrawn);
   const comments = thread.comments || [];
   openDrawer({
     title: thread.title,
-    subtitle: `${thread.author?.name || 'Removed account'} · ${timeAgo(thread.created_at)}${thread.category_name ? ` · ${thread.category_name}` : ''}`,
+    subtitle: `${thread.author?.name || 'Removed account'} · ${timeAgo(thread.published_at || thread.created_at)}${thread.category_name ? ` · ${thread.category_name}` : ''}`,
     body: `
-      ${admin ? `<div class="drawer-toolbar">
-        <button class="btn small" data-thread-pin="${thread.id}" data-pinned="${thread.pinned}">${thread.pinned ? 'Unpin' : 'Pin to top'}</button>
-        <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close to comments'}</button>
-        <button class="btn small ${thread.deleted_at ? '' : 'danger'}" data-thread-removal="${thread.id}" data-removed="${Boolean(thread.deleted_at)}">${thread.deleted_at ? 'Restore post' : 'Remove post'}</button>
+      ${admin ? `<div class="mod-bar">
+        <button class="btn small" data-thread-pin="${thread.id}" data-pinned="${thread.pinned}">${thread.pinned ? 'Unpin' : 'Pin'}</button>
+        <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close'}</button>
+        <button class="btn small" id="reschedule">${thread.scheduled ? 'Reschedule' : 'Schedule'}</button>
+        <button class="btn small ${thread.deleted_at ? '' : 'danger'}" data-thread-removal="${thread.id}" data-removed="${Boolean(thread.deleted_at)}">${thread.deleted_at ? 'Restore' : 'Remove'}</button>
       </div>` : ''}
-      <article class="feed-opening">
-        <header class="feed-card-head">
-          ${boardAvatar(thread.author?.name)}
-          <div class="feed-byline">
-            <strong>${escapeHtml(thread.author?.name || 'Removed account')}</strong>
-            ${thread.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
-            <span class="feed-dot">·</span><span class="muted small">${escapeHtml(timeAgo(thread.created_at))}</span>
+      ${thread.scheduled ? `<div class="sched-note">Not visible to students yet. Appears ${escapeHtml(fmtDate(thread.published_at, { weekday: true, time: true, dateStyle: 'medium' }))}.</div>` : ''}
+      <article class="opening">
+        <div class="post-top">
+          ${boardAvatar(thread.author)}
+          <div class="post-who">
+            <span class="post-name">${escapeHtml(thread.author?.name || 'Removed account')}${thread.author?.role === 'admin' ? '<i class="tag-teacher">Teacher</i>' : ''}</span>
+            <span class="post-meta">${escapeHtml(timeAgo(thread.published_at || thread.created_at))}</span>
           </div>
-        </header>
-        <div class="feed-comment-text">${escapeHtml(String(thread.body || '')).replace(/\n/g, '<br>')}</div>
-        <button class="feed-action ${thread.liked ? 'liked' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
+        </div>
+        <div class="cmt-text">${escapeHtml(String(thread.body || '')).replace(/\n/g, '<br>')}</div>
+        ${attachmentsPreview(thread.attachments, true)}
+        <button class="act ${thread.liked ? 'on' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
           ${svg.heart}<span>${thread.like_count || ''}</span>
         </button>
       </article>
-      <div class="section-title">${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}</div>
-      <div class="feed-comments">${comments.map((comment) => feedComment(comment, admin)).join('') || '<p class="muted small">No comments yet.</p>'}</div>
-      ${canComment ? `<div class="feed-reply">
-        ${boardAvatar(state.user.name, 'small')}
-        <div class="feed-reply-box">
+      <h4 class="cmt-count">${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}</h4>
+      <div class="cmts">${comments.map((comment) => feedComment(comment, admin)).join('') || '<p class="side-empty">No comments yet.</p>'}</div>
+      ${canComment ? `<div class="reply">
+        ${boardAvatar(me(), 'sm')}
+        <div class="reply-box">
           ${dictateButton('reply-body')}
           <textarea id="reply-body" rows="3" placeholder="Write a comment"></textarea>
           <button class="btn primary" id="send-reply">Comment</button>
         </div>
-      </div>` : `<p class="muted small stack-top">${withdrawn ? 'You have withdrawn from this course, so posting is closed.' : 'This post has been closed to new comments.'}</p>`}`,
+      </div>` : `<p class="side-empty">${withdrawn ? 'You have withdrawn from this course, so posting is closed.' : 'This post has been closed to new comments.'}</p>`}`,
     onOpen() {
       bindDictation();
       bindFeedLikes(modalRoot);
@@ -2187,6 +2380,7 @@ function renderThreadDrawer() {
         updateThread(thread.id, { pinned: event.currentTarget.dataset.pinned !== 'true' }));
       document.querySelector('[data-thread-lock]')?.addEventListener('click', (event) =>
         updateThread(thread.id, { locked: event.currentTarget.dataset.locked !== 'true' }));
+      document.getElementById('reschedule')?.addEventListener('click', () => openScheduleModal(thread));
       document.querySelector('[data-thread-removal]')?.addEventListener('click', async (event) => {
         const removed = event.currentTarget.dataset.removed !== 'true';
         if (removed && !(await askConfirm({
@@ -2210,9 +2404,29 @@ function renderThreadDrawer() {
   });
 }
 
-/* Likes update the one button that was pressed rather than redrawing anything.
-   A feed that jumps back to the top every time somebody likes a post is a feed
-   people stop liking posts in. */
+function openScheduleModal(thread) {
+  modal({
+    title: thread.scheduled ? 'Reschedule' : 'Schedule this post',
+    subtitle: `Times in ${classTimezone()}.`,
+    body: `<div class="form-field"><label for="sched-when">Appears to students at</label>
+        <input type="datetime-local" id="sched-when" value="${toZonedInput(thread.published_at)}"></div>
+      <p class="muted small">Setting a time in the past publishes it immediately.</p>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-schedule">Save</button>`,
+    onOpen() {
+      document.getElementById('save-schedule').addEventListener('click', async () => {
+        const value = document.getElementById('sched-when').value;
+        if (!value) return showToast('Pick a time.', 'error');
+        try {
+          await api(`/api/admin/community/thread/${thread.id}/schedule`, { method: 'PATCH', body: { publishedAt: fromZonedInput(value) } });
+          closeModal(); await openThread(thread.id); await reloadBoard(); showToast('Schedule saved');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* Likes update the one button that was pressed. A feed that jumps back to the
+   top every time somebody likes a post is a feed people stop liking posts in. */
 function bindFeedLikes(root = document) {
   root.querySelectorAll('[data-like]').forEach((button) => button.addEventListener('click', async (event) => {
     event.stopPropagation();
@@ -2220,7 +2434,7 @@ function bindFeedLikes(root = document) {
     let result;
     try { result = await api(`${boardApi()}/community/like/${type}/${id}`, { method: 'POST' }); }
     catch (error) { return showToast(error.message, 'error'); }
-    button.classList.toggle('liked', result.liked);
+    button.classList.toggle('on', result.liked);
     button.setAttribute('aria-pressed', String(result.liked));
     button.querySelector('span').textContent = result.likeCount || '';
     if (state.communityThread?.id === id) state.communityThread.liked = result.liked;
@@ -2235,49 +2449,11 @@ async function updateThread(threadId, body) {
   } catch (error) { showToast(error.message, 'error'); }
 }
 
-function openNewThreadModal() {
-  const admin = state.user.role === 'admin';
-  const categories = boardData()?.categories || [];
-  modal({
-    title: 'New post',
-    subtitle: admin ? 'Posted to this class feed under your name.' : 'Everyone in your class can see this and comment.',
-    body: `<form id="thread-form">
-      <div class="form-field"><label>Title</label><input name="title" required placeholder="A question about the tuiseal ginideach"></div>
-      <div class="form-field"><label>Message</label>${dictateButton('thread-body')}<textarea id="thread-body" name="body" rows="6" required></textarea></div>
-      ${categories.length ? `<div class="form-field"><label>Category</label><select name="categoryId">${categories.map((row) => `<option value="${row.id}" ${row.id === state.boardCategoryId ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')}</select></div>` : ''}
-      ${admin ? '<label class="check-row"><input type="checkbox" name="pinned"> Pin to the top of the feed</label>' : ''}
-    </form>`,
-    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-thread">Post</button>`,
-    onOpen() {
-      bindDictation();
-      document.getElementById('save-thread').addEventListener('click', async () => {
-        const form = document.getElementById('thread-form');
-        const data = new FormData(form);
-        const body = {
-          title: String(data.get('title') || '').trim(),
-          body: String(data.get('body') || '').trim(),
-          categoryId: data.get('categoryId') || null,
-        };
-        if (!body.title || !body.body) return showToast('Give your post a title and a message.', 'error');
-        if (admin) body.pinned = form.pinned.checked;
-        try {
-          await api(admin ? `/api/admin/community/${state.communityClassId}/threads` : '/api/student/community/threads', { method: 'POST', body });
-          closeModal();
-          await reloadBoard();
-          showToast('Posted');
-        } catch (error) { showToast(error.message, 'error'); }
-      });
-    },
-  });
-}
-
-/* Categories are the teacher's to shape: the useful set for a Leaving
-   Certificate group is not the useful set for a teaching diploma group. */
 function openCategoryModal() {
-  const categories = boardData()?.categories || [];
+  const categories = state.community?.categories || [];
   modal({
     title: 'Categories',
-    subtitle: 'What students can file a post under.',
+    subtitle: 'What a post can be filed under.',
     body: `<div class="category-list">${categories.map((row) => `<div class="category-row">
         <strong>${escapeHtml(row.name)}</strong>
         <span class="muted small">${row.thread_count} post${row.thread_count === 1 ? '' : 's'}</span>
@@ -2305,22 +2481,23 @@ function openCategoryModal() {
   });
 }
 
-/* Wiring shared by both roles. Called from bindAdminView and bindStudentView so
+/* Wiring shared by both roles, called from bindAdminView and bindStudentView so
    neither has to know how the feed is put together. */
 function bindFeed() {
-  document.getElementById('open-composer')?.addEventListener('click', openNewThreadModal);
+  document.getElementById('open-composer')?.addEventListener('click', openComposer);
   document.getElementById('manage-categories')?.addEventListener('click', openCategoryModal);
   document.querySelectorAll('[data-board-category]').forEach((button) => button.addEventListener('click', () => {
     state.boardCategoryId = button.dataset.boardCategory || null;
     reloadBoard();
   }));
-  document.querySelector('[data-board-sort]')?.addEventListener('click', (event) => {
-    state.boardSort = event.currentTarget.dataset.boardSort;
+  document.querySelectorAll('[data-board-sort]').forEach((button) => button.addEventListener('click', () => {
+    state.boardSort = button.dataset.boardSort;
     reloadBoard();
-  });
+  }));
   document.querySelectorAll('[data-open-thread]').forEach((card) => card.addEventListener('click', (event) => {
-    // The like button lives inside the card, so it must not also open it.
-    if (event.target.closest('[data-like]')) return;
+    // The like button and any attachment link live inside the card, so neither
+    // should also open it.
+    if (event.target.closest('[data-like]') || event.target.closest('a')) return;
     openThread(card.dataset.openThread);
   }));
   bindFeedLikes(document);
@@ -2473,20 +2650,6 @@ function bindAdminView() {
   document.querySelectorAll('[data-open-class]').forEach((button) => button.addEventListener('click', () => { state.activeClassId = button.dataset.openClass; state.view = 'tracker'; renderAdmin(); }));
   document.querySelectorAll('[data-delete-class]').forEach((button) => button.addEventListener('click', () => confirmDeleteClass(button.dataset.deleteClass)));
   document.querySelectorAll('[data-class-link]').forEach((button) => button.addEventListener('click', () => openClassLinkModal(button.dataset.classLink)));
-  document.getElementById('materials-class')?.addEventListener('change', (event) => { state.materialsClassId = event.target.value; renderAdmin(); });
-  document.getElementById('add-material')?.addEventListener('click', openMaterialModal);
-  document.querySelectorAll('[data-material-publish]').forEach((button) => button.addEventListener('click', async () => {
-    try {
-      await api(`/api/admin/materials/${button.dataset.materialPublish}`, { method: 'PATCH', body: { published: button.dataset.published !== 'true' } });
-      await renderAdmin();
-    } catch (error) { showToast(error.message, 'error'); }
-  }));
-  document.querySelectorAll('[data-material-delete]').forEach((button) => button.addEventListener('click', async () => {
-    const ok = await askConfirm({ title: 'Delete this material?', message: 'Students lose access immediately, and an uploaded file is removed from the server. This cannot be undone.', confirmLabel: 'Delete', danger: true });
-    if (!ok) return;
-    try { await api(`/api/admin/materials/${button.dataset.materialDelete}`, { method: 'DELETE' }); await renderAdmin(); showToast('Deleted'); }
-    catch (error) { showToast(error.message, 'error'); }
-  }));
   document.getElementById('community-class')?.addEventListener('change', (event) => {
     state.communityClassId = event.target.value;
     // A category belongs to one class, so carrying the filter across would filter
@@ -3429,7 +3592,6 @@ function studentNav() {
   return `<div class="nav-label">My course</div><nav class="nav">
     ${studentNavButton('calendar', svg.calendar, 'Deadlines')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
-    ${studentNavButton('materials', svg.library, 'Materials')}
     ${studentNavButton('community', svg.board, 'Class board', state.studentData?.communityUnread || 0)}
   </nav>`;
 }
@@ -3444,14 +3606,13 @@ async function loadStudent() {
   renderStudent();
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', materials: 'Materials', community: 'Class board', calendar: 'Deadlines' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Class board', calendar: 'Deadlines' };
 
 function renderStudent() {
   let content = '';
   if (!state.studentData.class && state.view !== 'account') {
     content = `${studentHero()}<div class="empty-state"><h3>You are not in a class yet</h3><p>Your account is active but has not been added to a class group. Contact Gaeilgeoir Guides and they will add you.</p></div>`;
   } else if (state.view === 'tracker') content = studentTrackerView();
-  else if (state.view === 'materials') content = studentMaterialsView();
   else if (state.view === 'community') content = studentCommunityView();
   else content = studentCalendarView();
   shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Deadlines', roleLabel: 'Student', notificationCount: state.studentData.notifications });
@@ -3486,37 +3647,7 @@ function nextClassBanner() {
   </section>`;
 }
 
-/* The library. Grouped by week, newest first, because somebody looking for
-   something is nearly always looking for the most recent thing. */
-function studentMaterialsView() {
-  const rows = state.materials?.materials || [];
-  const groups = new Map();
-  rows.filter((row) => row.week_id).forEach((row) => {
-    const key = String(row.week_start || '').slice(0, 10);
-    groups.set(key, [...(groups.get(key) || []), row]);
-  });
-  const courseWide = rows.filter((row) => !row.week_id);
-  const weeks = [...groups.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
-
-  const list = (items) => `<div class="material-list">${items.map((row) => `
-    <a class="material-row is-link" href="${escapeHtml(row.url)}" target="_blank" rel="noopener noreferrer">
-      <span class="material-icon">${svg[MATERIAL_ICONS[row.kind] || 'note']}</span>
-      <div class="material-copy">
-        <strong>${escapeHtml(row.title)}</strong>
-        ${row.description ? `<p>${escapeHtml(row.description)}</p>` : ''}
-        <span class="muted small">${escapeHtml(row.kind === 'file' ? (row.file_name || 'File') : row.kind === 'loom' ? 'Loom video' : 'Link')}</span>
-      </div>
-    </a>`).join('')}</div>`;
-
-  return `${studentHero()}
-    ${rows.length ? `
-      ${courseWide.length ? `<section class="card"><div class="section-title">Whole course</div>${list(courseWide)}</section>` : ''}
-      ${weeks.map(([weekStart, items]) => `<section class="card"><div class="section-title">Week of ${escapeHtml(fmtWeek(weekStart))}</div>${list(items)}</section>`).join('')}`
-      : '<div class="empty-state"><h3>No materials yet</h3><p>Notes, recordings and links appear here as your teacher adds them.</p></div>'}`;
-}
-
 const STUDENT_HERO_COPY = {
-  materials: { title: 'here are your course materials', line: 'Notes, recordings and links for every week, kept in one place.' },
   community: { title: 'here is your class board', line: 'Ask a question or answer somebody else. Your teacher reads it too.' },
 };
 
@@ -3525,7 +3656,7 @@ function studentHero() {
     || { title: 'here are your deadlines', line: 'Complete check-ins and homework, then view your returned teacher feedback.' };
   return `<section class="student-hero"><div><h1>Hi ${escapeHtml(state.user.name.split(' ')[0])}, ${escapeHtml(copy.title)}</h1><p>${escapeHtml(copy.line)}</p></div>${state.studentData.class ? `<span class="hero-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</section>
   ${nextClassBanner()}
-  ${state.view === 'materials' || state.view === 'community' ? '' : studentGoals()}`;
+  ${state.view === 'community' ? '' : studentGoals()}`;
 }
 
 /* The server works this out in src/status.js, so the counting rule lives in one
@@ -3786,7 +3917,7 @@ function openWithdrawalForm() {
     body: `<div class="withdrawal-form">
       <div class="form-field"><label for="wd-reason">What is the main reason you are leaving?</label>
         <select id="wd-reason">${WITHDRAWAL_REASONS.map((reason) => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join('')}</select></div>
-      <div class="form-field"><div class="input-row"><label for="wd-detail">Anything you would like to add?</label>${dictateButton('wd-detail')}</div>
+      <div class="form-field"><label for="wd-detail">Anything you would like to add?</label>
         <textarea id="wd-detail" placeholder="Optional. It stays between you and Gaeilgeoir Guides."></textarea></div>
 
       <div class="section-title">How was the course?</div>
@@ -3806,7 +3937,6 @@ function openWithdrawalForm() {
     </div>`,
     footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn danger" id="wd-submit">Submit and withdraw</button>`,
     onOpen() {
-      bindDictation(modalRoot);
       const ratings = {};
       modalRoot.querySelectorAll('[data-rating]').forEach((button) => button.addEventListener('click', () => {
         ratings[button.dataset.rating] = Number(button.dataset.value);
@@ -4215,6 +4345,7 @@ async function boot() {
     const data = await api('/api/auth/me');
     state.user = data.user;
     if (state.user.mustChangePassword) renderAuth('change');
+    else if (state.user.mustSetAvatar && !state.user.hasAvatar) renderAuth('avatar');
     else await loadApplication();
   } catch {
     renderAuth(new URLSearchParams(location.search).has('reset') ? 'reset' : 'login');

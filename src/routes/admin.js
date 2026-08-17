@@ -18,7 +18,6 @@ import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
 import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
-import { listMaterials } from '../materials.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleLike, topContributors } from '../community.js';
 
 const router = Router();
@@ -97,8 +96,10 @@ async function createStudent({ name, email, classId, actorId, ip }) {
   const passwordHash = await hashPassword(temporaryPassword);
   const student = await transaction(async (client) => {
     const inserted = await client.query(
-      `INSERT INTO users(role,name,email,password_hash,must_change_password)
-       VALUES ('student',$1,$2,$3,true) RETURNING id,name,email,role,must_change_password`,
+      // Everybody created from here on is asked for a photograph on first login.
+      // Students already on the course are left alone by migration 013.
+      `INSERT INTO users(role,name,email,password_hash,must_change_password,must_set_avatar)
+       VALUES ('student',$1,$2,$3,true,true) RETURNING id,name,email,role,must_change_password,must_set_avatar`,
       [name, email, passwordHash],
     );
     await client.query('INSERT INTO class_students(class_id,student_id) VALUES ($1,$2)', [classId, inserted.rows[0].id]);
@@ -1150,98 +1151,18 @@ router.get('/audit', asyncRoute(async (req, res) => {
 }));
 
 /* ------------------------------------------------------------------
-   Course materials
-   ------------------------------------------------------------------ */
-
-/* Unpublished rows come back here and nowhere else, so next week's notes can be
-   loaded in advance without appearing on anybody's screen early. */
-router.get('/materials/:classId', asyncRoute(async (req, res) => {
-  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
-  if (!klass) return res.status(404).json({ error: 'Class not found.' });
-  const [materials, weeks] = await Promise.all([
-    listMaterials({ classId: klass.id, publishedOnly: false }),
-    query('SELECT id, week_start FROM weeks WHERE class_id=$1 ORDER BY week_start DESC', [klass.id]),
-  ]);
-  res.json({ class: { ...klass, label: classLabel(klass) }, materials, weeks: weeks.rows });
-}));
-
-const materialInput = z.object({
-  classId: z.string().uuid(),
-  weekId: z.string().uuid().nullable().optional(),
-  kind: z.enum(['file', 'link', 'loom']),
-  title: z.string().trim().min(2).max(200),
-  description: z.string().max(2000).optional().default(''),
-  url: z.string().url(),
-  fileName: z.string().max(200).nullable().optional(),
-  mimeType: z.string().max(200).nullable().optional(),
-  sizeBytes: z.coerce.number().int().min(0).optional().default(0),
-  published: z.boolean().optional().default(true),
-});
-
-router.post('/materials', asyncRoute(async (req, res) => {
-  const parsed = materialInput.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the material a title and either a file or a full https:// link.' });
-  const data = parsed.data;
-  const klass = await one('SELECT id FROM classes WHERE id=$1', [data.classId]);
-  if (!klass) return res.status(404).json({ error: 'Class not found.' });
-  // Newest within its week sits at the top, which is where a just-added item is
-  // looked for.
-  const next = await one(
-    `SELECT COALESCE(min(position),0)-1 position FROM materials WHERE class_id=$1 AND week_id IS NOT DISTINCT FROM $2`,
-    [data.classId, data.weekId || null],
-  );
-  const row = await one(
-    `INSERT INTO materials(class_id,week_id,kind,title,description,url,file_name,mime_type,size_bytes,published,position,created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [data.classId, data.weekId || null, data.kind, data.title, data.description, data.url,
-     data.fileName || null, data.mimeType || null, data.sizeBytes, data.published, next.position, req.user.id],
-  );
-  await audit({ actorId: req.user.id, action: 'material.created', entityType: 'material', entityId: row.id, metadata: { classId: data.classId, kind: data.kind }, ip: req.ip });
-  res.status(201).json(row);
-}));
-
-router.patch('/materials/:id', asyncRoute(async (req, res) => {
-  const parsed = materialInput.partial().safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid material.' });
-  const current = await one('SELECT * FROM materials WHERE id=$1', [req.params.id]);
-  if (!current) return res.status(404).json({ error: 'Material not found.' });
-  const data = parsed.data;
-  const row = await one(
-    `UPDATE materials SET week_id=$1,title=$2,description=$3,url=$4,published=$5,updated_at=now()
-     WHERE id=$6 RETURNING *`,
-    [data.weekId === undefined ? current.week_id : (data.weekId || null),
-     data.title ?? current.title, data.description ?? current.description,
-     data.url ?? current.url, data.published ?? current.published, current.id],
-  );
-  await audit({ actorId: req.user.id, action: 'material.updated', entityType: 'material', entityId: row.id, ip: req.ip });
-  res.json(row);
-}));
-
-router.delete('/materials/:id', asyncRoute(async (req, res) => {
-  const current = await one('SELECT * FROM materials WHERE id=$1', [req.params.id]);
-  if (!current) return res.status(404).json({ error: 'Material not found.' });
-  // The uploaded file goes with it. Nothing else points at it, and leaving orphans
-  // on disk is how an uploads directory becomes impossible to reason about.
-  if (current.kind === 'file' && String(current.url).startsWith('/uploads/')) {
-    await fs.unlink(path.join(config.uploadDir, path.basename(current.url))).catch(() => {});
-  }
-  await query('DELETE FROM materials WHERE id=$1', [current.id]);
-  await audit({ actorId: req.user.id, action: 'material.deleted', entityType: 'material', entityId: current.id, metadata: { title: current.title }, ip: req.ip });
-  res.status(204).end();
-}));
-
-/* ------------------------------------------------------------------
    Class board
    ------------------------------------------------------------------ */
 
 router.get('/community/:classId', asyncRoute(async (req, res) => {
   const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
-  const sort = req.query.sort === 'top' ? 'top' : 'new';
+  const sort = req.query.sort === 'hot' ? 'hot' : 'new';
   const categoryId = req.query.categoryId || null;
-  // Removed threads stay listed for the administrator, greyed, with a way back.
+  // Removed threads stay listed for the administrator, greyed, with a way back,
+  // and scheduled ones show here before they show anywhere else.
   const [threads, categories, contributors, members] = await Promise.all([
-    listThreads({ classId: klass.id, viewerId: req.user.id, includeDeleted: true, categoryId, sort }),
+    listThreads({ classId: klass.id, viewerId: req.user.id, includeDeleted: true, includeScheduled: true, categoryId, sort }),
     listCategories(klass.id),
     topContributors({ classId: klass.id }),
     one(`SELECT count(*)::int count FROM class_students WHERE class_id=$1 AND active=true`, [klass.id]),
@@ -1253,10 +1174,21 @@ router.get('/community/:classId', asyncRoute(async (req, res) => {
 }));
 
 router.get('/community/thread/:id', asyncRoute(async (req, res) => {
-  const thread = await getThread({ threadId: req.params.id, viewerId: req.user.id, includeDeleted: true });
+  const thread = await getThread({ threadId: req.params.id, viewerId: req.user.id, includeDeleted: true, includeScheduled: true });
   if (!thread) return res.status(404).json({ error: 'Thread not found.' });
   res.json(thread);
 }));
+
+/* Attachments a post can carry. Files are uploaded here first and referenced by
+   the post that follows, so a half-written post never leaves an orphan row. */
+const attachmentInput = z.object({
+  kind: z.enum(['file', 'loom', 'gif']),
+  url: z.string().url(),
+  storedName: z.string().max(200).nullable().optional(),
+  fileName: z.string().max(200).nullable().optional(),
+  mimeType: z.string().max(120).nullable().optional(),
+  sizeBytes: z.coerce.number().int().min(0).optional().default(0),
+});
 
 router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
   const parsed = z.object({
@@ -1264,6 +1196,9 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
     body: z.string().trim().min(1).max(20000),
     categoryId: z.string().uuid().nullable().optional(),
     pinned: z.boolean().optional().default(false),
+    // Absent or past means publish now. The clock does the rest of the work.
+    publishedAt: z.string().datetime().nullable().optional(),
+    attachments: z.array(attachmentInput).max(6).optional().default([]),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Give the post a title and a message.' });
   const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.classId]);
@@ -1274,10 +1209,49 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
   const row = await createThread({
     classId: klass.id, authorId: req.user.id,
     title: parsed.data.title, body: parsed.data.body, categoryId: category?.id || null,
+    publishedAt: parsed.data.publishedAt || null,
+    attachments: parsed.data.attachments,
   });
   if (parsed.data.pinned) await query('UPDATE discussion_threads SET pinned=true WHERE id=$1', [row.id]);
-  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
+  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, metadata: { scheduled: Boolean(parsed.data.publishedAt) }, ip: req.ip });
   res.status(201).json({ ...row, pinned: parsed.data.pinned });
+}));
+
+/* Rescheduling, or releasing something early. Setting it to now is how a
+   scheduled post gets published on the spot. */
+router.patch('/community/thread/:id/schedule', asyncRoute(async (req, res) => {
+  const parsed = z.object({ publishedAt: z.string().datetime() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose when this should go out.' });
+  const row = await one(
+    `UPDATE discussion_threads SET published_at=$1,
+       -- A post that has not appeared yet has had no activity, so its sort key
+       -- should follow it rather than stay at the moment it was written.
+       last_activity_at=GREATEST($1, last_activity_at), updated_at=now()
+     WHERE id=$2 RETURNING *`,
+    [parsed.data.publishedAt, req.params.id],
+  );
+  if (!row) return res.status(404).json({ error: 'Post not found.' });
+  await audit({ actorId: req.user.id, action: 'community.thread_rescheduled', entityType: 'thread', entityId: row.id, metadata: { publishedAt: parsed.data.publishedAt }, ip: req.ip });
+  res.json(row);
+}));
+
+/* A PDF to hang off a post. Uploads are the administrator's alone: the class
+   feed should not be a route by which arbitrary files arrive on the server. */
+router.post('/community/attachments', diskUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a file to upload.' });
+  const mime = String(req.file.mimetype).split(';')[0];
+  if (mime !== 'application/pdf') {
+    await fs.unlink(req.file.path).catch(() => {});
+    return res.status(400).json({ error: 'Posts take PDFs. For anything else, put it in the homework resources.' });
+  }
+  res.status(201).json({
+    kind: 'file',
+    url: `/uploads/${path.basename(req.file.path)}`,
+    storedName: path.basename(req.file.path),
+    fileName: req.file.originalname.slice(0, 200),
+    mimeType: mime,
+    sizeBytes: req.file.size,
+  });
 }));
 
 router.post('/community/like/:type/:id', asyncRoute(async (req, res) => {

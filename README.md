@@ -1,4 +1,4 @@
-# Gaeilgeoir Guides Homework Portal V28
+# Gaeilgeoir Guides Class Portal V28
 
 
 A private internal SaaS application for managing Gaeilgeoir Guides classes, student accounts, weekly attendance, check-ins, homework, deadlines, reminders and returned teacher feedback.
@@ -349,68 +349,111 @@ different room can override the link on its own week, and every other week falls
 back to the class link. Times resolve in the **class** timezone, so a student
 reading from abroad is still told when the Dublin class starts.
 
-### Course materials
-
-**Course materials** is the library: notes, slide decks, recordings and links
-that stay available for the year. This is not the same thing as the resources
-attached to an assignment — those exist to support one piece of work and leave
-the screen once it has been handed in. These stay put, which is what somebody
-revising in May actually needs.
-
-- A material is an uploaded file, a link, or a Loom video
-- Each one belongs to a teaching week, or to the whole course
-- Unpublished material is visible to you alone, so next week's notes can be
-  prepared in advance without appearing early
-- Students see it grouped by week, newest first
-
 ### The class board
 
 **Class board** is one feed per class. A question about Monday's lesson is noise
 to the Thursday group, so the feeds are separate and a student can only ever
 reach the feed of the class they are in.
 
-The layout is the one people already know from Skool and every other community
-tool: a composer sitting at the top, category pills under it, and a column of
-post cards showing who wrote it, when, how many likes and comments it has, and
-who spoke last. A side column carries the class card and the month's most active
-members.
+The layout is the one people know from every community tool: a composer at the
+top, category tabs under it, and a column of posts showing who wrote it, when,
+how many likes and comments it has, and who spoke last. A side column carries the
+class card and the month's most active members.
 
-- **The composer** is a box, not a button. It is collapsed to one line until it
-  is clicked, but a box already sitting there gets noticeably more posts than a
-  button labelled *Start a post*
+- **The composer** is a box, not a button — a box already sitting there gets
+  noticeably more posts than a button labelled *Start a post*
 - **Categories** — General, Questions, Wins and Resources by default, editable
-  per class under **Categories**. Deleting one leaves its posts alone; they
-  simply become uncategorised
-- **Likes** on both posts and comments, one click, no counts inflated by your own
-- **Sorting** — newest by default, or top by likes. Pinned posts always sit above
-  both
-- **Comments** open in a drawer, so reading three posts in a row does not cost
-  three scroll positions
+  per class. Deleting one leaves its posts alone; they become uncategorised
+- **Likes** on posts and comments, one click, never inflated by your own
+- **Sorting** — **Latest** by publication date, or **Hot**, which is comments
+  decayed by age on a day-and-a-half half-life. Eight comments this morning
+  should outrank twelve from last month, because the question the sort answers is
+  *where is the conversation*, not *what was popular once*. Likes stay out of it:
+  they measure approval, and this is measuring activity
+- **Comments** open in a drawer, so reading three posts does not cost three
+  scroll positions
 
-Nothing is anonymous and nothing is editable after posting. On a board this size,
-knowing your name is on it is most of what keeps it civil.
+#### Attachments
 
-**Moderation.** You can pin a post to the top, close it to new comments, or
-remove a post or a single comment. Removal is a soft delete: students stop seeing
-it immediately, you keep seeing it greyed with a way back, and the surrounding
-comments keep their shape rather than becoming answers to nothing. Every use is
-recorded in the audit log. A closed post still takes a comment from you, because
-closing a conversation usually means having the last word in it.
+| Kind | Who can add it | How it appears |
+| --- | --- | --- |
+| PDF | Administrator | A line in the post that opens the file |
+| Loom | Anyone | A strip in the feed, an embedded player inside the post |
+| GIF | Anyone | Plays inline, the way it does anywhere else |
+
+File uploads are the administrator's alone: the class feed should not be a route
+by which arbitrary files arrive on the server. Students can attach a Loom link or
+a GIF, neither of which touches the disk.
+
+GIF search needs a free `GIPHY_API_KEY` in the environment file. Without one the
+picker says so rather than offering a button that returns nothing. The search is
+proxied through the server because the content security policy pins outbound
+connections to this origin — loosening it for one third party would loosen it for
+every script on the page — and because an API key belongs on a server.
+
+#### Scheduling
+
+Any post can be given a time instead of going out immediately. Until then it sits
+in your feed, hatched and marked **Scheduled**, invisible to students and silent:
+it raises nobody's unread badge until the moment it appears. No job runs to
+release it — every read already filters on the clock — so a scheduled post cannot
+be missed by a worker that was not running.
+
+#### Moderation
+
+Pin a post to the top, close it to new comments, or remove a post or a single
+comment. Removal is a soft delete: students stop seeing it immediately, you keep
+seeing it greyed with a way back, and the surrounding comments keep their shape
+rather than becoming answers to nothing. Every use is recorded in the audit log.
+A closed post still takes a comment from you, because closing a conversation
+usually means having the last word in it.
 
 **The badge** counts posts and comments written by somebody else since that
 person last opened the feed, and opening the feed clears it. Your own message
-never comes back at you as something new to read, which is the fastest way to
-teach somebody to ignore a badge. Likes deliberately do not raise it: a badge
-that fires on a like turns the feed into a slot machine, which is not what this
-is for.
+never comes back at you as something new to read. Likes deliberately do not raise
+it: a badge that fires on a like turns the feed into a slot machine.
 
 **Most active this month** counts posts and comments *written*, not likes
-collected, and leaves the teacher out. Ranking by likes received rewards the
-popular post; ranking by contribution rewards turning up, which is the behaviour
-worth encouraging on a course. A feed where the teacher is permanently first is a
-noticeboard.
+collected, and leaves the teacher out. Ranking by likes rewards the popular post;
+ranking by contribution rewards turning up. A feed where the teacher is
+permanently first is a noticeboard.
 
 Withdrawn students keep reading and lose posting, like everywhere else.
+
+### Profile pictures
+
+Every student created from now on is asked for a photograph on the way in, after
+they set their password and before they reach the portal. It is not skippable and
+not buried in settings: a feed of faces only works if everybody has one, and the
+only moment everybody reliably passes through is the first login.
+
+Students already on the course when this shipped are left alone. Pulling the
+portal out from under somebody mid-term to demand a photograph would be a poor
+trade.
+
+Pictures are stored under a random name outside the public uploads directory and
+served through an authenticated route, like every other file belonging to a
+student. Anybody signed in can see anybody else's, which is the point; nobody
+signed out can see any of them. A picture that fails to load falls back to
+initials rather than leaving a broken image in the middle of the feed.
+
+### What students never see
+
+Feedback is drafted by a model and then read, edited and approved by a teacher
+before it is returned. By the time it reaches a student it is the teacher's
+reply, and that is how it is presented — with no seam showing.
+
+- The **Dictate** button renders for administrators only. The gate is inside the
+  button itself rather than at each call site, so putting one on a student screen
+  is not possible by accident
+- The `ai_feedback`, `ai_corrections` and `ai_general_feedback` columns are
+  stripped from every student-facing response, and `feedback_state` collapses to
+  `pending` or `returned`. The interface hiding them would not be enough — the
+  network tab is one keystroke away
+- No student-facing copy mentions drafting, models or OpenAI
+
+`tests/student-privacy.test.js` holds all three in place and fails if a student
+route starts returning a raw row.
 
 ## Local deployment with Docker
 
@@ -819,9 +862,6 @@ changing it. Nothing about check-ins, homework, attendance or feedback moved.
   time and timezone the class already carries, so there is no weekly field to
   keep filling in. A single week can override the link; every other week falls
   back to the class one.
-- **Course materials.** A per-class library of files, links and Loom videos,
-  grouped by teaching week or held at course level. Unpublished items stay
-  invisible to students so next week's notes can be loaded in advance.
 - **The class board.** One feed per class in the shape people know from Skool:
   composer, category pills, post cards with likes and comment counts, a drawer
   for comments, and a side column with the class card and the month's most
@@ -833,11 +873,42 @@ Also in this release:
 - A drawer opened without a footer no longer prints the word `undefined` along
   its bottom edge. This affected any future drawer whose actions sit inline in
   the body, which is how the board reads.
-- `tests/classtime.test.js`, `tests/materials.test.js` and
-  `tests/community.test.js` cover the new logic. The board tests need a database
+- `tests/classtime.test.js` and `tests/community.test.js` cover the new logic. The board tests need a database
   and run under `RUN_DB_TESTS=1` like the other database tests.
 - The preview mock carries its own copy of the next-class calculation, and
   `tests/preview-mock.test.js` now holds it level with the server's, the same way
   it already does for student progress.
 - Migrations `009_class_join_link`, `010_materials`, `011_community` and
   `012_community_feed`.
+
+## V29 changes
+
+The board became a proper feed, the course materials library was withdrawn, and
+the portal was renamed.
+
+- **Course materials is gone.** Everything it held belongs either on the
+  assignment it supports or in a post on the feed, which is where people look.
+  Migration `013` drops the table; uploaded files stay on disk.
+- **Attachments on posts.** PDFs (administrator), Loom videos and GIFs (anyone).
+  Loom plays inside the post rather than sending somebody to another tab, and
+  GIFs play in the feed.
+- **A GIF picker**, proxied through the server so the content security policy
+  stays shut and the API key stays server-side. Needs `GIPHY_API_KEY`.
+- **Scheduled posts.** Give a post a time and it stays invisible and silent until
+  then. No worker involved: every read filters on the clock.
+- **Latest and Hot** replace newest and top-by-likes. Hot is comments decayed
+  against recency.
+- **Profile pictures**, required of every new student on first login and used
+  everywhere the feed shows a face.
+- **A visual pass over the whole feed** — one continuous surface with hairline
+  separators rather than a stack of identical floating cards, stronger headline
+  typography, and quieter chrome.
+- **Renamed to Class Portal**, in the interface, the emails and the calendar
+  feed.
+- **Nothing about AI reaches a student.** Dictation is gated inside the button
+  itself, and the drafting columns and the `ai_drafted` state are stripped from
+  every student-facing payload rather than merely hidden on screen.
+
+Migrations `013_feed_attachments_avatars` and `014_gif_attachments`. New tests:
+`tests/student-privacy.test.js`, plus scheduling, attachment, Hot-ranking and
+like coverage in `tests/community.test.js`.

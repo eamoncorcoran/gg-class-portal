@@ -55,7 +55,7 @@ export function buildCalendar({ name, description, events }) {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Gaeilgeoir Guides//Homework Portal//EN',
+    'PRODID:-//Gaeilgeoir Guides//Class Portal//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${escapeText(name)}`,

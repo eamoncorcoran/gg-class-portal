@@ -30,7 +30,8 @@ export async function loadSession(req, res, next) {
   const token = req.cookies?.[config.sessionCookieName];
   if (!token) return next();
   const row = await one(
-    `SELECT s.id session_id, s.expires_at, s.last_seen_at, u.id, u.role, u.name, u.email, u.active, u.must_change_password
+    `SELECT s.id session_id, s.expires_at, s.last_seen_at, u.id, u.role, u.name, u.email, u.active,
+            u.must_change_password, u.must_set_avatar, u.avatar_path
      FROM sessions s JOIN users u ON u.id=s.user_id
      WHERE s.token_hash=$1 AND s.expires_at > now()`,
     [hashToken(token)],
@@ -45,6 +46,10 @@ export async function loadSession(req, res, next) {
     name: row.name,
     email: row.email,
     mustChangePassword: row.must_change_password,
+    // Both gates travel with the session so every screen knows whether the
+    // person in front of it still owes us something before they can continue.
+    mustSetAvatar: row.must_set_avatar,
+    hasAvatar: Boolean(row.avatar_path),
     sessionId: row.session_id,
   };
   const lastSeen = new Date(row.last_seen_at || 0).getTime();

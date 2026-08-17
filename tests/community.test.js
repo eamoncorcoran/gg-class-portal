@@ -205,3 +205,84 @@ test('contributors count what people wrote, and leave the teacher out', dbTest, 
     assert.equal(rows[0].comments, 1);
   } finally { await cleanup(); }
 });
+
+test('a scheduled post is invisible to students until its moment', dbTest, async () => {
+  const { createThread, listThreads, getThread, unreadCount } = await import('../src/community.js');
+  const { klass, teacher, student, cleanup } = await fixture();
+  try {
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const thread = await createThread({
+      classId: klass.id, authorId: teacher.id, title: 'Later', body: '.', publishedAt: future,
+    });
+
+    // The student's view of the feed, and of the post by its own id.
+    assert.deepEqual(await listThreads({ classId: klass.id, viewerId: student.id }), []);
+    assert.equal(await getThread({ threadId: thread.id, viewerId: student.id }), null);
+    // And it must not ring the bell early either.
+    assert.equal(await unreadCount({ userId: student.id, classId: klass.id }), 0);
+
+    // The teacher sees it, marked.
+    const mine = await listThreads({ classId: klass.id, viewerId: teacher.id, includeScheduled: true });
+    assert.equal(mine.length, 1);
+    assert.equal(mine[0].scheduled, true);
+  } finally { await cleanup(); }
+});
+
+test('publishing a scheduled post makes it appear and count as new', dbTest, async () => {
+  const { createThread, listThreads, unreadCount } = await import('../src/community.js');
+  const { query } = await import('../src/db.js');
+  const { klass, teacher, student, cleanup } = await fixture();
+  try {
+    const thread = await createThread({
+      classId: klass.id, authorId: teacher.id, title: 'Now', body: '.',
+      publishedAt: new Date(Date.now() + 3600_000).toISOString(),
+    });
+    await query('UPDATE discussion_threads SET published_at=now() WHERE id=$1', [thread.id]);
+
+    const seen = await listThreads({ classId: klass.id, viewerId: student.id });
+    assert.deepEqual(seen.map((row) => row.title), ['Now']);
+    assert.equal(seen[0].scheduled, false);
+    assert.equal(await unreadCount({ userId: student.id, classId: klass.id }), 1);
+  } finally { await cleanup(); }
+});
+
+test('attachments come back with the post that carries them', dbTest, async () => {
+  const { createThread, getThread } = await import('../src/community.js');
+  const { klass, teacher, cleanup } = await fixture();
+  try {
+    const thread = await createThread({
+      classId: klass.id, authorId: teacher.id, title: 'With things', body: '.',
+      attachments: [
+        { kind: 'file', url: '/uploads/x.pdf', storedName: 'x.pdf', fileName: 'Week 4 notes.pdf', mimeType: 'application/pdf', sizeBytes: 4096 },
+        { kind: 'loom', url: 'https://www.loom.com/share/abc123' },
+        { kind: 'gif', url: 'https://media.giphy.com/media/abc/giphy.gif' },
+      ],
+    });
+    const row = await getThread({ threadId: thread.id, viewerId: teacher.id });
+    assert.deepEqual(row.attachments.map((a) => a.kind), ['file', 'loom', 'gif']);
+    // The original filename survives, because a UUID is what goes on disk and
+    // "Week 4 notes.pdf" is what a reader needs to see.
+    assert.equal(row.attachments[0].fileName, 'Week 4 notes.pdf');
+  } finally { await cleanup(); }
+});
+
+test('hot ranks a busy recent post above a busier old one', dbTest, async () => {
+  const { createThread, createPost, listThreads } = await import('../src/community.js');
+  const { query } = await import('../src/db.js');
+  const { klass, teacher, student, cleanup } = await fixture();
+  try {
+    const old = await createThread({ classId: klass.id, authorId: teacher.id, title: 'Old but busy', body: '.' });
+    const fresh = await createThread({ classId: klass.id, authorId: teacher.id, title: 'New and busy', body: '.' });
+    for (let i = 0; i < 6; i += 1) await createPost({ threadId: old.id, authorId: student.id, body: `old ${i}` });
+    for (let i = 0; i < 3; i += 1) await createPost({ threadId: fresh.id, authorId: student.id, body: `new ${i}` });
+    // Age the old one by four days; its six comments decay past the fresh three.
+    await query(`UPDATE discussion_threads SET last_activity_at=now() - interval '4 days' WHERE id=$1`, [old.id]);
+
+    const hot = await listThreads({ classId: klass.id, viewerId: student.id, sort: 'hot' });
+    assert.equal(hot[0].title, 'New and busy');
+
+    // Latest is strictly by publication date and ignores the noise.
+    const latest = await listThreads({ classId: klass.id, viewerId: student.id });
+    assert.equal(latest[0].title, 'New and busy');
+  } finally { await cleanup(); }
+});

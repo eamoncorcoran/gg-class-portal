@@ -10,10 +10,10 @@ function layout({ title, body, buttonText, buttonUrl }) {
   return `<!doctype html><html><body style="margin:0;background:#f5f7f3;font-family:Arial,sans-serif;color:#243322">
   <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center" style="padding:32px 16px">
   <table width="100%" style="max-width:600px;background:#fff;border:1px solid #dfe8da;border-radius:14px;overflow:hidden" cellpadding="0" cellspacing="0">
-  <tr><td style="padding:22px 28px;background:#50AF37;color:#fff;font-size:19px;font-weight:700;letter-spacing:-.01em">Gaeilgeoir Guides<span style="opacity:.72;font-weight:500"> · Homework Portal</span></td></tr>
+  <tr><td style="padding:22px 28px;background:#50AF37;color:#fff;font-size:19px;font-weight:700;letter-spacing:-.01em">Gaeilgeoir Guides<span style="opacity:.72;font-weight:500"> · Class Portal</span></td></tr>
   <tr><td style="padding:30px 28px"><h1 style="font-size:22px;margin:0 0 16px">${escapeHtml(title)}</h1><div style="font-size:15px;line-height:1.65;color:#465643">${body}</div>
   ${buttonUrl ? `<p style="margin:24px 0 0"><a href="${escapeHtml(buttonUrl)}" style="display:inline-block;background:#50AF37;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">${escapeHtml(buttonText || 'Open')}</a></p>` : ''}
-  </td></tr><tr><td style="padding:18px 28px;background:#f8fbf6;color:#748171;font-size:12px">Gaeilgeoir Guides Homework Portal. If you were not expecting this email, you can ignore it.</td></tr>
+  </td></tr><tr><td style="padding:18px 28px;background:#f8fbf6;color:#748171;font-size:12px">Gaeilgeoir Guides Class Portal. If you were not expecting this email, you can ignore it.</td></tr>
   </table></td></tr></table></body></html>`;
 }
 
@@ -58,7 +58,7 @@ export async function sendStudentInvite({ student, temporaryPassword }) {
   // plenty of mail clients block the styled block and some students will be
   // reading this on a phone that will not let them copy from a button.
   const body = `<p>Hi ${escapeHtml(firstName)},</p>
-  <p>Your Gaeilgeoir Guides Homework Portal account is ready. This is where you will find your weekly check-in, your homework, and the corrections and feedback I send back to you.</p>
+  <p>Your Gaeilgeoir Guides Class Portal account is ready. This is where you will find your weekly check-in, your homework, and the corrections and feedback I send back to you.</p>
   <table cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:20px 0;border:1px solid #dfe8da;border-radius:10px;background:#f8fbf6">
     <tr><td style="padding:16px 18px;font-size:14px;line-height:1.8;color:#243322">
       <strong style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#748171">Sign in at</strong>
@@ -75,11 +75,11 @@ export async function sendStudentInvite({ student, temporaryPassword }) {
   <p>Tá Gaeilge bhriste níos fearr ná Béarla cliste. See you in class.</p>`;
   return sendEmail({
     to: student.email,
-    subject: 'Your Gaeilgeoir Guides Homework Portal login',
+    subject: 'Your Gaeilgeoir Guides Class Portal login',
     text: [
       `Hi ${firstName},`,
       '',
-      'Your Gaeilgeoir Guides Homework Portal account is ready.',
+      'Your Gaeilgeoir Guides Class Portal account is ready.',
       '',
       `Sign in at: ${loginUrl}`,
       `Email: ${student.email}`,
@@ -89,7 +89,7 @@ export async function sendStudentInvite({ student, temporaryPassword }) {
       '',
       'Tá Gaeilge bhriste níos fearr ná Béarla cliste. See you in class.',
     ].join('\n'),
-    html: layout({ title: 'Your Homework Portal login', body, buttonText: 'Sign in and set your password', buttonUrl: loginUrl }),
+    html: layout({ title: 'Your Class Portal login', body, buttonText: 'Sign in and set your password', buttonUrl: loginUrl }),
     metadata: { type: 'student_invite', studentId: student.id },
   });
 }
@@ -107,7 +107,7 @@ export async function sendNudge({ student, subject, body, metadata = {} }) {
     to: student.email,
     subject,
     text: body,
-    html: layout({ title: subject, body: htmlBody, buttonText: 'Open the Homework Portal', buttonUrl: config.appUrl }),
+    html: layout({ title: subject, body: htmlBody, buttonText: 'Open the Class Portal', buttonUrl: config.appUrl }),
     metadata: { type: 'nudge', studentId: student.id, ...metadata },
   });
 }

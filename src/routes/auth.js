@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
+import multer from 'multer';
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { z } from 'zod';
+import { config } from '../config.js';
 import { one, query, transaction } from '../db.js';
 import { asyncRoute } from '../middleware.js';
 import { createSession, destroySession, requireAuth } from '../session.js';
@@ -17,6 +22,42 @@ router.get('/me', asyncRoute(async (req, res) => {
   res.json({ user: req.user });
 }));
 
+/* A face rather than two grey initials.
+
+   The feed is the one screen where this matters: a column of initials reads as a
+   spreadsheet, and a column of faces reads as the people who were on the call
+   last night. Everybody here meets weekly on video, so there is nothing being
+   given away that the group does not already know.
+
+   Stored under a random name and served through an authenticated route, like
+   every other file belonging to a student. */
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 6 * 1024 * 1024, files: 1 },
+});
+const AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic']);
+
+router.post('/avatar', requireAuth, avatarUpload.single('avatar'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a photograph.' });
+  const mime = String(req.file.mimetype).split(';')[0];
+  if (!AVATAR_TYPES.has(mime)) {
+    return res.status(400).json({ error: 'Use a JPEG, PNG or WebP image.' });
+  }
+  const current = await one('SELECT avatar_path FROM users WHERE id=$1', [req.user.id]);
+  const stored = `avatar-${crypto.randomUUID()}`;
+  await fs.writeFile(path.join(config.privateUploadDir, stored), req.file.buffer);
+  await query(
+    'UPDATE users SET avatar_path=$1, avatar_mime=$2, must_set_avatar=false, updated_at=now() WHERE id=$3',
+    [stored, mime, req.user.id],
+  );
+  // Replacing a picture should not leave the old one on disk forever.
+  if (current?.avatar_path) {
+    await fs.unlink(path.join(config.privateUploadDir, path.basename(current.avatar_path))).catch(() => {});
+  }
+  await audit({ actorId: req.user.id, action: 'user.avatar_set', entityType: 'user', entityId: req.user.id, ip: req.ip });
+  res.status(201).json({ ok: true });
+}));
+
 router.post('/login', loginLimiter, asyncRoute(async (req, res) => {
   const parsed = z.object({ email: z.string().email(), password: z.string().min(1) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Enter a valid email and password.' });
@@ -29,7 +70,12 @@ router.post('/login', loginLimiter, asyncRoute(async (req, res) => {
   await createSession(user.id, req, res);
   await query('UPDATE users SET last_login_at=now(), updated_at=now() WHERE id=$1', [user.id]);
   await audit({ actorId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, ip: req.ip });
-  res.json({ user: { id: user.id, role: user.role, name: user.name, email: user.email, mustChangePassword: user.must_change_password } });
+  res.json({ user: {
+    id: user.id, role: user.role, name: user.name, email: user.email,
+    mustChangePassword: user.must_change_password,
+    mustSetAvatar: user.must_set_avatar,
+    hasAvatar: Boolean(user.avatar_path),
+  } });
 }));
 
 router.post('/logout', asyncRoute(async (req, res) => {

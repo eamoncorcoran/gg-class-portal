@@ -83,15 +83,6 @@
       { id:'hw-s1-a4', student_id:'s1', assignment_id:'a4', status:'draft', answers:['Oscail do leabhar. Dún an doras. Éist liom.','',''], current_question:0, feedback_state:'none' },
     ];
 
-    const materials = [
-      { id:'m1', class_id:'c1', week_id:null, kind:'link', title:'An Caighdeán Oifigiúil, the standard', description:'The reference every correction on this course is measured against. Worth bookmarking.', url:'https://data.oireachtas.ie', file_name:null, mime_type:null, size_bytes:0, published:true, position:0, created_at:iso('2026-06-02') },
-      { id:'m2', class_id:'c1', week_id:null, kind:'file', title:'Course outline and reading list', description:'Every week of the term at a glance.', url:'#', file_name:'Course-outline.pdf', mime_type:'application/pdf', size_bytes:184320, published:true, position:1, created_at:iso('2026-06-02') },
-      { id:'m3', class_id:'c1', week_id:'w4', kind:'file', title:'Week 4 notes: classroom phrases', description:'The phrase list we worked through, with the pronunciation notes added.', url:'#', file_name:'Week-4-phrases.pdf', mime_type:'application/pdf', size_bytes:242688, published:true, position:0, created_at:iso('2026-08-03') },
-      { id:'m4', class_id:'c1', week_id:'w4', kind:'loom', title:'Week 4 recording', description:'The full session, in case you missed it or want to go back over the second half.', url:'https://www.loom.com/share/preview', file_name:null, mime_type:null, size_bytes:0, published:true, position:1, created_at:iso('2026-08-04') },
-      { id:'m5', class_id:'c1', week_id:'w3', kind:'file', title:'Week 3 notes: the conditional', description:'', url:'#', file_name:'Week-3-conditional.pdf', mime_type:'application/pdf', size_bytes:198656, published:true, position:0, created_at:iso('2026-07-27') },
-      { id:'m6', class_id:'c1', week_id:null, kind:'file', title:'Week 5 notes, not finished', description:'Draft. Publish once the examples are added.', url:'#', file_name:'Week-5-draft.pdf', mime_type:'application/pdf', size_bytes:51200, published:false, position:2, created_at:iso('2026-08-08') },
-    ];
-
     const categories = [
       { id:'cat1', class_id:'c1', name:'General', position:0 },
       { id:'cat2', class_id:'c1', name:'Questions', position:1 },
@@ -102,16 +93,23 @@
     ];
 
     const threads = [
-      { id:'t1', class_id:'c1', author_id:'admin1', category_id:'cat1', title:'Start here: how this board works', body:'Use this for anything you would otherwise email me about the course. If you are stuck on something, post it here rather than sitting with it for a week. Somebody else in the group is nearly always wondering the same thing, and answering it once helps everyone.\n\nI read everything here.', pinned:true, locked:false, deleted_at:null, created_at:iso('2026-06-05T09:00:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
-      { id:'t2', class_id:'c1', author_id:'s2', category_id:'cat2', title:'When do we use an tuiseal ginideach after a verbal noun?', body:'I keep getting this wrong in the homework. Is there a simple rule for when the noun after ag + verbal noun goes into the genitive, or is it just something you learn case by case?', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-06T20:10:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
-      { id:'t3', class_id:'c1', author_id:'s4', category_id:'cat1', title:'Study group before the TEG exam?', body:'Is anyone interested in meeting on a Saturday morning to practise the oral? I was thinking every second week. Happy to set up the call if there is interest.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T11:00:00Z'), last_activity_at:iso('2026-08-08T18:45:00Z') },
-      { id:'t5', class_id:'c1', author_id:'s5', category_id:'cat3', title:'Spoke Irish to a parent at the school gate today', body:'Only two sentences and I got the tenses wrong halfway through, but she answered me in Irish and we kept going for a minute. Six months ago I would have switched to English straight away.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T16:20:00Z'), last_activity_at:iso('2026-08-09T09:15:00Z') },
-      { id:'t6', class_id:'c1', author_id:'s1', category_id:'cat4', title:'Free podcast that has helped my listening', body:'Bitesize Irish do short episodes at a slow pace and there is a transcript for each one. Ten minutes on the drive to work and I am picking up far more in class.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-04T07:40:00Z'), last_activity_at:iso('2026-08-05T12:00:00Z') },
-      { id:'t4', class_id:'c1', author_id:'s3', category_id:'cat1', title:'Posted in the wrong place', body:'Sorry, meant to send this privately.', pinned:false, locked:false, deleted_at:iso('2026-08-05T10:00:00Z'), created_at:iso('2026-08-05T09:00:00Z'), last_activity_at:iso('2026-08-05T09:00:00Z') },
+      { id:'t1', class_id:'c1', author_id:'admin1', category_id:'cat1', title:'Start here: how this board works', body:'Use this for anything you would otherwise email me about the course. If you are stuck on something, post it here rather than sitting with it for a week. Somebody else in the group is nearly always wondering the same thing, and answering it once helps everyone.\n\nI read everything here.', pinned:true, locked:false, deleted_at:null, created_at:iso('2026-06-05T09:00:00Z'), published_at:iso('2026-06-05T09:00:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
+      { id:'t2', class_id:'c1', author_id:'s2', category_id:'cat2', title:'When do we use an tuiseal ginideach after a verbal noun?', body:'I keep getting this wrong in the homework. Is there a simple rule for when the noun after ag + verbal noun goes into the genitive, or is it just something you learn case by case?', pinned:false, locked:false, deleted_at:null, published_at:iso('2026-08-06T20:10:00Z'), created_at:iso('2026-08-06T20:10:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
+      { id:'t3', class_id:'c1', author_id:'s4', category_id:'cat1', title:'Study group before the TEG exam?', body:'Is anyone interested in meeting on a Saturday morning to practise the oral? I was thinking every second week. Happy to set up the call if there is interest.', pinned:false, locked:false, deleted_at:null, published_at:iso('2026-08-08T11:00:00Z'), created_at:iso('2026-08-08T11:00:00Z'), last_activity_at:iso('2026-08-08T18:45:00Z') },
+      { id:'t5', class_id:'c1', author_id:'s5', category_id:'cat3', title:'Spoke Irish to a parent at the school gate today', body:'Only two sentences and I got the tenses wrong halfway through, but she answered me in Irish and we kept going for a minute. Six months ago I would have switched to English straight away.', pinned:false, locked:false, deleted_at:null, published_at:iso('2026-08-08T16:20:00Z'), created_at:iso('2026-08-08T16:20:00Z'), last_activity_at:iso('2026-08-09T09:15:00Z') },
+      { id:'t6', class_id:'c1', author_id:'s1', category_id:'cat4', title:'Free podcast that has helped my listening', body:'Bitesize Irish do short episodes at a slow pace and there is a transcript for each one. Ten minutes on the drive to work and I am picking up far more in class.', pinned:false, locked:false, deleted_at:null, published_at:iso('2026-08-04T07:40:00Z'), created_at:iso('2026-08-04T07:40:00Z'), last_activity_at:iso('2026-08-05T12:00:00Z') },
+      { id:'t7', class_id:'c1', author_id:'admin1', category_id:'cat1', title:'Reminder: no class next Monday', body:'We are skipping the bank holiday. Back the following week, and the check-in for that week is switched off.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-09T10:00:00Z'), published_at:iso('2026-08-11T08:00:00Z'), last_activity_at:iso('2026-08-11T08:00:00Z') },
+      { id:'t4', class_id:'c1', author_id:'s3', category_id:'cat1', title:'Posted in the wrong place', body:'Sorry, meant to send this privately.', pinned:false, locked:false, deleted_at:iso('2026-08-05T10:00:00Z'), published_at:iso('2026-08-05T09:00:00Z'), created_at:iso('2026-08-05T09:00:00Z'), last_activity_at:iso('2026-08-05T09:00:00Z') },
     ];
 
     /* Enough likes that the counts are not all zero, spread so the Top sort
        actually reorders the feed. */
+    const attachments = [
+      { id:'at1', thread_id:'t1', kind:'file', url:'#', file_name:'How-this-works.pdf', mime_type:'application/pdf', size_bytes:118000, position:0 },
+      { id:'at2', thread_id:'t5', kind:'gif', url:'https://media.giphy.com/media/xUOxf1XbxSNwZMSMSc/giphy.gif', position:0 },
+      { id:'at3', thread_id:'t6', kind:'loom', url:'https://www.loom.com/share/preview1234', position:0 },
+    ];
+
     const likes = [
       { user_id:'s1', target_type:'thread', target_id:'t1' }, { user_id:'s2', target_type:'thread', target_id:'t1' },
       { user_id:'s4', target_type:'thread', target_id:'t1' },
@@ -135,7 +133,7 @@
     return {
       sessionUserId:'admin1',
       users, classes, weeks, assignments, attendance, checkins, homework, notes:[], withdrawals:[], homeworkFiles:[], dismissals:[],
-      materials, threads, posts, reads:[], categories, likes,
+      threads, posts, reads:[], categories, likes, attachments,
       settings:{
         email:{provider:'console',fromName:'Gaeilgeoir Guides',fromAddress:'support@gaeilgeoirguides.com',replyTo:'support@gaeilgeoirguides.com',webhookUrl:'',smtpHost:'',smtpUser:'',configured:false},
         reminders:{
@@ -162,7 +160,7 @@
           generalFeedbackPrompt:'Give friendly, concise teacher feedback in 2 to 3 lines.'
         }
       },
-      counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,material:10,thread:10,post:10,category:10}
+      counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,thread:10,post:10,category:10,attachment:20}
     };
   }
 
@@ -192,13 +190,13 @@
     if(!Array.isArray(stored.dismissals)) stored.dismissals=[];
     // The library and the board arrived after some browsers had already stored a
     // preview. Seed them rather than leaving the new screens permanently empty.
-    if(!Array.isArray(stored.materials)) stored.materials=fresh.materials;
     if(!Array.isArray(stored.threads)) stored.threads=fresh.threads;
     if(!Array.isArray(stored.posts)) stored.posts=fresh.posts;
     if(!Array.isArray(stored.reads)) stored.reads=[];
     // Categories and likes arrived with the feed rebuild.
     if(!Array.isArray(stored.categories)) stored.categories=fresh.categories;
     if(!Array.isArray(stored.likes)) stored.likes=fresh.likes;
+    if(!Array.isArray(stored.attachments)) stored.attachments=fresh.attachments;
     (stored.classes || []).forEach((klass) => {
       const seeded=fresh.classes.find((row)=>row.id===klass.id);
       if(klass.join_url===undefined) klass.join_url=seeded?.join_url??null;
@@ -317,23 +315,23 @@
     };
   }
 
-  /* Materials and the class board. Mirrors src/materials.js and src/community.js
-     closely enough that the screens behave the same here as they do on a server. */
+  /* The class feed. Mirrors src/community.js closely enough that the screens
+     behave the same here as they do on a server. */
   function previewStudent(user){return user.role==='student'?user:db.users.find((item)=>item.id==='s1');}
-  function materialRows(classId,publishedOnly){
-    const weekOf=new Map(db.weeks.map((week)=>[week.id,week.week_start]));
-    return (db.materials||[]).filter((row)=>row.class_id===classId&&(!publishedOnly||row.published))
-      .map((row)=>({...row,week_start:row.week_id?weekOf.get(row.week_id)||null:null}))
-      .sort((a,b)=>{
-        if(!a.week_start&&b.week_start)return -1;
-        if(a.week_start&&!b.week_start)return 1;
-        if(a.week_start!==b.week_start)return a.week_start<b.week_start?-1:1;
-        return a.position-b.position;
-      });
-  }
   function authorOf(id){
     const row=db.users.find((item)=>item.id===id);
-    return row?{id:row.id,name:row.name,role:row.role}:null;
+    return row?{id:row.id,name:row.name,role:row.role,avatar:Boolean(row.avatar)}:null;
+  }
+  function attachmentsOf(threadId){
+    return (db.attachments||[]).filter((row)=>row.thread_id===threadId)
+      .sort((a,b)=>a.position-b.position)
+      .map((row)=>({id:row.id,kind:row.kind,url:row.url,fileName:row.file_name,mimeType:row.mime_type,sizeBytes:row.size_bytes}));
+  }
+  /* Comments decayed by age, the same shape as the server's HOT_SCORE. */
+  function hotScore(threadId,lastActivity){
+    const comments=(db.posts||[]).filter((p)=>p.thread_id===threadId&&!p.deleted_at).length;
+    const ageHours=(PREVIEW_NOW-new RealDate(lastActivity).getTime())/3600000;
+    return comments/Math.pow(2,ageHours/36);
   }
   function likeCount(type,id){return (db.likes||[]).filter((row)=>row.target_type===type&&row.target_id===id).length;}
   function likedBy(type,id,userId){return (db.likes||[]).some((row)=>row.target_type===type&&row.target_id===id&&row.user_id===userId);}
@@ -343,27 +341,33 @@
       .map((row)=>({...row,thread_count:(db.threads||[]).filter((t)=>t.category_id===row.id&&!t.deleted_at).length}))
       .sort((a,b)=>a.position-b.position);
   }
-  function threadRows(classId,includeDeleted,viewerId,categoryId,sort){
+  function threadRows(classId,includeDeleted,viewerId,categoryId,sort,includeScheduled){
     const rows=(db.threads||[]).filter((row)=>row.class_id===classId&&(includeDeleted||!row.deleted_at)
+        &&(includeScheduled||new RealDate(row.published_at||row.created_at).getTime()<=PREVIEW_NOW)
         &&(!categoryId||row.category_id===categoryId))
       .map((row)=>{
         const replies=(db.posts||[]).filter((post)=>post.thread_id===row.id&&!post.deleted_at);
         const last=replies[replies.length-1];
         return {...row,author:authorOf(row.author_id),category_name:categoryName(row.category_id),
+          attachments:attachmentsOf(row.id),
+          scheduled:new RealDate(row.published_at||row.created_at).getTime()>PREVIEW_NOW,
           comment_count:replies.length,like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),
           last_comment:last?{name:authorOf(last.author_id)?.name||'Removed account',at:last.created_at}:null};
       });
     return rows.sort((a,b)=>(Number(b.pinned)-Number(a.pinned))
-      ||(sort==='top'?b.like_count-a.like_count:0)
-      ||(a.last_activity_at<b.last_activity_at?1:-1));
+      ||(sort==='hot'?hotScore(b.id,b.last_activity_at)-hotScore(a.id,a.last_activity_at):0)
+      ||((a.published_at||a.created_at)<(b.published_at||b.created_at)?1:-1));
   }
-  function threadDetail(id,includeDeleted,viewerId){
-    const row=(db.threads||[]).find((item)=>item.id===id&&(includeDeleted||!item.deleted_at));
+  function threadDetail(id,includeDeleted,viewerId,includeScheduled){
+    const row=(db.threads||[]).find((item)=>item.id===id&&(includeDeleted||!item.deleted_at)
+      &&(includeScheduled||new RealDate(item.published_at||item.created_at).getTime()<=PREVIEW_NOW));
     if(!row)return null;
     const comments=(db.posts||[]).filter((post)=>post.thread_id===id&&(includeDeleted||!post.deleted_at))
       .map((post)=>({...post,author:authorOf(post.author_id),
         like_count:likeCount('post',post.id),liked:likedBy('post',post.id,viewerId)}));
     return {...row,author:authorOf(row.author_id),category_name:categoryName(row.category_id),
+      attachments:attachmentsOf(row.id),
+      scheduled:new RealDate(row.published_at||row.created_at).getTime()>PREVIEW_NOW,
       comment_count:comments.filter((c)=>!c.deleted_at).length,
       like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),comments};
   }
@@ -380,10 +384,10 @@
       .map(([id,total])=>({id,name:db.users.find((u)=>u.id===id)?.name||'',total}))
       .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name)).slice(0,5);
   }
-  function boardPayload(classId,includeDeleted,viewerId,url){
+  function boardPayload(classId,includeDeleted,viewerId,url,includeScheduled){
     const categoryId=url.searchParams.get('categoryId')||null;
-    const sort=url.searchParams.get('sort')==='top'?'top':'new';
-    return {threads:threadRows(classId,includeDeleted,viewerId,categoryId,sort),
+    const sort=url.searchParams.get('sort')==='hot'?'hot':'new';
+    return {threads:threadRows(classId,includeDeleted,viewerId,categoryId,sort,includeScheduled),
       categories:categoryRows(classId),contributors:contributorRows(classId),sort,categoryId,
       memberCount:db.users.filter((u)=>u.role==='student'&&u.class_id===classId&&u.active).length};
   }
@@ -391,8 +395,12 @@
     const now=new RealDate(PREVIEW_NOW).toISOString();
     const row={id:`t${db.counters.thread=(db.counters.thread||10)+1}`,class_id:classId,author_id:authorId,
       title:body.title,body:body.body,category_id:body.categoryId||null,pinned:false,locked:false,
-      deleted_at:null,created_at:now,last_activity_at:now};
-    db.threads.push(row);save();return row;
+      deleted_at:null,created_at:now,published_at:body.publishedAt||now,last_activity_at:body.publishedAt||now};
+    db.threads.push(row);
+    (body.attachments||[]).forEach((item,index)=>db.attachments.push({
+      id:`at${db.counters.attachment=(db.counters.attachment||20)+1}`,thread_id:row.id,kind:item.kind,url:item.url,
+      file_name:item.fileName||null,mime_type:item.mimeType||null,size_bytes:item.sizeBytes||0,position:index}));
+    save();return row;
   }
   /* Idempotent both ways, like the server's toggleLike: a double tap on a phone
      is one gesture, not two likes. */
@@ -858,6 +866,19 @@
       return json(null,204);
     }
 
+    if(path==='/api/gifs'&&method==='GET'){
+      /* The preview has no Giphy key and no network, so it answers with a small
+         fixed set. Enough to see the picker and the way a chosen GIF lands in a
+         post; a real deployment searches Giphy through the server. */
+      const swatch=(hue)=>`data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="hsl(${hue} 70% 62%)"/><text x="100" y="112" font-family="system-ui" font-size="30" font-weight="700" fill="white" text-anchor="middle">GIF</text></svg>`)}`;
+      const results=[0,40,90,140,190,240,290,330].map((hue,index)=>({
+        id:`gif${index}`,title:'Preview GIF',preview:swatch(hue),url:swatch(hue),width:200,height:200}));
+      return json({configured:true,results});
+    }
+    if(path==='/api/auth/avatar'&&method==='POST'){
+      const user=currentUser();if(user){user.avatar=true;user.mustSetAvatar=false;save();}
+      return json({ok:true},201);
+    }
     if(path==='/api/settings'&&method==='GET') return json(deepCopy(db.settings));
     if(path==='/api/settings/nudge'&&method==='PUT'){db.settings.nudge={...db.settings.nudge,...body};save();return json(db.settings.nudge);}
     if(path==='/api/settings/reminders'&&method==='PUT'){db.settings.reminders={...db.settings.reminders,...body};save();return json(db.settings.reminders);}
@@ -946,35 +967,20 @@
     params=match(path,'/api/student/homework/:id/read-feedback');
     if(params&&method==='POST'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Feedback not found',404);row.feedback_read_at=new RealDate(PREVIEW_NOW).toISOString();save();return json(row);}
 
-    /* Course materials and the class board. */
-    params=match(path,'/api/admin/materials/:classId');
-    if(params&&method==='GET'){
-      const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
-      return json({class:{...klass,label:classLabel(klass)},materials:materialRows(params.classId,false),
-        weeks:db.weeks.filter((item)=>item.class_id===params.classId).map((item)=>({id:item.id,week_start:item.week_start})).sort((a,b)=>a.week_start<b.week_start?1:-1)});
-    }
-    if(path==='/api/admin/materials'&&method==='POST'){
-      const row={id:`m${db.counters.material=(db.counters.material||10)+1}`,class_id:body.classId,week_id:body.weekId||null,kind:body.kind,
-        title:body.title,description:body.description||'',url:body.url,file_name:body.fileName||null,mime_type:body.mimeType||null,
-        size_bytes:body.sizeBytes||0,published:body.published!==false,position:-1,created_at:new RealDate(PREVIEW_NOW).toISOString()};
-      db.materials.push(row);save();return json(row,201);
-    }
-    params=match(path,'/api/admin/materials/:id');
-    if(params&&method==='PATCH'){
-      const row=db.materials.find((item)=>item.id===params.id);if(!row)return error('Material not found',404);
-      if(body.title!==undefined)row.title=body.title;if(body.description!==undefined)row.description=body.description;
-      if(body.weekId!==undefined)row.week_id=body.weekId||null;if(body.url!==undefined)row.url=body.url;
-      if(body.published!==undefined)row.published=body.published;save();return json(row);
-    }
-    if(params&&method==='DELETE'){
-      db.materials=db.materials.filter((item)=>item.id!==params.id);save();return new Response(null,{status:204});
-    }
-    if(path==='/api/admin/uploads'&&method==='POST') return json({files:[{fileName:'Uploaded-file.pdf',mimeType:'application/pdf',url:'#'}]},201);
-
     params=match(path,'/api/admin/community/:classId');
     if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
       const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
-      return json({class:{...klass,label:classLabel(klass)},...boardPayload(params.classId,true,user.id,url)});
+      return json({class:{...klass,label:classLabel(klass)},...boardPayload(params.classId,true,user.id,url,true)});
+    }
+    params=match(path,'/api/admin/community/thread/:id/schedule');
+    if(params&&method==='PATCH'){
+      const row=db.threads.find((item)=>item.id===params.id);if(!row)return error('Post not found',404);
+      row.published_at=body.publishedAt;row.last_activity_at=body.publishedAt;save();return json(row);
+    }
+    if(path==='/api/admin/community/attachments'&&method==='POST'){
+      const file=body.get&&body.get('file');
+      return json({kind:'file',url:file?URL.createObjectURL(file):'#',storedName:'preview',
+        fileName:file?file.name:'Attachment.pdf',mimeType:'application/pdf',sizeBytes:file?file.size:0},201);
     }
     params=match(path,'/api/admin/community/like/:type/:id');
     if(params&&method==='POST') return json(toggleLikeRow(user.id,params.type,params.id));
@@ -995,7 +1001,7 @@
       save();return new Response(null,{status:204});
     }
     params=match(path,'/api/admin/community/thread/:id');
-    if(params&&method==='GET'){const thread=threadDetail(params.id,true,user.id);return thread?json(thread):error('Thread not found',404);}
+    if(params&&method==='GET'){const thread=threadDetail(params.id,true,user.id,true);return thread?json(thread):error('Thread not found',404);}
     if(params&&method==='PATCH'){
       const row=db.threads.find((item)=>item.id===params.id);if(!row)return error('Thread not found',404);
       if(body.pinned!==undefined)row.pinned=body.pinned;if(body.locked!==undefined)row.locked=body.locked;save();return json(row);
@@ -1017,13 +1023,9 @@
       row.deleted_at=body.removed?new RealDate(PREVIEW_NOW).toISOString():null;save();return json(row);
     }
 
-    if(path==='/api/student/materials'&&method==='GET'){
-      const student=previewStudent(user);
-      return json({materials:materialRows(student.class_id,true)});
-    }
     if(path==='/api/student/community'&&method==='GET'){
       const student=previewStudent(user);
-      return json({...boardPayload(student.class_id,false,student.id,url),unread:previewUnread(student)});
+      return json({...boardPayload(student.class_id,false,student.id,url,false),unread:previewUnread(student)});
     }
     params=match(path,'/api/student/community/like/:type/:id');
     if(params&&method==='POST') return json(toggleLikeRow(previewStudent(user).id,params.type,params.id));
@@ -1034,7 +1036,7 @@
       save();return json({ok:true,unread:0});
     }
     params=match(path,'/api/student/community/thread/:id');
-    if(params&&method==='GET'){const thread=threadDetail(params.id,false,previewStudent(user).id);return thread?json(thread):error('Post not found',404);}
+    if(params&&method==='GET'){const thread=threadDetail(params.id,false,previewStudent(user).id,false);return thread?json(thread):error('Post not found',404);}
     if(path==='/api/student/community/threads'&&method==='POST'){
       const student=previewStudent(user);
       return json(newThread(student.class_id,student.id,body),201);

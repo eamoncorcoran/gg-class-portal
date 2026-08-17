@@ -15,6 +15,7 @@ import studentRoutes from './src/routes/student.js';
 import settingsRoutes from './src/routes/settings.js';
 import mediaRoutes from './src/routes/media.js';
 import calendarRoutes from './src/routes/calendar.js';
+import gifRoutes from './src/routes/gifs.js';
 import { ensureAllWeeks } from './src/weeks.js';
 import { startReminderScheduler, runReminderCycle } from './src/reminders.js';
 import { startBackupScheduler } from './src/backup.js';
@@ -98,6 +99,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/gifs', gifRoutes);
 // Calendar apps subscribe with no cookies, so this one authenticates by URL token.
 app.use('/calendar', calendarRoutes);
 

@@ -12,7 +12,7 @@ test('database migrations create the core application tables', { skip: process.e
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema='public' AND table_name=ANY($1::text[])`,
       [['users','sessions','classes','weeks','checkins','assignments','homework_submissions','app_settings',
-        'materials','discussion_threads','discussion_posts','discussion_reads']],
+        'discussion_threads','discussion_posts','discussion_reads','discussion_attachments']],
     );
     assert.equal(result.rows.length, 12);
   } finally {
