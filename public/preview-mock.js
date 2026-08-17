@@ -414,14 +414,14 @@
       file_name:item.fileName||null,mime_type:item.mimeType||null,size_bytes:item.sizeBytes||0,position:index}));
     save();return row;
   }
-  /* Idempotent both ways, like the server's toggleReaction: a double tap on a
-     phone is one gesture, not two reactions. */
+  /* One reaction each, like the server: a different emoji replaces the one you
+     had, the same emoji clears it. */
   function toggleReactionRow(userId,type,targetId,emoji){
     const target=type==='post'?'post':'thread';
     if(!PREVIEW_REACTIONS.includes(emoji)) return {error:'That is not one of the reactions.'};
-    const existing=(db.likes||[]).find((row)=>row.user_id===userId&&row.target_type===target
-      &&row.target_id===targetId&&(row.emoji||'❤️')===emoji);
-    if(existing) db.likes=db.likes.filter((row)=>row!==existing);
+    const existing=(db.likes||[]).find((row)=>row.user_id===userId&&row.target_type===target&&row.target_id===targetId);
+    if(existing&&(existing.emoji||'❤️')===emoji) db.likes=db.likes.filter((row)=>row!==existing);
+    else if(existing) existing.emoji=emoji;
     else db.likes.push({user_id:userId,target_type:target,target_id:targetId,emoji});
     save();
     return {reactions:reactionsOf(target,targetId,userId)};

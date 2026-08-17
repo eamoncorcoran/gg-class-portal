@@ -1,4 +1,4 @@
-# Gaeilgeoir Guides Class Portal V30
+# Gaeilgeoir Guides Class Portal V31
 
 
 A private internal SaaS application for managing Gaeilgeoir Guides classes, student accounts, weekly attendance, check-ins, homework, deadlines, reminders and returned teacher feedback.
@@ -364,11 +364,14 @@ class card and the month's most active members.
   noticeably more posts than a button labelled *Start a post*
 - **Categories** — General, Questions, Wins and Resources by default, editable
   per class. Deleting one leaves its posts alone; they become uncategorised
-- **Reactions** on posts and comments — 👍 ❤️ 🎉 😂 😮 🙏 💪 🤔, one click each.
-  A fixed list rather than an open emoji keyboard: eight covers what people
-  want to say without words, and the server rejects anything outside it. Only
-  reactions somebody has actually used are shown, because a row of eight grey
-  zeroes reads as a chore and the same row with two live counts reads as a room
+- **Reactions** on posts and comments — 👍 ❤️ 🎉 😂 😮 🙏 💪 🤔. A fixed list
+  rather than an open emoji keyboard: eight covers what people want to say
+  without words, and the server rejects anything outside it. Only reactions
+  somebody has actually used are shown, because a row of eight grey zeroes reads
+  as a chore and the same row with two live counts reads as a room.
+  **One each** — choosing a different emoji replaces the one you had rather than
+  adding to it, so the count under an emoji is always a count of people. Choosing
+  the same one again clears it
 - **Sorting** — **Latest** by publication date, or **Hot**, which is comments
   decayed by age on a day-and-a-half half-life. Eight comments this morning
   should outrank twelve from last month, because the question the sort answers is
@@ -949,3 +952,13 @@ like coverage in `tests/community.test.js`.
 `tests/videolinks.test.js` covers every YouTube shape people actually paste —
 `youtu.be`, `watch?v=`, `shorts`, `live`, extra query parameters, the same video
 twice — and confirms that a Vimeo or ordinary link is left alone.
+
+## V31 changes
+
+- **One reaction each.** Holding several at once turned the row into a
+  scoreboard — five chips on a post four people had seen — and left no way to
+  read at a glance how many had actually responded. Migration `017` keeps
+  everybody's most recent choice and narrows the key back.
+- **One user section.** The name and avatar sat in both the sidebar footer and
+  the top bar; the sidebar copy is gone and account settings open from the chip
+  in the top right.

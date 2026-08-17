@@ -960,11 +960,6 @@ function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
       <aside class="sidebar">
         <div class="sidebar-brand">${brandLockup()}</div>
         ${nav}
-        <div class="sidebar-footer">
-          ${boardAvatar(me(), 'sm')}
-          <div class="user-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(roleLabel)}</span></div>
-          <button class="icon-button" id="account-menu" aria-label="Account">${svg.settings}</button>
-        </div>
       </aside>
       <main class="main">
         <header class="topbar">
@@ -978,7 +973,6 @@ function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
       </main>
       ${mobileNav()}
     </div>`;
-  document.getElementById('account-menu')?.addEventListener('click', openAccountModal);
   document.getElementById('account-menu-top')?.addEventListener('click', openAccountModal);
   bindShellNavigation();
 }

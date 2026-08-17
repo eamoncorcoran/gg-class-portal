@@ -132,21 +132,29 @@ test('a reaction toggles both ways and never counts twice', dbTest, async () => 
     result = await react(student.id, '👍');
     assert.deepEqual(result.reactions, []);
 
-    // One person may hold several different reactions at once.
+    /* One each: a different emoji replaces the one you had rather than adding
+       to it, so the count under an emoji is always a count of people. */
     await react(student.id, '👍');
     result = await react(student.id, '🎉');
-    assert.equal(result.reactions.length, 2);
+    assert.deepEqual(result.reactions, [{ emoji: '🎉', count: 1, mine: true }]);
 
     // Two people on the same emoji is one chip counting two.
-    await react(teacher.id, '👍');
+    await react(teacher.id, '🎉');
     const asStudent = await getThread({ threadId: thread.id, viewerId: student.id });
-    const thumbs = asStudent.reactions.find((row) => row.emoji === '👍');
-    assert.equal(thumbs.count, 2);
-    assert.equal(thumbs.mine, true);
+    assert.deepEqual(asStudent.reactions, [{ emoji: '🎉', count: 2, mine: true }]);
+
+    // Somebody else moving to a different emoji moves their count with them.
+    await react(teacher.id, '💪');
+    const after = await getThread({ threadId: thread.id, viewerId: student.id });
+    assert.deepEqual(
+      after.reactions.map((row) => [row.emoji, row.count]).sort(),
+      [['💪', 1], ['🎉', 1]].sort(),
+    );
 
     // And `mine` is per viewer, which is what the chip highlights from.
-    const asOutsider = await getThread({ threadId: thread.id, viewerId: teacher.id });
-    assert.equal(asOutsider.reactions.find((row) => row.emoji === '🎉').mine, false);
+    assert.equal(after.reactions.find((row) => row.emoji === '💪').mine, false);
+    const asTeacher = await getThread({ threadId: thread.id, viewerId: teacher.id });
+    assert.equal(asTeacher.reactions.find((row) => row.emoji === '💪').mine, true);
   } finally { await cleanup(); }
 });
 

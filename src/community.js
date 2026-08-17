@@ -187,27 +187,32 @@ export async function createPost({ threadId, authorId, body }) {
 }
 
 /**
- * Adds or removes one reaction and returns the whole set back.
+ * Sets, changes or clears this person's one reaction, and returns the whole set
+ * back.
  *
- * Idempotent in both directions — reacting twice with the same emoji removes it
- * rather than failing, because a double tap on a phone is one gesture — and the
- * full set comes back so the chips can be redrawn without a second request.
+ * One each. Choosing a different emoji replaces what you had rather than adding
+ * to it, so the count under an emoji is always a count of people — which is the
+ * only number anybody reads it for. Choosing the same one again clears it, and
+ * doing that twice in a row is harmless, because a double tap on a phone is one
+ * gesture.
+ *
+ * The full set comes back so the chips can be redrawn without a second request.
  */
 export async function toggleReaction({ userId, targetType, targetId, emoji }) {
   if (!REACTIONS.includes(emoji)) {
     throw Object.assign(new Error('That is not one of the reactions.'), { status: 400 });
   }
   const existing = await one(
-    'SELECT 1 FROM discussion_likes WHERE user_id=$1 AND target_type=$2 AND target_id=$3 AND emoji=$4',
-    [userId, targetType, targetId, emoji],
+    'SELECT emoji FROM discussion_likes WHERE user_id=$1 AND target_type=$2 AND target_id=$3',
+    [userId, targetType, targetId],
   );
-  if (existing) {
-    await query('DELETE FROM discussion_likes WHERE user_id=$1 AND target_type=$2 AND target_id=$3 AND emoji=$4',
-      [userId, targetType, targetId, emoji]);
+  if (existing?.emoji === emoji) {
+    await query('DELETE FROM discussion_likes WHERE user_id=$1 AND target_type=$2 AND target_id=$3',
+      [userId, targetType, targetId]);
   } else {
     await query(
       `INSERT INTO discussion_likes(user_id,target_type,target_id,emoji) VALUES ($1,$2,$3,$4)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (user_id,target_type,target_id) DO UPDATE SET emoji=EXCLUDED.emoji, created_at=now()`,
       [userId, targetType, targetId, emoji],
     );
   }
