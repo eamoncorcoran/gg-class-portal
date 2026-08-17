@@ -385,11 +385,19 @@ File uploads are the administrator's alone: the class feed should not be a route
 by which arbitrary files arrive on the server. Students can attach a Loom link or
 a GIF, neither of which touches the disk.
 
-GIF search needs a free `GIPHY_API_KEY` in the environment file. Without one the
-picker says so rather than offering a button that returns nothing. The search is
-proxied through the server because the content security policy pins outbound
-connections to this origin — loosening it for one third party would loosen it for
-every script on the page — and because an API key belongs on a server.
+GIF search needs a `GIPHY_API_KEY`. Signing up at
+[developers.giphy.com](https://developers.giphy.com) is free and takes no card;
+the key it issues is rate limited to 100 calls an hour, which a class of forty
+will not come near — and identical searches are answered from a ten-minute
+server-side cache, so the trending grid everybody sees on opening the picker
+usually costs nothing at all. Giphy will consider an application for a
+higher-volume key, but for a group this size there is no reason to make one.
+
+Without a key the picker says so rather than offering a button that returns
+nothing. The search is proxied through the server because the content security
+policy pins outbound connections to this origin — loosening it for one third
+party would loosen it for every script on the page — and because an API key
+belongs on a server.
 
 #### Scheduling
 

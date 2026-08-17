@@ -58,7 +58,7 @@ const THREAD_COLUMNS = `
     WHERE l.target_type='thread' AND l.target_id=t.id) like_count,
   EXISTS (SELECT 1 FROM discussion_likes l
     WHERE l.target_type='thread' AND l.target_id=t.id AND l.user_id=$2) liked,
-  (SELECT jsonb_build_object('name',lu.name,'at',lp.created_at)
+  (SELECT jsonb_build_object('id',lu.id,'name',lu.name,'at',lp.created_at,'avatar',lu.avatar_path IS NOT NULL)
      FROM discussion_posts lp JOIN users lu ON lu.id=lp.author_id
     WHERE lp.thread_id=t.id AND lp.deleted_at IS NULL
     ORDER BY lp.created_at DESC LIMIT 1) last_comment`;

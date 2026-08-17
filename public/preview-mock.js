@@ -352,7 +352,7 @@
           attachments:attachmentsOf(row.id),
           scheduled:new RealDate(row.published_at||row.created_at).getTime()>PREVIEW_NOW,
           comment_count:replies.length,like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),
-          last_comment:last?{name:authorOf(last.author_id)?.name||'Removed account',at:last.created_at}:null};
+          last_comment:last?{...(authorOf(last.author_id)||{name:'Removed account'}),at:last.created_at}:null};
       });
     return rows.sort((a,b)=>(Number(b.pinned)-Number(a.pinned))
       ||(sort==='hot'?hotScore(b.id,b.last_activity_at)-hotScore(a.id,a.last_activity_at):0)

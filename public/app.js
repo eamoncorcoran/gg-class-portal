@@ -391,11 +391,14 @@ function brandLockup(large = false, onDark = false) {
   </div>`;
 }
 
-function modal({ title, subtitle = '', body, footer = '', wide = false, onOpen }) {
+/* `bare` is for a dialog that supplies its own header — the post composer puts
+   the author and the category up there, and a second title bar above that would
+   be one row of chrome doing nothing. */
+function modal({ title, subtitle = '', body, footer = '', wide = false, bare = false, onOpen }) {
   modalRoot.innerHTML = `
     <div class="overlay open" data-close-modal></div>
-    <section class="modal open ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
-      <header class="modal-head"><div><h2>${escapeHtml(title)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div><button class="close" aria-label="Close" data-close-modal>${svg.x}</button></header>
+    <section class="modal open ${wide ? 'wide' : ''} ${bare ? 'bare' : ''}" role="dialog" aria-modal="true">
+      ${bare ? '' : `<header class="modal-head"><div><h2>${escapeHtml(title)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div><button class="close" aria-label="Close" data-close-modal>${svg.x}</button></header>`}
       <div class="modal-body">${body}</div>
       ${footer ? `<footer class="modal-footer">${footer}</footer>` : ''}
     </section>`;
@@ -919,6 +922,37 @@ function bindAvatarForm() {
 }
 
 /* Shell */
+/* The sidebar is hidden on a phone, so without this there is no way to move
+   between screens at all. A bar across the bottom is where a thumb already is,
+   and it is what every app a student uses does. */
+function mobileNav() {
+  const buttons = state.user.role === 'admin'
+    ? [
+        ['tracker', svg.grid, 'Tracker'],
+        ['assignments', svg.book, 'Homework'],
+        ['community', svg.board, 'Board'],
+        ['people', svg.users, 'People'],
+      ]
+    : [
+        ['calendar', svg.calendar, 'Deadlines'],
+        ['tracker', svg.grid, 'Tracker'],
+        ['community', svg.board, 'Board'],
+      ];
+  const badge = (view) => {
+    if (view === 'community') return state.studentData?.communityUnread || 0;
+    if (view === 'tracker' && state.user.role !== 'admin') return state.studentData?.notifications || 0;
+    return 0;
+  };
+  const attribute = state.user.role === 'admin' ? 'data-admin-view' : 'data-student-view';
+  return `<nav class="mobile-nav">${buttons.map(([view, icon, label]) => {
+    const count = badge(view);
+    return `<button class="mnav ${state.view === view ? 'on' : ''}" ${attribute}="${view}">
+      <span class="mnav-icon">${icon}${count ? `<i>${count}</i>` : ''}</span>
+      <span>${label}</span>
+    </button>`;
+  }).join('')}</nav>`;
+}
+
 function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
   app.innerHTML = `
     <div class="app-shell">
@@ -941,6 +975,7 @@ function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
         </header>
         <div class="content">${content}</div>
       </main>
+      ${mobileNav()}
     </div>`;
   document.getElementById('account-menu')?.addEventListener('click', openAccountModal);
   document.getElementById('account-menu-top')?.addEventListener('click', openAccountModal);
@@ -1998,35 +2033,54 @@ function openComposer({ restore = false } = {}) {
   const admin = isAdmin();
   const draft = restore ? composerDraft : null;
   if (!restore) { draftAttachments = []; composerDraft = null; }
+  const tool = (id, icon, label) => `<button type="button" class="tool" id="${id}" title="${label}" aria-label="${label}">${icon}</button>`;
   modal({
-    title: 'New post',
-    subtitle: admin ? 'Goes to this class feed under your name.' : 'Everyone in your class can see this.',
+    title: '',
     wide: true,
+    bare: true,
     body: `<form id="thread-form" class="composer-form">
-      <input name="title" id="composer-title" placeholder="Say it in a line" autocomplete="off" required value="${escapeHtml(draft?.title || '')}">
-      ${dictateButton('composer-body')}
-      <textarea id="composer-body" name="body" rows="7" placeholder="What do you want to say?" required>${escapeHtml(draft?.body || '')}</textarea>
-      <div id="draft-attachments" class="chip-row hidden"></div>
-      <div class="composer-bar">
-        <div class="composer-tools">
-          ${admin ? `<button type="button" class="tool" id="attach-pdf" title="Attach a PDF">${svg.note}<span>PDF</span></button>` : ''}
-          <button type="button" class="tool" id="attach-loom" title="Add a Loom video">${svg.video}<span>Loom</span></button>
-          <button type="button" class="tool" id="attach-gif" title="Add a GIF">${svg.gif}<span>GIF</span></button>
-          <input type="file" id="pdf-input" accept="application/pdf" class="hidden">
+      <header class="cw-head">
+        ${boardAvatar(me(), 'sm')}
+        <div class="cw-who">
+          <strong>${escapeHtml(state.user.name)}</strong>
+          ${categories.length
+            ? `<span class="cw-in">posting in
+                <select name="categoryId" class="cw-cat">${categories.map((row) => `<option value="${row.id}" ${row.id === (draft?.categoryId || state.boardCategoryId) ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')}</select>
+              </span>`
+            : ''}
         </div>
-        ${categories.length ? `<select class="select compact" name="categoryId">${categories.map((row) => `<option value="${row.id}" ${row.id === (draft?.categoryId || state.boardCategoryId) ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')}</select>` : ''}
-      </div>
+        <button type="button" class="cw-x" data-close-modal aria-label="Close">${svg.x}</button>
+      </header>
+
+      <input name="title" id="composer-title" placeholder="Title" autocomplete="off" required value="${escapeHtml(draft?.title || '')}">
+      <textarea id="composer-body" name="body" rows="6" placeholder="Write something…" required>${escapeHtml(draft?.body || '')}</textarea>
+      <div id="draft-attachments" class="chip-row hidden"></div>
+
       ${admin ? `<details class="schedule-block" ${draft?.when ? 'open' : ''}>
         <summary>${svg.calendar} Schedule for later</summary>
         <div class="schedule-body">
           <label class="field-label" for="composer-when">Appears to students at</label>
           <input type="datetime-local" id="composer-when" class="compact" value="${escapeHtml(draft?.when || '')}">
-          <p class="muted small">Times in ${escapeHtml(classTimezone())}. Until then it sits here marked Scheduled, and nobody is notified.</p>
+          <p class="muted small">Times in ${escapeHtml(classTimezone())}. Until then it sits in your feed marked Scheduled, and nobody is notified.</p>
         </div>
-      </details>
-      <label class="check-row"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin to the top</label>` : ''}
+      </details>` : ''}
+
+      <footer class="cw-foot">
+        <div class="composer-tools">
+          ${admin ? tool('attach-pdf', svg.note, 'Attach a PDF') : ''}
+          ${tool('attach-loom', svg.video, 'Add a Loom video')}
+          ${tool('attach-gif', svg.gif, 'Add a GIF')}
+          ${admin ? `<button type="button" class="tool" id="attach-dictate" title="Dictate" aria-label="Dictate">${svg.mic}</button>` : ''}
+          <input type="file" id="pdf-input" accept="application/pdf" class="hidden">
+        </div>
+        <div class="cw-actions">
+          ${admin ? `<label class="cw-pin"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin</label>` : ''}
+          <button type="button" class="btn" data-close-modal>Cancel</button>
+          <button type="button" class="btn primary" id="save-thread">Post</button>
+        </div>
+      </footer>
+      <div id="dictate-slot" class="hidden">${dictateButton('composer-body')}</div>
     </form>`,
-    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-thread">Post</button>`,
     onOpen() {
       bindDictation();
       renderDraftAttachments();
@@ -2044,6 +2098,10 @@ function openComposer({ restore = false } = {}) {
         } catch (error) { showToast(error.message, 'error'); }
         event.target.value = '';
       });
+      // The dictate control itself lives in a hidden slot so the toolbar keeps
+      // one consistent row of icons; this button drives it.
+      document.getElementById('attach-dictate')?.addEventListener('click', () =>
+        document.querySelector('#dictate-slot .dictate-btn')?.click());
       document.getElementById('attach-loom')?.addEventListener('click', promptForLoom);
       document.getElementById('attach-gif')?.addEventListener('click', () => { captureComposer(); openGifPicker(); });
       document.getElementById('save-thread').addEventListener('click', submitComposer);
@@ -2158,33 +2216,36 @@ function feedPost(thread, admin) {
   const comments = thread.comment_count || 0;
   const likes = thread.like_count || 0;
   const body = String(thread.body || '');
-  const clipped = body.length > 320;
+  const clipped = body.length > 300;
   return `<article class="post ${thread.deleted_at ? 'is-removed' : ''} ${thread.scheduled ? 'is-scheduled' : ''}" data-open-thread="${thread.id}">
-    <div class="post-top">
+    <header class="post-top">
       ${boardAvatar(thread.author)}
       <div class="post-who">
         <span class="post-name">${escapeHtml(thread.author?.name || 'Removed account')}${thread.author?.role === 'admin' ? '<i class="tag-teacher">Teacher</i>' : ''}</span>
         <span class="post-meta">
           ${thread.scheduled ? `<b class="tag-sched">Scheduled ${escapeHtml(scheduledFor(thread.published_at))}</b>` : escapeHtml(timeAgo(thread.published_at || thread.created_at))}
-          ${thread.category_name ? ` · ${escapeHtml(thread.category_name)}` : ''}
           ${thread.pinned ? ' · <b>Pinned</b>' : ''}
           ${thread.locked ? ' · Closed' : ''}
           ${thread.deleted_at && admin ? ' · <b class="tag-removed">Removed</b>' : ''}
         </span>
       </div>
-    </div>
+      ${thread.category_name ? `<span class="post-cat">${escapeHtml(thread.category_name)}</span>` : ''}
+    </header>
     <h3 class="post-title">${escapeHtml(thread.title)}</h3>
-    <p class="post-body">${escapeHtml(body.slice(0, 320))}${clipped ? '…' : ''}</p>
+    <p class="post-body">${escapeHtml(body.slice(0, 300))}${clipped ? '…' : ''}</p>
     ${attachmentsPreview(thread.attachments)}
-    <div class="post-foot">
+    <footer class="post-foot">
       <button class="act ${thread.liked ? 'on' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
         ${svg.heart}<span>${likes || ''}</span>
       </button>
-      <span class="act flat">${svg.comment}<span>${comments || ''}</span></span>
+      <button class="act flat">${svg.comment}<span>${comments || ''}</span></button>
       ${thread.last_comment
-        ? `<span class="post-last">${escapeHtml(thread.last_comment.name.split(' ')[0])} commented ${escapeHtml(timeAgo(thread.last_comment.at))}</span>`
+        ? `<span class="post-last">
+             ${boardAvatar({ id: thread.last_comment.id, name: thread.last_comment.name, avatar: thread.last_comment.avatar }, 'xs')}
+             <span>Last comment ${escapeHtml(timeAgo(thread.last_comment.at))}</span>
+           </span>`
         : ''}
-    </div>
+    </footer>
   </article>`;
 }
 
@@ -2196,6 +2257,9 @@ function feedComposerBar() {
   </button>`;
 }
 
+/* Pills, scrolling sideways when there are more than fit. Underlined tabs made
+   the row look like page navigation; these read as filters, which is what they
+   are. */
 function feedFilters() {
   const categories = state.community?.categories || [];
   const active = state.boardCategoryId || '';
@@ -2231,9 +2295,6 @@ function feedSide() {
         <div><dt>Members</dt><dd>${data?.memberCount || 0}</dd></div>
         <div><dt>Posts</dt><dd>${posts}</dd></div>
       </dl>
-      ${next?.joinUrl && !isAdmin()
-        ? `<a class="btn primary side-join" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
-        : ''}
     </section>
     <section class="side-card">
       <h4>Most active this month</h4>

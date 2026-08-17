@@ -498,7 +498,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--brand-400);box-shadow
   .legend{gap:16px;padding:12px}
   .voice-player audio{min-width:0;width:100%}
   .note-compose{flex-direction:column;align-items:stretch}
-  .preview-console{left:10px;right:10px;bottom:10px;justify-content:center}
+  /* Above the bottom navigation, not on top of it. Preview only. */
+  .preview-console{left:10px;right:10px;bottom:calc(76px + env(safe-area-inset-bottom));justify-content:center}
   .preview-console-label{display:none}
   .preview-console button{flex:1}
 }
@@ -731,91 +732,95 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .class-banner.is-live .class-banner-copy strong{color:var(--brand-800)}
 
 
+
 /* ------------------------------------------------------------------
    The class feed.
 
-   Deliberately not a stack of identical floating cards. Posts sit on one
-   continuous surface separated by hairlines, the way a feed you would actually
-   read is built; the weight goes into the headline and the face beside it,
-   and the chrome stays quiet.
+   Discrete cards with air between them, pill filters, and a footer carrying the
+   face of whoever spoke last — the shape people already know from every
+   community tool they use.
    ------------------------------------------------------------------ */
-.feed{display:grid;grid-template-columns:minmax(0,1fr) 272px;gap:28px;align-items:start}
-.feed-col{min-width:0;display:grid;gap:14px}
+.feed{display:grid;grid-template-columns:minmax(0,1fr) 276px;gap:24px;align-items:start}
+.feed-col{min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.feed-col>*{min-width:0}
 
-.feed-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:0 0 20px;padding-bottom:16px;border-bottom:1px solid var(--border)}
-.feed-head h1{margin:0;font-size:26px;line-height:1.1;font-weight:680;letter-spacing:-.04em}
+.feed-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:0 0 18px}
+.feed-head h1{margin:0;font-size:25px;line-height:1.1;font-weight:680;letter-spacing:-.04em}
 .feed-head p{margin:5px 0 0;color:var(--text-tertiary);font-size:13px}
 .feed-head-actions{display:flex;gap:8px;flex:0 0 auto}
 
-/* Faces. A ring rather than a border so a light photo does not float. */
 .fa{width:42px;height:42px;flex:0 0 auto;border-radius:999px;object-fit:cover;display:grid;place-items:center;
   color:#fff;font-size:13px;font-weight:700;letter-spacing:-.02em;box-shadow:0 0 0 1px rgba(16,24,40,.06)}
 .fa.sm{width:32px;height:32px;font-size:10px}
+.fa.xs{width:22px;height:22px;font-size:8px}
 
-.composer{display:flex;align-items:center;gap:13px;width:100%;padding:13px 16px;text-align:left;cursor:pointer;
+.composer{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;text-align:left;cursor:pointer;
   border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--surface);box-shadow:var(--shadow-xs);transition:box-shadow .15s,border-color .15s}
 .composer:hover{border-color:var(--border-strong);box-shadow:var(--shadow-sm)}
-.composer-hint{flex:1;color:var(--text-quaternary);font-size:14px}
-.composer-icons{display:flex;gap:10px;color:var(--text-quaternary)}
-.composer-icons svg{width:17px;height:17px}
+.composer-hint{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-quaternary);font-size:14.5px}
+.composer-icons{display:flex;gap:12px;color:var(--text-quaternary)}
+.composer-icons svg{width:18px;height:18px}
 
-.filters{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.cats{display:flex;gap:2px;flex-wrap:wrap;min-width:0}
-.cat{padding:7px 12px;border:0;background:transparent;border-radius:var(--radius-sm);color:var(--text-tertiary);font-size:13px;font-weight:600}
-.cat:hover{background:var(--gray-100);color:var(--text-secondary)}
-.cat.on{background:transparent;color:var(--text);box-shadow:inset 0 -2px 0 var(--brand-600);border-radius:0}
-.sorts{display:flex;gap:1px;padding:2px;border-radius:999px;background:var(--gray-100);flex:0 0 auto}
-.sort{padding:5px 13px;border:0;border-radius:999px;background:transparent;color:var(--text-tertiary);font-size:12px;font-weight:650}
+/* Filters. The row scrolls sideways rather than wrapping, so a class with eight
+   categories does not push the first post off the screen. */
+.filters{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.cats{display:flex;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none;padding:1px}
+.cats::-webkit-scrollbar{display:none}
+.cat{flex:0 0 auto;padding:7px 14px;border:1px solid var(--border);border-radius:999px;background:var(--surface);
+  color:var(--text-secondary);font-size:13px;font-weight:620;white-space:nowrap}
+.cat:hover{border-color:var(--border-strong);background:var(--gray-25)}
+.cat.on{background:var(--gray-900);border-color:var(--gray-900);color:#fff}
+.sorts{display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--gray-100);flex:0 0 auto}
+.sort{padding:5px 14px;border:0;border-radius:999px;background:transparent;color:var(--text-tertiary);font-size:12.5px;font-weight:650}
 .sort.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-xs)}
 
-/* One surface, hairline separated. */
-.posts{border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--surface);overflow:hidden;box-shadow:var(--shadow-xs)}
-.post{padding:20px 22px;border-bottom:1px solid var(--gray-100);cursor:pointer;transition:background .12s}
-.post:last-child{border-bottom:0}
-.post:hover{background:var(--gray-25)}
+.posts{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
+.post{padding:18px 20px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--surface);
+  box-shadow:var(--shadow-xs);cursor:pointer;transition:box-shadow .15s,border-color .15s,transform .15s}
+.post:hover{border-color:var(--border-strong);box-shadow:var(--shadow-sm)}
 .post.is-removed{opacity:.5}
-.post.is-scheduled{background:repeating-linear-gradient(135deg,var(--gray-25),var(--gray-25) 10px,transparent 10px,transparent 20px)}
+.post.is-scheduled{border-style:dashed;background:var(--gray-25)}
 .post-top{display:flex;align-items:center;gap:12px}
-.post-who{min-width:0;display:grid;gap:1px}
-.post-name{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:660;letter-spacing:-.01em}
-.post-meta{color:var(--text-quaternary);font-size:11.5px}
+.post-who{flex:1;min-width:0;display:grid;gap:1px}
+.post-name{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:660;letter-spacing:-.01em}
+.post-meta{color:var(--text-quaternary);font-size:12px}
 .post-meta b{font-weight:650;color:var(--text-tertiary)}
-.tag-teacher{font-style:normal;padding:1px 6px;border-radius:999px;background:var(--brand-600);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.post-cat{flex:0 0 auto;padding:4px 10px;border-radius:999px;background:var(--gray-100);color:var(--text-secondary);
+  font-size:11px;font-weight:650;white-space:nowrap}
+.tag-teacher{font-style:normal;padding:2px 7px;border-radius:999px;background:var(--brand-600);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 .tag-sched{color:var(--warning-700)!important}
 .tag-removed{color:var(--error-700)!important}
-.post-title{margin:13px 0 6px;font-size:18px;line-height:1.3;font-weight:680;letter-spacing:-.035em}
+.post-title{margin:14px 0 6px;font-size:17.5px;line-height:1.32;font-weight:680;letter-spacing:-.03em}
 .post-body{margin:0;color:var(--text-secondary);font-size:14px;line-height:1.6;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.post-foot{display:flex;align-items:center;gap:18px;margin-top:14px}
-.post-last{margin-left:auto;color:var(--text-quaternary);font-size:11.5px}
+.post-foot{display:flex;align-items:center;gap:20px;margin-top:15px;padding-top:13px;border-top:1px solid var(--gray-100)}
+.post-last{display:flex;align-items:center;gap:7px;margin-left:auto;color:var(--text-quaternary);font-size:11.5px}
 
-.act{display:inline-flex;align-items:center;gap:7px;padding:0;border:0;background:transparent;color:var(--text-tertiary);font-size:12.5px;font-weight:650}
-.act svg{width:18px;height:18px}
+.act{display:inline-flex;align-items:center;gap:7px;padding:0;border:0;background:transparent;color:var(--text-tertiary);font-size:13px;font-weight:650}
+.act svg{width:19px;height:19px}
 .act:hover{color:var(--text)}
 .act.flat{pointer-events:none}
 .act.on{color:var(--error-600)}
 .act.on svg path{fill:var(--error-600);stroke:var(--error-600)}
-.act.sm{margin-top:8px;font-size:11.5px}
-.act.sm svg{width:15px;height:15px}
+.act.sm{margin-top:8px;font-size:12px}
+.act.sm svg{width:16px;height:16px}
 
-/* Attachments */
 .att{display:grid;gap:9px;margin-top:14px}
-.att-gif{max-width:min(100%,380px);border-radius:var(--radius-md);border:1px solid var(--border);display:block}
-.att-strip{display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--border);border-radius:var(--radius-md);
+.att-gif{max-width:min(100%,400px);border-radius:var(--radius-md);border:1px solid var(--border);display:block}
+.att-strip{display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-md);
   background:var(--gray-25);color:var(--text-secondary);text-decoration:none;font-size:13px;font-weight:600}
 .att-strip:hover{border-color:var(--border-strong);background:var(--gray-50)}
-.att-strip svg{width:18px;height:18px;flex:0 0 auto;color:var(--text-tertiary)}
+.att-strip svg{width:19px;height:19px;flex:0 0 auto;color:var(--text-tertiary)}
 .att-strip span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .att-strip em{font-style:normal;color:var(--text-quaternary);font-size:10px;font-weight:700;letter-spacing:.05em}
 .att-video{position:relative;padding-top:56.25%;border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--border);background:#000}
 .att-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 
-.feed-empty{padding:52px 32px;border:1px dashed var(--border-strong);border-radius:var(--radius-xl);background:var(--surface);text-align:center}
+.feed-empty{padding:48px 30px;border:1px dashed var(--border-strong);border-radius:var(--radius-xl);background:var(--surface);text-align:center}
 .feed-empty h3{margin:0 0 8px;font-size:16px;font-weight:680;letter-spacing:-.02em}
 .feed-empty p{margin:0 auto;max-width:50ch;color:var(--text-tertiary);font-size:13.5px;line-height:1.65}
 
-/* Side column */
-.side{display:grid;gap:14px;position:sticky;top:16px}
+.side{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;position:sticky;top:16px;min-width:0}
 .side-card{padding:16px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--surface);box-shadow:var(--shadow-xs)}
 .side-card h4{margin:0 0 11px;color:var(--text-tertiary);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
 .side-top{display:flex;align-items:center;gap:11px}
@@ -827,7 +832,6 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .side-stats div{display:grid;gap:1px}
 .side-stats dt{color:var(--text-quaternary);font-size:10px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;order:2}
 .side-stats dd{margin:0;font-size:19px;font-weight:700;letter-spacing:-.04em;order:1}
-.side-join{width:100%;margin-top:13px}
 .rank{list-style:none;margin:0;padding:0}
 .rank li{display:flex;align-items:center;gap:9px;padding:5px 0}
 .rank-n{width:13px;color:var(--text-quaternary);font-size:11px;font-weight:700}
@@ -836,37 +840,49 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .side-empty{margin:0;color:var(--text-tertiary);font-size:12.5px}
 .side-foot{margin:11px 0 0;color:var(--text-quaternary);font-size:10.5px;line-height:1.5}
 
-/* Composer dialog */
-.composer-form>input[name=title]{border:0;box-shadow:none;padding:0 0 8px;font-size:19px;font-weight:680;letter-spacing:-.03em}
-.composer-form>input[name=title]:focus{box-shadow:none;border-bottom:1px solid var(--brand-400)}
-.composer-form textarea{border:0;box-shadow:none;padding:0;min-height:150px;font-size:14.5px;line-height:1.6;resize:none}
+/* ---- Writing a post ---------------------------------------------- */
+.composer-form{display:flex;flex-direction:column}
+.cw-head{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+.cw-who{flex:1;min-width:0;display:grid;gap:1px}
+.cw-who strong{font-size:13.5px;font-weight:660}
+.cw-in{display:flex;align-items:center;gap:5px;color:var(--text-quaternary);font-size:12px}
+.cw-cat{width:auto;padding:2px 22px 2px 7px;border:1px solid var(--border);border-radius:var(--radius-xs);
+  background:var(--gray-25);box-shadow:none;font-size:12px;font-weight:650;color:var(--text-secondary)}
+.cw-x{display:grid;place-items:center;width:30px;height:30px;flex:0 0 auto;border:0;border-radius:999px;background:transparent;color:var(--text-tertiary)}
+.cw-x:hover{background:var(--gray-100)}
+.cw-x svg{width:15px;height:15px}
+.composer-form>input[name=title]{border:0;box-shadow:none;padding:0 0 10px;font-size:21px;font-weight:680;letter-spacing:-.035em}
+.composer-form>input[name=title]::placeholder{color:var(--text-quaternary)}
+.composer-form>input[name=title]:focus{box-shadow:none}
+.composer-form textarea{border:0;box-shadow:none;padding:0;min-height:180px;font-size:15px;line-height:1.65;resize:none}
 .composer-form textarea:focus{box-shadow:none}
-.composer-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding-top:13px;border-top:1px solid var(--border)}
-.composer-tools{display:flex;gap:5px}
-.tool{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--border);border-radius:999px;
-  background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:650}
-.tool:hover{border-color:var(--brand-300);background:var(--brand-25);color:var(--brand-800)}
-.tool svg{width:15px;height:15px}
-.chip-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.cw-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.composer-tools{display:flex;gap:3px}
+.tool{display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-tertiary)}
+.tool:hover{background:var(--brand-50);color:var(--brand-700)}
+.tool svg{width:19px;height:19px}
+.cw-actions{display:flex;align-items:center;gap:9px}
+.cw-pin{display:flex;align-items:center;gap:6px;color:var(--text-tertiary);font-size:12px;font-weight:620;cursor:pointer}
+.cw-pin input{width:auto;margin:0}
+.chip-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
 .chip-file{display:inline-flex;align-items:center;gap:7px;padding:5px 7px 5px 9px;border:1px solid var(--border);border-radius:999px;background:var(--gray-25);font-size:12px;font-weight:600}
 .chip-file svg{width:14px;height:14px;color:var(--text-tertiary)}
 .chip-file img{width:26px;height:26px;border-radius:999px;object-fit:cover}
-.chip-x{display:grid;place-items:center;width:18px;height:18px;border:0;border-radius:999px;background:var(--gray-200);color:var(--text-secondary)}
+.chip-x{display:grid;place-items:center;width:20px;height:20px;border:0;border-radius:999px;background:var(--gray-200);color:var(--text-secondary)}
 .chip-x svg{width:10px;height:10px}
 .schedule-block{margin-top:14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--gray-25)}
-.schedule-block>summary{display:flex;align-items:center;gap:8px;padding:10px 13px;cursor:pointer;font-size:12.5px;font-weight:650;color:var(--text-secondary)}
+.schedule-block>summary{display:flex;align-items:center;gap:8px;padding:11px 13px;cursor:pointer;font-size:12.5px;font-weight:650;color:var(--text-secondary)}
 .schedule-block>summary svg{width:15px;height:15px}
 .schedule-body{padding:0 13px 13px}
 .schedule-body p{margin:7px 0 0}
 .sched-note{padding:11px 13px;margin-bottom:14px;border:1px solid var(--warning-100);border-radius:var(--radius-md);
   background:var(--warning-50);color:var(--warning-700);font-size:12.5px;font-weight:600}
 
-.gif-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:7px;margin-top:14px;max-height:400px;overflow-y:auto}
+.gif-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:7px;margin-top:14px;max-height:min(420px,52vh);overflow-y:auto}
 .gif-pick{padding:0;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;background:var(--gray-50);cursor:pointer;aspect-ratio:1}
 .gif-pick img{width:100%;height:100%;object-fit:cover;display:block}
 .gif-pick:hover{border-color:var(--brand-400);box-shadow:0 0 0 3px rgba(80,175,55,.14)}
 
-/* One post, in the drawer */
 .mod-bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;padding-bottom:15px;border-bottom:1px solid var(--border)}
 .opening .cmt-text{margin-top:13px}
 .opening .act{margin-top:14px}
@@ -887,29 +903,87 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .category-list{display:grid;gap:7px}
 .category-row{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--gray-25)}
 .category-row strong{flex:1;font-size:13px;font-weight:650}
-
-/* Narrow screens lead with the posts: somebody on a phone came to read the
-   feed, and the join button already sits in the banner above it. */
-@media (max-width:1080px){
-  .feed{grid-template-columns:minmax(0,1fr);gap:16px}
-  .side{position:static;order:1;grid-template-columns:1fr 1fr;display:grid}
-  .side-join{display:none}
-  .feed-head{flex-direction:column;align-items:flex-start}
-}
-@media (max-width:720px){
-  .side{grid-template-columns:1fr}
-  .post{padding:17px 16px}
-  .post-title{font-size:16.5px}
-  .post-last{display:none}
-  .filters{gap:10px}
-}
-
-/* The photograph step on the way in. */
-.avatar-pick{display:flex;align-items:center;gap:18px;margin-bottom:22px}
-.avatar-preview{width:88px;height:88px;flex:0 0 auto;display:grid;place-items:center;border-radius:999px;overflow:hidden;
-  border:1px dashed var(--border-strong);background:var(--gray-50);color:var(--text-quaternary)}
-.avatar-preview svg{width:30px;height:30px}
-.avatar-preview img{width:100%;height:100%;object-fit:cover}
-.avatar-pick p{margin:8px 0 0;max-width:34ch}
 .check-row{display:flex;align-items:center;gap:9px;margin-top:14px;color:var(--text-secondary);font-size:12.5px;font-weight:600;cursor:pointer}
 .check-row input{width:auto;flex:0 0 auto;margin:0}
+
+/* ---- Mobile ------------------------------------------------------
+   The sidebar is gone below 760px, so a bar across the bottom carries the
+   navigation. Everything else gets out of the feed's way: the side column drops
+   underneath, the filters scroll sideways, and the two dialogs go full screen
+   because a centred box on a phone is a box with nowhere to put a keyboard. */
+.mobile-nav{display:none}
+
+@media (max-width:1080px){
+  .feed{grid-template-columns:minmax(0,1fr);gap:14px}
+  .side{position:static;order:1;grid-template-columns:1fr 1fr;display:grid}
+  .feed-head{flex-direction:column;align-items:flex-start;gap:12px}
+  .feed-head-actions{width:100%}
+  .feed-head-actions .select{flex:1}
+}
+
+@media (max-width:760px){
+  /* Nothing should scroll sideways on a phone. The category row is the one
+     deliberate exception and carries its own overflow. */
+  html,body{overflow-x:hidden}
+  .mobile-nav{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom));
+    background:rgba(255,255,255,.94);backdrop-filter:blur(12px);border-top:1px solid var(--border)}
+  .mnav{flex:1;display:grid;justify-items:center;gap:3px;padding:7px 4px;border:0;border-radius:var(--radius-md);
+    background:transparent;color:var(--text-quaternary);font-size:10.5px;font-weight:650;min-height:52px}
+  .mnav.on{color:var(--brand-700)}
+  .mnav-icon{position:relative;display:grid;place-items:center}
+  .mnav-icon svg{width:22px;height:22px}
+  .mnav-icon i{position:absolute;top:-5px;right:-9px;min-width:16px;height:16px;padding:0 4px;display:grid;place-items:center;
+    border-radius:999px;background:var(--error-500);color:#fff;font-size:9px;font-weight:700;font-style:normal}
+  /* Room for the bar, plus whatever the phone puts below it. */
+  .content{padding-bottom:calc(84px + env(safe-area-inset-bottom))!important}
+
+  .side{grid-template-columns:1fr;order:1}
+  .composer{padding:12px 14px;border-radius:var(--radius-lg)}
+  .composer-hint{font-size:14px}
+  .post{padding:16px 15px;border-radius:var(--radius-lg)}
+  .post-title{font-size:16.5px;margin-top:12px}
+  .post-body{font-size:13.5px}
+  .fa{width:38px;height:38px}
+  .post-cat{display:none}
+  /* Thumb-sized hit areas. The padding is pulled back out with negative margin
+     so the row looks the same as it does on a desktop while being twice as easy
+     to hit. */
+  .post-foot{gap:22px}
+  .act{padding:10px 6px;margin:-10px -6px}
+  .act svg{width:21px;height:21px}
+  .cat{padding:10px 15px;font-size:13px}
+  .sort{padding:9px 16px;font-size:13px}
+  .cmt-remove{padding:8px 0;margin:-8px 0}
+  .post-last span{display:none}
+  .feed-empty{padding:34px 20px}
+
+  /* Both dialogs fill the screen. A 92vh centred card leaves a strip of feed
+     visible top and bottom and nowhere sensible for the keyboard to go. */
+  .modal,.modal.wide{inset:0;left:0;top:0;width:100%;max-width:100%;max-height:none;height:100dvh;transform:none;border-radius:0;border:0}
+  /* The form fills the sheet so the toolbar and Post sit on the bottom edge
+     where a thumb is, not floating in the middle of the screen. */
+  .modal-body{flex:1;display:flex;min-height:0}
+  .modal.bare .modal-body{padding:16px 16px 0}
+  .composer-form{flex:1;min-height:0}
+  .composer-form textarea{flex:1;min-height:120px}
+  .drawer{width:100vw;height:100dvh;border-left:0}
+  .composer-form textarea{min-height:34vh}
+  .composer-form>input[name=title]{font-size:19px}
+  .cw-foot{position:sticky;bottom:0;background:var(--surface);margin-top:auto;
+    padding-bottom:calc(4px + env(safe-area-inset-bottom))}
+  .cw-actions .btn{padding:9px 15px}
+  .tool{width:42px;height:42px}
+  .gif-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));max-height:none}
+  .mod-bar{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .mod-bar::-webkit-scrollbar{display:none}
+  .mod-bar .btn{flex:0 0 auto}
+}
+
+@media (max-width:420px){
+  /* Narrower, not shorter: the height is what makes these hittable. */
+  .cat{padding:10px 13px;font-size:12.5px}
+  .sort{padding:9px 13px;font-size:12.5px}
+  .post-foot{gap:20px}
+}
+.modal.bare .modal-body{padding:18px 20px 16px}

@@ -15,6 +15,28 @@ import { config } from './config.js';
 const ENDPOINT = 'https://api.giphy.com/v1/gifs';
 const TIMEOUT_MS = 6000;
 
+/* A free Giphy key allows 100 calls an hour. A class of forty will never come
+   near that, but a handful of people typing in the picker at once could make
+   fifty calls between them in a minute, so identical searches are answered from
+   memory for ten minutes. Trending — what everybody sees on opening the picker —
+   is therefore usually free. */
+const CACHE_MS = 10 * 60 * 1000;
+const cache = new Map();
+
+function cached(key) {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > CACHE_MS) { cache.delete(key); return null; }
+  return hit.value;
+}
+
+function remember(key, value) {
+  // Bounded so a busy term of searches cannot grow this without limit.
+  if (cache.size > 200) cache.clear();
+  cache.set(key, { at: Date.now(), value });
+  return value;
+}
+
 export const gifsConfigured = () => Boolean(config.giphyApiKey);
 
 /* Only the fields the picker draws. Giphy returns a great deal per result and
@@ -38,12 +60,15 @@ async function call(pathname, params) {
   if (!gifsConfigured()) {
     throw Object.assign(new Error('GIF search is not configured.'), { status: 503 });
   }
+  const key = `${pathname}:${params.q || ''}`;
+  const hit = cached(key);
+  if (hit) return hit;
   const url = new URL(`${ENDPOINT}${pathname}`);
   url.searchParams.set('api_key', config.giphyApiKey);
   url.searchParams.set('rating', config.giphyRating);
   url.searchParams.set('limit', '24');
   url.searchParams.set('bundle', 'messaging_non_clips');
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -53,7 +78,7 @@ async function call(pathname, params) {
       throw Object.assign(new Error('GIF search is unavailable right now.'), { status: 502 });
     }
     const payload = await response.json();
-    return (payload.data || []).map(simplify).filter(Boolean);
+    return remember(key, (payload.data || []).map(simplify).filter(Boolean));
   } catch (error) {
     if (error.status) throw error;
     // A search that times out should read as "nothing found", not as a crash.
