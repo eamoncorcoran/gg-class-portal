@@ -1,5 +1,6 @@
 import { one, query } from './db.js';
 import { videoSource, fmtDuration } from './lessonvideo.js';
+import { embedUrl as bunnyEmbedUrl, bunnySigning } from './bunny.js';
 
 /* Courses.
    ------------------------------------------------------------------
@@ -101,7 +102,11 @@ export async function getCourse({ courseId, viewerId, classId, isAdmin = false }
       completed: Boolean(row.completed),
       lastPositionSeconds: row.last_position_seconds || 0,
       attachments: row.attachments,
-      video: videoSource(row),
+      /* Signed here, at read time, so every student gets their own short-lived
+         playback URL rather than one shared address sitting in the database. */
+      video: videoSource(row, {
+        signBunny: bunnySigning() ? (videoId, libraryId) => bunnyEmbedUrl(videoId, { libraryId }) : null,
+      }),
       // What the administrator needs to edit it; never sent to a student.
       ...(isAdmin ? { videoProvider: row.video_provider, videoRef: row.video_ref } : {}),
     });

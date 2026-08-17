@@ -64,7 +64,7 @@ export function parseVideoSource(provider, input) {
  * plain <video>. Returns null when a lesson has no recording yet, which is a
  * normal state for a lesson that is written before it is taught.
  */
-export function videoSource(lesson) {
+export function videoSource(lesson, { signBunny = null } = {}) {
   const provider = lesson?.video_provider;
   const ref = lesson?.video_ref;
   if (!provider || !ref) return null;
@@ -79,7 +79,13 @@ export function videoSource(lesson) {
   if (provider === 'bunny') {
     const [library, video] = ref.split('/');
     /* Bunny's own player: adaptive streaming, which is the reason to use it at
-       all when students watch on mobile data. */
+       all when students watch on mobile data.
+
+       When a signer is supplied the URL carries a signature and an expiry, so a
+       link forwarded outside the class is refused rather than merely obscure.
+       Signed per request, which is why this takes a function rather than
+       building the token itself. */
+    if (signBunny) return { type: 'iframe', provider, src: signBunny(video, library) };
     return {
       type: 'iframe',
       provider,

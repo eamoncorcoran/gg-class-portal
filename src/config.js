@@ -27,6 +27,24 @@ export const config = Object.freeze({
      many times over. */
   giphyApiKey: process.env.GIPHY_API_KEY || '',
   giphyRating: process.env.GIPHY_RATING || 'pg',
+  /* Bunny Stream holds the class recordings. The library key uploads; the token
+     key signs playback URLs so a forwarded embed link is useless. */
+  bunny: {
+    libraryId: process.env.BUNNY_LIBRARY_ID || '',
+    apiKey: process.env.BUNNY_API_KEY || '',
+    tokenKey: process.env.BUNNY_TOKEN_KEY || '',
+    // How long a playback link stays good. Longer than any class recording, so
+    // nobody is cut off two thirds of the way through.
+    tokenHours: integer(process.env.BUNNY_TOKEN_HOURS, 6),
+  },
+  /* A Zoom Server-to-Server OAuth app. Read-only: it lists recordings and
+     downloads them, and never deletes anything. */
+  zoom: {
+    accountId: process.env.ZOOM_ACCOUNT_ID || '',
+    clientId: process.env.ZOOM_CLIENT_ID || '',
+    clientSecret: process.env.ZOOM_CLIENT_SECRET || '',
+    webhookSecret: process.env.ZOOM_WEBHOOK_SECRET || '',
+  },
   uploadDir: path.resolve(process.env.UPLOAD_DIR || './uploads'),
   /* Student work and teacher voice notes never go in uploadDir, because that
      directory is served publicly for assignment resources. They live here and

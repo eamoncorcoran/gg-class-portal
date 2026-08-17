@@ -22,6 +22,9 @@ import { listThreads, getThread, createThread, createPost, listCategories, toggl
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress } from '../courses.js';
 import { parseVideoSource, VIDEO_PROVIDERS } from '../lessonvideo.js';
+import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
+import { zoomConfigured } from '../zoom.js';
+import { bunnyConfigured, bunnySigning } from '../bunny.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -1580,6 +1583,98 @@ router.delete('/lesson-attachments/:id', asyncRoute(async (req, res) => {
   }
   await query('DELETE FROM lesson_attachments WHERE id=$1', [current.id]);
   res.status(204).end();
+}));
+
+/* ------------------------------------------------------------------
+   Zoom import
+   ------------------------------------------------------------------ */
+
+router.get('/zoom/status', asyncRoute(async (_req, res) => {
+  res.json({
+    zoom: zoomConfigured(),
+    bunny: bunnyConfigured(),
+    signedPlayback: bunnySigning(),
+    ready: importConfigured(),
+  });
+}));
+
+/* Everything on the Zoom account, with what has already been taken marked. The
+   list is deliberately the whole account rather than a filtered view: seeing
+   what is there is the point, and nothing acts on it without being told. */
+router.get('/zoom/recordings', asyncRoute(async (req, res) => {
+  if (!zoomConfigured()) return res.json({ configured: false, recordings: [], sources: [] });
+  const months = Math.min(Math.max(Number(req.query.months) || 3, 1), 12);
+  const [recordings, sources] = await Promise.all([
+    availableRecordings({ months }),
+    query(`SELECT s.*, m.title module_title, c.title course_title
+           FROM zoom_sources s
+           LEFT JOIN course_modules m ON m.id=s.module_id
+           LEFT JOIN courses c ON c.id=m.course_id
+           ORDER BY s.created_at`),
+  ]);
+  res.json({ configured: true, recordings, sources: sources.rows });
+}));
+
+router.post('/zoom/import', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    uuid: z.string().min(1),
+    fileId: z.string().min(1),
+    moduleId: z.string().uuid(),
+    title: z.string().trim().max(200).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose a recording and the section it belongs in.' });
+
+  // Fetched fresh rather than trusted from the browser: the download URL is a
+  // credential, and it is not one to accept from a request body.
+  const recordings = await availableRecordings({ months: 12 });
+  const recording = recordings.find((row) => row.uuid === parsed.data.uuid && row.fileId === parsed.data.fileId);
+  if (!recording) return res.status(404).json({ error: 'That recording is no longer on the Zoom account.' });
+
+  const result = await importRecording({
+    recording, moduleId: parsed.data.moduleId, actorId: req.user.id, title: parsed.data.title,
+  });
+  if (result.alreadyImported) return res.status(409).json({ error: 'That recording has already been brought across.' });
+  res.status(201).json(result);
+}));
+
+/* Runs the automatic import by hand, for the webinars already marked for it. */
+router.post('/zoom/sweep', asyncRoute(async (req, res) => {
+  res.json(await importWatched({ actorId: req.user.id }));
+}));
+
+/* Which webinars are wanted. Naming one is not the same as agreeing every
+   future recording should import unread, so `autoImport` is separate. */
+router.put('/zoom/sources', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    zoomId: z.string().trim().min(3).max(60),
+    label: z.string().trim().max(200).optional().default(''),
+    moduleId: z.string().uuid().nullable().optional(),
+    autoImport: z.boolean().optional().default(false),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the webinar id and where its recordings should land.' });
+  const row = await one(
+    `INSERT INTO zoom_sources(zoom_id,label,module_id,auto_import) VALUES ($1,$2,$3,$4)
+     ON CONFLICT (zoom_id) DO UPDATE SET label=EXCLUDED.label, module_id=EXCLUDED.module_id,
+       auto_import=EXCLUDED.auto_import
+     RETURNING *`,
+    [parsed.data.zoomId, parsed.data.label, parsed.data.moduleId || null, parsed.data.autoImport],
+  );
+  await audit({ actorId: req.user.id, action: 'zoom.source_saved', entityType: 'zoom_source', entityId: row.id, metadata: parsed.data, ip: req.ip });
+  res.json(row);
+}));
+
+router.delete('/zoom/sources/:id', asyncRoute(async (req, res) => {
+  await query('DELETE FROM zoom_sources WHERE id=$1', [req.params.id]);
+  res.status(204).end();
+}));
+
+router.get('/zoom/imports', asyncRoute(async (_req, res) => {
+  const rows = await query(
+    `SELECT i.*, l.title lesson_title FROM zoom_imports i
+     LEFT JOIN course_lessons l ON l.id=i.lesson_id
+     ORDER BY i.started_at DESC LIMIT 50`,
+  );
+  res.json({ imports: rows.rows });
 }));
 
 export default router;

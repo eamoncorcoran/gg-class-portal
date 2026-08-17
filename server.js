@@ -16,9 +16,11 @@ import settingsRoutes from './src/routes/settings.js';
 import mediaRoutes from './src/routes/media.js';
 import calendarRoutes from './src/routes/calendar.js';
 import gifRoutes from './src/routes/gifs.js';
+import zoomHookRoutes from './src/routes/zoomhook.js';
 import { ensureAllWeeks } from './src/weeks.js';
 import { startReminderScheduler, runReminderCycle } from './src/reminders.js';
 import { startBackupScheduler } from './src/backup.js';
+import { startZoomScheduler } from './src/zoomscheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +65,9 @@ app.use(rateLimit({
   legacyHeaders: false,
   skip: (req) => req.path === '/api/health',
 }));
+/* Ahead of the JSON parser: verifying Zoom's signature needs the bytes they
+   actually sent, and a re-serialised object is not those bytes. */
+app.use('/api/zoom/webhook', zoomHookRoutes);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 app.use(cookieParser());
@@ -121,6 +126,7 @@ async function start() {
   await ensureAllWeeks();
   startReminderScheduler();
   startBackupScheduler();
+  startZoomScheduler();
   app.listen(config.port, () => {
     console.log(`Gaeilgeoir Guides Student Support running at ${config.appUrl}`);
   });

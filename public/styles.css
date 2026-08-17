@@ -1138,3 +1138,31 @@ details.leaving summary:hover{color:var(--text-secondary)}
   .form-row{grid-template-columns:1fr}
   .lp-frame{border-radius:var(--radius-md)}
 }
+
+/* Importing from Zoom. */
+.zi-setup ol{margin:12px 0 0;padding-left:20px;display:grid;gap:12px;font-size:13px;line-height:1.55}
+.zi-setup code{padding:1px 5px;border-radius:4px;background:var(--gray-100);font-size:11.5px}
+.zi-ok{color:var(--success-700);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+.zi-no{color:var(--error-700);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+.zi-list{display:grid;gap:8px;max-height:44vh;overflow-y:auto}
+.zi-row{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border);
+  border-radius:var(--radius-md);background:var(--surface)}
+.zi-row.is-done{background:var(--gray-25);opacity:.72}
+.zi-copy{flex:1;min-width:0;display:grid;gap:2px}
+.zi-copy strong{font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zi-copy>span{color:var(--text-tertiary);font-size:11.5px}
+.zi-err{color:var(--error-700)!important}
+.zi-badge{flex:0 0 auto;padding:4px 9px;border-radius:999px;background:var(--success-50);color:var(--success-700);
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.zi-row .select{flex:0 0 auto;max-width:220px}
+.zi-rules{display:grid;gap:6px;margin-bottom:12px}
+.zi-rule{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--gray-25);font-size:12.5px}
+.zi-rule strong{flex:0 0 auto}
+.zi-rule>span.muted{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zi-newrule{display:grid;gap:8px;padding:13px;border:1px dashed var(--border-strong);border-radius:var(--radius-md);background:var(--gray-25)}
+.zi-newrule input:not([type=checkbox]),.zi-newrule .select{width:100%}
+@media (max-width:760px){
+  .zi-row{flex-wrap:wrap}
+  .zi-row .select{max-width:none;width:100%}
+}

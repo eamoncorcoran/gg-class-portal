@@ -1,4 +1,4 @@
-# Gaeilgeoir Guides Class Portal V34
+# Gaeilgeoir Guides Class Portal V35
 
 
 A private internal SaaS application for managing Gaeilgeoir Guides classes, student accounts, weekly attendance, check-ins, homework, deadlines, reminders and returned teacher feedback.
@@ -385,22 +385,72 @@ is a paid feature with a few gigabytes per licence, and a year of weekly
 90-minute classes is tens of gigabytes, so the files have to move off Zoom
 whatever else is decided.
 
-So a lesson stores a **provider and a reference** rather than being tied to one
-host:
+Recordings therefore live on **Bunny Stream**, and a lesson stores a provider and
+a reference rather than being tied to one host:
 
 | Provider | What it is for |
 | --- | --- |
-| `bunny` | Bunny Stream. Transcodes to adaptive streaming, so a student on weak mobile data gets a lower bitrate instead of a spinning wheel |
-| `youtube` | Embedded through `youtube-nocookie`. Free, but an unlisted video is not a private one |
+| `bunny` | The default. Adaptive streaming, so a student on weak mobile data gets a lower bitrate rather than a spinning wheel, and playback links can be signed |
+| `youtube` | Embedded through `youtube-nocookie`. An unlisted video is not a private one, so this is for public material only |
 | `loom` | Loom share links |
 | `mp4` | A file served from this application |
 
 Pasting a whole link or a bare id both work, and a link that does not match the
 host chosen is refused rather than saved and left to render as an empty box.
 
-For a year of recordings watched largely on phones, Bunny Stream is the one worth
-paying for; the adaptive streaming is the entire difference on a bad connection.
-Nothing in the schema depends on that choice, so it can be changed later.
+**Signed playback.** With `BUNNY_TOKEN_KEY` set, every playback URL is minted per
+request with a signature and a six-hour expiry. Nothing in the database is a
+working link, and a URL forwarded outside the class stops working rather than
+merely being hard to guess. Without the key playback still works, but a copied
+link keeps working — the interface says so rather than letting you assume
+otherwise.
+
+### Importing from Zoom
+
+Class ends, Zoom finishes processing, the recording appears in the portal as a
+draft lesson with its date and length already filled in.
+
+**Nothing imports because it merely exists.** A Zoom account carries one-to-ones,
+test calls and meetings that have no business on a class portal, so the default
+is that every recording is listed and ignored. Two ways to say otherwise:
+
+1. **Press Import** on a recording in the list and choose the section it belongs
+   in. This is the whole of it for most people.
+2. **Name a webinar** as one that should always come across. A recurring class
+   keeps the same webinar id every week, so naming it once is enough. Marking it
+   as automatic is a separate switch — naming a webinar is not the same as
+   agreeing that every future recording should arrive unread.
+
+An imported lesson arrives **unpublished**, carrying whatever the meeting happened
+to be called and no notes. That is not something to put in front of a class
+unread, so it waits for you.
+
+**The copy on Zoom is never touched.** The Zoom app is given read scopes only.
+Until an import has demonstrably worked Zoom holds the only copy, and nothing in
+this application has permission to change that.
+
+#### Setting it up
+
+**A Zoom Server-to-Server OAuth app**, created at `marketplace.zoom.us`, with the
+recording read scopes. Put its credentials in `ZOOM_ACCOUNT_ID`,
+`ZOOM_CLIENT_ID` and `ZOOM_CLIENT_SECRET`.
+
+**A Bunny Stream library.** Its id and API key go in `BUNNY_LIBRARY_ID` and
+`BUNNY_API_KEY`; the token authentication key in `BUNNY_TOKEN_KEY`.
+
+**The webhook, optionally.** Point Zoom's `recording.completed` event at
+`/api/zoom/webhook` and set the same secret in `ZOOM_WEBHOOK_SECRET`. This is the
+only route in the application with no session behind it, so its signature check
+is the whole of its security: it is verified against the raw bytes Zoom sent
+before anything is read out of the body, a missing secret refuses every request
+rather than accepting them, and even a validly signed event cannot import a
+webinar that has not been named for it.
+
+Without the webhook an hourly sweep does the same job a little later. With it,
+the sweep stays on as a safety net for the times the webhook did not arrive.
+
+
+
 
 ### The class board
 
@@ -1068,3 +1118,25 @@ twice — and confirms that a Vimeo or ordinary link is left alone.
 
 Migration `018_courses`. New tests: `tests/courses.test.js` and
 `tests/lessonvideo.test.js`.
+
+## V35 changes
+
+- **Recordings come across from Zoom by themselves.** A Server-to-Server OAuth
+  app lists what is on the account; pressing Import brings one over to Bunny
+  Stream and creates a draft lesson with its date and length filled in. A
+  recurring webinar can be named once and its recordings then arrive on their
+  own.
+- **Nothing imports because it merely exists.** A Zoom account holds
+  one-to-ones and test calls; every recording is listed and ignored until told
+  otherwise, and marking a webinar as automatic is a separate switch from
+  naming it.
+- **Signed playback.** With a Bunny token key set, every playback URL is minted
+  per request with a six-hour expiry, so a forwarded link stops working. Nothing
+  stored in the database is a working link.
+- **The Zoom copy is never touched.** Read scopes only.
+- **The webhook is signature-verified against the raw bytes**, refuses
+  everything when no secret is set, and cannot import a webinar nobody asked
+  for even when the signature is good.
+
+Migration `019_zoom_import`. New tests: `tests/zoom.test.js` and
+`tests/bunny.test.js`.

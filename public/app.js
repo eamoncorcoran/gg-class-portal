@@ -1982,7 +1982,10 @@ function coursesView() {
   if (isAdmin()) {
     return `<div class="feed-head">
         <div><h1>Courses</h1><p>Class recordings and the notes that go with them.</p></div>
-        <div class="feed-head-actions"><button class="btn primary" id="new-course">New course</button></div>
+        <div class="feed-head-actions">
+          <button class="btn" id="open-zoom">Import from Zoom</button>
+          <button class="btn primary" id="new-course">New course</button>
+        </div>
       </div>${body}`;
   }
   return `${studentHero()}${body}`;
@@ -2130,6 +2133,7 @@ function bindCourse() {
 
 function bindCourseAdmin() {
   document.getElementById('new-course')?.addEventListener('click', () => openCourseModal());
+  document.getElementById('open-zoom')?.addEventListener('click', openZoomImport);
   document.getElementById('add-module')?.addEventListener('click', async () => {
     const title = window.prompt('Name this section', 'Term 1');
     if (!title?.trim()) return;
@@ -2218,6 +2222,152 @@ function openCourseModal(course = null) {
       });
     },
   });
+}
+
+/* ---- Importing from Zoom ----------------------------------------- */
+
+/* Every recording on the Zoom account, and nothing acts on any of them without
+   being told to. A Zoom account holds one-to-ones, test calls and meetings that
+   have no business on a class portal, so the list is a list and the Import
+   button is the decision. */
+async function openZoomImport() {
+  let status;
+  try { status = await api('/api/admin/zoom/status'); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  if (!status.zoom || !status.bunny) {
+    return modal({
+      title: 'Import from Zoom',
+      subtitle: 'Not connected yet.',
+      body: `<div class="zi-setup">
+        <p>Two things are needed before recordings can come across, and neither is in the interface — both are keys that belong in the environment file:</p>
+        <ol>
+          <li><strong>A Zoom Server-to-Server OAuth app</strong> ${status.zoom ? '<b class="zi-ok">connected</b>' : '<b class="zi-no">not set</b>'}<br>
+            <span class="muted small">Create one at marketplace.zoom.us, give it the recording read scopes, and put the account id, client id and secret in <code>ZOOM_ACCOUNT_ID</code>, <code>ZOOM_CLIENT_ID</code> and <code>ZOOM_CLIENT_SECRET</code>. It is never given permission to delete anything.</span></li>
+          <li><strong>A Bunny Stream library</strong> ${status.bunny ? '<b class="zi-ok">connected</b>' : '<b class="zi-no">not set</b>'}<br>
+            <span class="muted small">Put the library id and API key in <code>BUNNY_LIBRARY_ID</code> and <code>BUNNY_API_KEY</code>. Add <code>BUNNY_TOKEN_KEY</code> as well and playback links are signed, so a forwarded link stops working.</span></li>
+        </ol>
+        <p class="muted small">The README has the full walkthrough under <em>Importing from Zoom</em>.</p>
+      </div>`,
+      footer: '<button class="btn primary" data-close-modal>Close</button>',
+    });
+  }
+
+  modal({
+    title: 'Import from Zoom',
+    subtitle: status.signedPlayback
+      ? 'Playback links are signed, so a forwarded link will not work.'
+      : 'Playback is unsigned — add BUNNY_TOKEN_KEY to lock links to your students.',
+    wide: true,
+    body: '<div id="zi-body"><p class="muted small">Asking Zoom what is there…</p></div>',
+    footer: '<button class="btn" data-close-modal>Close</button><button class="btn" id="zi-sweep">Run automatic import</button>',
+    onOpen() {
+      document.getElementById('zi-sweep').addEventListener('click', async () => {
+        try {
+          const result = await api('/api/admin/zoom/sweep', { method: 'POST' });
+          showToast(result.imported ? `Imported ${result.imported}` : (result.reason || 'Nothing to import'));
+          renderZoomList();
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+      renderZoomList();
+    },
+  });
+}
+
+async function renderZoomList() {
+  const holder = document.getElementById('zi-body');
+  if (!holder) return;
+  let data;
+  try { data = await api('/api/admin/zoom/recordings?months=3'); }
+  catch (error) { holder.innerHTML = `<p class="muted small">${escapeHtml(error.message)}</p>`; return; }
+
+  // Every section of every course, so a recording can be dropped straight in.
+  const sections = [];
+  for (const course of state.courses || []) {
+    const detail = await api(`/api/admin/courses/${course.id}`).catch(() => null);
+    for (const module of detail?.modules || []) sections.push({ id: module.id, label: `${course.title} · ${module.title}` });
+  }
+
+  const picker = (id, selected) => `<select class="select compact" data-zi-module="${id}">
+    <option value="">Choose a section…</option>
+    ${sections.map((section) => `<option value="${section.id}" ${section.id === selected ? 'selected' : ''}>${escapeHtml(section.label)}</option>`).join('')}
+  </select>`;
+
+  holder.innerHTML = `
+    ${data.recordings.length ? `<div class="zi-list">${data.recordings.map((recording) => {
+      const done = recording.importStatus === 'done';
+      return `<article class="zi-row ${done ? 'is-done' : ''}">
+        <div class="zi-copy">
+          <strong>${escapeHtml(recording.topic || 'Untitled meeting')}</strong>
+          <span>${escapeHtml(fmtDate(recording.startedAt, { dateStyle: 'medium', time: true }))} · ${Math.round((recording.durationSeconds || 0) / 60)} min · ${(recording.fileSize / 1024 / 1024).toFixed(0)}MB
+            ${recording.autoImport ? ' · <b>imports automatically</b>' : ''}</span>
+          ${recording.error ? `<span class="zi-err">${escapeHtml(recording.error)}</span>` : ''}
+        </div>
+        ${done
+          ? '<span class="zi-badge">Imported</span>'
+          : `${picker(recording.fileId, recording.targetModuleId)}
+             <button class="btn small primary" data-zi-import="${recording.fileId}" data-uuid="${escapeHtml(recording.uuid)}">Import</button>`}
+      </article>`;
+    }).join('')}</div>` : '<p class="muted small">No recordings on the account in the last three months.</p>'}
+
+    <div class="section-title">Import automatically</div>
+    <p class="muted small">A recurring webinar keeps the same id every week. Name one here and its recordings come across on their own — everything else stays in the list above until you say so.</p>
+    ${data.sources.length ? `<div class="zi-rules">${data.sources.map((source) => `<div class="zi-rule">
+      <strong>${escapeHtml(source.label || source.zoom_id)}</strong>
+      <span class="muted small">${escapeHtml(source.zoom_id)}${source.module_title ? ` → ${escapeHtml(source.course_title)} · ${escapeHtml(source.module_title)}` : ' → no section chosen'}</span>
+      <span class="pill ${source.auto_import ? 'green' : ''}">${source.auto_import ? 'Automatic' : 'Manual only'}</span>
+      <button class="btn small danger" data-zi-forget="${source.id}">Remove</button>
+    </div>`).join('')}</div>` : ''}
+    <form id="zi-rule-form" class="zi-newrule">
+      <input name="zoomId" placeholder="Webinar or meeting id" required>
+      <input name="label" placeholder="What it is, e.g. Monday class">
+      ${picker('new', '')}
+      <label class="check-row"><input type="checkbox" name="autoImport"> Bring new recordings across on their own</label>
+      <button type="button" class="btn small" id="zi-save-rule">Save</button>
+    </form>`;
+
+  holder.querySelectorAll('[data-zi-import]').forEach((button) => button.addEventListener('click', async () => {
+    const moduleId = holder.querySelector(`[data-zi-module="${button.dataset.ziImport}"]`)?.value;
+    if (!moduleId) return showToast('Choose the section it belongs in first.', 'error');
+    button.disabled = true;
+    button.textContent = 'Importing…';
+    try {
+      await api('/api/admin/zoom/import', {
+        method: 'POST',
+        body: { uuid: button.dataset.uuid, fileId: button.dataset.ziImport, moduleId },
+      });
+      showToast('Imported as a draft lesson — check the title before publishing it');
+      renderZoomList();
+    } catch (error) {
+      showToast(error.message, 'error');
+      button.disabled = false;
+      button.textContent = 'Import';
+    }
+  }));
+
+  holder.querySelector('#zi-save-rule')?.addEventListener('click', async () => {
+    const form = document.getElementById('zi-rule-form');
+    const data2 = new FormData(form);
+    const body = {
+      zoomId: String(data2.get('zoomId') || '').trim(),
+      label: String(data2.get('label') || '').trim(),
+      moduleId: holder.querySelector('[data-zi-module="new"]')?.value || null,
+      autoImport: form.autoImport.checked,
+    };
+    if (!body.zoomId) return showToast('Give the webinar id.', 'error');
+    try {
+      await api('/api/admin/zoom/sources', { method: 'PUT', body });
+      showToast('Saved');
+      renderZoomList();
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+
+  holder.querySelectorAll('[data-zi-forget]').forEach((button) => button.addEventListener('click', async () => {
+    try {
+      await api(`/api/admin/zoom/sources/${button.dataset.ziForget}`, { method: 'DELETE' });
+      renderZoomList();
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
 }
 
 /* Adding a recording. The host is chosen and the link pasted; whole URLs and
