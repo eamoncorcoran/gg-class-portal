@@ -1161,15 +1161,14 @@ router.get('/community/:classId', asyncRoute(async (req, res) => {
   const categoryId = req.query.categoryId || null;
   // Removed threads stay listed for the administrator, greyed, with a way back,
   // and scheduled ones show here before they show anywhere else.
-  const [threads, categories, contributors, members] = await Promise.all([
+  const [threads, categories, contributors] = await Promise.all([
     listThreads({ classId: klass.id, viewerId: req.user.id, includeDeleted: true, includeScheduled: true, categoryId, sort }),
     listCategories(klass.id),
     topContributors({ classId: klass.id }),
-    one(`SELECT count(*)::int count FROM class_students WHERE class_id=$1 AND active=true`, [klass.id]),
   ]);
   res.json({
     class: { ...klass, label: classLabel(klass) },
-    threads, categories, contributors, sort, categoryId, memberCount: members?.count || 0,
+    threads, categories, contributors, sort, categoryId,
   });
 }));
 

@@ -2292,8 +2292,7 @@ function feedSide() {
         </div>
       </div>
       <dl class="side-stats">
-        <div><dt>Members</dt><dd>${data?.memberCount || 0}</dd></div>
-        <div><dt>Posts</dt><dd>${posts}</dd></div>
+        <div><dt>${posts === 1 ? 'Post' : 'Posts'}</dt><dd>${posts}</dd></div>
       </dl>
     </section>
     <section class="side-card">

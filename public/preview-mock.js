@@ -388,8 +388,7 @@
     const categoryId=url.searchParams.get('categoryId')||null;
     const sort=url.searchParams.get('sort')==='hot'?'hot':'new';
     return {threads:threadRows(classId,includeDeleted,viewerId,categoryId,sort,includeScheduled),
-      categories:categoryRows(classId),contributors:contributorRows(classId),sort,categoryId,
-      memberCount:db.users.filter((u)=>u.role==='student'&&u.class_id===classId&&u.active).length};
+      categories:categoryRows(classId),contributors:contributorRows(classId),sort,categoryId};
   }
   function newThread(classId,authorId,body){
     const now=new RealDate(PREVIEW_NOW).toISOString();

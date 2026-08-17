@@ -1393,8 +1393,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     const categoryId=url.searchParams.get('categoryId')||null;
     const sort=url.searchParams.get('sort')==='hot'?'hot':'new';
     return {threads:threadRows(classId,includeDeleted,viewerId,categoryId,sort,includeScheduled),
-      categories:categoryRows(classId),contributors:contributorRows(classId),sort,categoryId,
-      memberCount:db.users.filter((u)=>u.role==='student'&&u.class_id===classId&&u.active).length};
+      categories:categoryRows(classId),contributors:contributorRows(classId),sort,categoryId};
   }
   function newThread(classId,authorId,body){
     const now=new RealDate(PREVIEW_NOW).toISOString();
@@ -4377,8 +4376,7 @@ function feedSide() {
         </div>
       </div>
       <dl class="side-stats">
-        <div><dt>Members</dt><dd>${data?.memberCount || 0}</dd></div>
-        <div><dt>Posts</dt><dd>${posts}</dd></div>
+        <div><dt>${posts === 1 ? 'Post' : 'Posts'}</dt><dd>${posts}</dd></div>
       </dl>
     </section>
     <section class="side-card">
