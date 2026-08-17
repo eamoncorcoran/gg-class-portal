@@ -987,3 +987,28 @@ details.leaving summary:hover{color:var(--text-secondary)}
   .post-foot{gap:20px}
 }
 .modal.bare .modal-body{padding:18px 20px 16px}
+
+/* Reactions. Live counts only; the picker adds the rest. */
+.rx-row{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}
+.rx{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;
+  background:var(--surface);color:var(--text-secondary);font-size:13px;line-height:1}
+.rx:hover{border-color:var(--border-strong);background:var(--gray-25)}
+.rx b{font-weight:650;font-size:11.5px;color:var(--text-tertiary)}
+.rx.on{border-color:var(--brand-300);background:var(--brand-50)}
+.rx.on b{color:var(--brand-800)}
+.rx.add{padding:5px 8px;color:var(--text-quaternary)}
+.rx.add svg{width:17px;height:17px}
+.rx.add:hover{color:var(--brand-700);border-color:var(--brand-300)}
+.rx.sm{padding:3px 8px;font-size:12px}
+.rx.sm.add{padding:3px 7px}
+.rx.sm.add svg{width:15px;height:15px}
+.rx-pop{position:fixed;z-index:120;display:flex;gap:2px;padding:6px;border:1px solid var(--border);
+  border-radius:999px;background:#fff;box-shadow:var(--shadow-lg)}
+.rx-pop button{width:36px;height:36px;display:grid;place-items:center;border:0;border-radius:999px;background:transparent;font-size:19px;line-height:1}
+.rx-pop button:hover{background:var(--gray-100);transform:scale(1.15)}
+#video-preview{display:grid;gap:9px;margin-top:14px}
+@media (max-width:760px){
+  .rx{padding:8px 12px}
+  .rx.add{padding:8px 10px}
+  .rx-pop button{width:42px;height:42px;font-size:21px}
+}

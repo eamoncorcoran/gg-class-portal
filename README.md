@@ -1,4 +1,4 @@
-# Gaeilgeoir Guides Class Portal V28
+# Gaeilgeoir Guides Class Portal V30
 
 
 A private internal SaaS application for managing Gaeilgeoir Guides classes, student accounts, weekly attendance, check-ins, homework, deadlines, reminders and returned teacher feedback.
@@ -364,7 +364,11 @@ class card and the month's most active members.
   noticeably more posts than a button labelled *Start a post*
 - **Categories** — General, Questions, Wins and Resources by default, editable
   per class. Deleting one leaves its posts alone; they become uncategorised
-- **Likes** on posts and comments, one click, never inflated by your own
+- **Reactions** on posts and comments — 👍 ❤️ 🎉 😂 😮 🙏 💪 🤔, one click each.
+  A fixed list rather than an open emoji keyboard: eight covers what people
+  want to say without words, and the server rejects anything outside it. Only
+  reactions somebody has actually used are shown, because a row of eight grey
+  zeroes reads as a chore and the same row with two live counts reads as a room
 - **Sorting** — **Latest** by publication date, or **Hot**, which is comments
   decayed by age on a day-and-a-half half-life. Eight comments this morning
   should outrank twelve from last month, because the question the sort answers is
@@ -375,15 +379,26 @@ class card and the month's most active members.
 
 #### Attachments
 
-| Kind | Who can add it | How it appears |
+| Kind | Who can add it | How it is added |
 | --- | --- | --- |
-| PDF | Administrator | A line in the post that opens the file |
-| Loom | Anyone | A strip in the feed, an embedded player inside the post |
-| GIF | Anyone | Plays inline, the way it does anywhere else |
+| PDF | Administrator only | The paperclip in the composer |
+| YouTube | Anyone | Paste the link into the post |
+| Loom | Anyone | Paste the link into the post |
+| GIF | Anyone | The GIF button in the composer |
 
-File uploads are the administrator's alone: the class feed should not be a route
-by which arbitrary files arrive on the server. Students can attach a Loom link or
-a GIF, neither of which touches the disk.
+**Videos have no field of their own.** Paste a YouTube or Loom link into what you
+are already typing and the player appears underneath, in the feed and inside the
+post alike. The link is then taken out of the text, because leaving both means
+the same URL twice: once as a wall of characters and once as the thing it
+actually is. Text either side of it is untouched, and anything that is not
+recognisably one of those two providers stays as ordinary readable text rather
+than being handed to an iframe. YouTube is embedded through `youtube-nocookie`,
+so a class board is not setting advertising cookies on students.
+
+**File uploads are the administrator's alone.** The class feed should not be a
+route by which arbitrary files arrive on the server, so students have no upload
+control at all — they can paste video links and pick GIFs, neither of which
+touches the disk.
 
 GIF search needs a `GIPHY_API_KEY`. Signing up at
 [developers.giphy.com](https://developers.giphy.com) is free and takes no card;
@@ -920,3 +935,17 @@ the portal was renamed.
 Migrations `013_feed_attachments_avatars` and `014_gif_attachments`. New tests:
 `tests/student-privacy.test.js`, plus scheduling, attachment, Hot-ranking and
 like coverage in `tests/community.test.js`.
+
+## V30 changes
+
+- **Emoji reactions** replace the single heart. Eight to choose from, one click
+  each, counted per emoji with your own highlighted. Migration `015` keeps every
+  existing like as the heart it already was.
+- **YouTube**, alongside Loom — and neither has a field any more. Paste the link
+  into the body of the post and the player appears; the link leaves the text.
+  Migration `016` allows the new attachment kind.
+- **The member count** is gone from the community side card.
+
+`tests/videolinks.test.js` covers every YouTube shape people actually paste —
+`youtu.be`, `watch?v=`, `shorts`, `live`, extra query parameters, the same video
+twice — and confirms that a Vimeo or ordinary link is left alone.

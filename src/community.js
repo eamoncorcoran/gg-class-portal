@@ -22,6 +22,23 @@ import { one, query } from './db.js';
    whether there is one to ask for. */
 const AUTHOR = `jsonb_build_object('id',u.id,'name',u.name,'role',u.role,'avatar',u.avatar_path IS NOT NULL)`;
 
+/* The reactions somebody may choose from. A short, fixed list: an open emoji
+   keyboard on a class board invites the one joke that has to be moderated, and
+   eight covers everything anybody actually wants to say without words.
+
+   Validated server-side against this list, so the column can never hold whatever
+   a crafted request felt like sending. */
+export const REACTIONS = Object.freeze(['👍', '❤️', '🎉', '😂', '😮', '🙏', '💪', '🤔']);
+
+/* Grouped in SQL: one row per emoji with its count and whether this viewer is in
+   it, which is exactly what the chips need and nothing more. */
+const reactionsFor = (type, column) => `COALESCE((
+  SELECT json_agg(jsonb_build_object('emoji',g.emoji,'count',g.count,'mine',g.mine) ORDER BY g.count DESC, g.emoji)
+  FROM (
+    SELECT emoji, count(*)::int count, bool_or(user_id=$2) mine
+    FROM discussion_likes WHERE target_type='${type}' AND target_id=${column} GROUP BY emoji
+  ) g),'[]'::json)`;
+
 const ATTACHMENTS = `COALESCE((SELECT json_agg(jsonb_build_object(
     'id',a.id,'kind',a.kind,'url',a.url,'fileName',a.file_name,
     'mimeType',a.mime_type,'sizeBytes',a.size_bytes
@@ -43,8 +60,8 @@ const HOT_SCORE = `
   / power(2, EXTRACT(EPOCH FROM (now() - t.last_activity_at)) / 129600.0)`;
 
 /* Counted in SQL rather than in the browser so a feed of forty posts is one
-   query rather than forty. `liked` is per viewer, which is why every read takes
-   a viewer id. */
+   query rather than forty. Reactions are per viewer, which is why every read
+   takes a viewer id. */
 const THREAD_COLUMNS = `
   t.id, t.class_id, t.title, t.body, t.pinned, t.locked, t.created_at,
   t.last_activity_at, t.deleted_at, t.category_id, t.published_at,
@@ -54,10 +71,7 @@ const THREAD_COLUMNS = `
   ${ATTACHMENTS},
   (SELECT count(*)::int FROM discussion_posts p
     WHERE p.thread_id=t.id AND p.deleted_at IS NULL) comment_count,
-  (SELECT count(*)::int FROM discussion_likes l
-    WHERE l.target_type='thread' AND l.target_id=t.id) like_count,
-  EXISTS (SELECT 1 FROM discussion_likes l
-    WHERE l.target_type='thread' AND l.target_id=t.id AND l.user_id=$2) liked,
+  ${reactionsFor('thread', 't.id')} reactions,
   (SELECT jsonb_build_object('id',lu.id,'name',lu.name,'at',lp.created_at,'avatar',lu.avatar_path IS NOT NULL)
      FROM discussion_posts lp JOIN users lu ON lu.id=lp.author_id
     WHERE lp.thread_id=t.id AND lp.deleted_at IS NULL
@@ -107,10 +121,7 @@ export async function getThread({ threadId, viewerId, includeDeleted = false, in
   if (!thread) return null;
   const comments = await query(
     `SELECT p.id, p.body, p.created_at, p.deleted_at, ${AUTHOR} author,
-            (SELECT count(*)::int FROM discussion_likes l
-              WHERE l.target_type='post' AND l.target_id=p.id) like_count,
-            EXISTS (SELECT 1 FROM discussion_likes l
-              WHERE l.target_type='post' AND l.target_id=p.id AND l.user_id=$2) liked
+            ${reactionsFor('post', 'p.id')} reactions
      FROM discussion_posts p
      LEFT JOIN users u ON u.id=p.author_id
      WHERE p.thread_id=$1 ${includeDeleted ? '' : 'AND p.deleted_at IS NULL'}
@@ -176,31 +187,41 @@ export async function createPost({ threadId, authorId, body }) {
 }
 
 /**
- * Toggles a like and returns the new state.
+ * Adds or removes one reaction and returns the whole set back.
  *
- * Idempotent in both directions: liking twice leaves one like rather than
- * failing, which matters because a double tap on a phone is one gesture.
+ * Idempotent in both directions — reacting twice with the same emoji removes it
+ * rather than failing, because a double tap on a phone is one gesture — and the
+ * full set comes back so the chips can be redrawn without a second request.
  */
-export async function toggleLike({ userId, targetType, targetId }) {
+export async function toggleReaction({ userId, targetType, targetId, emoji }) {
+  if (!REACTIONS.includes(emoji)) {
+    throw Object.assign(new Error('That is not one of the reactions.'), { status: 400 });
+  }
   const existing = await one(
-    'SELECT 1 FROM discussion_likes WHERE user_id=$1 AND target_type=$2 AND target_id=$3',
-    [userId, targetType, targetId],
+    'SELECT 1 FROM discussion_likes WHERE user_id=$1 AND target_type=$2 AND target_id=$3 AND emoji=$4',
+    [userId, targetType, targetId, emoji],
   );
   if (existing) {
-    await query('DELETE FROM discussion_likes WHERE user_id=$1 AND target_type=$2 AND target_id=$3',
-      [userId, targetType, targetId]);
+    await query('DELETE FROM discussion_likes WHERE user_id=$1 AND target_type=$2 AND target_id=$3 AND emoji=$4',
+      [userId, targetType, targetId, emoji]);
   } else {
     await query(
-      `INSERT INTO discussion_likes(user_id,target_type,target_id) VALUES ($1,$2,$3)
+      `INSERT INTO discussion_likes(user_id,target_type,target_id,emoji) VALUES ($1,$2,$3,$4)
        ON CONFLICT DO NOTHING`,
-      [userId, targetType, targetId],
+      [userId, targetType, targetId, emoji],
     );
   }
-  const count = await one(
-    'SELECT count(*)::int count FROM discussion_likes WHERE target_type=$1 AND target_id=$2',
-    [targetType, targetId],
+  return { reactions: await reactionsOf({ targetType, targetId, viewerId: userId }) };
+}
+
+export async function reactionsOf({ targetType, targetId, viewerId }) {
+  const result = await query(
+    `SELECT emoji, count(*)::int count, bool_or(user_id=$3) mine
+     FROM discussion_likes WHERE target_type=$1 AND target_id=$2
+     GROUP BY emoji ORDER BY count DESC, emoji`,
+    [targetType, targetId, viewerId],
   );
-  return { liked: !existing, likeCount: count.count };
+  return result.rows;
 }
 
 /**

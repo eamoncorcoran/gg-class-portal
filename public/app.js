@@ -68,6 +68,7 @@ const svg = {
   heart: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 7.694c-1.4-1.6-3.2-2.2-4.9-1.7-2.4.7-3.6 3.3-2.8 5.7.9 2.9 4.4 5.6 7.7 7.6 3.3-2 6.8-4.7 7.7-7.6.8-2.4-.4-5-2.8-5.7-1.7-.5-3.5.1-4.9 1.7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   comment: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 10.5h8M8 14h5m-6.2 6L9.3 22.5c.25.25.38.38.52.43a.7.7 0 0 0 .43 0c.15-.05.27-.18.52-.43L13 20h2.2c1.68 0 2.52 0 3.16-.33a3 3 0 0 0 1.31-1.31C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.33-3.16a3 3 0 0 0-1.31-1.31C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 0 0-1.31 1.31C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.33 3.16a3 3 0 0 0 1.31 1.31C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   gif: `<svg viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10.2 10.2a2.4 2.4 0 1 0 .3 3.4v-1.2H9.3M13.9 9.6v4.8M20 9.6h-2.9v4.8m0-2.7h2.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  smile: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.3" stroke="currentColor" stroke-width="2"/><path d="M8.4 14.2a4.4 4.4 0 0 0 7.2 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="10" r="1.15" fill="currentColor"/><circle cx="15" cy="10" r="1.15" fill="currentColor"/></svg>`,
   play: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="2"/><path d="M10 8.6v6.8l5.5-3.4L10 8.6Z" fill="currentColor"/></svg>`,
   camera2: `<svg viewBox="0 0 24 24" fill="none"><path d="M3 9.5A2.5 2.5 0 0 1 5.5 7h1.2c.5 0 .95-.28 1.17-.72l.66-1.31A1.5 1.5 0 0 1 9.87 4h4.26c.57 0 1.09.32 1.34.83l.66 1.31c.22.44.68.86 1.17.86h1.2A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-7Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="2"/></svg>`,
 };
@@ -1910,6 +1911,34 @@ function bindCheckins() {
 
 const AVATAR_COLOURS = ['#3f922c', '#1570ef', '#dc6803', '#6938ef', '#e04f16', '#0086c9', '#ba24d5'];
 
+/* Must match REACTIONS in src/community.js — the server rejects anything else. */
+const REACTIONS = ['👍', '❤️', '🎉', '😂', '😮', '🙏', '💪', '🤔'];
+
+/* The reactions already on something, plus the button that adds another. A
+   reaction nobody has used yet is not shown: a row of eight grey zeroes reads as
+   a chore, and the same row with two live counts on it reads as a room. */
+function reactionRow(type, id, reactions = [], size = '') {
+  const chips = (reactions || []).map((row) => `
+    <button class="rx ${row.mine ? 'on' : ''} ${size}" data-react="${type}" data-id="${id}" data-emoji="${row.emoji}"
+      aria-pressed="${Boolean(row.mine)}" title="${row.count} ${row.count === 1 ? 'person' : 'people'}">
+      <span>${row.emoji}</span><b>${row.count}</b>
+    </button>`).join('');
+  return `<span class="rx-row" data-rx-for="${type}:${id}">
+    ${chips}
+    <button class="rx add ${size}" data-react-open="${type}" data-id="${id}" aria-label="Add a reaction">${svg.smile}</button>
+  </span>`;
+}
+
+/* Redraws one reaction row in place. Re-rendering the feed would lose the
+   reader's scroll position for the sake of a single count. */
+function applyReactions(type, id, reactions) {
+  document.querySelectorAll(`[data-rx-for="${type}:${id}"]`).forEach((row) => {
+    row.outerHTML = reactionRow(type, id, reactions, row.classList.contains('sm') ? 'sm' : '');
+  });
+  bindReactions(document);
+  if (modalRoot) bindReactions(modalRoot);
+}
+
 /* Somebody with a photograph gets their photograph. Somebody without gets
    initials on a colour derived from their name, so the same person is the same
    colour on every screen and every load. */
@@ -1957,11 +1986,28 @@ function scheduledFor(value) {
 const boardApi = () => (state.user.role === 'admin' ? '/api/admin' : '/api/student');
 const isAdmin = () => state.user.role === 'admin';
 
-/* A Loom share link becomes an embed link. Anything that is not recognisably a
-   Loom URL is refused rather than dropped into an iframe. */
-function loomEmbedUrl(url) {
-  const match = String(url || '').match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
-  return match ? `https://www.loom.com/embed/${match[1]}` : null;
+/* Mirrors src/videolinks.js. Anything not recognisably one of these two is
+   refused rather than dropped into an iframe. */
+const VIDEO_PATTERNS = [
+  ['loom', /loom\.com\/(?:share|embed)\/([a-zA-Z0-9]{8,})/i],
+  ['youtube', /youtube\.com\/watch\?(?:[^\s]*&)?v=([a-zA-Z0-9_-]{6,})/i],
+  ['youtube', /youtu\.be\/([a-zA-Z0-9_-]{6,})/i],
+  ['youtube', /youtube\.com\/shorts\/([a-zA-Z0-9_-]{6,})/i],
+  ['youtube', /youtube\.com\/live\/([a-zA-Z0-9_-]{6,})/i],
+];
+
+function videoEmbed(url) {
+  for (const [kind, pattern] of VIDEO_PATTERNS) {
+    const match = String(url || '').match(pattern);
+    if (!match) continue;
+    return {
+      kind,
+      src: kind === 'loom'
+        ? `https://www.loom.com/embed/${match[1]}`
+        : `https://www.youtube-nocookie.com/embed/${match[1]}`,
+    };
+  }
+  return null;
 }
 
 async function reloadBoard() {
@@ -2053,7 +2099,8 @@ function openComposer({ restore = false } = {}) {
       </header>
 
       <input name="title" id="composer-title" placeholder="Title" autocomplete="off" required value="${escapeHtml(draft?.title || '')}">
-      <textarea id="composer-body" name="body" rows="6" placeholder="Write something…" required>${escapeHtml(draft?.body || '')}</textarea>
+      <textarea id="composer-body" name="body" rows="6" placeholder="Write something… paste a YouTube or Loom link and it will play here" required>${escapeHtml(draft?.body || '')}</textarea>
+      <div id="video-preview" class="hidden"></div>
       <div id="draft-attachments" class="chip-row hidden"></div>
 
       ${admin ? `<details class="schedule-block" ${draft?.when ? 'open' : ''}>
@@ -2068,7 +2115,6 @@ function openComposer({ restore = false } = {}) {
       <footer class="cw-foot">
         <div class="composer-tools">
           ${admin ? tool('attach-pdf', svg.note, 'Attach a PDF') : ''}
-          ${tool('attach-loom', svg.video, 'Add a Loom video')}
           ${tool('attach-gif', svg.gif, 'Add a GIF')}
           ${admin ? `<button type="button" class="tool" id="attach-dictate" title="Dictate" aria-label="Dictate">${svg.mic}</button>` : ''}
           <input type="file" id="pdf-input" accept="application/pdf" class="hidden">
@@ -2102,19 +2148,34 @@ function openComposer({ restore = false } = {}) {
       // one consistent row of icons; this button drives it.
       document.getElementById('attach-dictate')?.addEventListener('click', () =>
         document.querySelector('#dictate-slot .dictate-btn')?.click());
-      document.getElementById('attach-loom')?.addEventListener('click', promptForLoom);
+      const bodyField = document.getElementById('composer-body');
+      bodyField.addEventListener('input', debounce(showVideoPreview, 250));
+      bodyField.addEventListener('paste', () => setTimeout(showVideoPreview, 30));
+      showVideoPreview();
       document.getElementById('attach-gif')?.addEventListener('click', () => { captureComposer(); openGifPicker(); });
       document.getElementById('save-thread').addEventListener('click', submitComposer);
     },
   });
 }
 
-async function promptForLoom() {
-  const url = window.prompt('Paste the Loom share link');
-  if (!url) return;
-  if (!loomEmbedUrl(url)) return showToast('That does not look like a Loom link.', 'error');
-  draftAttachments.push({ kind: 'loom', url: url.trim() });
-  renderDraftAttachments();
+/* What the pasted link will turn into, shown while it is still being written.
+   The server does the real extraction on submit; this only has to agree with it
+   about what counts as a video. */
+function showVideoPreview() {
+  const holder = document.getElementById('video-preview');
+  if (!holder) return;
+  const text = document.getElementById('composer-body')?.value || '';
+  const found = [];
+  for (const word of text.split(/\s+/)) {
+    const video = videoEmbed(word);
+    if (video && !found.some((item) => item.src === video.src)) found.push(video);
+    if (found.length >= 3) break;
+  }
+  holder.innerHTML = found.map((video) => `<div class="att-video"><iframe src="${escapeHtml(video.src)}"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allowfullscreen title="${video.kind === 'loom' ? 'Loom video' : 'YouTube video'}"></iframe></div>`).join('');
+  holder.classList.toggle('hidden', !found.length);
 }
 
 async function submitComposer() {
@@ -2200,12 +2261,20 @@ function attachmentsPreview(items = [], full = false) {
   if (!items.length) return '';
   return `<div class="att">${items.map((item) => {
     if (item.kind === 'gif') return `<img class="att-gif" src="${escapeHtml(item.url)}" alt="GIF" loading="lazy">`;
-    if (item.kind === 'loom') {
-      const embed = loomEmbedUrl(item.url);
-      if (!embed) return '';
-      return full
-        ? `<div class="att-video"><iframe src="${escapeHtml(embed)}" allowfullscreen title="Loom video"></iframe></div>`
-        : `<a class="att-strip" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${svg.play}<span>Watch the Loom video</span></a>`;
+    if (item.kind === 'loom' || item.kind === 'youtube') {
+      const video = videoEmbed(item.url);
+      if (!video) return '';
+      const label = video.kind === 'loom' ? 'Loom video' : 'YouTube video';
+      /* Players are embedded everywhere, in the feed as well as inside a post.
+         A strip saying "watch this elsewhere" is a worse version of the thing
+         it is standing in for. */
+      /* The attribute set YouTube's own embed code ships with. Without the
+         referrer policy some browsers send no referrer at all and YouTube
+         answers with a player configuration error rather than the video. */
+      return `<div class="att-video"><iframe src="${escapeHtml(video.src)}"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen loading="lazy" title="${label}"></iframe></div>`;
     }
     return `<a class="att-strip" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
       ${svg.note}<span>${escapeHtml(item.fileName || 'PDF')}</span><em>PDF</em></a>`;
@@ -2214,7 +2283,6 @@ function attachmentsPreview(items = [], full = false) {
 
 function feedPost(thread, admin) {
   const comments = thread.comment_count || 0;
-  const likes = thread.like_count || 0;
   const body = String(thread.body || '');
   const clipped = body.length > 300;
   return `<article class="post ${thread.deleted_at ? 'is-removed' : ''} ${thread.scheduled ? 'is-scheduled' : ''}" data-open-thread="${thread.id}">
@@ -2235,9 +2303,7 @@ function feedPost(thread, admin) {
     <p class="post-body">${escapeHtml(body.slice(0, 300))}${clipped ? '…' : ''}</p>
     ${attachmentsPreview(thread.attachments)}
     <footer class="post-foot">
-      <button class="act ${thread.liked ? 'on' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
-        ${svg.heart}<span>${likes || ''}</span>
-      </button>
+      ${reactionRow('thread', thread.id, thread.reactions)}
       <button class="act flat">${svg.comment}<span>${comments || ''}</span></button>
       ${thread.last_comment
         ? `<span class="post-last">
@@ -2375,9 +2441,7 @@ function feedComment(comment, admin) {
       ${removed
         ? '<p class="cmt-gone">This comment was removed.</p>'
         : `<div class="cmt-text">${escapeHtml(comment.body).replace(/\n/g, '<br>')}</div>
-           <button class="act sm ${comment.liked ? 'on' : ''}" data-like="post" data-id="${comment.id}" aria-pressed="${Boolean(comment.liked)}">
-             ${svg.heart}<span>${comment.like_count || ''}</span>
-           </button>`}
+           ${reactionRow('post', comment.id, comment.reactions, 'sm')}`}
     </div>
   </article>`;
 }
@@ -2410,9 +2474,7 @@ function renderThreadDrawer() {
         </div>
         <div class="cmt-text">${escapeHtml(String(thread.body || '')).replace(/\n/g, '<br>')}</div>
         ${attachmentsPreview(thread.attachments, true)}
-        <button class="act ${thread.liked ? 'on' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
-          ${svg.heart}<span>${thread.like_count || ''}</span>
-        </button>
+        ${reactionRow('thread', thread.id, thread.reactions)}
       </article>
       <h4 class="cmt-count">${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}</h4>
       <div class="cmts">${comments.map((comment) => feedComment(comment, admin)).join('') || '<p class="side-empty">No comments yet.</p>'}</div>
@@ -2426,7 +2488,7 @@ function renderThreadDrawer() {
       </div>` : `<p class="side-empty">${withdrawn ? 'You have withdrawn from this course, so posting is closed.' : 'This post has been closed to new comments.'}</p>`}`,
     onOpen() {
       bindDictation();
-      bindFeedLikes(modalRoot);
+      bindReactions(modalRoot);
       document.getElementById('send-reply')?.addEventListener('click', async () => {
         const body = document.getElementById('reply-body').value.trim();
         if (!body) return showToast('Write a comment before sending.', 'error');
@@ -2485,20 +2547,56 @@ function openScheduleModal(thread) {
   });
 }
 
-/* Likes update the one button that was pressed. A feed that jumps back to the
-   top every time somebody likes a post is a feed people stop liking posts in. */
-function bindFeedLikes(root = document) {
-  root.querySelectorAll('[data-like]').forEach((button) => button.addEventListener('click', async (event) => {
+/* Reactions update the one row that was touched. A feed that jumps back to the
+   top every time somebody reacts is a feed people stop reacting on. */
+async function react(type, id, emoji) {
+  let result;
+  try { result = await api(`${boardApi()}/community/react/${type}/${id}`, { method: 'POST', body: { emoji } }); }
+  catch (error) { return showToast(error.message, 'error'); }
+  applyReactions(type, id, result.reactions);
+  if (state.communityThread?.id === id) state.communityThread.reactions = result.reactions;
+}
+
+function bindReactions(root = document) {
+  root.querySelectorAll('[data-react]').forEach((button) => {
+    if (button.dataset.bound) return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      react(button.dataset.react, button.dataset.id, button.dataset.emoji);
+    });
+  });
+  root.querySelectorAll('[data-react-open]').forEach((button) => {
+    if (button.dataset.bound) return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openReactionPicker(button, button.dataset.reactOpen, button.dataset.id);
+    });
+  });
+}
+
+/* A small row of emoji anchored to the button that opened it. Closes on the next
+   click anywhere, which is what people expect of something this light. */
+function openReactionPicker(anchor, type, id) {
+  document.querySelector('.rx-pop')?.remove();
+  const pop = document.createElement('div');
+  pop.className = 'rx-pop';
+  pop.innerHTML = REACTIONS.map((emoji) => `<button data-pick="${emoji}">${emoji}</button>`).join('');
+  document.body.append(pop);
+
+  const box = anchor.getBoundingClientRect();
+  const width = pop.offsetWidth;
+  // Kept on screen: near the button, but never hanging off either edge.
+  pop.style.left = `${Math.min(Math.max(8, box.left), window.innerWidth - width - 8)}px`;
+  pop.style.top = box.top > 260 ? `${box.top - pop.offsetHeight - 8}px` : `${box.bottom + 8}px`;
+
+  pop.querySelectorAll('[data-pick]').forEach((button) => button.addEventListener('click', (event) => {
     event.stopPropagation();
-    const { like: type, id } = button.dataset;
-    let result;
-    try { result = await api(`${boardApi()}/community/like/${type}/${id}`, { method: 'POST' }); }
-    catch (error) { return showToast(error.message, 'error'); }
-    button.classList.toggle('on', result.liked);
-    button.setAttribute('aria-pressed', String(result.liked));
-    button.querySelector('span').textContent = result.likeCount || '';
-    if (state.communityThread?.id === id) state.communityThread.liked = result.liked;
+    pop.remove();
+    react(type, id, button.dataset.pick);
   }));
+  setTimeout(() => document.addEventListener('click', () => pop.remove(), { once: true }), 0);
 }
 
 async function updateThread(threadId, body) {
@@ -2557,10 +2655,10 @@ function bindFeed() {
   document.querySelectorAll('[data-open-thread]').forEach((card) => card.addEventListener('click', (event) => {
     // The like button and any attachment link live inside the card, so neither
     // should also open it.
-    if (event.target.closest('[data-like]') || event.target.closest('a')) return;
+    if (event.target.closest('.rx-row') || event.target.closest('a')) return;
     openThread(card.dataset.openThread);
   }));
-  bindFeedLikes(document);
+  bindReactions(document);
 }
 
 /* The weekly class link. Lives on the class rather than on each week, because a

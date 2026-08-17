@@ -110,15 +110,17 @@
       { id:'at3', thread_id:'t6', kind:'loom', url:'https://www.loom.com/share/preview1234', position:0 },
     ];
 
+    /* A spread rather than one emoji repeated: the point of the row is that it
+       carries different meanings. */
     const likes = [
-      { user_id:'s1', target_type:'thread', target_id:'t1' }, { user_id:'s2', target_type:'thread', target_id:'t1' },
-      { user_id:'s4', target_type:'thread', target_id:'t1' },
-      { user_id:'s1', target_type:'thread', target_id:'t5' }, { user_id:'s2', target_type:'thread', target_id:'t5' },
-      { user_id:'s3', target_type:'thread', target_id:'t5' }, { user_id:'s4', target_type:'thread', target_id:'t5' },
-      { user_id:'admin1', target_type:'thread', target_id:'t5' },
-      { user_id:'s5', target_type:'thread', target_id:'t2' }, { user_id:'admin1', target_type:'thread', target_id:'t6' },
-      { user_id:'s2', target_type:'post', target_id:'p2' }, { user_id:'s4', target_type:'post', target_id:'p2' },
-      { user_id:'s1', target_type:'post', target_id:'p2' },
+      { user_id:'s1', target_type:'thread', target_id:'t1', emoji:'👍' }, { user_id:'s2', target_type:'thread', target_id:'t1', emoji:'👍' },
+      { user_id:'s4', target_type:'thread', target_id:'t1', emoji:'🙏' },
+      { user_id:'s1', target_type:'thread', target_id:'t5', emoji:'🎉' }, { user_id:'s2', target_type:'thread', target_id:'t5', emoji:'🎉' },
+      { user_id:'s3', target_type:'thread', target_id:'t5', emoji:'🎉' }, { user_id:'s4', target_type:'thread', target_id:'t5', emoji:'💪' },
+      { user_id:'admin1', target_type:'thread', target_id:'t5', emoji:'💪' },
+      { user_id:'s5', target_type:'thread', target_id:'t2', emoji:'🤔' }, { user_id:'admin1', target_type:'thread', target_id:'t6', emoji:'❤️' },
+      { user_id:'s2', target_type:'post', target_id:'p2', emoji:'👍' }, { user_id:'s4', target_type:'post', target_id:'p2', emoji:'👍' },
+      { user_id:'s1', target_type:'post', target_id:'p2', emoji:'🙏' },
     ];
 
     const posts = [
@@ -333,8 +335,19 @@
     const ageHours=(PREVIEW_NOW-new RealDate(lastActivity).getTime())/3600000;
     return comments/Math.pow(2,ageHours/36);
   }
-  function likeCount(type,id){return (db.likes||[]).filter((row)=>row.target_type===type&&row.target_id===id).length;}
-  function likedBy(type,id,userId){return (db.likes||[]).some((row)=>row.target_type===type&&row.target_id===id&&row.user_id===userId);}
+  const PREVIEW_REACTIONS=['👍','❤️','🎉','😂','😮','🙏','💪','🤔'];
+  /* Grouped the way src/community.js groups them: one row per emoji, with a flag
+     for whether this viewer is in it. */
+  function reactionsOf(type,id,viewerId){
+    const grouped=new Map();
+    (db.likes||[]).filter((row)=>row.target_type===type&&row.target_id===id).forEach((row)=>{
+      const emoji=row.emoji||'❤️';
+      const entry=grouped.get(emoji)||{emoji,count:0,mine:false};
+      entry.count+=1; if(row.user_id===viewerId) entry.mine=true;
+      grouped.set(emoji,entry);
+    });
+    return [...grouped.values()].sort((a,b)=>b.count-a.count||(a.emoji<b.emoji?-1:1));
+  }
   function categoryName(id){return (db.categories||[]).find((row)=>row.id===id)?.name||null;}
   function categoryRows(classId){
     return (db.categories||[]).filter((row)=>row.class_id===classId)
@@ -351,7 +364,7 @@
         return {...row,author:authorOf(row.author_id),category_name:categoryName(row.category_id),
           attachments:attachmentsOf(row.id),
           scheduled:new RealDate(row.published_at||row.created_at).getTime()>PREVIEW_NOW,
-          comment_count:replies.length,like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),
+          comment_count:replies.length,reactions:reactionsOf('thread',row.id,viewerId),
           last_comment:last?{...(authorOf(last.author_id)||{name:'Removed account'}),at:last.created_at}:null};
       });
     return rows.sort((a,b)=>(Number(b.pinned)-Number(a.pinned))
@@ -364,12 +377,12 @@
     if(!row)return null;
     const comments=(db.posts||[]).filter((post)=>post.thread_id===id&&(includeDeleted||!post.deleted_at))
       .map((post)=>({...post,author:authorOf(post.author_id),
-        like_count:likeCount('post',post.id),liked:likedBy('post',post.id,viewerId)}));
+        reactions:reactionsOf('post',post.id,viewerId)}));
     return {...row,author:authorOf(row.author_id),category_name:categoryName(row.category_id),
       attachments:attachmentsOf(row.id),
       scheduled:new RealDate(row.published_at||row.created_at).getTime()>PREVIEW_NOW,
       comment_count:comments.filter((c)=>!c.deleted_at).length,
-      like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),comments};
+      reactions:reactionsOf('thread',row.id,viewerId),comments};
   }
   /* Counts what people wrote, not the likes they collected, exactly as
      topContributors does on the server. */
@@ -401,15 +414,17 @@
       file_name:item.fileName||null,mime_type:item.mimeType||null,size_bytes:item.sizeBytes||0,position:index}));
     save();return row;
   }
-  /* Idempotent both ways, like the server's toggleLike: a double tap on a phone
-     is one gesture, not two likes. */
-  function toggleLikeRow(userId,type,targetId){
+  /* Idempotent both ways, like the server's toggleReaction: a double tap on a
+     phone is one gesture, not two reactions. */
+  function toggleReactionRow(userId,type,targetId,emoji){
     const target=type==='post'?'post':'thread';
-    const existing=(db.likes||[]).find((row)=>row.user_id===userId&&row.target_type===target&&row.target_id===targetId);
+    if(!PREVIEW_REACTIONS.includes(emoji)) return {error:'That is not one of the reactions.'};
+    const existing=(db.likes||[]).find((row)=>row.user_id===userId&&row.target_type===target
+      &&row.target_id===targetId&&(row.emoji||'❤️')===emoji);
     if(existing) db.likes=db.likes.filter((row)=>row!==existing);
-    else db.likes.push({user_id:userId,target_type:target,target_id:targetId});
+    else db.likes.push({user_id:userId,target_type:target,target_id:targetId,emoji});
     save();
-    return {liked:!existing,likeCount:likeCount(target,targetId)};
+    return {reactions:reactionsOf(target,targetId,userId)};
   }
   function newReply(threadId,authorId,body){
     const now=new RealDate(PREVIEW_NOW).toISOString();
@@ -981,8 +996,11 @@
       return json({kind:'file',url:file?URL.createObjectURL(file):'#',storedName:'preview',
         fileName:file?file.name:'Attachment.pdf',mimeType:'application/pdf',sizeBytes:file?file.size:0},201);
     }
-    params=match(path,'/api/admin/community/like/:type/:id');
-    if(params&&method==='POST') return json(toggleLikeRow(user.id,params.type,params.id));
+    params=match(path,'/api/admin/community/react/:type/:id');
+    if(params&&method==='POST'){
+      const result=toggleReactionRow(user.id,params.type,params.id,body.emoji);
+      return result.error?error(result.error,400):json(result);
+    }
     params=match(path,'/api/admin/community/:classId/categories');
     if(params&&method==='GET') return json(categoryRows(params.classId));
     if(params&&method==='POST'){
@@ -1026,8 +1044,11 @@
       const student=previewStudent(user);
       return json({...boardPayload(student.class_id,false,student.id,url,false),unread:previewUnread(student)});
     }
-    params=match(path,'/api/student/community/like/:type/:id');
-    if(params&&method==='POST') return json(toggleLikeRow(previewStudent(user).id,params.type,params.id));
+    params=match(path,'/api/student/community/react/:type/:id');
+    if(params&&method==='POST'){
+      const result=toggleReactionRow(previewStudent(user).id,params.type,params.id,body.emoji);
+      return result.error?error(result.error,400):json(result);
+    }
     if(path==='/api/student/community/read'&&method==='POST'){
       const student=previewStudent(user);
       updateOrInsert(db.reads,(item)=>item.user_id===student.id&&item.class_id===student.class_id,

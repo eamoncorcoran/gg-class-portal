@@ -43,7 +43,10 @@ app.use(helmet({
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       fontSrc: ["'self'", 'data:'],
       connectSrc: ["'self'"],
-      frameSrc: ["'self'", 'https://www.loom.com', 'https://loom.com'],
+      // Video players only. nocookie for YouTube so a class board is not
+      // setting advertising cookies on students.
+      frameSrc: ["'self'", 'https://www.loom.com', 'https://loom.com',
+        'https://www.youtube-nocookie.com', 'https://www.youtube.com'],
       mediaSrc: ["'self'", 'blob:', 'https:'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],

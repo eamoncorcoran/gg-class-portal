@@ -13,7 +13,8 @@ import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
 import { nextClassAt, joinLinkFor } from '../classtime.js';
 import { listThreads, getThread, createThread, createPost, unreadCount, markRead,
-  listCategories, toggleLike, topContributors } from '../community.js';
+  listCategories, toggleReaction, topContributors, REACTIONS } from '../community.js';
+import { extractVideoLinks } from '../videolinks.js';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -630,10 +631,10 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
     title: z.string().trim().min(2).max(200),
     body: z.string().trim().min(1).max(20000),
     categoryId: z.string().uuid().nullable().optional(),
-    /* A Loom link or a GIF, but never a file upload. Nothing a student sends
-       here reaches the disk. */
+    /* A GIF, but never a file upload — nothing a student sends here reaches the
+       disk. Videos arrive as links in the body rather than through this. */
     attachments: z.array(z.object({
-      kind: z.enum(['loom', 'gif']),
+      kind: z.literal('gif'),
       url: z.string().url(),
     })).max(4).optional().default([]),
   }).safeParse(req.body);
@@ -643,20 +644,24 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
   const category = parsed.data.categoryId
     ? await one('SELECT id FROM discussion_categories WHERE id=$1 AND class_id=$2', [parsed.data.categoryId, klass.id])
     : null;
+  const video = extractVideoLinks(parsed.data.body);
   const row = await createThread({
     classId: klass.id, authorId: req.user.id,
-    title: parsed.data.title, body: parsed.data.body, categoryId: category?.id || null,
-    attachments: parsed.data.attachments,
+    title: parsed.data.title, body: video.body || parsed.data.body,
+    categoryId: category?.id || null,
+    attachments: [...parsed.data.attachments, ...video.attachments],
   });
   await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
   res.status(201).json(row);
 }));
 
-/* Liking. Scoped to this student's own class the same way everything else is:
+/* Reacting. Scoped to this student's own class the same way everything else is:
    the target has to belong to a thread on their board or it does not exist. */
-router.post('/community/like/:type/:id', asyncRoute(async (req, res) => {
+router.post('/community/react/:type/:id', asyncRoute(async (req, res) => {
   const klass = await boardClass(req, res);
   if (!klass) return;
+  const parsed = z.object({ emoji: z.enum(REACTIONS) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'That is not one of the reactions.' });
   const type = req.params.type === 'post' ? 'post' : 'thread';
   const owned = type === 'thread'
     ? await one('SELECT 1 FROM discussion_threads WHERE id=$1 AND class_id=$2 AND deleted_at IS NULL', [req.params.id, klass.id])
@@ -666,7 +671,7 @@ router.post('/community/like/:type/:id', asyncRoute(async (req, res) => {
         [req.params.id, klass.id],
       );
   if (!owned) return res.status(404).json({ error: 'Not found.' });
-  res.json(await toggleLike({ userId: req.user.id, targetType: type, targetId: req.params.id }));
+  res.json(await toggleReaction({ userId: req.user.id, targetType: type, targetId: req.params.id, emoji: parsed.data.emoji }));
 }));
 
 router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {

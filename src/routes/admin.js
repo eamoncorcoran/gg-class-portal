@@ -18,7 +18,8 @@ import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
 import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
-import { listThreads, getThread, createThread, createPost, listCategories, toggleLike, topContributors } from '../community.js';
+import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS } from '../community.js';
+import { extractVideoLinks } from '../videolinks.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -1181,7 +1182,7 @@ router.get('/community/thread/:id', asyncRoute(async (req, res) => {
 /* Attachments a post can carry. Files are uploaded here first and referenced by
    the post that follows, so a half-written post never leaves an orphan row. */
 const attachmentInput = z.object({
-  kind: z.enum(['file', 'loom', 'gif']),
+  kind: z.enum(['file', 'loom', 'gif', 'youtube']),
   url: z.string().url(),
   storedName: z.string().max(200).nullable().optional(),
   fileName: z.string().max(200).nullable().optional(),
@@ -1205,11 +1206,15 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
   const category = parsed.data.categoryId
     ? await one('SELECT id FROM discussion_categories WHERE id=$1 AND class_id=$2', [parsed.data.categoryId, klass.id])
     : null;
+  /* Any Loom or YouTube link in the body becomes a player and leaves the text,
+     so nobody has to find a separate field for it. */
+  const video = extractVideoLinks(parsed.data.body);
   const row = await createThread({
     classId: klass.id, authorId: req.user.id,
-    title: parsed.data.title, body: parsed.data.body, categoryId: category?.id || null,
+    title: parsed.data.title, body: video.body || parsed.data.body,
+    categoryId: category?.id || null,
     publishedAt: parsed.data.publishedAt || null,
-    attachments: parsed.data.attachments,
+    attachments: [...parsed.data.attachments, ...video.attachments],
   });
   if (parsed.data.pinned) await query('UPDATE discussion_threads SET pinned=true WHERE id=$1', [row.id]);
   await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, metadata: { scheduled: Boolean(parsed.data.publishedAt) }, ip: req.ip });
@@ -1253,9 +1258,11 @@ router.post('/community/attachments', diskUpload.single('file'), asyncRoute(asyn
   });
 }));
 
-router.post('/community/like/:type/:id', asyncRoute(async (req, res) => {
+router.post('/community/react/:type/:id', asyncRoute(async (req, res) => {
+  const parsed = z.object({ emoji: z.enum(REACTIONS) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'That is not one of the reactions.' });
   const type = req.params.type === 'post' ? 'post' : 'thread';
-  res.json(await toggleLike({ userId: req.user.id, targetType: type, targetId: req.params.id }));
+  res.json(await toggleReaction({ userId: req.user.id, targetType: type, targetId: req.params.id, emoji: parsed.data.emoji }));
 }));
 
 /* Categories. Kept editable because the useful set for a Leaving Certificate

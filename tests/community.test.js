@@ -119,48 +119,66 @@ test('membership decides who can see a class board', dbTest, async () => {
   }
 });
 
-test('a like toggles both ways and never counts twice', dbTest, async () => {
-  const { createThread, toggleLike, getThread } = await import('../src/community.js');
+test('a reaction toggles both ways and never counts twice', dbTest, async () => {
+  const { createThread, toggleReaction, getThread } = await import('../src/community.js');
   const { klass, teacher, student, cleanup } = await fixture();
   try {
-    const thread = await createThread({ classId: klass.id, authorId: teacher.id, title: 'Like me', body: '.' });
+    const thread = await createThread({ classId: klass.id, authorId: teacher.id, title: 'React to me', body: '.' });
+    const react = (userId, emoji) => toggleReaction({ userId, targetType: 'thread', targetId: thread.id, emoji });
 
-    let result = await toggleLike({ userId: student.id, targetType: 'thread', targetId: thread.id });
-    assert.deepEqual(result, { liked: true, likeCount: 1 });
+    let result = await react(student.id, '👍');
+    assert.deepEqual(result.reactions, [{ emoji: '👍', count: 1, mine: true }]);
 
-    result = await toggleLike({ userId: student.id, targetType: 'thread', targetId: thread.id });
-    assert.deepEqual(result, { liked: false, likeCount: 0 });
+    result = await react(student.id, '👍');
+    assert.deepEqual(result.reactions, []);
 
-    // Two different people, two likes.
-    await toggleLike({ userId: student.id, targetType: 'thread', targetId: thread.id });
-    result = await toggleLike({ userId: teacher.id, targetType: 'thread', targetId: thread.id });
-    assert.equal(result.likeCount, 2);
+    // One person may hold several different reactions at once.
+    await react(student.id, '👍');
+    result = await react(student.id, '🎉');
+    assert.equal(result.reactions.length, 2);
 
-    // The viewer's own like state is what the button reads from.
+    // Two people on the same emoji is one chip counting two.
+    await react(teacher.id, '👍');
     const asStudent = await getThread({ threadId: thread.id, viewerId: student.id });
-    assert.equal(asStudent.liked, true);
-    assert.equal(asStudent.like_count, 2);
+    const thumbs = asStudent.reactions.find((row) => row.emoji === '👍');
+    assert.equal(thumbs.count, 2);
+    assert.equal(thumbs.mine, true);
+
+    // And `mine` is per viewer, which is what the chip highlights from.
+    const asOutsider = await getThread({ threadId: thread.id, viewerId: teacher.id });
+    assert.equal(asOutsider.reactions.find((row) => row.emoji === '🎉').mine, false);
   } finally { await cleanup(); }
 });
 
-test('comments carry their own likes', dbTest, async () => {
-  const { createThread, createPost, toggleLike, getThread } = await import('../src/community.js');
+test('only the known reactions are accepted', dbTest, async () => {
+  const { createThread, toggleReaction } = await import('../src/community.js');
+  const { klass, teacher, cleanup } = await fixture();
+  try {
+    const thread = await createThread({ classId: klass.id, authorId: teacher.id, title: 'Guarded', body: '.' });
+    await assert.rejects(
+      () => toggleReaction({ userId: teacher.id, targetType: 'thread', targetId: thread.id, emoji: '🍆' }),
+      /not one of the reactions/,
+    );
+  } finally { await cleanup(); }
+});
+
+test('comments carry their own reactions', dbTest, async () => {
+  const { createThread, createPost, toggleReaction, getThread } = await import('../src/community.js');
   const { klass, teacher, student, cleanup } = await fixture();
   try {
-    const thread = await createThread({ classId: klass.id, authorId: teacher.id, title: 'Q', body: '.' });
+    const thread = await createThread({ classId: klass.id, authorId: teacher.id, title: 'Question', body: '.' });
     const comment = await createPost({ threadId: thread.id, authorId: teacher.id, body: 'An answer' });
-    await toggleLike({ userId: student.id, targetType: 'post', targetId: comment.id });
+    await toggleReaction({ userId: student.id, targetType: 'post', targetId: comment.id, emoji: '🙏' });
 
-    const seen = await getThread({ threadId: thread.id, viewerId: student.id });
-    assert.equal(seen.comments[0].like_count, 1);
-    assert.equal(seen.comments[0].liked, true);
-    // Liking a comment must not add to the post it sits under.
-    assert.equal(seen.like_count, 0);
+    const row = await getThread({ threadId: thread.id, viewerId: student.id });
+    assert.deepEqual(row.comments[0].reactions, [{ emoji: '🙏', count: 1, mine: true }]);
+    // Reacting to a comment must not put anything on the post above it.
+    assert.deepEqual(row.reactions, []);
   } finally { await cleanup(); }
 });
 
-test('the feed filters by category and sorts by likes on request', dbTest, async () => {
-  const { createThread, listThreads, toggleLike } = await import('../src/community.js');
+test('the feed filters by category', dbTest, async () => {
+  const { createThread, listThreads, toggleReaction } = await import('../src/community.js');
   const { one } = await import('../src/db.js');
   const { klass, teacher, student, cleanup } = await fixture();
   try {
@@ -170,7 +188,7 @@ test('the feed filters by category and sorts by likes on request', dbTest, async
     const popular = await createThread({
       classId: klass.id, authorId: teacher.id, title: 'Popular', body: '.', categoryId: questions.id,
     });
-    await toggleLike({ userId: student.id, targetType: 'thread', targetId: popular.id });
+    await toggleReaction({ userId: student.id, targetType: 'thread', targetId: popular.id, emoji: '👍' });
 
     const filtered = await listThreads({ classId: klass.id, viewerId: student.id, categoryId: questions.id });
     assert.deepEqual(filtered.map((row) => row.title), ['Popular']);
@@ -180,22 +198,22 @@ test('the feed filters by category and sorts by likes on request', dbTest, async
     const byNew = await listThreads({ classId: klass.id, viewerId: student.id });
     assert.deepEqual(byNew.map((row) => row.title), ['Popular', 'Quiet']);
 
-    const byTop = await listThreads({ classId: klass.id, viewerId: student.id, sort: 'top' });
-    assert.equal(byTop[0].title, 'Popular');
-    assert.equal(byTop[0].like_count, 1);
+    // Reactions travel with the row so the chips need no second request.
+    assert.deepEqual(byNew[0].reactions, [{ emoji: '👍', count: 1, mine: true }]);
+    assert.deepEqual(byNew[1].reactions, []);
     assert.equal(quiet.id !== popular.id, true);
   } finally { await cleanup(); }
 });
 
 test('contributors count what people wrote, and leave the teacher out', dbTest, async () => {
-  const { createThread, createPost, toggleLike, topContributors } = await import('../src/community.js');
+  const { createThread, createPost, toggleReaction, topContributors } = await import('../src/community.js');
   const { klass, teacher, student, cleanup } = await fixture();
   try {
     const thread = await createThread({ classId: klass.id, authorId: student.id, title: 'Mine', body: '.' });
     await createPost({ threadId: thread.id, authorId: student.id, body: 'and a comment' });
     await createThread({ classId: klass.id, authorId: teacher.id, title: 'Teacher post', body: '.' });
-    // Likes received must not inflate a ranking that measures turning up.
-    await toggleLike({ userId: teacher.id, targetType: 'thread', targetId: thread.id });
+    // Reactions received must not inflate a ranking that measures turning up.
+    await toggleReaction({ userId: teacher.id, targetType: 'thread', targetId: thread.id, emoji: '👍' });
 
     const rows = await topContributors({ classId: klass.id });
     assert.equal(rows.length, 1, 'the teacher should not appear');
