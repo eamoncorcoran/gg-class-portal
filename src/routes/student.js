@@ -13,7 +13,8 @@ import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
 import { nextClassAt, joinLinkFor } from '../classtime.js';
 import { listMaterials } from '../materials.js';
-import { listThreads, getThread, createThread, createPost, unreadCount, markRead } from '../community.js';
+import { listThreads, getThread, createThread, createPost, unreadCount, markRead,
+  listCategories, toggleLike, topContributors } from '../community.js';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -578,8 +579,19 @@ async function boardClass(req, res) {
 router.get('/community', asyncRoute(async (req, res) => {
   const klass = await boardClass(req, res);
   if (!klass) return;
-  const threads = await listThreads({ classId: klass.id });
-  res.json({ threads, unread: await unreadCount({ userId: req.user.id, classId: klass.id }) });
+  const sort = req.query.sort === 'top' ? 'top' : 'new';
+  const categoryId = req.query.categoryId || null;
+  const [threads, categories, contributors, members] = await Promise.all([
+    listThreads({ classId: klass.id, viewerId: req.user.id, categoryId, sort }),
+    listCategories(klass.id),
+    topContributors({ classId: klass.id }),
+    one(`SELECT count(*)::int count FROM class_students WHERE class_id=$1 AND active=true`, [klass.id]),
+  ]);
+  res.json({
+    threads, categories, contributors, sort, categoryId,
+    memberCount: members?.count || 0,
+    unread: await unreadCount({ userId: req.user.id, classId: klass.id }),
+  });
 }));
 
 /* Opening the board is what clears the badge, not opening each thread. */
@@ -593,7 +605,7 @@ router.post('/community/read', asyncRoute(async (req, res) => {
 router.get('/community/thread/:id', asyncRoute(async (req, res) => {
   const klass = await boardClass(req, res);
   if (!klass) return;
-  const thread = await getThread({ threadId: req.params.id });
+  const thread = await getThread({ threadId: req.params.id, viewerId: req.user.id });
   if (!thread || thread.class_id !== klass.id) return res.status(404).json({ error: 'Post not found.' });
   res.json(thread);
 }));
@@ -605,11 +617,37 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
   const parsed = z.object({
     title: z.string().trim().min(2).max(200),
     body: z.string().trim().min(1).max(20000),
+    categoryId: z.string().uuid().nullable().optional(),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Give your post a title and a message.' });
-  const row = await createThread({ classId: klass.id, authorId: req.user.id, title: parsed.data.title, body: parsed.data.body });
+  // A category from another class would put the post somewhere its own filters
+  // could never reach.
+  const category = parsed.data.categoryId
+    ? await one('SELECT id FROM discussion_categories WHERE id=$1 AND class_id=$2', [parsed.data.categoryId, klass.id])
+    : null;
+  const row = await createThread({
+    classId: klass.id, authorId: req.user.id,
+    title: parsed.data.title, body: parsed.data.body, categoryId: category?.id || null,
+  });
   await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
   res.status(201).json(row);
+}));
+
+/* Liking. Scoped to this student's own class the same way everything else is:
+   the target has to belong to a thread on their board or it does not exist. */
+router.post('/community/like/:type/:id', asyncRoute(async (req, res) => {
+  const klass = await boardClass(req, res);
+  if (!klass) return;
+  const type = req.params.type === 'post' ? 'post' : 'thread';
+  const owned = type === 'thread'
+    ? await one('SELECT 1 FROM discussion_threads WHERE id=$1 AND class_id=$2 AND deleted_at IS NULL', [req.params.id, klass.id])
+    : await one(
+        `SELECT 1 FROM discussion_posts p JOIN discussion_threads t ON t.id=p.thread_id
+         WHERE p.id=$1 AND t.class_id=$2 AND p.deleted_at IS NULL AND t.deleted_at IS NULL`,
+        [req.params.id, klass.id],
+      );
+  if (!owned) return res.status(404).json({ error: 'Not found.' });
+  res.json(await toggleLike({ userId: req.user.id, targetType: type, targetId: req.params.id }));
 }));
 
 router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {

@@ -365,29 +365,50 @@ revising in May actually needs.
 
 ### The class board
 
-**Class board** is one discussion board per class. A question about Monday's
-lesson is noise to the Thursday group, so the boards are separate and a student
-can only ever reach the board of the class they are in.
+**Class board** is one feed per class. A question about Monday's lesson is noise
+to the Thursday group, so the feeds are separate and a student can only ever
+reach the feed of the class they are in.
 
-It is deliberately plain: a thread has a title and an opening message, and
-everything after it is a reply in order. No categories, no nesting, no likes. A
-board of a dozen to forty adults does not have enough traffic to fill separate
-rooms, and empty rooms make a quiet board look abandoned rather than new.
+The layout is the one people already know from Skool and every other community
+tool: a composer sitting at the top, category pills under it, and a column of
+post cards showing who wrote it, when, how many likes and comments it has, and
+who spoke last. A side column carries the class card and the month's most active
+members.
+
+- **The composer** is a box, not a button. It is collapsed to one line until it
+  is clicked, but a box already sitting there gets noticeably more posts than a
+  button labelled *Start a post*
+- **Categories** — General, Questions, Wins and Resources by default, editable
+  per class under **Categories**. Deleting one leaves its posts alone; they
+  simply become uncategorised
+- **Likes** on both posts and comments, one click, no counts inflated by your own
+- **Sorting** — newest by default, or top by likes. Pinned posts always sit above
+  both
+- **Comments** open in a drawer, so reading three posts in a row does not cost
+  three scroll positions
 
 Nothing is anonymous and nothing is editable after posting. On a board this size,
 knowing your name is on it is most of what keeps it civil.
 
-**Moderation.** You can pin a thread to the top, close it to new replies, or
-remove a thread or a single reply. Removal is a soft delete: students stop seeing
+**Moderation.** You can pin a post to the top, close it to new comments, or
+remove a post or a single comment. Removal is a soft delete: students stop seeing
 it immediately, you keep seeing it greyed with a way back, and the surrounding
-replies keep their shape rather than becoming answers to nothing. Every use is
-recorded in the audit log. A closed thread still takes a reply from you, because
+comments keep their shape rather than becoming answers to nothing. Every use is
+recorded in the audit log. A closed post still takes a comment from you, because
 closing a conversation usually means having the last word in it.
 
-**The badge** counts threads and replies written by somebody else since that
-person last opened the board, and opening the board clears it. Your own message
+**The badge** counts posts and comments written by somebody else since that
+person last opened the feed, and opening the feed clears it. Your own message
 never comes back at you as something new to read, which is the fastest way to
-teach somebody to ignore a badge.
+teach somebody to ignore a badge. Likes deliberately do not raise it: a badge
+that fires on a like turns the feed into a slot machine, which is not what this
+is for.
+
+**Most active this month** counts posts and comments *written*, not likes
+collected, and leaves the teacher out. Ranking by likes received rewards the
+popular post; ranking by contribution rewards turning up, which is the behaviour
+worth encouraging on a course. A feed where the teacher is permanently first is a
+noticeboard.
 
 Withdrawn students keep reading and lose posting, like everywhere else.
 
@@ -801,9 +822,11 @@ changing it. Nothing about check-ins, homework, attendance or feedback moved.
 - **Course materials.** A per-class library of files, links and Loom videos,
   grouped by teaching week or held at course level. Unpublished items stay
   invisible to students so next week's notes can be loaded in advance.
-- **The class board.** One discussion board per class, with pin, close and
-  reversible removal for the administrator, and an unread badge that only counts
-  what somebody else wrote.
+- **The class board.** One feed per class in the shape people know from Skool:
+  composer, category pills, post cards with likes and comment counts, a drawer
+  for comments, and a side column with the class card and the month's most
+  active members. Pin, close and reversible removal for the administrator, and an
+  unread badge that only counts what somebody else wrote.
 
 Also in this release:
 
@@ -816,4 +839,5 @@ Also in this release:
 - The preview mock carries its own copy of the next-class calculation, and
   `tests/preview-mock.test.js` now holds it level with the server's, the same way
   it already does for student progress.
-- Migrations `009_class_join_link`, `010_materials` and `011_community`.
+- Migrations `009_class_join_link`, `010_materials`, `011_community` and
+  `012_community_feed`.

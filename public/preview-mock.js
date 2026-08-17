@@ -92,11 +92,35 @@
       { id:'m6', class_id:'c1', week_id:null, kind:'file', title:'Week 5 notes, not finished', description:'Draft. Publish once the examples are added.', url:'#', file_name:'Week-5-draft.pdf', mime_type:'application/pdf', size_bytes:51200, published:false, position:2, created_at:iso('2026-08-08') },
     ];
 
+    const categories = [
+      { id:'cat1', class_id:'c1', name:'General', position:0 },
+      { id:'cat2', class_id:'c1', name:'Questions', position:1 },
+      { id:'cat3', class_id:'c1', name:'Wins', position:2 },
+      { id:'cat4', class_id:'c1', name:'Resources', position:3 },
+      { id:'cat5', class_id:'c2', name:'General', position:0 },
+      { id:'cat6', class_id:'c2', name:'Questions', position:1 },
+    ];
+
     const threads = [
-      { id:'t1', class_id:'c1', author_id:'admin1', title:'Start here: how this board works', body:'Use this for anything you would otherwise email me about the course. If you are stuck on something, post it here rather than sitting with it for a week. Somebody else in the group is nearly always wondering the same thing, and answering it once helps everyone.\n\nI read everything here.', pinned:true, locked:false, deleted_at:null, created_at:iso('2026-06-05T09:00:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
-      { id:'t2', class_id:'c1', author_id:'s2', title:'When do we use an tuiseal ginideach after a verbal noun?', body:'I keep getting this wrong in the homework. Is there a simple rule for when the noun after ag + verbal noun goes into the genitive, or is it just something you learn case by case?', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-06T20:10:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
-      { id:'t3', class_id:'c1', author_id:'s4', title:'Study group before the TEG exam?', body:'Is anyone interested in meeting on a Saturday morning to practise the oral? I was thinking every second week. Happy to set up the call if there is interest.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T11:00:00Z'), last_activity_at:iso('2026-08-08T18:45:00Z') },
-      { id:'t4', class_id:'c1', author_id:'s3', title:'Posted in the wrong place', body:'Sorry, meant to send this privately.', pinned:false, locked:false, deleted_at:iso('2026-08-05T10:00:00Z'), created_at:iso('2026-08-05T09:00:00Z'), last_activity_at:iso('2026-08-05T09:00:00Z') },
+      { id:'t1', class_id:'c1', author_id:'admin1', category_id:'cat1', title:'Start here: how this board works', body:'Use this for anything you would otherwise email me about the course. If you are stuck on something, post it here rather than sitting with it for a week. Somebody else in the group is nearly always wondering the same thing, and answering it once helps everyone.\n\nI read everything here.', pinned:true, locked:false, deleted_at:null, created_at:iso('2026-06-05T09:00:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
+      { id:'t2', class_id:'c1', author_id:'s2', category_id:'cat2', title:'When do we use an tuiseal ginideach after a verbal noun?', body:'I keep getting this wrong in the homework. Is there a simple rule for when the noun after ag + verbal noun goes into the genitive, or is it just something you learn case by case?', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-06T20:10:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
+      { id:'t3', class_id:'c1', author_id:'s4', category_id:'cat1', title:'Study group before the TEG exam?', body:'Is anyone interested in meeting on a Saturday morning to practise the oral? I was thinking every second week. Happy to set up the call if there is interest.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T11:00:00Z'), last_activity_at:iso('2026-08-08T18:45:00Z') },
+      { id:'t5', class_id:'c1', author_id:'s5', category_id:'cat3', title:'Spoke Irish to a parent at the school gate today', body:'Only two sentences and I got the tenses wrong halfway through, but she answered me in Irish and we kept going for a minute. Six months ago I would have switched to English straight away.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T16:20:00Z'), last_activity_at:iso('2026-08-09T09:15:00Z') },
+      { id:'t6', class_id:'c1', author_id:'s1', category_id:'cat4', title:'Free podcast that has helped my listening', body:'Bitesize Irish do short episodes at a slow pace and there is a transcript for each one. Ten minutes on the drive to work and I am picking up far more in class.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-04T07:40:00Z'), last_activity_at:iso('2026-08-05T12:00:00Z') },
+      { id:'t4', class_id:'c1', author_id:'s3', category_id:'cat1', title:'Posted in the wrong place', body:'Sorry, meant to send this privately.', pinned:false, locked:false, deleted_at:iso('2026-08-05T10:00:00Z'), created_at:iso('2026-08-05T09:00:00Z'), last_activity_at:iso('2026-08-05T09:00:00Z') },
+    ];
+
+    /* Enough likes that the counts are not all zero, spread so the Top sort
+       actually reorders the feed. */
+    const likes = [
+      { user_id:'s1', target_type:'thread', target_id:'t1' }, { user_id:'s2', target_type:'thread', target_id:'t1' },
+      { user_id:'s4', target_type:'thread', target_id:'t1' },
+      { user_id:'s1', target_type:'thread', target_id:'t5' }, { user_id:'s2', target_type:'thread', target_id:'t5' },
+      { user_id:'s3', target_type:'thread', target_id:'t5' }, { user_id:'s4', target_type:'thread', target_id:'t5' },
+      { user_id:'admin1', target_type:'thread', target_id:'t5' },
+      { user_id:'s5', target_type:'thread', target_id:'t2' }, { user_id:'admin1', target_type:'thread', target_id:'t6' },
+      { user_id:'s2', target_type:'post', target_id:'p2' }, { user_id:'s4', target_type:'post', target_id:'p2' },
+      { user_id:'s1', target_type:'post', target_id:'p2' },
     ];
 
     const posts = [
@@ -104,12 +128,14 @@
       { id:'p2', thread_id:'t2', author_id:'admin1', body:'That is close, and it is a good instinct. The rule of thumb: after a verbal noun, a following definite noun usually goes into an tuiseal ginideach — ag déanamh na hoibre, ag léamh an leabhair. Where it trips people up is that an indefinite noun often does not change at all: ag déanamh obair bhaile.\n\nI will bring three examples to Monday and we will work through them aloud.', deleted_at:null, created_at:iso('2026-08-07T19:20:00Z') },
       { id:'p3', thread_id:'t3', author_id:'s5', body:'I would be interested. Saturday mornings suit me better than evenings.', deleted_at:null, created_at:iso('2026-08-08T14:00:00Z') },
       { id:'p4', thread_id:'t3', author_id:'s1', body:'Count me in too.', deleted_at:null, created_at:iso('2026-08-08T18:45:00Z') },
+      { id:'p5', thread_id:'t5', author_id:'admin1', body:'This is exactly the thing. Two sentences with a real person beats an hour of drills, and the tenses will settle. Well done.', deleted_at:null, created_at:iso('2026-08-09T09:15:00Z') },
+      { id:'p6', thread_id:'t6', author_id:'s3', body:'Downloaded, thanks. The transcripts are the part I needed.', deleted_at:null, created_at:iso('2026-08-05T12:00:00Z') },
     ];
 
     return {
       sessionUserId:'admin1',
       users, classes, weeks, assignments, attendance, checkins, homework, notes:[], withdrawals:[], homeworkFiles:[], dismissals:[],
-      materials, threads, posts, reads:[],
+      materials, threads, posts, reads:[], categories, likes,
       settings:{
         email:{provider:'console',fromName:'Gaeilgeoir Guides',fromAddress:'support@gaeilgeoirguides.com',replyTo:'support@gaeilgeoirguides.com',webhookUrl:'',smtpHost:'',smtpUser:'',configured:false},
         reminders:{
@@ -136,7 +162,7 @@
           generalFeedbackPrompt:'Give friendly, concise teacher feedback in 2 to 3 lines.'
         }
       },
-      counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,material:10,thread:10,post:10}
+      counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,material:10,thread:10,post:10,category:10}
     };
   }
 
@@ -170,6 +196,9 @@
     if(!Array.isArray(stored.threads)) stored.threads=fresh.threads;
     if(!Array.isArray(stored.posts)) stored.posts=fresh.posts;
     if(!Array.isArray(stored.reads)) stored.reads=[];
+    // Categories and likes arrived with the feed rebuild.
+    if(!Array.isArray(stored.categories)) stored.categories=fresh.categories;
+    if(!Array.isArray(stored.likes)) stored.likes=fresh.likes;
     (stored.classes || []).forEach((klass) => {
       const seeded=fresh.classes.find((row)=>row.id===klass.id);
       if(klass.join_url===undefined) klass.join_url=seeded?.join_url??null;
@@ -306,27 +335,74 @@
     const row=db.users.find((item)=>item.id===id);
     return row?{id:row.id,name:row.name,role:row.role}:null;
   }
-  function threadRows(classId,includeDeleted){
-    return (db.threads||[]).filter((row)=>row.class_id===classId&&(includeDeleted||!row.deleted_at))
+  function likeCount(type,id){return (db.likes||[]).filter((row)=>row.target_type===type&&row.target_id===id).length;}
+  function likedBy(type,id,userId){return (db.likes||[]).some((row)=>row.target_type===type&&row.target_id===id&&row.user_id===userId);}
+  function categoryName(id){return (db.categories||[]).find((row)=>row.id===id)?.name||null;}
+  function categoryRows(classId){
+    return (db.categories||[]).filter((row)=>row.class_id===classId)
+      .map((row)=>({...row,thread_count:(db.threads||[]).filter((t)=>t.category_id===row.id&&!t.deleted_at).length}))
+      .sort((a,b)=>a.position-b.position);
+  }
+  function threadRows(classId,includeDeleted,viewerId,categoryId,sort){
+    const rows=(db.threads||[]).filter((row)=>row.class_id===classId&&(includeDeleted||!row.deleted_at)
+        &&(!categoryId||row.category_id===categoryId))
       .map((row)=>{
         const replies=(db.posts||[]).filter((post)=>post.thread_id===row.id&&!post.deleted_at);
-        return {...row,author:authorOf(row.author_id),reply_count:replies.length,
-          last_reply_at:replies.length?replies[replies.length-1].created_at:null};
-      })
-      .sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(a.last_activity_at<b.last_activity_at?1:-1));
+        const last=replies[replies.length-1];
+        return {...row,author:authorOf(row.author_id),category_name:categoryName(row.category_id),
+          comment_count:replies.length,like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),
+          last_comment:last?{name:authorOf(last.author_id)?.name||'Removed account',at:last.created_at}:null};
+      });
+    return rows.sort((a,b)=>(Number(b.pinned)-Number(a.pinned))
+      ||(sort==='top'?b.like_count-a.like_count:0)
+      ||(a.last_activity_at<b.last_activity_at?1:-1));
   }
-  function threadDetail(id,includeDeleted){
+  function threadDetail(id,includeDeleted,viewerId){
     const row=(db.threads||[]).find((item)=>item.id===id&&(includeDeleted||!item.deleted_at));
     if(!row)return null;
-    const posts=(db.posts||[]).filter((post)=>post.thread_id===id&&(includeDeleted||!post.deleted_at))
-      .map((post)=>({...post,author:authorOf(post.author_id)}));
-    return {...row,author:authorOf(row.author_id),posts};
+    const comments=(db.posts||[]).filter((post)=>post.thread_id===id&&(includeDeleted||!post.deleted_at))
+      .map((post)=>({...post,author:authorOf(post.author_id),
+        like_count:likeCount('post',post.id),liked:likedBy('post',post.id,viewerId)}));
+    return {...row,author:authorOf(row.author_id),category_name:categoryName(row.category_id),
+      comment_count:comments.filter((c)=>!c.deleted_at).length,
+      like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),comments};
+  }
+  /* Counts what people wrote, not the likes they collected, exactly as
+     topContributors does on the server. */
+  function contributorRows(classId){
+    const threadIds=new Set((db.threads||[]).filter((t)=>t.class_id===classId&&!t.deleted_at).map((t)=>t.id));
+    const tally=new Map();
+    const add=(id)=>{const user=db.users.find((u)=>u.id===id);if(!user||user.role!=='student')return;
+      tally.set(id,(tally.get(id)||0)+1);};
+    (db.threads||[]).filter((t)=>t.class_id===classId&&!t.deleted_at).forEach((t)=>add(t.author_id));
+    (db.posts||[]).filter((p)=>threadIds.has(p.thread_id)&&!p.deleted_at).forEach((p)=>add(p.author_id));
+    return [...tally.entries()]
+      .map(([id,total])=>({id,name:db.users.find((u)=>u.id===id)?.name||'',total}))
+      .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name)).slice(0,5);
+  }
+  function boardPayload(classId,includeDeleted,viewerId,url){
+    const categoryId=url.searchParams.get('categoryId')||null;
+    const sort=url.searchParams.get('sort')==='top'?'top':'new';
+    return {threads:threadRows(classId,includeDeleted,viewerId,categoryId,sort),
+      categories:categoryRows(classId),contributors:contributorRows(classId),sort,categoryId,
+      memberCount:db.users.filter((u)=>u.role==='student'&&u.class_id===classId&&u.active).length};
   }
   function newThread(classId,authorId,body){
     const now=new RealDate(PREVIEW_NOW).toISOString();
     const row={id:`t${db.counters.thread=(db.counters.thread||10)+1}`,class_id:classId,author_id:authorId,
-      title:body.title,body:body.body,pinned:false,locked:false,deleted_at:null,created_at:now,last_activity_at:now};
+      title:body.title,body:body.body,category_id:body.categoryId||null,pinned:false,locked:false,
+      deleted_at:null,created_at:now,last_activity_at:now};
     db.threads.push(row);save();return row;
+  }
+  /* Idempotent both ways, like the server's toggleLike: a double tap on a phone
+     is one gesture, not two likes. */
+  function toggleLikeRow(userId,type,targetId){
+    const target=type==='post'?'post':'thread';
+    const existing=(db.likes||[]).find((row)=>row.user_id===userId&&row.target_type===target&&row.target_id===targetId);
+    if(existing) db.likes=db.likes.filter((row)=>row!==existing);
+    else db.likes.push({user_id:userId,target_type:target,target_id:targetId});
+    save();
+    return {liked:!existing,likeCount:likeCount(target,targetId)};
   }
   function newReply(threadId,authorId,body){
     const now=new RealDate(PREVIEW_NOW).toISOString();
@@ -898,10 +974,28 @@
     params=match(path,'/api/admin/community/:classId');
     if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
       const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
-      return json({class:{...klass,label:classLabel(klass)},threads:threadRows(params.classId,true)});
+      return json({class:{...klass,label:classLabel(klass)},...boardPayload(params.classId,true,user.id,url)});
+    }
+    params=match(path,'/api/admin/community/like/:type/:id');
+    if(params&&method==='POST') return json(toggleLikeRow(user.id,params.type,params.id));
+    params=match(path,'/api/admin/community/:classId/categories');
+    if(params&&method==='GET') return json(categoryRows(params.classId));
+    if(params&&method==='POST'){
+      if((db.categories||[]).some((row)=>row.class_id===params.classId&&row.name===body.name))
+        return error('That category already exists.',409);
+      const row={id:`cat${db.counters.category=(db.counters.category||10)+1}`,class_id:params.classId,
+        name:body.name,position:categoryRows(params.classId).length};
+      db.categories.push(row);save();return json(row,201);
+    }
+    params=match(path,'/api/admin/community/categories/:id');
+    if(params&&method==='DELETE'){
+      db.categories=(db.categories||[]).filter((row)=>row.id!==params.id);
+      // Posts survive their category; they simply become uncategorised.
+      (db.threads||[]).forEach((row)=>{if(row.category_id===params.id)row.category_id=null;});
+      save();return new Response(null,{status:204});
     }
     params=match(path,'/api/admin/community/thread/:id');
-    if(params&&method==='GET'){const thread=threadDetail(params.id,true);return thread?json(thread):error('Thread not found',404);}
+    if(params&&method==='GET'){const thread=threadDetail(params.id,true,user.id);return thread?json(thread):error('Thread not found',404);}
     if(params&&method==='PATCH'){
       const row=db.threads.find((item)=>item.id===params.id);if(!row)return error('Thread not found',404);
       if(body.pinned!==undefined)row.pinned=body.pinned;if(body.locked!==undefined)row.locked=body.locked;save();return json(row);
@@ -929,8 +1023,10 @@
     }
     if(path==='/api/student/community'&&method==='GET'){
       const student=previewStudent(user);
-      return json({threads:threadRows(student.class_id,false),unread:previewUnread(student)});
+      return json({...boardPayload(student.class_id,false,student.id,url),unread:previewUnread(student)});
     }
+    params=match(path,'/api/student/community/like/:type/:id');
+    if(params&&method==='POST') return json(toggleLikeRow(previewStudent(user).id,params.type,params.id));
     if(path==='/api/student/community/read'&&method==='POST'){
       const student=previewStudent(user);
       updateOrInsert(db.reads,(item)=>item.user_id===student.id&&item.class_id===student.class_id,
@@ -938,7 +1034,7 @@
       save();return json({ok:true,unread:0});
     }
     params=match(path,'/api/student/community/thread/:id');
-    if(params&&method==='GET'){const thread=threadDetail(params.id,false);return thread?json(thread):error('Post not found',404);}
+    if(params&&method==='GET'){const thread=threadDetail(params.id,false,previewStudent(user).id);return thread?json(thread):error('Post not found',404);}
     if(path==='/api/student/community/threads'&&method==='POST'){
       const student=previewStudent(user);
       return json(newThread(student.class_id,student.id,body),201);

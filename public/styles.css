@@ -740,32 +740,122 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .material-copy strong{font-size:13.5px;font-weight:650;letter-spacing:-.01em}
 .material-copy p{margin:0;color:var(--text-tertiary);font-size:12px;line-height:1.45}
 
-.board-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 14px}
-.board-head p{margin:0;max-width:60ch}
-.thread-list{display:grid}
-.thread-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--gray-100);cursor:pointer}
-.thread-row:last-child{border-bottom:0}
-.thread-row:hover{background:var(--gray-25)}
-.thread-row.is-removed{opacity:.55}
-.thread-main{flex:1;min-width:0;display:grid;gap:4px}
-.thread-main strong{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:660;letter-spacing:-.02em}
-.thread-main p{margin:0;color:var(--text-tertiary);font-size:12.5px;line-height:1.45}
-.thread-pin{display:inline-grid;place-items:center;color:var(--brand-600)}
-.thread-pin svg{width:13px;height:13px}
-.thread-meta{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-
-.post-list{display:grid;gap:12px}
-.post{padding:13px 15px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
-.post.is-opening{background:var(--gray-25);border-color:var(--border-strong)}
-.post.is-removed{opacity:.6;border-style:dashed}
-.post-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.post-head>div{flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.post-head strong{font-size:12.5px;font-weight:660}
-.avatar.small{width:28px;height:28px;font-size:9px}
-.post-body{color:var(--text-secondary);font-size:13px;line-height:1.55;word-wrap:break-word}
-.reply-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
-.reply-box .btn{margin-top:10px}
 .drawer-toolbar{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
 .check-row{display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:12px;font-weight:600}
 .check-row input{width:auto}
 .mini-stat.good{background:var(--success-50);border-color:var(--success-100);color:var(--success-700)}
+
+/* ------------------------------------------------------------------
+   The class feed.
+
+   Two columns: the feed itself, and a narrow side column answering "where am I"
+   and "is anybody else here". Below 1100px the side column drops under the feed
+   rather than squeezing, because a 200px-wide leaderboard is worse than none.
+   ------------------------------------------------------------------ */
+.feed-layout{display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:20px;align-items:start}
+.feed-main{display:grid;gap:12px;min-width:0}
+
+.feed-avatar{width:40px;height:40px;flex:0 0 auto;display:grid;place-items:center;border-radius:999px;color:#fff;font-size:13px;font-weight:700;letter-spacing:-.02em}
+.feed-avatar.small{width:30px;height:30px;font-size:10px}
+
+/* Collapsed to one line. A box already sitting there gets more posts than a
+   button labelled "Start a post" does. */
+.feed-composer{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-xs);text-align:left;cursor:pointer}
+.feed-composer:hover{border-color:var(--border-strong);box-shadow:var(--shadow-sm)}
+.feed-composer>span{color:var(--text-quaternary);font-size:14px}
+
+.feed-pills{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:2px 0}
+.feed-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:650}
+.feed-pill span{color:var(--text-quaternary);font-size:11px}
+.feed-pill:hover{border-color:var(--border-strong)}
+.feed-pill.active{background:var(--gray-900);border-color:var(--gray-900);color:#fff}
+.feed-pill.active span{color:rgba(255,255,255,.6)}
+.feed-pill-spacer{flex:1}
+.feed-sort{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:650}
+.feed-sort.active{color:var(--brand-700);border-color:var(--brand-200);background:var(--brand-25)}
+
+.feed-card{padding:16px 18px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-xs);cursor:pointer;transition:box-shadow .15s,border-color .15s}
+.feed-card:hover{border-color:var(--border-strong);box-shadow:var(--shadow-sm)}
+.feed-card.is-removed{opacity:.55;border-style:dashed}
+.feed-card-head{display:flex;align-items:center;gap:11px}
+.feed-byline{flex:1;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.feed-byline strong{font-size:13px;font-weight:660}
+.feed-dot{color:var(--text-quaternary)}
+.feed-teacher{padding:2px 7px;border-radius:999px;background:var(--brand-50);border:1px solid var(--brand-200);color:var(--brand-800);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.feed-card-tags{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.feed-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:999px;background:var(--gray-50);color:var(--text-tertiary);font-size:10px;font-weight:650}
+.feed-chip svg{width:11px;height:11px}
+.feed-chip.pinned{background:var(--brand-50);border-color:var(--brand-200);color:var(--brand-800)}
+.feed-chip.removed{background:var(--error-50);border-color:var(--error-100);color:var(--error-700)}
+.feed-title{margin:11px 0 5px;font-size:16px;font-weight:680;letter-spacing:-.025em;line-height:1.35}
+.feed-body{margin:0;color:var(--text-tertiary);font-size:13.5px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.feed-card-foot{display:flex;align-items:center;gap:14px;margin-top:13px;padding-top:12px;border-top:1px solid var(--gray-100)}
+.feed-last{margin-left:auto;color:var(--text-quaternary);font-size:11px}
+
+.feed-action{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;margin:-4px -8px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-tertiary);font-size:12px;font-weight:650}
+.feed-action svg{width:16px;height:16px}
+.feed-action:hover{background:var(--gray-50);color:var(--text-secondary)}
+.feed-action.static{pointer-events:none}
+.feed-action.liked{color:var(--error-600)}
+.feed-action.liked svg path{fill:var(--error-600);stroke:var(--error-600)}
+.feed-action.small svg{width:14px;height:14px}
+.feed-action.small{margin-top:7px;font-size:11px}
+
+.feed-empty{padding:40px 28px;border:1px dashed var(--border-strong);border-radius:var(--radius-lg);background:var(--surface);text-align:center}
+.feed-empty h3{margin:0 0 7px;font-size:15px;font-weight:680}
+.feed-empty p{margin:0 auto;max-width:52ch;color:var(--text-tertiary);font-size:13px;line-height:1.6}
+
+.feed-side{display:grid;gap:12px;position:sticky;top:16px}
+.feed-side-card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-xs);overflow:hidden}
+.feed-side-cover{height:64px;background:radial-gradient(circle at 80% 10%,rgba(255,255,255,.18),transparent 40%),linear-gradient(135deg,var(--brand-700),var(--brand-500))}
+.feed-side-body{padding:13px 15px 15px}
+.feed-side-body>strong{display:block;font-size:14px;font-weight:680;letter-spacing:-.02em}
+.feed-side-body>p{margin:3px 0 0}
+.feed-side-stats{display:flex;gap:18px;margin-top:12px;padding-top:12px;border-top:1px solid var(--gray-100)}
+.feed-side-stats div{display:grid;gap:1px}
+.feed-side-stats strong{font-size:16px;font-weight:700;letter-spacing:-.03em}
+.feed-side-stats span{color:var(--text-quaternary);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.feed-side-join{width:100%;margin-top:12px}
+.feed-side-title{padding:13px 15px 9px;color:var(--text-secondary);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.feed-rank{list-style:none;margin:0;padding:0 15px 13px}
+.feed-rank li{display:flex;align-items:center;gap:9px;padding:6px 0}
+.feed-rank-no{width:15px;color:var(--text-quaternary);font-size:11px;font-weight:700}
+.feed-rank-name{flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-rank-score{color:var(--text-tertiary);font-size:11px;font-weight:650}
+.feed-side-empty{padding:0 15px 13px}
+.feed-side-note{margin:0;padding:0 15px 13px;color:var(--text-quaternary);font-size:10px;line-height:1.45}
+
+/* Inside the drawer: the opening post, then its comments. */
+.feed-opening{padding:14px 15px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--gray-25)}
+.feed-opening .feed-comment-text{margin-top:11px}
+.feed-comments{display:grid;gap:14px}
+.feed-comment{display:flex;gap:10px}
+.feed-comment.is-removed{opacity:.6}
+.feed-comment-body{flex:1;min-width:0}
+.feed-comment-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px}
+.feed-comment-head strong{font-size:12.5px;font-weight:660}
+.feed-remove{font-size:11px}
+.feed-comment-text{color:var(--text-secondary);font-size:13px;line-height:1.55;word-wrap:break-word}
+.feed-reply{display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.feed-reply-box{flex:1;min-width:0}
+.feed-reply-box .btn{margin-top:9px}
+
+.category-list{display:grid;gap:7px}
+.category-row{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--gray-25)}
+.category-row strong{flex:1;font-size:13px;font-weight:650}
+
+/* Narrow screens put the posts first and the class card after them. Somebody
+   opening this on a phone came to read the feed; the class details and the
+   leaderboard are reference, and the next-class banner above the feed already
+   carries the join button, so the one in the side card would be a second copy of
+   the same link. */
+@media (max-width:1100px){
+  .feed-layout{grid-template-columns:minmax(0,1fr)}
+  .feed-side{position:static;order:1;grid-template-columns:1fr 1fr;display:grid}
+  .feed-side-join{display:none}
+}
+@media (max-width:720px){
+  .feed-side{grid-template-columns:1fr}
+  .feed-card-tags{display:none}
+  .feed-last{display:none}
+}

@@ -19,7 +19,7 @@ import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNote
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
 import { listMaterials } from '../materials.js';
-import { listThreads, getThread, createThread, createPost } from '../community.js';
+import { listThreads, getThread, createThread, createPost, listCategories, toggleLike, topContributors } from '../community.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -1237,13 +1237,23 @@ router.delete('/materials/:id', asyncRoute(async (req, res) => {
 router.get('/community/:classId', asyncRoute(async (req, res) => {
   const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  const sort = req.query.sort === 'top' ? 'top' : 'new';
+  const categoryId = req.query.categoryId || null;
   // Removed threads stay listed for the administrator, greyed, with a way back.
-  const threads = await listThreads({ classId: klass.id, includeDeleted: true });
-  res.json({ class: { ...klass, label: classLabel(klass) }, threads });
+  const [threads, categories, contributors, members] = await Promise.all([
+    listThreads({ classId: klass.id, viewerId: req.user.id, includeDeleted: true, categoryId, sort }),
+    listCategories(klass.id),
+    topContributors({ classId: klass.id }),
+    one(`SELECT count(*)::int count FROM class_students WHERE class_id=$1 AND active=true`, [klass.id]),
+  ]);
+  res.json({
+    class: { ...klass, label: classLabel(klass) },
+    threads, categories, contributors, sort, categoryId, memberCount: members?.count || 0,
+  });
 }));
 
 router.get('/community/thread/:id', asyncRoute(async (req, res) => {
-  const thread = await getThread({ threadId: req.params.id, includeDeleted: true });
+  const thread = await getThread({ threadId: req.params.id, viewerId: req.user.id, includeDeleted: true });
   if (!thread) return res.status(404).json({ error: 'Thread not found.' });
   res.json(thread);
 }));
@@ -1252,15 +1262,58 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
   const parsed = z.object({
     title: z.string().trim().min(2).max(200),
     body: z.string().trim().min(1).max(20000),
+    categoryId: z.string().uuid().nullable().optional(),
     pinned: z.boolean().optional().default(false),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Give the post a title and a message.' });
   const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.classId]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
-  const row = await createThread({ classId: klass.id, authorId: req.user.id, title: parsed.data.title, body: parsed.data.body });
+  const category = parsed.data.categoryId
+    ? await one('SELECT id FROM discussion_categories WHERE id=$1 AND class_id=$2', [parsed.data.categoryId, klass.id])
+    : null;
+  const row = await createThread({
+    classId: klass.id, authorId: req.user.id,
+    title: parsed.data.title, body: parsed.data.body, categoryId: category?.id || null,
+  });
   if (parsed.data.pinned) await query('UPDATE discussion_threads SET pinned=true WHERE id=$1', [row.id]);
   await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
   res.status(201).json({ ...row, pinned: parsed.data.pinned });
+}));
+
+router.post('/community/like/:type/:id', asyncRoute(async (req, res) => {
+  const type = req.params.type === 'post' ? 'post' : 'thread';
+  res.json(await toggleLike({ userId: req.user.id, targetType: type, targetId: req.params.id }));
+}));
+
+/* Categories. Kept editable because the useful set for a Leaving Certificate
+   group is not the useful set for a teaching diploma group. */
+router.get('/community/:classId/categories', asyncRoute(async (req, res) => {
+  res.json(await listCategories(req.params.classId));
+}));
+
+router.post('/community/:classId/categories', asyncRoute(async (req, res) => {
+  const parsed = z.object({ name: z.string().trim().min(1).max(40) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the category a short name.' });
+  const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.classId]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM discussion_categories WHERE class_id=$1', [klass.id]);
+  const row = await one(
+    `INSERT INTO discussion_categories(class_id,name,position) VALUES ($1,$2,$3)
+     ON CONFLICT (class_id,name) DO NOTHING RETURNING *`,
+    [klass.id, parsed.data.name, next.position],
+  );
+  if (!row) return res.status(409).json({ error: 'That category already exists.' });
+  res.status(201).json(row);
+}));
+
+/* Deleting a category leaves its posts alone: they simply become uncategorised.
+   Losing a conversation because a filter was renamed would be indefensible. */
+router.delete('/community/categories/:id', asyncRoute(async (req, res) => {
+  const current = await one('SELECT * FROM discussion_categories WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Category not found.' });
+  await query('DELETE FROM discussion_categories WHERE id=$1', [current.id]);
+  await audit({ actorId: req.user.id, action: 'community.category_deleted', entityType: 'category', entityId: current.id, metadata: { name: current.name }, ip: req.ip });
+  res.status(204).end();
 }));
 
 router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {

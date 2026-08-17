@@ -749,35 +749,125 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .material-copy strong{font-size:13.5px;font-weight:650;letter-spacing:-.01em}
 .material-copy p{margin:0;color:var(--text-tertiary);font-size:12px;line-height:1.45}
 
-.board-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 14px}
-.board-head p{margin:0;max-width:60ch}
-.thread-list{display:grid}
-.thread-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--gray-100);cursor:pointer}
-.thread-row:last-child{border-bottom:0}
-.thread-row:hover{background:var(--gray-25)}
-.thread-row.is-removed{opacity:.55}
-.thread-main{flex:1;min-width:0;display:grid;gap:4px}
-.thread-main strong{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:660;letter-spacing:-.02em}
-.thread-main p{margin:0;color:var(--text-tertiary);font-size:12.5px;line-height:1.45}
-.thread-pin{display:inline-grid;place-items:center;color:var(--brand-600)}
-.thread-pin svg{width:13px;height:13px}
-.thread-meta{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-
-.post-list{display:grid;gap:12px}
-.post{padding:13px 15px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
-.post.is-opening{background:var(--gray-25);border-color:var(--border-strong)}
-.post.is-removed{opacity:.6;border-style:dashed}
-.post-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.post-head>div{flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.post-head strong{font-size:12.5px;font-weight:660}
-.avatar.small{width:28px;height:28px;font-size:9px}
-.post-body{color:var(--text-secondary);font-size:13px;line-height:1.55;word-wrap:break-word}
-.reply-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
-.reply-box .btn{margin-top:10px}
 .drawer-toolbar{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
 .check-row{display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:12px;font-weight:600}
 .check-row input{width:auto}
 .mini-stat.good{background:var(--success-50);border-color:var(--success-100);color:var(--success-700)}
+
+/* ------------------------------------------------------------------
+   The class feed.
+
+   Two columns: the feed itself, and a narrow side column answering "where am I"
+   and "is anybody else here". Below 1100px the side column drops under the feed
+   rather than squeezing, because a 200px-wide leaderboard is worse than none.
+   ------------------------------------------------------------------ */
+.feed-layout{display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:20px;align-items:start}
+.feed-main{display:grid;gap:12px;min-width:0}
+
+.feed-avatar{width:40px;height:40px;flex:0 0 auto;display:grid;place-items:center;border-radius:999px;color:#fff;font-size:13px;font-weight:700;letter-spacing:-.02em}
+.feed-avatar.small{width:30px;height:30px;font-size:10px}
+
+/* Collapsed to one line. A box already sitting there gets more posts than a
+   button labelled "Start a post" does. */
+.feed-composer{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-xs);text-align:left;cursor:pointer}
+.feed-composer:hover{border-color:var(--border-strong);box-shadow:var(--shadow-sm)}
+.feed-composer>span{color:var(--text-quaternary);font-size:14px}
+
+.feed-pills{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:2px 0}
+.feed-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:650}
+.feed-pill span{color:var(--text-quaternary);font-size:11px}
+.feed-pill:hover{border-color:var(--border-strong)}
+.feed-pill.active{background:var(--gray-900);border-color:var(--gray-900);color:#fff}
+.feed-pill.active span{color:rgba(255,255,255,.6)}
+.feed-pill-spacer{flex:1}
+.feed-sort{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:650}
+.feed-sort.active{color:var(--brand-700);border-color:var(--brand-200);background:var(--brand-25)}
+
+.feed-card{padding:16px 18px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-xs);cursor:pointer;transition:box-shadow .15s,border-color .15s}
+.feed-card:hover{border-color:var(--border-strong);box-shadow:var(--shadow-sm)}
+.feed-card.is-removed{opacity:.55;border-style:dashed}
+.feed-card-head{display:flex;align-items:center;gap:11px}
+.feed-byline{flex:1;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.feed-byline strong{font-size:13px;font-weight:660}
+.feed-dot{color:var(--text-quaternary)}
+.feed-teacher{padding:2px 7px;border-radius:999px;background:var(--brand-50);border:1px solid var(--brand-200);color:var(--brand-800);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.feed-card-tags{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.feed-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:999px;background:var(--gray-50);color:var(--text-tertiary);font-size:10px;font-weight:650}
+.feed-chip svg{width:11px;height:11px}
+.feed-chip.pinned{background:var(--brand-50);border-color:var(--brand-200);color:var(--brand-800)}
+.feed-chip.removed{background:var(--error-50);border-color:var(--error-100);color:var(--error-700)}
+.feed-title{margin:11px 0 5px;font-size:16px;font-weight:680;letter-spacing:-.025em;line-height:1.35}
+.feed-body{margin:0;color:var(--text-tertiary);font-size:13.5px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.feed-card-foot{display:flex;align-items:center;gap:14px;margin-top:13px;padding-top:12px;border-top:1px solid var(--gray-100)}
+.feed-last{margin-left:auto;color:var(--text-quaternary);font-size:11px}
+
+.feed-action{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;margin:-4px -8px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-tertiary);font-size:12px;font-weight:650}
+.feed-action svg{width:16px;height:16px}
+.feed-action:hover{background:var(--gray-50);color:var(--text-secondary)}
+.feed-action.static{pointer-events:none}
+.feed-action.liked{color:var(--error-600)}
+.feed-action.liked svg path{fill:var(--error-600);stroke:var(--error-600)}
+.feed-action.small svg{width:14px;height:14px}
+.feed-action.small{margin-top:7px;font-size:11px}
+
+.feed-empty{padding:40px 28px;border:1px dashed var(--border-strong);border-radius:var(--radius-lg);background:var(--surface);text-align:center}
+.feed-empty h3{margin:0 0 7px;font-size:15px;font-weight:680}
+.feed-empty p{margin:0 auto;max-width:52ch;color:var(--text-tertiary);font-size:13px;line-height:1.6}
+
+.feed-side{display:grid;gap:12px;position:sticky;top:16px}
+.feed-side-card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-xs);overflow:hidden}
+.feed-side-cover{height:64px;background:radial-gradient(circle at 80% 10%,rgba(255,255,255,.18),transparent 40%),linear-gradient(135deg,var(--brand-700),var(--brand-500))}
+.feed-side-body{padding:13px 15px 15px}
+.feed-side-body>strong{display:block;font-size:14px;font-weight:680;letter-spacing:-.02em}
+.feed-side-body>p{margin:3px 0 0}
+.feed-side-stats{display:flex;gap:18px;margin-top:12px;padding-top:12px;border-top:1px solid var(--gray-100)}
+.feed-side-stats div{display:grid;gap:1px}
+.feed-side-stats strong{font-size:16px;font-weight:700;letter-spacing:-.03em}
+.feed-side-stats span{color:var(--text-quaternary);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.feed-side-join{width:100%;margin-top:12px}
+.feed-side-title{padding:13px 15px 9px;color:var(--text-secondary);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.feed-rank{list-style:none;margin:0;padding:0 15px 13px}
+.feed-rank li{display:flex;align-items:center;gap:9px;padding:6px 0}
+.feed-rank-no{width:15px;color:var(--text-quaternary);font-size:11px;font-weight:700}
+.feed-rank-name{flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-rank-score{color:var(--text-tertiary);font-size:11px;font-weight:650}
+.feed-side-empty{padding:0 15px 13px}
+.feed-side-note{margin:0;padding:0 15px 13px;color:var(--text-quaternary);font-size:10px;line-height:1.45}
+
+/* Inside the drawer: the opening post, then its comments. */
+.feed-opening{padding:14px 15px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--gray-25)}
+.feed-opening .feed-comment-text{margin-top:11px}
+.feed-comments{display:grid;gap:14px}
+.feed-comment{display:flex;gap:10px}
+.feed-comment.is-removed{opacity:.6}
+.feed-comment-body{flex:1;min-width:0}
+.feed-comment-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px}
+.feed-comment-head strong{font-size:12.5px;font-weight:660}
+.feed-remove{font-size:11px}
+.feed-comment-text{color:var(--text-secondary);font-size:13px;line-height:1.55;word-wrap:break-word}
+.feed-reply{display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.feed-reply-box{flex:1;min-width:0}
+.feed-reply-box .btn{margin-top:9px}
+
+.category-list{display:grid;gap:7px}
+.category-row{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--gray-25)}
+.category-row strong{flex:1;font-size:13px;font-weight:650}
+
+/* Narrow screens put the posts first and the class card after them. Somebody
+   opening this on a phone came to read the feed; the class details and the
+   leaderboard are reference, and the next-class banner above the feed already
+   carries the join button, so the one in the side card would be a second copy of
+   the same link. */
+@media (max-width:1100px){
+  .feed-layout{grid-template-columns:minmax(0,1fr)}
+  .feed-side{position:static;order:1;grid-template-columns:1fr 1fr;display:grid}
+  .feed-side-join{display:none}
+}
+@media (max-width:720px){
+  .feed-side{grid-template-columns:1fr}
+  .feed-card-tags{display:none}
+  .feed-last{display:none}
+}
 </style>
 </head>
 <body>
@@ -879,11 +969,35 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
       { id:'m6', class_id:'c1', week_id:null, kind:'file', title:'Week 5 notes, not finished', description:'Draft. Publish once the examples are added.', url:'#', file_name:'Week-5-draft.pdf', mime_type:'application/pdf', size_bytes:51200, published:false, position:2, created_at:iso('2026-08-08') },
     ];
 
+    const categories = [
+      { id:'cat1', class_id:'c1', name:'General', position:0 },
+      { id:'cat2', class_id:'c1', name:'Questions', position:1 },
+      { id:'cat3', class_id:'c1', name:'Wins', position:2 },
+      { id:'cat4', class_id:'c1', name:'Resources', position:3 },
+      { id:'cat5', class_id:'c2', name:'General', position:0 },
+      { id:'cat6', class_id:'c2', name:'Questions', position:1 },
+    ];
+
     const threads = [
-      { id:'t1', class_id:'c1', author_id:'admin1', title:'Start here: how this board works', body:'Use this for anything you would otherwise email me about the course. If you are stuck on something, post it here rather than sitting with it for a week. Somebody else in the group is nearly always wondering the same thing, and answering it once helps everyone.\n\nI read everything here.', pinned:true, locked:false, deleted_at:null, created_at:iso('2026-06-05T09:00:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
-      { id:'t2', class_id:'c1', author_id:'s2', title:'When do we use an tuiseal ginideach after a verbal noun?', body:'I keep getting this wrong in the homework. Is there a simple rule for when the noun after ag + verbal noun goes into the genitive, or is it just something you learn case by case?', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-06T20:10:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
-      { id:'t3', class_id:'c1', author_id:'s4', title:'Study group before the TEG exam?', body:'Is anyone interested in meeting on a Saturday morning to practise the oral? I was thinking every second week. Happy to set up the call if there is interest.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T11:00:00Z'), last_activity_at:iso('2026-08-08T18:45:00Z') },
-      { id:'t4', class_id:'c1', author_id:'s3', title:'Posted in the wrong place', body:'Sorry, meant to send this privately.', pinned:false, locked:false, deleted_at:iso('2026-08-05T10:00:00Z'), created_at:iso('2026-08-05T09:00:00Z'), last_activity_at:iso('2026-08-05T09:00:00Z') },
+      { id:'t1', class_id:'c1', author_id:'admin1', category_id:'cat1', title:'Start here: how this board works', body:'Use this for anything you would otherwise email me about the course. If you are stuck on something, post it here rather than sitting with it for a week. Somebody else in the group is nearly always wondering the same thing, and answering it once helps everyone.\n\nI read everything here.', pinned:true, locked:false, deleted_at:null, created_at:iso('2026-06-05T09:00:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
+      { id:'t2', class_id:'c1', author_id:'s2', category_id:'cat2', title:'When do we use an tuiseal ginideach after a verbal noun?', body:'I keep getting this wrong in the homework. Is there a simple rule for when the noun after ag + verbal noun goes into the genitive, or is it just something you learn case by case?', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-06T20:10:00Z'), last_activity_at:iso('2026-08-07T19:20:00Z') },
+      { id:'t3', class_id:'c1', author_id:'s4', category_id:'cat1', title:'Study group before the TEG exam?', body:'Is anyone interested in meeting on a Saturday morning to practise the oral? I was thinking every second week. Happy to set up the call if there is interest.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T11:00:00Z'), last_activity_at:iso('2026-08-08T18:45:00Z') },
+      { id:'t5', class_id:'c1', author_id:'s5', category_id:'cat3', title:'Spoke Irish to a parent at the school gate today', body:'Only two sentences and I got the tenses wrong halfway through, but she answered me in Irish and we kept going for a minute. Six months ago I would have switched to English straight away.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-08T16:20:00Z'), last_activity_at:iso('2026-08-09T09:15:00Z') },
+      { id:'t6', class_id:'c1', author_id:'s1', category_id:'cat4', title:'Free podcast that has helped my listening', body:'Bitesize Irish do short episodes at a slow pace and there is a transcript for each one. Ten minutes on the drive to work and I am picking up far more in class.', pinned:false, locked:false, deleted_at:null, created_at:iso('2026-08-04T07:40:00Z'), last_activity_at:iso('2026-08-05T12:00:00Z') },
+      { id:'t4', class_id:'c1', author_id:'s3', category_id:'cat1', title:'Posted in the wrong place', body:'Sorry, meant to send this privately.', pinned:false, locked:false, deleted_at:iso('2026-08-05T10:00:00Z'), created_at:iso('2026-08-05T09:00:00Z'), last_activity_at:iso('2026-08-05T09:00:00Z') },
+    ];
+
+    /* Enough likes that the counts are not all zero, spread so the Top sort
+       actually reorders the feed. */
+    const likes = [
+      { user_id:'s1', target_type:'thread', target_id:'t1' }, { user_id:'s2', target_type:'thread', target_id:'t1' },
+      { user_id:'s4', target_type:'thread', target_id:'t1' },
+      { user_id:'s1', target_type:'thread', target_id:'t5' }, { user_id:'s2', target_type:'thread', target_id:'t5' },
+      { user_id:'s3', target_type:'thread', target_id:'t5' }, { user_id:'s4', target_type:'thread', target_id:'t5' },
+      { user_id:'admin1', target_type:'thread', target_id:'t5' },
+      { user_id:'s5', target_type:'thread', target_id:'t2' }, { user_id:'admin1', target_type:'thread', target_id:'t6' },
+      { user_id:'s2', target_type:'post', target_id:'p2' }, { user_id:'s4', target_type:'post', target_id:'p2' },
+      { user_id:'s1', target_type:'post', target_id:'p2' },
     ];
 
     const posts = [
@@ -891,12 +1005,14 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
       { id:'p2', thread_id:'t2', author_id:'admin1', body:'That is close, and it is a good instinct. The rule of thumb: after a verbal noun, a following definite noun usually goes into an tuiseal ginideach — ag déanamh na hoibre, ag léamh an leabhair. Where it trips people up is that an indefinite noun often does not change at all: ag déanamh obair bhaile.\n\nI will bring three examples to Monday and we will work through them aloud.', deleted_at:null, created_at:iso('2026-08-07T19:20:00Z') },
       { id:'p3', thread_id:'t3', author_id:'s5', body:'I would be interested. Saturday mornings suit me better than evenings.', deleted_at:null, created_at:iso('2026-08-08T14:00:00Z') },
       { id:'p4', thread_id:'t3', author_id:'s1', body:'Count me in too.', deleted_at:null, created_at:iso('2026-08-08T18:45:00Z') },
+      { id:'p5', thread_id:'t5', author_id:'admin1', body:'This is exactly the thing. Two sentences with a real person beats an hour of drills, and the tenses will settle. Well done.', deleted_at:null, created_at:iso('2026-08-09T09:15:00Z') },
+      { id:'p6', thread_id:'t6', author_id:'s3', body:'Downloaded, thanks. The transcripts are the part I needed.', deleted_at:null, created_at:iso('2026-08-05T12:00:00Z') },
     ];
 
     return {
       sessionUserId:'admin1',
       users, classes, weeks, assignments, attendance, checkins, homework, notes:[], withdrawals:[], homeworkFiles:[], dismissals:[],
-      materials, threads, posts, reads:[],
+      materials, threads, posts, reads:[], categories, likes,
       settings:{
         email:{provider:'console',fromName:'Gaeilgeoir Guides',fromAddress:'support@gaeilgeoirguides.com',replyTo:'support@gaeilgeoirguides.com',webhookUrl:'',smtpHost:'',smtpUser:'',configured:false},
         reminders:{
@@ -923,7 +1039,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
           generalFeedbackPrompt:'Give friendly, concise teacher feedback in 2 to 3 lines.'
         }
       },
-      counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,material:10,thread:10,post:10}
+      counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,material:10,thread:10,post:10,category:10}
     };
   }
 
@@ -957,6 +1073,9 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     if(!Array.isArray(stored.threads)) stored.threads=fresh.threads;
     if(!Array.isArray(stored.posts)) stored.posts=fresh.posts;
     if(!Array.isArray(stored.reads)) stored.reads=[];
+    // Categories and likes arrived with the feed rebuild.
+    if(!Array.isArray(stored.categories)) stored.categories=fresh.categories;
+    if(!Array.isArray(stored.likes)) stored.likes=fresh.likes;
     (stored.classes || []).forEach((klass) => {
       const seeded=fresh.classes.find((row)=>row.id===klass.id);
       if(klass.join_url===undefined) klass.join_url=seeded?.join_url??null;
@@ -1093,27 +1212,74 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     const row=db.users.find((item)=>item.id===id);
     return row?{id:row.id,name:row.name,role:row.role}:null;
   }
-  function threadRows(classId,includeDeleted){
-    return (db.threads||[]).filter((row)=>row.class_id===classId&&(includeDeleted||!row.deleted_at))
+  function likeCount(type,id){return (db.likes||[]).filter((row)=>row.target_type===type&&row.target_id===id).length;}
+  function likedBy(type,id,userId){return (db.likes||[]).some((row)=>row.target_type===type&&row.target_id===id&&row.user_id===userId);}
+  function categoryName(id){return (db.categories||[]).find((row)=>row.id===id)?.name||null;}
+  function categoryRows(classId){
+    return (db.categories||[]).filter((row)=>row.class_id===classId)
+      .map((row)=>({...row,thread_count:(db.threads||[]).filter((t)=>t.category_id===row.id&&!t.deleted_at).length}))
+      .sort((a,b)=>a.position-b.position);
+  }
+  function threadRows(classId,includeDeleted,viewerId,categoryId,sort){
+    const rows=(db.threads||[]).filter((row)=>row.class_id===classId&&(includeDeleted||!row.deleted_at)
+        &&(!categoryId||row.category_id===categoryId))
       .map((row)=>{
         const replies=(db.posts||[]).filter((post)=>post.thread_id===row.id&&!post.deleted_at);
-        return {...row,author:authorOf(row.author_id),reply_count:replies.length,
-          last_reply_at:replies.length?replies[replies.length-1].created_at:null};
-      })
-      .sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(a.last_activity_at<b.last_activity_at?1:-1));
+        const last=replies[replies.length-1];
+        return {...row,author:authorOf(row.author_id),category_name:categoryName(row.category_id),
+          comment_count:replies.length,like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),
+          last_comment:last?{name:authorOf(last.author_id)?.name||'Removed account',at:last.created_at}:null};
+      });
+    return rows.sort((a,b)=>(Number(b.pinned)-Number(a.pinned))
+      ||(sort==='top'?b.like_count-a.like_count:0)
+      ||(a.last_activity_at<b.last_activity_at?1:-1));
   }
-  function threadDetail(id,includeDeleted){
+  function threadDetail(id,includeDeleted,viewerId){
     const row=(db.threads||[]).find((item)=>item.id===id&&(includeDeleted||!item.deleted_at));
     if(!row)return null;
-    const posts=(db.posts||[]).filter((post)=>post.thread_id===id&&(includeDeleted||!post.deleted_at))
-      .map((post)=>({...post,author:authorOf(post.author_id)}));
-    return {...row,author:authorOf(row.author_id),posts};
+    const comments=(db.posts||[]).filter((post)=>post.thread_id===id&&(includeDeleted||!post.deleted_at))
+      .map((post)=>({...post,author:authorOf(post.author_id),
+        like_count:likeCount('post',post.id),liked:likedBy('post',post.id,viewerId)}));
+    return {...row,author:authorOf(row.author_id),category_name:categoryName(row.category_id),
+      comment_count:comments.filter((c)=>!c.deleted_at).length,
+      like_count:likeCount('thread',row.id),liked:likedBy('thread',row.id,viewerId),comments};
+  }
+  /* Counts what people wrote, not the likes they collected, exactly as
+     topContributors does on the server. */
+  function contributorRows(classId){
+    const threadIds=new Set((db.threads||[]).filter((t)=>t.class_id===classId&&!t.deleted_at).map((t)=>t.id));
+    const tally=new Map();
+    const add=(id)=>{const user=db.users.find((u)=>u.id===id);if(!user||user.role!=='student')return;
+      tally.set(id,(tally.get(id)||0)+1);};
+    (db.threads||[]).filter((t)=>t.class_id===classId&&!t.deleted_at).forEach((t)=>add(t.author_id));
+    (db.posts||[]).filter((p)=>threadIds.has(p.thread_id)&&!p.deleted_at).forEach((p)=>add(p.author_id));
+    return [...tally.entries()]
+      .map(([id,total])=>({id,name:db.users.find((u)=>u.id===id)?.name||'',total}))
+      .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name)).slice(0,5);
+  }
+  function boardPayload(classId,includeDeleted,viewerId,url){
+    const categoryId=url.searchParams.get('categoryId')||null;
+    const sort=url.searchParams.get('sort')==='top'?'top':'new';
+    return {threads:threadRows(classId,includeDeleted,viewerId,categoryId,sort),
+      categories:categoryRows(classId),contributors:contributorRows(classId),sort,categoryId,
+      memberCount:db.users.filter((u)=>u.role==='student'&&u.class_id===classId&&u.active).length};
   }
   function newThread(classId,authorId,body){
     const now=new RealDate(PREVIEW_NOW).toISOString();
     const row={id:`t${db.counters.thread=(db.counters.thread||10)+1}`,class_id:classId,author_id:authorId,
-      title:body.title,body:body.body,pinned:false,locked:false,deleted_at:null,created_at:now,last_activity_at:now};
+      title:body.title,body:body.body,category_id:body.categoryId||null,pinned:false,locked:false,
+      deleted_at:null,created_at:now,last_activity_at:now};
     db.threads.push(row);save();return row;
+  }
+  /* Idempotent both ways, like the server's toggleLike: a double tap on a phone
+     is one gesture, not two likes. */
+  function toggleLikeRow(userId,type,targetId){
+    const target=type==='post'?'post':'thread';
+    const existing=(db.likes||[]).find((row)=>row.user_id===userId&&row.target_type===target&&row.target_id===targetId);
+    if(existing) db.likes=db.likes.filter((row)=>row!==existing);
+    else db.likes.push({user_id:userId,target_type:target,target_id:targetId});
+    save();
+    return {liked:!existing,likeCount:likeCount(target,targetId)};
   }
   function newReply(threadId,authorId,body){
     const now=new RealDate(PREVIEW_NOW).toISOString();
@@ -1685,10 +1851,28 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     params=match(path,'/api/admin/community/:classId');
     if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
       const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
-      return json({class:{...klass,label:classLabel(klass)},threads:threadRows(params.classId,true)});
+      return json({class:{...klass,label:classLabel(klass)},...boardPayload(params.classId,true,user.id,url)});
+    }
+    params=match(path,'/api/admin/community/like/:type/:id');
+    if(params&&method==='POST') return json(toggleLikeRow(user.id,params.type,params.id));
+    params=match(path,'/api/admin/community/:classId/categories');
+    if(params&&method==='GET') return json(categoryRows(params.classId));
+    if(params&&method==='POST'){
+      if((db.categories||[]).some((row)=>row.class_id===params.classId&&row.name===body.name))
+        return error('That category already exists.',409);
+      const row={id:`cat${db.counters.category=(db.counters.category||10)+1}`,class_id:params.classId,
+        name:body.name,position:categoryRows(params.classId).length};
+      db.categories.push(row);save();return json(row,201);
+    }
+    params=match(path,'/api/admin/community/categories/:id');
+    if(params&&method==='DELETE'){
+      db.categories=(db.categories||[]).filter((row)=>row.id!==params.id);
+      // Posts survive their category; they simply become uncategorised.
+      (db.threads||[]).forEach((row)=>{if(row.category_id===params.id)row.category_id=null;});
+      save();return new Response(null,{status:204});
     }
     params=match(path,'/api/admin/community/thread/:id');
-    if(params&&method==='GET'){const thread=threadDetail(params.id,true);return thread?json(thread):error('Thread not found',404);}
+    if(params&&method==='GET'){const thread=threadDetail(params.id,true,user.id);return thread?json(thread):error('Thread not found',404);}
     if(params&&method==='PATCH'){
       const row=db.threads.find((item)=>item.id===params.id);if(!row)return error('Thread not found',404);
       if(body.pinned!==undefined)row.pinned=body.pinned;if(body.locked!==undefined)row.locked=body.locked;save();return json(row);
@@ -1716,8 +1900,10 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     }
     if(path==='/api/student/community'&&method==='GET'){
       const student=previewStudent(user);
-      return json({threads:threadRows(student.class_id,false),unread:previewUnread(student)});
+      return json({...boardPayload(student.class_id,false,student.id,url),unread:previewUnread(student)});
     }
+    params=match(path,'/api/student/community/like/:type/:id');
+    if(params&&method==='POST') return json(toggleLikeRow(previewStudent(user).id,params.type,params.id));
     if(path==='/api/student/community/read'&&method==='POST'){
       const student=previewStudent(user);
       updateOrInsert(db.reads,(item)=>item.user_id===student.id&&item.class_id===student.class_id,
@@ -1725,7 +1911,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
       save();return json({ok:true,unread:0});
     }
     params=match(path,'/api/student/community/thread/:id');
-    if(params&&method==='GET'){const thread=threadDetail(params.id,false);return thread?json(thread):error('Post not found',404);}
+    if(params&&method==='GET'){const thread=threadDetail(params.id,false,previewStudent(user).id);return thread?json(thread):error('Post not found',404);}
     if(path==='/api/student/community/threads'&&method==='POST'){
       const student=previewStudent(user);
       return json(newThread(student.class_id,student.id,body),201);
@@ -1805,6 +1991,8 @@ const state = {
   community: null,
   communityClassId: null,
   communityThread: null,
+  boardCategoryId: null,
+  boardSort: 'new',
 };
 
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -1832,6 +2020,10 @@ const svg = {
   board: `<svg viewBox="0 0 24 24" fill="none"><path d="M7 9h6m-6 4h9m-9.2 7 2.494 2.494c.253.253.38.38.524.427a.7.7 0 0 0 .432 0c.145-.047.271-.174.524-.427L13 20h2.2c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   link: `<svg viewBox="0 0 24 24" fill="none"><path d="M14 7h1.5a4.5 4.5 0 1 1 0 9H14m-4 0H8.5a4.5 4.5 0 1 1 0-9H10m-1.5 4.5h7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   pin: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 15v7m-2.879-8.879 1.293-1.293c.2-.2.3-.3.363-.418a1 1 0 0 0 .107-.34c.014-.132-.006-.27-.045-.548l-.34-2.377c-.05-.354-.076-.53-.043-.702a1 1 0 0 1 .155-.375c.098-.145.245-.254.539-.474l2.35-1.762c.35-.263.526-.394.62-.567a1 1 0 0 0 .116-.549c-.016-.196-.12-.39-.33-.777l-.128-.236c-.192-.354-.288-.53-.433-.64a1 1 0 0 0-.457-.187c-.18-.026-.37.02-.752.114L6.4 3.86c-.53.13-.795.195-.96.348a1 1 0 0 0-.31.63c-.02.223.096.469.328.96l.101.215c.18.38.27.571.41.7a1 1 0 0 0 .43.234c.184.045.392.02.807-.03l2.31-.28c.29-.036.436-.054.572-.032a1 1 0 0 1 .38.15c.116.076.213.19.407.417l1.192 1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  /* The like. Outline until it is pressed, when CSS fills it — one shape doing
+     both states keeps the button from changing size as it is clicked. */
+  heart: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 7.694c-1.4-1.6-3.2-2.2-4.9-1.7-2.4.7-3.6 3.3-2.8 5.7.9 2.9 4.4 5.6 7.7 7.6 3.3-2 6.8-4.7 7.7-7.6.8-2.4-.4-5-2.8-5.7-1.7-.5-3.5.1-4.9 1.7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  comment: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 10.5h8M8 14h5m-6.2 6L9.3 22.5c.25.25.38.38.52.43a.7.7 0 0 0 .43 0c.15-.05.27-.18.52-.43L13 20h2.2c1.68 0 2.52 0 3.16-.33a3 3 0 0 0 1.31-1.31C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.33-3.16a3 3 0 0 0-1.31-1.31C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 0 0-1.31 1.31C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.33 3.16a3 3 0 0 0 1.31 1.31C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 /* ------------------------------------------------------------------
@@ -2803,7 +2995,10 @@ async function showStudentView(view) {
   try {
     if (view === 'materials') state.materials = await api('/api/student/materials');
     if (view === 'community') {
-      state.community = await api('/api/student/community');
+      const params = new URLSearchParams();
+      if (state.boardSort === 'top') params.set('sort', 'top');
+      if (state.boardCategoryId) params.set('categoryId', state.boardCategoryId);
+      state.community = await api(`/api/student/community${params.toString() ? `?${params}` : ''}`);
       if (state.studentData.communityUnread) {
         await api('/api/student/community/read', { method: 'POST' });
         state.studentData.communityUnread = 0;
@@ -3664,64 +3859,230 @@ function openMaterialModal() {
 }
 
 /* ------------------------------------------------------------------
-   Class board
+   The class feed.
+
+   One implementation serves both sides. The administrator gets the moderation
+   controls and sees removed posts greyed rather than gone; everything else — the
+   composer, the categories, the likes, the comments — is identical, because a
+   teacher posting to their own class is doing the same thing a student is.
    ------------------------------------------------------------------ */
 
-/* Removed threads stay in the administrator's list, greyed, with a way back.
-   Moderation that cannot be undone is moderation nobody uses confidently. */
-function communityView() {
-  const threads = state.community?.threads || [];
-  const live = threads.filter((row) => !row.deleted_at);
-  return `${pageHeader('Class board', 'Discussion', 'One board per class. Students post questions and answer each other; you can pin, close or remove anything.',
-    `<button class="btn primary" id="new-thread">Start a post</button>`)}
-    <div class="card toolbar">
-      <div class="toolbar-group">
-        <select class="select" id="community-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
-        <span class="muted small">${live.length} conversation${live.length === 1 ? '' : 's'}</span>
-      </div>
-    </div>
-    ${threads.length ? `<section class="card"><div class="thread-list">${threads.map((thread) => threadRow(thread, true)).join('')}</div></section>`
-      : `<div class="empty-state"><h3>The board is empty</h3><p>Start it off with something worth replying to — a question about the last class, or where to find this week's notes. An empty board stays empty until somebody goes first.</p></div>`}`;
+const BOARD_COLOURS = ['#50af37', '#2e90fa', '#f79009', '#7a5af8', '#ef6820', '#0ba5ec', '#dd2590'];
+
+/* An avatar needs to be the same colour for the same person every time or the
+   feed reads as a different set of people on every load. Derived from the name
+   rather than stored, which keeps it working for anybody who has not logged in
+   yet. */
+function boardAvatar(name = '', size = '') {
+  const text = String(name || '?');
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  const colour = BOARD_COLOURS[hash % BOARD_COLOURS.length];
+  return `<span class="feed-avatar ${size}" style="background:${colour}">${escapeHtml(initials(text))}</span>`;
 }
 
-function threadRow(thread, admin = false) {
-  const replies = thread.reply_count || 0;
-  const last = thread.last_reply_at || thread.created_at;
-  return `<article class="thread-row ${thread.deleted_at ? 'is-removed' : ''}" data-open-thread="${thread.id}">
-    <div class="thread-main">
-      <strong>${thread.pinned ? `<span class="thread-pin" title="Pinned">${svg.pin}</span>` : ''}${escapeHtml(thread.title)}</strong>
-      <p>${escapeHtml(String(thread.body || '').slice(0, 160))}${String(thread.body || '').length > 160 ? '…' : ''}</p>
-      <span class="muted small">${escapeHtml(thread.author?.name || 'Removed account')}${thread.author?.role === 'admin' ? ' · Teacher' : ''} · ${escapeHtml(fmtDate(last, { dateStyle: 'medium' }))}</span>
-    </div>
-    <div class="thread-meta">
-      ${thread.locked ? '<span class="pill">Closed</span>' : ''}
-      ${thread.deleted_at && admin ? '<span class="pill red">Removed</span>' : ''}
-      <span class="pill">${replies} ${replies === 1 ? 'reply' : 'replies'}</span>
-    </div>
+/* "3h" reads faster than a date when the whole point of the line is how recent
+   something is. Anything past a week gets the date back, because "63d" is not a
+   unit anybody thinks in. */
+function timeAgo(value) {
+  if (!value) return '';
+  const seconds = Math.round((Date.now() - new Date(value).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return fmtDate(value, { dateStyle: 'medium' });
+}
+
+const boardApi = () => (state.user.role === 'admin' ? '/api/admin' : '/api/student');
+const boardData = () => (state.user.role === 'admin' ? state.community : state.community);
+
+/* Reloads the feed in place. Both roles land here so a like or a new comment
+   updates the counts without bouncing the reader back to the top of the page. */
+async function reloadBoard() {
+  const admin = state.user.role === 'admin';
+  const params = new URLSearchParams();
+  if (state.boardSort === 'top') params.set('sort', 'top');
+  if (state.boardCategoryId) params.set('categoryId', state.boardCategoryId);
+  const suffix = params.toString() ? `?${params}` : '';
+  try {
+    state.community = admin
+      ? await api(`/api/admin/community/${state.communityClassId}${suffix}`)
+      : await api(`/api/student/community${suffix}`);
+  } catch (error) { return showToast(error.message, 'error'); }
+  if (admin) { shell({ nav: adminNav(), content: communityView(), title: 'Class board', roleLabel: 'Administrator' }); bindAdminView(); }
+  else renderStudent();
+}
+
+/* The composer. Collapsed it is one line that names the person and invites them
+   to write; a board whose only way in is a button labelled "Start a post" gets
+   noticeably fewer posts than one with a box already sitting there. */
+function feedComposer() {
+  return `<button class="feed-composer" id="open-composer">
+    ${boardAvatar(state.user.name)}
+    <span>Write something to the class…</span>
+  </button>`;
+}
+
+function categoryPills() {
+  const categories = boardData()?.categories || [];
+  if (!categories.length) return '';
+  const pill = (id, label, count) => `<button class="feed-pill ${(state.boardCategoryId || '') === id ? 'active' : ''}" data-board-category="${id}">${escapeHtml(label)}${count === undefined ? '' : `<span>${count}</span>`}</button>`;
+  const total = categories.reduce((sum, row) => sum + (row.thread_count || 0), 0);
+  return `<div class="feed-pills">
+    ${pill('', 'All', total)}
+    ${categories.map((row) => pill(row.id, row.name, row.thread_count)).join('')}
+    <span class="feed-pill-spacer"></span>
+    <button class="feed-sort ${state.boardSort === 'top' ? 'active' : ''}" data-board-sort="${state.boardSort === 'top' ? 'new' : 'top'}">
+      ${state.boardSort === 'top' ? 'Top' : 'Newest'}
+    </button>
+  </div>`;
+}
+
+/* One card in the feed. The footer is where a quiet board either reassures
+   somebody that they were read or does not: likes, comments and who spoke last
+   all sit on one line, in that order. */
+function feedCard(thread, admin) {
+  const comments = thread.comment_count || 0;
+  const likes = thread.like_count || 0;
+  const body = String(thread.body || '');
+  return `<article class="feed-card ${thread.deleted_at ? 'is-removed' : ''}" data-open-thread="${thread.id}">
+    <header class="feed-card-head">
+      ${boardAvatar(thread.author?.name)}
+      <div class="feed-byline">
+        <strong>${escapeHtml(thread.author?.name || 'Removed account')}</strong>
+        ${thread.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
+        <span class="feed-dot">·</span>
+        <span class="muted small">${escapeHtml(timeAgo(thread.created_at))}</span>
+      </div>
+      <div class="feed-card-tags">
+        ${thread.pinned ? `<span class="feed-chip pinned">${svg.pin} Pinned</span>` : ''}
+        ${thread.locked ? '<span class="feed-chip">Closed</span>' : ''}
+        ${thread.deleted_at && admin ? '<span class="feed-chip removed">Removed</span>' : ''}
+        ${thread.category_name ? `<span class="feed-chip">${escapeHtml(thread.category_name)}</span>` : ''}
+      </div>
+    </header>
+    <h3 class="feed-title">${escapeHtml(thread.title)}</h3>
+    <p class="feed-body">${escapeHtml(body.slice(0, 280))}${body.length > 280 ? '…' : ''}</p>
+    <footer class="feed-card-foot">
+      <button class="feed-action ${thread.liked ? 'liked' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
+        ${svg.heart}<span>${likes || ''}</span>
+      </button>
+      <span class="feed-action static">${svg.comment}<span>${comments || ''}</span></span>
+      ${thread.last_comment
+        ? `<span class="feed-last">Last comment by ${escapeHtml(thread.last_comment.name)} ${escapeHtml(timeAgo(thread.last_comment.at))}</span>`
+        : ''}
+    </footer>
   </article>`;
 }
 
-/* One thread, opened in the side drawer the review queue already uses, so
-   reading the board never loses your place in the list. */
+/* The right-hand column. The class card answers "where am I and when do we
+   meet"; the contributors list answers "is anybody else here", which on a board
+   of thirty is the question that decides whether somebody posts. */
+function feedSidebar() {
+  const data = boardData();
+  const klass = state.user.role === 'admin'
+    ? data?.class
+    : state.studentData?.class;
+  const next = state.studentData?.nextClass;
+  const contributors = data?.contributors || [];
+  return `<aside class="feed-side">
+    <section class="feed-side-card">
+      <div class="feed-side-cover"></div>
+      <div class="feed-side-body">
+        <strong>${escapeHtml(klass?.programme_name || 'Your class')}</strong>
+        <p class="muted small">${escapeHtml(klass ? `${DAY_NAMES[klass.day_of_week]} · ${String(klass.start_time).slice(0, 5)}` : '')}</p>
+        <div class="feed-side-stats">
+          <div><strong>${data?.memberCount || 0}</strong><span>${(data?.memberCount || 0) === 1 ? 'member' : 'members'}</span></div>
+          <div><strong>${(data?.threads || []).filter((row) => !row.deleted_at).length}</strong><span>posts</span></div>
+        </div>
+        ${next?.joinUrl && state.user.role !== 'admin'
+          ? `<a class="btn primary feed-side-join" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
+          : ''}
+      </div>
+    </section>
+    <section class="feed-side-card">
+      <div class="feed-side-title">Most active this month</div>
+      ${contributors.length
+        ? `<ol class="feed-rank">${contributors.map((row, index) => `<li>
+            <span class="feed-rank-no">${index + 1}</span>
+            ${boardAvatar(row.name, 'small')}
+            <span class="feed-rank-name">${escapeHtml(row.name)}</span>
+            <span class="feed-rank-score">${row.total}</span>
+          </li>`).join('')}</ol>`
+        : '<p class="muted small feed-side-empty">Nobody has posted in the last thirty days.</p>'}
+      <p class="feed-side-note">Counts posts and comments written, not likes collected.</p>
+    </section>
+  </aside>`;
+}
+
+function feedEmptyState(admin) {
+  return `<div class="feed-empty">
+    <h3>${state.boardCategoryId ? 'Nothing in this category yet' : 'The feed is empty'}</h3>
+    <p>${admin
+      ? 'Start it off with something worth replying to — a question about the last class, or where to find this week’s notes. An empty board stays empty until somebody goes first, and it is usually easier for that somebody to be you.'
+      : 'Be the first. A question you think is too simple is usually the one three other people were also wondering about.'}</p>
+  </div>`;
+}
+
+function feedLayout(admin) {
+  const threads = boardData()?.threads || [];
+  return `<div class="feed-layout">
+    <div class="feed-main">
+      ${feedComposer()}
+      ${categoryPills()}
+      ${threads.length ? threads.map((thread) => feedCard(thread, admin)).join('') : feedEmptyState(admin)}
+    </div>
+    ${feedSidebar()}
+  </div>`;
+}
+
+function communityView() {
+  return `${pageHeader('Class board', 'Community', 'One feed per class. Students post, comment and like; you can pin, close or remove anything.',
+    `<button class="btn" id="manage-categories">Categories</button>`)}
+    <div class="card toolbar">
+      <div class="toolbar-group">
+        <select class="select" id="community-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
+      </div>
+    </div>
+    ${feedLayout(true)}`;
+}
+
+function studentCommunityView() {
+  return `${studentHero()}${feedLayout(false)}`;
+}
+
+/* Opening a post. A drawer rather than a full page: the feed stays behind it, so
+   reading three posts in a row never costs three scroll positions. */
 async function openThread(threadId) {
-  const admin = state.user.role === 'admin';
   let thread;
-  try { thread = await api(`${admin ? '/api/admin' : '/api/student'}/community/thread/${threadId}`); }
+  try { thread = await api(`${boardApi()}/community/thread/${threadId}`); }
   catch (error) { return showToast(error.message, 'error'); }
   state.communityThread = thread;
   renderThreadDrawer();
 }
 
-function threadMessage(message, admin, isOpening = false) {
-  const removed = Boolean(message.deleted_at);
-  return `<article class="post ${removed ? 'is-removed' : ''} ${isOpening ? 'is-opening' : ''}">
-    <div class="post-head">
-      <span class="avatar small">${initials(message.author?.name || '?')}</span>
-      <div><strong>${escapeHtml(message.author?.name || 'Removed account')}</strong>${message.author?.role === 'admin' ? '<span class="pill green">Teacher</span>' : ''}
-      <span class="muted small">${escapeHtml(fmtDate(message.created_at, { dateStyle: 'medium', time: true }))}</span></div>
-      ${admin && !isOpening ? `<button class="btn small ${removed ? '' : 'danger'}" data-post-removal="${message.id}" data-removed="${removed}">${removed ? 'Restore' : 'Remove'}</button>` : ''}
+function feedComment(comment, admin) {
+  const removed = Boolean(comment.deleted_at);
+  return `<article class="feed-comment ${removed ? 'is-removed' : ''}">
+    ${boardAvatar(comment.author?.name, 'small')}
+    <div class="feed-comment-body">
+      <div class="feed-comment-head">
+        <strong>${escapeHtml(comment.author?.name || 'Removed account')}</strong>
+        ${comment.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
+        <span class="muted small">${escapeHtml(timeAgo(comment.created_at))}</span>
+        ${admin ? `<button class="text-link feed-remove" data-post-removal="${comment.id}" data-removed="${removed}">${removed ? 'Restore' : 'Remove'}</button>` : ''}
+      </div>
+      ${removed
+        ? '<p class="muted small">This comment was removed.</p>'
+        : `<div class="feed-comment-text">${escapeHtml(comment.body).replace(/\n/g, '<br>')}</div>
+           <button class="feed-action small ${comment.liked ? 'liked' : ''}" data-like="post" data-id="${comment.id}" aria-pressed="${Boolean(comment.liked)}">
+             ${svg.heart}<span>${comment.like_count || ''}</span>
+           </button>`}
     </div>
-    ${removed ? '<p class="muted small">This reply was removed.</p>' : `<div class="post-body">${escapeHtml(message.body).replace(/\n/g, '<br>')}</div>`}
   </article>`;
 }
 
@@ -3730,34 +4091,51 @@ function renderThreadDrawer() {
   if (!thread) return;
   const admin = state.user.role === 'admin';
   const withdrawn = Boolean(state.studentData?.withdrawnAt);
-  const canReply = admin || (!thread.locked && !withdrawn);
+  const canComment = admin || (!thread.locked && !withdrawn);
+  const comments = thread.comments || [];
   openDrawer({
     title: thread.title,
-    subtitle: `${thread.author?.name || 'Removed account'} · ${fmtDate(thread.created_at, { dateStyle: 'medium' })}${thread.locked ? ' · closed to replies' : ''}`,
+    subtitle: `${thread.author?.name || 'Removed account'} · ${timeAgo(thread.created_at)}${thread.category_name ? ` · ${thread.category_name}` : ''}`,
     body: `
       ${admin ? `<div class="drawer-toolbar">
         <button class="btn small" data-thread-pin="${thread.id}" data-pinned="${thread.pinned}">${thread.pinned ? 'Unpin' : 'Pin to top'}</button>
-        <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close to replies'}</button>
+        <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close to comments'}</button>
         <button class="btn small ${thread.deleted_at ? '' : 'danger'}" data-thread-removal="${thread.id}" data-removed="${Boolean(thread.deleted_at)}">${thread.deleted_at ? 'Restore post' : 'Remove post'}</button>
       </div>` : ''}
-      ${threadMessage({ ...thread, created_at: thread.created_at }, admin, true)}
-      <div class="section-title">${thread.posts.length} ${thread.posts.length === 1 ? 'reply' : 'replies'}</div>
-      <div class="post-list">${thread.posts.map((post) => threadMessage(post, admin)).join('') || '<p class="muted small">No replies yet.</p>'}</div>
-      ${canReply ? `<div class="reply-box">
-        <label class="field-label" for="reply-body">Your reply</label>
-        ${dictateButton('reply-body')}
-        <textarea id="reply-body" rows="4" placeholder="Write a reply"></textarea>
-        <button class="btn primary" id="send-reply">Send reply</button>
-      </div>` : `<p class="muted small stack-top">${withdrawn ? 'You have withdrawn from this course, so posting is closed.' : 'This conversation has been closed to new replies.'}</p>`}`,
+      <article class="feed-opening">
+        <header class="feed-card-head">
+          ${boardAvatar(thread.author?.name)}
+          <div class="feed-byline">
+            <strong>${escapeHtml(thread.author?.name || 'Removed account')}</strong>
+            ${thread.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
+            <span class="feed-dot">·</span><span class="muted small">${escapeHtml(timeAgo(thread.created_at))}</span>
+          </div>
+        </header>
+        <div class="feed-comment-text">${escapeHtml(String(thread.body || '')).replace(/\n/g, '<br>')}</div>
+        <button class="feed-action ${thread.liked ? 'liked' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
+          ${svg.heart}<span>${thread.like_count || ''}</span>
+        </button>
+      </article>
+      <div class="section-title">${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}</div>
+      <div class="feed-comments">${comments.map((comment) => feedComment(comment, admin)).join('') || '<p class="muted small">No comments yet.</p>'}</div>
+      ${canComment ? `<div class="feed-reply">
+        ${boardAvatar(state.user.name, 'small')}
+        <div class="feed-reply-box">
+          ${dictateButton('reply-body')}
+          <textarea id="reply-body" rows="3" placeholder="Write a comment"></textarea>
+          <button class="btn primary" id="send-reply">Comment</button>
+        </div>
+      </div>` : `<p class="muted small stack-top">${withdrawn ? 'You have withdrawn from this course, so posting is closed.' : 'This post has been closed to new comments.'}</p>`}`,
     onOpen() {
       bindDictation();
+      bindFeedLikes(modalRoot);
       document.getElementById('send-reply')?.addEventListener('click', async () => {
         const body = document.getElementById('reply-body').value.trim();
-        if (!body) return showToast('Write a reply before sending.', 'error');
+        if (!body) return showToast('Write a comment before sending.', 'error');
         try {
-          await api(`${admin ? '/api/admin' : '/api/student'}/community/thread/${thread.id}/replies`, { method: 'POST', body: { body } });
+          await api(`${boardApi()}/community/thread/${thread.id}/replies`, { method: 'POST', body: { body } });
           await openThread(thread.id);
-          showToast('Reply sent');
+          await reloadBoard();
         } catch (error) { showToast(error.message, 'error'); }
       });
       document.querySelector('[data-thread-pin]')?.addEventListener('click', (event) =>
@@ -3768,42 +4146,61 @@ function renderThreadDrawer() {
         const removed = event.currentTarget.dataset.removed !== 'true';
         if (removed && !(await askConfirm({
           title: 'Remove this post?',
-          message: 'Students stop seeing it immediately. The replies are kept and you can restore the whole thread at any time.',
+          message: 'Students stop seeing it immediately. The comments are kept and you can restore the whole post at any time.',
           confirmLabel: 'Remove', danger: true,
         }))) return;
         try {
           await api(`/api/admin/community/thread/${thread.id}/removal`, { method: 'POST', body: { removed } });
-          await openThread(thread.id); await renderAdmin();
+          await openThread(thread.id); await reloadBoard();
           showToast(removed ? 'Post removed' : 'Post restored');
         } catch (error) { showToast(error.message, 'error'); }
       });
-      document.querySelectorAll('[data-post-removal]').forEach((button) => button.addEventListener('click', async () => {
+      modalRoot.querySelectorAll('[data-post-removal]').forEach((button) => button.addEventListener('click', async () => {
         try {
           await api(`/api/admin/community/post/${button.dataset.postRemoval}/removal`, { method: 'POST', body: { removed: button.dataset.removed !== 'true' } });
-          await openThread(thread.id);
+          await openThread(thread.id); await reloadBoard();
         } catch (error) { showToast(error.message, 'error'); }
       }));
     },
   });
 }
 
+/* Likes update the one button that was pressed rather than redrawing anything.
+   A feed that jumps back to the top every time somebody likes a post is a feed
+   people stop liking posts in. */
+function bindFeedLikes(root = document) {
+  root.querySelectorAll('[data-like]').forEach((button) => button.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    const { like: type, id } = button.dataset;
+    let result;
+    try { result = await api(`${boardApi()}/community/like/${type}/${id}`, { method: 'POST' }); }
+    catch (error) { return showToast(error.message, 'error'); }
+    button.classList.toggle('liked', result.liked);
+    button.setAttribute('aria-pressed', String(result.liked));
+    button.querySelector('span').textContent = result.likeCount || '';
+    if (state.communityThread?.id === id) state.communityThread.liked = result.liked;
+  }));
+}
+
 async function updateThread(threadId, body) {
   try {
     await api(`/api/admin/community/thread/${threadId}`, { method: 'PATCH', body });
     await openThread(threadId);
-    await renderAdmin();
+    await reloadBoard();
   } catch (error) { showToast(error.message, 'error'); }
 }
 
 function openNewThreadModal() {
   const admin = state.user.role === 'admin';
+  const categories = boardData()?.categories || [];
   modal({
-    title: 'Start a post',
-    subtitle: admin ? 'Posted to this class board under your name.' : 'Everyone in your class can see this and reply.',
+    title: 'New post',
+    subtitle: admin ? 'Posted to this class feed under your name.' : 'Everyone in your class can see this and comment.',
     body: `<form id="thread-form">
       <div class="form-field"><label>Title</label><input name="title" required placeholder="A question about the tuiseal ginideach"></div>
       <div class="form-field"><label>Message</label>${dictateButton('thread-body')}<textarea id="thread-body" name="body" rows="6" required></textarea></div>
-      ${admin ? '<label class="check-row"><input type="checkbox" name="pinned"> Pin to the top of the board</label>' : ''}
+      ${categories.length ? `<div class="form-field"><label>Category</label><select name="categoryId">${categories.map((row) => `<option value="${row.id}" ${row.id === state.boardCategoryId ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')}</select></div>` : ''}
+      ${admin ? '<label class="check-row"><input type="checkbox" name="pinned"> Pin to the top of the feed</label>' : ''}
     </form>`,
     footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-thread">Post</button>`,
     onOpen() {
@@ -3811,18 +4208,77 @@ function openNewThreadModal() {
       document.getElementById('save-thread').addEventListener('click', async () => {
         const form = document.getElementById('thread-form');
         const data = new FormData(form);
-        const body = { title: String(data.get('title') || '').trim(), body: String(data.get('body') || '').trim() };
+        const body = {
+          title: String(data.get('title') || '').trim(),
+          body: String(data.get('body') || '').trim(),
+          categoryId: data.get('categoryId') || null,
+        };
         if (!body.title || !body.body) return showToast('Give your post a title and a message.', 'error');
         if (admin) body.pinned = form.pinned.checked;
         try {
           await api(admin ? `/api/admin/community/${state.communityClassId}/threads` : '/api/student/community/threads', { method: 'POST', body });
           closeModal();
-          if (admin) await renderAdmin(); else await showStudentView('community');
+          await reloadBoard();
           showToast('Posted');
         } catch (error) { showToast(error.message, 'error'); }
       });
     },
   });
+}
+
+/* Categories are the teacher's to shape: the useful set for a Leaving
+   Certificate group is not the useful set for a teaching diploma group. */
+function openCategoryModal() {
+  const categories = boardData()?.categories || [];
+  modal({
+    title: 'Categories',
+    subtitle: 'What students can file a post under.',
+    body: `<div class="category-list">${categories.map((row) => `<div class="category-row">
+        <strong>${escapeHtml(row.name)}</strong>
+        <span class="muted small">${row.thread_count} post${row.thread_count === 1 ? '' : 's'}</span>
+        <button class="btn small danger" data-delete-category="${row.id}">Delete</button>
+      </div>`).join('') || '<p class="muted small">No categories yet.</p>'}</div>
+      <form id="category-form" class="stack-top"><div class="form-field"><label>Add a category</label><input name="name" maxlength="40" placeholder="Pronunciation"></div></form>
+      <p class="muted small">Deleting a category leaves its posts where they are; they simply become uncategorised.</p>`,
+    footer: `<button class="btn" data-close-modal>Done</button><button class="btn primary" id="add-category">Add</button>`,
+    onOpen() {
+      document.getElementById('add-category').addEventListener('click', async () => {
+        const name = String(new FormData(document.getElementById('category-form')).get('name') || '').trim();
+        if (!name) return showToast('Give the category a short name.', 'error');
+        try {
+          await api(`/api/admin/community/${state.communityClassId}/categories`, { method: 'POST', body: { name } });
+          closeModal(); await reloadBoard(); showToast('Category added');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+      modalRoot.querySelectorAll('[data-delete-category]').forEach((button) => button.addEventListener('click', async () => {
+        try {
+          await api(`/api/admin/community/categories/${button.dataset.deleteCategory}`, { method: 'DELETE' });
+          closeModal(); await reloadBoard(); showToast('Category deleted');
+        } catch (error) { showToast(error.message, 'error'); }
+      }));
+    },
+  });
+}
+
+/* Wiring shared by both roles. Called from bindAdminView and bindStudentView so
+   neither has to know how the feed is put together. */
+function bindFeed() {
+  document.getElementById('open-composer')?.addEventListener('click', openNewThreadModal);
+  document.getElementById('manage-categories')?.addEventListener('click', openCategoryModal);
+  document.querySelectorAll('[data-board-category]').forEach((button) => button.addEventListener('click', () => {
+    state.boardCategoryId = button.dataset.boardCategory || null;
+    reloadBoard();
+  }));
+  document.querySelector('[data-board-sort]')?.addEventListener('click', (event) => {
+    state.boardSort = event.currentTarget.dataset.boardSort;
+    reloadBoard();
+  });
+  document.querySelectorAll('[data-open-thread]').forEach((card) => card.addEventListener('click', (event) => {
+    // The like button lives inside the card, so it must not also open it.
+    if (event.target.closest('[data-like]')) return;
+    openThread(card.dataset.openThread);
+  }));
+  bindFeedLikes(document);
 }
 
 /* The weekly class link. Lives on the class rather than on each week, because a
@@ -3986,9 +4442,14 @@ function bindAdminView() {
     try { await api(`/api/admin/materials/${button.dataset.materialDelete}`, { method: 'DELETE' }); await renderAdmin(); showToast('Deleted'); }
     catch (error) { showToast(error.message, 'error'); }
   }));
-  document.getElementById('community-class')?.addEventListener('change', (event) => { state.communityClassId = event.target.value; renderAdmin(); });
-  document.getElementById('new-thread')?.addEventListener('click', openNewThreadModal);
-  document.querySelectorAll('[data-open-thread]').forEach((row) => row.addEventListener('click', () => openThread(row.dataset.openThread)));
+  document.getElementById('community-class')?.addEventListener('change', (event) => {
+    state.communityClassId = event.target.value;
+    // A category belongs to one class, so carrying the filter across would filter
+    // by something the new class has never heard of.
+    state.boardCategoryId = null;
+    renderAdmin();
+  });
+  bindFeed();
   document.querySelectorAll('[data-student-class]').forEach((select) => select.addEventListener('change', async () => {
     try { await api(`/api/admin/students/${select.dataset.studentClass}`, { method: 'PATCH', body: { classId: select.value } }); showToast('Student moved'); }
     catch (error) { showToast(error.message, 'error'); }
@@ -5009,18 +5470,6 @@ function studentMaterialsView() {
       : '<div class="empty-state"><h3>No materials yet</h3><p>Notes, recordings and links appear here as your teacher adds them.</p></div>'}`;
 }
 
-function studentCommunityView() {
-  const threads = state.community?.threads || [];
-  return `${studentHero()}
-    <div class="board-head">
-      <p class="muted small">Ask a question, answer somebody else's, or share something useful. Everyone in ${escapeHtml(state.studentData.class?.label || 'your class')} can see this.</p>
-      <button class="btn primary" id="student-new-thread">Start a post</button>
-    </div>
-    ${threads.length
-      ? `<section class="card"><div class="thread-list">${threads.map((thread) => threadRow(thread)).join('')}</div></section>`
-      : `<div class="empty-state"><h3>Nothing here yet</h3><p>Be the first. A question you think is too simple is usually the one three other people were also wondering about.</p></div>`}`;
-}
-
 const STUDENT_HERO_COPY = {
   materials: { title: 'here are your course materials', line: 'Notes, recordings and links for every week, kept in one place.' },
   community: { title: 'here is your class board', line: 'Ask a question or answer somebody else. Your teacher reads it too.' },
@@ -5379,8 +5828,7 @@ function bindStudentView() {
   document.getElementById('new-password')?.addEventListener('input', (event) => updatePasswordRules(event.target.value));
   document.getElementById('student-logout')?.addEventListener('click', logout);
   document.getElementById('open-withdrawal')?.addEventListener('click', openWithdrawalForm);
-  document.getElementById('student-new-thread')?.addEventListener('click', openNewThreadModal);
-  document.querySelectorAll('[data-open-thread]').forEach((row) => row.addEventListener('click', () => openThread(row.dataset.openThread)));
+  bindFeed();
 }
 
 function openStudentItem(dataset) {

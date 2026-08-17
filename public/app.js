@@ -36,6 +36,8 @@ const state = {
   community: null,
   communityClassId: null,
   communityThread: null,
+  boardCategoryId: null,
+  boardSort: 'new',
 };
 
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -63,6 +65,10 @@ const svg = {
   board: `<svg viewBox="0 0 24 24" fill="none"><path d="M7 9h6m-6 4h9m-9.2 7 2.494 2.494c.253.253.38.38.524.427a.7.7 0 0 0 .432 0c.145-.047.271-.174.524-.427L13 20h2.2c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   link: `<svg viewBox="0 0 24 24" fill="none"><path d="M14 7h1.5a4.5 4.5 0 1 1 0 9H14m-4 0H8.5a4.5 4.5 0 1 1 0-9H10m-1.5 4.5h7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   pin: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 15v7m-2.879-8.879 1.293-1.293c.2-.2.3-.3.363-.418a1 1 0 0 0 .107-.34c.014-.132-.006-.27-.045-.548l-.34-2.377c-.05-.354-.076-.53-.043-.702a1 1 0 0 1 .155-.375c.098-.145.245-.254.539-.474l2.35-1.762c.35-.263.526-.394.62-.567a1 1 0 0 0 .116-.549c-.016-.196-.12-.39-.33-.777l-.128-.236c-.192-.354-.288-.53-.433-.64a1 1 0 0 0-.457-.187c-.18-.026-.37.02-.752.114L6.4 3.86c-.53.13-.795.195-.96.348a1 1 0 0 0-.31.63c-.02.223.096.469.328.96l.101.215c.18.38.27.571.41.7a1 1 0 0 0 .43.234c.184.045.392.02.807-.03l2.31-.28c.29-.036.436-.054.572-.032a1 1 0 0 1 .38.15c.116.076.213.19.407.417l1.192 1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  /* The like. Outline until it is pressed, when CSS fills it — one shape doing
+     both states keeps the button from changing size as it is clicked. */
+  heart: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 7.694c-1.4-1.6-3.2-2.2-4.9-1.7-2.4.7-3.6 3.3-2.8 5.7.9 2.9 4.4 5.6 7.7 7.6 3.3-2 6.8-4.7 7.7-7.6.8-2.4-.4-5-2.8-5.7-1.7-.5-3.5.1-4.9 1.7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  comment: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 10.5h8M8 14h5m-6.2 6L9.3 22.5c.25.25.38.38.52.43a.7.7 0 0 0 .43 0c.15-.05.27-.18.52-.43L13 20h2.2c1.68 0 2.52 0 3.16-.33a3 3 0 0 0 1.31-1.31C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.33-3.16a3 3 0 0 0-1.31-1.31C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 0 0-1.31 1.31C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.33 3.16a3 3 0 0 0 1.31 1.31C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 /* ------------------------------------------------------------------
@@ -1034,7 +1040,10 @@ async function showStudentView(view) {
   try {
     if (view === 'materials') state.materials = await api('/api/student/materials');
     if (view === 'community') {
-      state.community = await api('/api/student/community');
+      const params = new URLSearchParams();
+      if (state.boardSort === 'top') params.set('sort', 'top');
+      if (state.boardCategoryId) params.set('categoryId', state.boardCategoryId);
+      state.community = await api(`/api/student/community${params.toString() ? `?${params}` : ''}`);
       if (state.studentData.communityUnread) {
         await api('/api/student/community/read', { method: 'POST' });
         state.studentData.communityUnread = 0;
@@ -1895,64 +1904,230 @@ function openMaterialModal() {
 }
 
 /* ------------------------------------------------------------------
-   Class board
+   The class feed.
+
+   One implementation serves both sides. The administrator gets the moderation
+   controls and sees removed posts greyed rather than gone; everything else — the
+   composer, the categories, the likes, the comments — is identical, because a
+   teacher posting to their own class is doing the same thing a student is.
    ------------------------------------------------------------------ */
 
-/* Removed threads stay in the administrator's list, greyed, with a way back.
-   Moderation that cannot be undone is moderation nobody uses confidently. */
-function communityView() {
-  const threads = state.community?.threads || [];
-  const live = threads.filter((row) => !row.deleted_at);
-  return `${pageHeader('Class board', 'Discussion', 'One board per class. Students post questions and answer each other; you can pin, close or remove anything.',
-    `<button class="btn primary" id="new-thread">Start a post</button>`)}
-    <div class="card toolbar">
-      <div class="toolbar-group">
-        <select class="select" id="community-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
-        <span class="muted small">${live.length} conversation${live.length === 1 ? '' : 's'}</span>
-      </div>
-    </div>
-    ${threads.length ? `<section class="card"><div class="thread-list">${threads.map((thread) => threadRow(thread, true)).join('')}</div></section>`
-      : `<div class="empty-state"><h3>The board is empty</h3><p>Start it off with something worth replying to — a question about the last class, or where to find this week's notes. An empty board stays empty until somebody goes first.</p></div>`}`;
+const BOARD_COLOURS = ['#50af37', '#2e90fa', '#f79009', '#7a5af8', '#ef6820', '#0ba5ec', '#dd2590'];
+
+/* An avatar needs to be the same colour for the same person every time or the
+   feed reads as a different set of people on every load. Derived from the name
+   rather than stored, which keeps it working for anybody who has not logged in
+   yet. */
+function boardAvatar(name = '', size = '') {
+  const text = String(name || '?');
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  const colour = BOARD_COLOURS[hash % BOARD_COLOURS.length];
+  return `<span class="feed-avatar ${size}" style="background:${colour}">${escapeHtml(initials(text))}</span>`;
 }
 
-function threadRow(thread, admin = false) {
-  const replies = thread.reply_count || 0;
-  const last = thread.last_reply_at || thread.created_at;
-  return `<article class="thread-row ${thread.deleted_at ? 'is-removed' : ''}" data-open-thread="${thread.id}">
-    <div class="thread-main">
-      <strong>${thread.pinned ? `<span class="thread-pin" title="Pinned">${svg.pin}</span>` : ''}${escapeHtml(thread.title)}</strong>
-      <p>${escapeHtml(String(thread.body || '').slice(0, 160))}${String(thread.body || '').length > 160 ? '…' : ''}</p>
-      <span class="muted small">${escapeHtml(thread.author?.name || 'Removed account')}${thread.author?.role === 'admin' ? ' · Teacher' : ''} · ${escapeHtml(fmtDate(last, { dateStyle: 'medium' }))}</span>
-    </div>
-    <div class="thread-meta">
-      ${thread.locked ? '<span class="pill">Closed</span>' : ''}
-      ${thread.deleted_at && admin ? '<span class="pill red">Removed</span>' : ''}
-      <span class="pill">${replies} ${replies === 1 ? 'reply' : 'replies'}</span>
-    </div>
+/* "3h" reads faster than a date when the whole point of the line is how recent
+   something is. Anything past a week gets the date back, because "63d" is not a
+   unit anybody thinks in. */
+function timeAgo(value) {
+  if (!value) return '';
+  const seconds = Math.round((Date.now() - new Date(value).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return fmtDate(value, { dateStyle: 'medium' });
+}
+
+const boardApi = () => (state.user.role === 'admin' ? '/api/admin' : '/api/student');
+const boardData = () => (state.user.role === 'admin' ? state.community : state.community);
+
+/* Reloads the feed in place. Both roles land here so a like or a new comment
+   updates the counts without bouncing the reader back to the top of the page. */
+async function reloadBoard() {
+  const admin = state.user.role === 'admin';
+  const params = new URLSearchParams();
+  if (state.boardSort === 'top') params.set('sort', 'top');
+  if (state.boardCategoryId) params.set('categoryId', state.boardCategoryId);
+  const suffix = params.toString() ? `?${params}` : '';
+  try {
+    state.community = admin
+      ? await api(`/api/admin/community/${state.communityClassId}${suffix}`)
+      : await api(`/api/student/community${suffix}`);
+  } catch (error) { return showToast(error.message, 'error'); }
+  if (admin) { shell({ nav: adminNav(), content: communityView(), title: 'Class board', roleLabel: 'Administrator' }); bindAdminView(); }
+  else renderStudent();
+}
+
+/* The composer. Collapsed it is one line that names the person and invites them
+   to write; a board whose only way in is a button labelled "Start a post" gets
+   noticeably fewer posts than one with a box already sitting there. */
+function feedComposer() {
+  return `<button class="feed-composer" id="open-composer">
+    ${boardAvatar(state.user.name)}
+    <span>Write something to the class…</span>
+  </button>`;
+}
+
+function categoryPills() {
+  const categories = boardData()?.categories || [];
+  if (!categories.length) return '';
+  const pill = (id, label, count) => `<button class="feed-pill ${(state.boardCategoryId || '') === id ? 'active' : ''}" data-board-category="${id}">${escapeHtml(label)}${count === undefined ? '' : `<span>${count}</span>`}</button>`;
+  const total = categories.reduce((sum, row) => sum + (row.thread_count || 0), 0);
+  return `<div class="feed-pills">
+    ${pill('', 'All', total)}
+    ${categories.map((row) => pill(row.id, row.name, row.thread_count)).join('')}
+    <span class="feed-pill-spacer"></span>
+    <button class="feed-sort ${state.boardSort === 'top' ? 'active' : ''}" data-board-sort="${state.boardSort === 'top' ? 'new' : 'top'}">
+      ${state.boardSort === 'top' ? 'Top' : 'Newest'}
+    </button>
+  </div>`;
+}
+
+/* One card in the feed. The footer is where a quiet board either reassures
+   somebody that they were read or does not: likes, comments and who spoke last
+   all sit on one line, in that order. */
+function feedCard(thread, admin) {
+  const comments = thread.comment_count || 0;
+  const likes = thread.like_count || 0;
+  const body = String(thread.body || '');
+  return `<article class="feed-card ${thread.deleted_at ? 'is-removed' : ''}" data-open-thread="${thread.id}">
+    <header class="feed-card-head">
+      ${boardAvatar(thread.author?.name)}
+      <div class="feed-byline">
+        <strong>${escapeHtml(thread.author?.name || 'Removed account')}</strong>
+        ${thread.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
+        <span class="feed-dot">·</span>
+        <span class="muted small">${escapeHtml(timeAgo(thread.created_at))}</span>
+      </div>
+      <div class="feed-card-tags">
+        ${thread.pinned ? `<span class="feed-chip pinned">${svg.pin} Pinned</span>` : ''}
+        ${thread.locked ? '<span class="feed-chip">Closed</span>' : ''}
+        ${thread.deleted_at && admin ? '<span class="feed-chip removed">Removed</span>' : ''}
+        ${thread.category_name ? `<span class="feed-chip">${escapeHtml(thread.category_name)}</span>` : ''}
+      </div>
+    </header>
+    <h3 class="feed-title">${escapeHtml(thread.title)}</h3>
+    <p class="feed-body">${escapeHtml(body.slice(0, 280))}${body.length > 280 ? '…' : ''}</p>
+    <footer class="feed-card-foot">
+      <button class="feed-action ${thread.liked ? 'liked' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
+        ${svg.heart}<span>${likes || ''}</span>
+      </button>
+      <span class="feed-action static">${svg.comment}<span>${comments || ''}</span></span>
+      ${thread.last_comment
+        ? `<span class="feed-last">Last comment by ${escapeHtml(thread.last_comment.name)} ${escapeHtml(timeAgo(thread.last_comment.at))}</span>`
+        : ''}
+    </footer>
   </article>`;
 }
 
-/* One thread, opened in the side drawer the review queue already uses, so
-   reading the board never loses your place in the list. */
+/* The right-hand column. The class card answers "where am I and when do we
+   meet"; the contributors list answers "is anybody else here", which on a board
+   of thirty is the question that decides whether somebody posts. */
+function feedSidebar() {
+  const data = boardData();
+  const klass = state.user.role === 'admin'
+    ? data?.class
+    : state.studentData?.class;
+  const next = state.studentData?.nextClass;
+  const contributors = data?.contributors || [];
+  return `<aside class="feed-side">
+    <section class="feed-side-card">
+      <div class="feed-side-cover"></div>
+      <div class="feed-side-body">
+        <strong>${escapeHtml(klass?.programme_name || 'Your class')}</strong>
+        <p class="muted small">${escapeHtml(klass ? `${DAY_NAMES[klass.day_of_week]} · ${String(klass.start_time).slice(0, 5)}` : '')}</p>
+        <div class="feed-side-stats">
+          <div><strong>${data?.memberCount || 0}</strong><span>${(data?.memberCount || 0) === 1 ? 'member' : 'members'}</span></div>
+          <div><strong>${(data?.threads || []).filter((row) => !row.deleted_at).length}</strong><span>posts</span></div>
+        </div>
+        ${next?.joinUrl && state.user.role !== 'admin'
+          ? `<a class="btn primary feed-side-join" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
+          : ''}
+      </div>
+    </section>
+    <section class="feed-side-card">
+      <div class="feed-side-title">Most active this month</div>
+      ${contributors.length
+        ? `<ol class="feed-rank">${contributors.map((row, index) => `<li>
+            <span class="feed-rank-no">${index + 1}</span>
+            ${boardAvatar(row.name, 'small')}
+            <span class="feed-rank-name">${escapeHtml(row.name)}</span>
+            <span class="feed-rank-score">${row.total}</span>
+          </li>`).join('')}</ol>`
+        : '<p class="muted small feed-side-empty">Nobody has posted in the last thirty days.</p>'}
+      <p class="feed-side-note">Counts posts and comments written, not likes collected.</p>
+    </section>
+  </aside>`;
+}
+
+function feedEmptyState(admin) {
+  return `<div class="feed-empty">
+    <h3>${state.boardCategoryId ? 'Nothing in this category yet' : 'The feed is empty'}</h3>
+    <p>${admin
+      ? 'Start it off with something worth replying to — a question about the last class, or where to find this week’s notes. An empty board stays empty until somebody goes first, and it is usually easier for that somebody to be you.'
+      : 'Be the first. A question you think is too simple is usually the one three other people were also wondering about.'}</p>
+  </div>`;
+}
+
+function feedLayout(admin) {
+  const threads = boardData()?.threads || [];
+  return `<div class="feed-layout">
+    <div class="feed-main">
+      ${feedComposer()}
+      ${categoryPills()}
+      ${threads.length ? threads.map((thread) => feedCard(thread, admin)).join('') : feedEmptyState(admin)}
+    </div>
+    ${feedSidebar()}
+  </div>`;
+}
+
+function communityView() {
+  return `${pageHeader('Class board', 'Community', 'One feed per class. Students post, comment and like; you can pin, close or remove anything.',
+    `<button class="btn" id="manage-categories">Categories</button>`)}
+    <div class="card toolbar">
+      <div class="toolbar-group">
+        <select class="select" id="community-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
+      </div>
+    </div>
+    ${feedLayout(true)}`;
+}
+
+function studentCommunityView() {
+  return `${studentHero()}${feedLayout(false)}`;
+}
+
+/* Opening a post. A drawer rather than a full page: the feed stays behind it, so
+   reading three posts in a row never costs three scroll positions. */
 async function openThread(threadId) {
-  const admin = state.user.role === 'admin';
   let thread;
-  try { thread = await api(`${admin ? '/api/admin' : '/api/student'}/community/thread/${threadId}`); }
+  try { thread = await api(`${boardApi()}/community/thread/${threadId}`); }
   catch (error) { return showToast(error.message, 'error'); }
   state.communityThread = thread;
   renderThreadDrawer();
 }
 
-function threadMessage(message, admin, isOpening = false) {
-  const removed = Boolean(message.deleted_at);
-  return `<article class="post ${removed ? 'is-removed' : ''} ${isOpening ? 'is-opening' : ''}">
-    <div class="post-head">
-      <span class="avatar small">${initials(message.author?.name || '?')}</span>
-      <div><strong>${escapeHtml(message.author?.name || 'Removed account')}</strong>${message.author?.role === 'admin' ? '<span class="pill green">Teacher</span>' : ''}
-      <span class="muted small">${escapeHtml(fmtDate(message.created_at, { dateStyle: 'medium', time: true }))}</span></div>
-      ${admin && !isOpening ? `<button class="btn small ${removed ? '' : 'danger'}" data-post-removal="${message.id}" data-removed="${removed}">${removed ? 'Restore' : 'Remove'}</button>` : ''}
+function feedComment(comment, admin) {
+  const removed = Boolean(comment.deleted_at);
+  return `<article class="feed-comment ${removed ? 'is-removed' : ''}">
+    ${boardAvatar(comment.author?.name, 'small')}
+    <div class="feed-comment-body">
+      <div class="feed-comment-head">
+        <strong>${escapeHtml(comment.author?.name || 'Removed account')}</strong>
+        ${comment.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
+        <span class="muted small">${escapeHtml(timeAgo(comment.created_at))}</span>
+        ${admin ? `<button class="text-link feed-remove" data-post-removal="${comment.id}" data-removed="${removed}">${removed ? 'Restore' : 'Remove'}</button>` : ''}
+      </div>
+      ${removed
+        ? '<p class="muted small">This comment was removed.</p>'
+        : `<div class="feed-comment-text">${escapeHtml(comment.body).replace(/\n/g, '<br>')}</div>
+           <button class="feed-action small ${comment.liked ? 'liked' : ''}" data-like="post" data-id="${comment.id}" aria-pressed="${Boolean(comment.liked)}">
+             ${svg.heart}<span>${comment.like_count || ''}</span>
+           </button>`}
     </div>
-    ${removed ? '<p class="muted small">This reply was removed.</p>' : `<div class="post-body">${escapeHtml(message.body).replace(/\n/g, '<br>')}</div>`}
   </article>`;
 }
 
@@ -1961,34 +2136,51 @@ function renderThreadDrawer() {
   if (!thread) return;
   const admin = state.user.role === 'admin';
   const withdrawn = Boolean(state.studentData?.withdrawnAt);
-  const canReply = admin || (!thread.locked && !withdrawn);
+  const canComment = admin || (!thread.locked && !withdrawn);
+  const comments = thread.comments || [];
   openDrawer({
     title: thread.title,
-    subtitle: `${thread.author?.name || 'Removed account'} · ${fmtDate(thread.created_at, { dateStyle: 'medium' })}${thread.locked ? ' · closed to replies' : ''}`,
+    subtitle: `${thread.author?.name || 'Removed account'} · ${timeAgo(thread.created_at)}${thread.category_name ? ` · ${thread.category_name}` : ''}`,
     body: `
       ${admin ? `<div class="drawer-toolbar">
         <button class="btn small" data-thread-pin="${thread.id}" data-pinned="${thread.pinned}">${thread.pinned ? 'Unpin' : 'Pin to top'}</button>
-        <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close to replies'}</button>
+        <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close to comments'}</button>
         <button class="btn small ${thread.deleted_at ? '' : 'danger'}" data-thread-removal="${thread.id}" data-removed="${Boolean(thread.deleted_at)}">${thread.deleted_at ? 'Restore post' : 'Remove post'}</button>
       </div>` : ''}
-      ${threadMessage({ ...thread, created_at: thread.created_at }, admin, true)}
-      <div class="section-title">${thread.posts.length} ${thread.posts.length === 1 ? 'reply' : 'replies'}</div>
-      <div class="post-list">${thread.posts.map((post) => threadMessage(post, admin)).join('') || '<p class="muted small">No replies yet.</p>'}</div>
-      ${canReply ? `<div class="reply-box">
-        <label class="field-label" for="reply-body">Your reply</label>
-        ${dictateButton('reply-body')}
-        <textarea id="reply-body" rows="4" placeholder="Write a reply"></textarea>
-        <button class="btn primary" id="send-reply">Send reply</button>
-      </div>` : `<p class="muted small stack-top">${withdrawn ? 'You have withdrawn from this course, so posting is closed.' : 'This conversation has been closed to new replies.'}</p>`}`,
+      <article class="feed-opening">
+        <header class="feed-card-head">
+          ${boardAvatar(thread.author?.name)}
+          <div class="feed-byline">
+            <strong>${escapeHtml(thread.author?.name || 'Removed account')}</strong>
+            ${thread.author?.role === 'admin' ? '<span class="feed-teacher">Teacher</span>' : ''}
+            <span class="feed-dot">·</span><span class="muted small">${escapeHtml(timeAgo(thread.created_at))}</span>
+          </div>
+        </header>
+        <div class="feed-comment-text">${escapeHtml(String(thread.body || '')).replace(/\n/g, '<br>')}</div>
+        <button class="feed-action ${thread.liked ? 'liked' : ''}" data-like="thread" data-id="${thread.id}" aria-pressed="${Boolean(thread.liked)}">
+          ${svg.heart}<span>${thread.like_count || ''}</span>
+        </button>
+      </article>
+      <div class="section-title">${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}</div>
+      <div class="feed-comments">${comments.map((comment) => feedComment(comment, admin)).join('') || '<p class="muted small">No comments yet.</p>'}</div>
+      ${canComment ? `<div class="feed-reply">
+        ${boardAvatar(state.user.name, 'small')}
+        <div class="feed-reply-box">
+          ${dictateButton('reply-body')}
+          <textarea id="reply-body" rows="3" placeholder="Write a comment"></textarea>
+          <button class="btn primary" id="send-reply">Comment</button>
+        </div>
+      </div>` : `<p class="muted small stack-top">${withdrawn ? 'You have withdrawn from this course, so posting is closed.' : 'This post has been closed to new comments.'}</p>`}`,
     onOpen() {
       bindDictation();
+      bindFeedLikes(modalRoot);
       document.getElementById('send-reply')?.addEventListener('click', async () => {
         const body = document.getElementById('reply-body').value.trim();
-        if (!body) return showToast('Write a reply before sending.', 'error');
+        if (!body) return showToast('Write a comment before sending.', 'error');
         try {
-          await api(`${admin ? '/api/admin' : '/api/student'}/community/thread/${thread.id}/replies`, { method: 'POST', body: { body } });
+          await api(`${boardApi()}/community/thread/${thread.id}/replies`, { method: 'POST', body: { body } });
           await openThread(thread.id);
-          showToast('Reply sent');
+          await reloadBoard();
         } catch (error) { showToast(error.message, 'error'); }
       });
       document.querySelector('[data-thread-pin]')?.addEventListener('click', (event) =>
@@ -1999,42 +2191,61 @@ function renderThreadDrawer() {
         const removed = event.currentTarget.dataset.removed !== 'true';
         if (removed && !(await askConfirm({
           title: 'Remove this post?',
-          message: 'Students stop seeing it immediately. The replies are kept and you can restore the whole thread at any time.',
+          message: 'Students stop seeing it immediately. The comments are kept and you can restore the whole post at any time.',
           confirmLabel: 'Remove', danger: true,
         }))) return;
         try {
           await api(`/api/admin/community/thread/${thread.id}/removal`, { method: 'POST', body: { removed } });
-          await openThread(thread.id); await renderAdmin();
+          await openThread(thread.id); await reloadBoard();
           showToast(removed ? 'Post removed' : 'Post restored');
         } catch (error) { showToast(error.message, 'error'); }
       });
-      document.querySelectorAll('[data-post-removal]').forEach((button) => button.addEventListener('click', async () => {
+      modalRoot.querySelectorAll('[data-post-removal]').forEach((button) => button.addEventListener('click', async () => {
         try {
           await api(`/api/admin/community/post/${button.dataset.postRemoval}/removal`, { method: 'POST', body: { removed: button.dataset.removed !== 'true' } });
-          await openThread(thread.id);
+          await openThread(thread.id); await reloadBoard();
         } catch (error) { showToast(error.message, 'error'); }
       }));
     },
   });
 }
 
+/* Likes update the one button that was pressed rather than redrawing anything.
+   A feed that jumps back to the top every time somebody likes a post is a feed
+   people stop liking posts in. */
+function bindFeedLikes(root = document) {
+  root.querySelectorAll('[data-like]').forEach((button) => button.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    const { like: type, id } = button.dataset;
+    let result;
+    try { result = await api(`${boardApi()}/community/like/${type}/${id}`, { method: 'POST' }); }
+    catch (error) { return showToast(error.message, 'error'); }
+    button.classList.toggle('liked', result.liked);
+    button.setAttribute('aria-pressed', String(result.liked));
+    button.querySelector('span').textContent = result.likeCount || '';
+    if (state.communityThread?.id === id) state.communityThread.liked = result.liked;
+  }));
+}
+
 async function updateThread(threadId, body) {
   try {
     await api(`/api/admin/community/thread/${threadId}`, { method: 'PATCH', body });
     await openThread(threadId);
-    await renderAdmin();
+    await reloadBoard();
   } catch (error) { showToast(error.message, 'error'); }
 }
 
 function openNewThreadModal() {
   const admin = state.user.role === 'admin';
+  const categories = boardData()?.categories || [];
   modal({
-    title: 'Start a post',
-    subtitle: admin ? 'Posted to this class board under your name.' : 'Everyone in your class can see this and reply.',
+    title: 'New post',
+    subtitle: admin ? 'Posted to this class feed under your name.' : 'Everyone in your class can see this and comment.',
     body: `<form id="thread-form">
       <div class="form-field"><label>Title</label><input name="title" required placeholder="A question about the tuiseal ginideach"></div>
       <div class="form-field"><label>Message</label>${dictateButton('thread-body')}<textarea id="thread-body" name="body" rows="6" required></textarea></div>
-      ${admin ? '<label class="check-row"><input type="checkbox" name="pinned"> Pin to the top of the board</label>' : ''}
+      ${categories.length ? `<div class="form-field"><label>Category</label><select name="categoryId">${categories.map((row) => `<option value="${row.id}" ${row.id === state.boardCategoryId ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')}</select></div>` : ''}
+      ${admin ? '<label class="check-row"><input type="checkbox" name="pinned"> Pin to the top of the feed</label>' : ''}
     </form>`,
     footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-thread">Post</button>`,
     onOpen() {
@@ -2042,18 +2253,77 @@ function openNewThreadModal() {
       document.getElementById('save-thread').addEventListener('click', async () => {
         const form = document.getElementById('thread-form');
         const data = new FormData(form);
-        const body = { title: String(data.get('title') || '').trim(), body: String(data.get('body') || '').trim() };
+        const body = {
+          title: String(data.get('title') || '').trim(),
+          body: String(data.get('body') || '').trim(),
+          categoryId: data.get('categoryId') || null,
+        };
         if (!body.title || !body.body) return showToast('Give your post a title and a message.', 'error');
         if (admin) body.pinned = form.pinned.checked;
         try {
           await api(admin ? `/api/admin/community/${state.communityClassId}/threads` : '/api/student/community/threads', { method: 'POST', body });
           closeModal();
-          if (admin) await renderAdmin(); else await showStudentView('community');
+          await reloadBoard();
           showToast('Posted');
         } catch (error) { showToast(error.message, 'error'); }
       });
     },
   });
+}
+
+/* Categories are the teacher's to shape: the useful set for a Leaving
+   Certificate group is not the useful set for a teaching diploma group. */
+function openCategoryModal() {
+  const categories = boardData()?.categories || [];
+  modal({
+    title: 'Categories',
+    subtitle: 'What students can file a post under.',
+    body: `<div class="category-list">${categories.map((row) => `<div class="category-row">
+        <strong>${escapeHtml(row.name)}</strong>
+        <span class="muted small">${row.thread_count} post${row.thread_count === 1 ? '' : 's'}</span>
+        <button class="btn small danger" data-delete-category="${row.id}">Delete</button>
+      </div>`).join('') || '<p class="muted small">No categories yet.</p>'}</div>
+      <form id="category-form" class="stack-top"><div class="form-field"><label>Add a category</label><input name="name" maxlength="40" placeholder="Pronunciation"></div></form>
+      <p class="muted small">Deleting a category leaves its posts where they are; they simply become uncategorised.</p>`,
+    footer: `<button class="btn" data-close-modal>Done</button><button class="btn primary" id="add-category">Add</button>`,
+    onOpen() {
+      document.getElementById('add-category').addEventListener('click', async () => {
+        const name = String(new FormData(document.getElementById('category-form')).get('name') || '').trim();
+        if (!name) return showToast('Give the category a short name.', 'error');
+        try {
+          await api(`/api/admin/community/${state.communityClassId}/categories`, { method: 'POST', body: { name } });
+          closeModal(); await reloadBoard(); showToast('Category added');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+      modalRoot.querySelectorAll('[data-delete-category]').forEach((button) => button.addEventListener('click', async () => {
+        try {
+          await api(`/api/admin/community/categories/${button.dataset.deleteCategory}`, { method: 'DELETE' });
+          closeModal(); await reloadBoard(); showToast('Category deleted');
+        } catch (error) { showToast(error.message, 'error'); }
+      }));
+    },
+  });
+}
+
+/* Wiring shared by both roles. Called from bindAdminView and bindStudentView so
+   neither has to know how the feed is put together. */
+function bindFeed() {
+  document.getElementById('open-composer')?.addEventListener('click', openNewThreadModal);
+  document.getElementById('manage-categories')?.addEventListener('click', openCategoryModal);
+  document.querySelectorAll('[data-board-category]').forEach((button) => button.addEventListener('click', () => {
+    state.boardCategoryId = button.dataset.boardCategory || null;
+    reloadBoard();
+  }));
+  document.querySelector('[data-board-sort]')?.addEventListener('click', (event) => {
+    state.boardSort = event.currentTarget.dataset.boardSort;
+    reloadBoard();
+  });
+  document.querySelectorAll('[data-open-thread]').forEach((card) => card.addEventListener('click', (event) => {
+    // The like button lives inside the card, so it must not also open it.
+    if (event.target.closest('[data-like]')) return;
+    openThread(card.dataset.openThread);
+  }));
+  bindFeedLikes(document);
 }
 
 /* The weekly class link. Lives on the class rather than on each week, because a
@@ -2217,9 +2487,14 @@ function bindAdminView() {
     try { await api(`/api/admin/materials/${button.dataset.materialDelete}`, { method: 'DELETE' }); await renderAdmin(); showToast('Deleted'); }
     catch (error) { showToast(error.message, 'error'); }
   }));
-  document.getElementById('community-class')?.addEventListener('change', (event) => { state.communityClassId = event.target.value; renderAdmin(); });
-  document.getElementById('new-thread')?.addEventListener('click', openNewThreadModal);
-  document.querySelectorAll('[data-open-thread]').forEach((row) => row.addEventListener('click', () => openThread(row.dataset.openThread)));
+  document.getElementById('community-class')?.addEventListener('change', (event) => {
+    state.communityClassId = event.target.value;
+    // A category belongs to one class, so carrying the filter across would filter
+    // by something the new class has never heard of.
+    state.boardCategoryId = null;
+    renderAdmin();
+  });
+  bindFeed();
   document.querySelectorAll('[data-student-class]').forEach((select) => select.addEventListener('change', async () => {
     try { await api(`/api/admin/students/${select.dataset.studentClass}`, { method: 'PATCH', body: { classId: select.value } }); showToast('Student moved'); }
     catch (error) { showToast(error.message, 'error'); }
@@ -3240,18 +3515,6 @@ function studentMaterialsView() {
       : '<div class="empty-state"><h3>No materials yet</h3><p>Notes, recordings and links appear here as your teacher adds them.</p></div>'}`;
 }
 
-function studentCommunityView() {
-  const threads = state.community?.threads || [];
-  return `${studentHero()}
-    <div class="board-head">
-      <p class="muted small">Ask a question, answer somebody else's, or share something useful. Everyone in ${escapeHtml(state.studentData.class?.label || 'your class')} can see this.</p>
-      <button class="btn primary" id="student-new-thread">Start a post</button>
-    </div>
-    ${threads.length
-      ? `<section class="card"><div class="thread-list">${threads.map((thread) => threadRow(thread)).join('')}</div></section>`
-      : `<div class="empty-state"><h3>Nothing here yet</h3><p>Be the first. A question you think is too simple is usually the one three other people were also wondering about.</p></div>`}`;
-}
-
 const STUDENT_HERO_COPY = {
   materials: { title: 'here are your course materials', line: 'Notes, recordings and links for every week, kept in one place.' },
   community: { title: 'here is your class board', line: 'Ask a question or answer somebody else. Your teacher reads it too.' },
@@ -3610,8 +3873,7 @@ function bindStudentView() {
   document.getElementById('new-password')?.addEventListener('input', (event) => updatePasswordRules(event.target.value));
   document.getElementById('student-logout')?.addEventListener('click', logout);
   document.getElementById('open-withdrawal')?.addEventListener('click', openWithdrawalForm);
-  document.getElementById('student-new-thread')?.addEventListener('click', openNewThreadModal);
-  document.querySelectorAll('[data-open-thread]').forEach((row) => row.addEventListener('click', () => openThread(row.dataset.openThread)));
+  bindFeed();
 }
 
 function openStudentItem(dataset) {
