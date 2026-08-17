@@ -20,6 +20,8 @@ import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToke
 import { FILE_TYPE_GROUPS } from '../documents.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
+import { listCoursesForAdmin, getCourse, courseProgress } from '../courses.js';
+import { parseVideoSource, VIDEO_PROVIDERS } from '../lessonvideo.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -1352,6 +1354,232 @@ router.post('/community/post/:id/removal', asyncRoute(async (req, res) => {
   if (!row) return res.status(404).json({ error: 'Reply not found.' });
   await audit({ actorId: req.user.id, action: parsed.data.removed ? 'community.post_removed' : 'community.post_restored', entityType: 'post', entityId: row.id, ip: req.ip });
   res.json(row);
+}));
+
+/* ------------------------------------------------------------------
+   Courses
+   ------------------------------------------------------------------ */
+
+router.get('/courses', asyncRoute(async (_req, res) => {
+  res.json({ courses: await listCoursesForAdmin() });
+}));
+
+router.get('/courses/:id', asyncRoute(async (req, res) => {
+  const course = await getCourse({ courseId: req.params.id, viewerId: req.user.id, isAdmin: true });
+  if (!course) return res.status(404).json({ error: 'Course not found.' });
+  res.json(course);
+}));
+
+router.get('/courses/:id/progress', asyncRoute(async (req, res) => {
+  res.json({ students: await courseProgress(req.params.id) });
+}));
+
+const courseInput = z.object({
+  title: z.string().trim().min(2).max(200),
+  description: z.string().max(4000).optional().default(''),
+  // Null means every class sees it, which is what a course taught identically
+  // to both groups needs.
+  classId: z.string().uuid().nullable().optional(),
+  coverUrl: z.string().max(2000).nullable().optional(),
+  published: z.boolean().optional().default(false),
+});
+
+router.post('/courses', asyncRoute(async (req, res) => {
+  const parsed = courseInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the course a title.' });
+  const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM courses');
+  const row = await one(
+    `INSERT INTO courses(class_id,title,description,cover_url,published,position,created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [parsed.data.classId || null, parsed.data.title, parsed.data.description,
+     parsed.data.coverUrl || null, parsed.data.published, next.position, req.user.id],
+  );
+  await audit({ actorId: req.user.id, action: 'course.created', entityType: 'course', entityId: row.id, ip: req.ip });
+  res.status(201).json(row);
+}));
+
+router.patch('/courses/:id', asyncRoute(async (req, res) => {
+  const parsed = courseInput.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid course.' });
+  const current = await one('SELECT * FROM courses WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Course not found.' });
+  const data = parsed.data;
+  const row = await one(
+    `UPDATE courses SET title=$1,description=$2,class_id=$3,cover_url=$4,published=$5,updated_at=now()
+     WHERE id=$6 RETURNING *`,
+    [data.title ?? current.title, data.description ?? current.description,
+     data.classId === undefined ? current.class_id : (data.classId || null),
+     data.coverUrl === undefined ? current.cover_url : (data.coverUrl || null),
+     data.published ?? current.published, current.id],
+  );
+  await audit({ actorId: req.user.id, action: 'course.updated', entityType: 'course', entityId: row.id, ip: req.ip });
+  res.json(row);
+}));
+
+/* Deleting a course takes its lessons and everybody's progress through them.
+   The count is shown before the button is offered. */
+router.get('/courses/:id/impact', asyncRoute(async (req, res) => {
+  const counts = await one(
+    `SELECT
+       (SELECT count(*)::int FROM course_modules WHERE course_id=$1) modules,
+       (SELECT count(*)::int FROM course_lessons l JOIN course_modules m ON m.id=l.module_id
+         WHERE m.course_id=$1) lessons,
+       (SELECT count(*)::int FROM lesson_progress p JOIN course_lessons l ON l.id=p.lesson_id
+         JOIN course_modules m ON m.id=l.module_id WHERE m.course_id=$1) progress`,
+    [req.params.id],
+  );
+  res.json(counts);
+}));
+
+router.delete('/courses/:id', asyncRoute(async (req, res) => {
+  const current = await one('SELECT title FROM courses WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Course not found.' });
+  await query('DELETE FROM courses WHERE id=$1', [req.params.id]);
+  await audit({ actorId: req.user.id, action: 'course.deleted', entityType: 'course', entityId: req.params.id, metadata: { title: current.title }, ip: req.ip });
+  res.status(204).end();
+}));
+
+router.post('/courses/:id/modules', asyncRoute(async (req, res) => {
+  const parsed = z.object({ title: z.string().trim().min(1).max(200) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the section a title.' });
+  const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM course_modules WHERE course_id=$1', [req.params.id]);
+  const row = await one(
+    'INSERT INTO course_modules(course_id,title,position) VALUES ($1,$2,$3) RETURNING *',
+    [req.params.id, parsed.data.title, next.position],
+  );
+  res.status(201).json(row);
+}));
+
+router.patch('/modules/:id', asyncRoute(async (req, res) => {
+  const parsed = z.object({ title: z.string().trim().min(1).max(200) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the section a title.' });
+  const row = await one('UPDATE course_modules SET title=$1 WHERE id=$2 RETURNING *', [parsed.data.title, req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Section not found.' });
+  res.json(row);
+}));
+
+router.delete('/modules/:id', asyncRoute(async (req, res) => {
+  await query('DELETE FROM course_modules WHERE id=$1', [req.params.id]);
+  res.status(204).end();
+}));
+
+const lessonInput = z.object({
+  title: z.string().trim().min(1).max(200),
+  notes: z.string().max(20000).optional().default(''),
+  videoProvider: z.enum(VIDEO_PROVIDERS).nullable().optional(),
+  // Whatever was pasted: a whole URL or a bare id, sorted out below.
+  video: z.string().max(2000).nullable().optional(),
+  durationSeconds: z.coerce.number().int().min(0).max(60 * 60 * 12).nullable().optional(),
+  recordedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  published: z.boolean().optional().default(true),
+});
+
+/* A lesson without a recording is a normal state — the notes often exist before
+   the class has been taught — so an empty video is accepted and only a video
+   that cannot be understood is refused. */
+function resolveVideo(data, current = {}) {
+  if (data.videoProvider === undefined && data.video === undefined) {
+    return { provider: current.video_provider ?? null, ref: current.video_ref ?? null };
+  }
+  const provider = data.videoProvider ?? current.video_provider;
+  const raw = data.video ?? current.video_ref;
+  if (!provider || !String(raw || '').trim()) return { provider: null, ref: null };
+  const parsed = parseVideoSource(provider, raw);
+  if (!parsed) {
+    throw Object.assign(new Error('That video link was not recognised for the host you chose.'), { status: 400 });
+  }
+  return parsed;
+}
+
+router.post('/modules/:id/lessons', asyncRoute(async (req, res) => {
+  const parsed = lessonInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the lesson a title.' });
+  const video = resolveVideo(parsed.data);
+  const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM course_lessons WHERE module_id=$1', [req.params.id]);
+  const row = await one(
+    `INSERT INTO course_lessons(module_id,title,notes,video_provider,video_ref,duration_seconds,recorded_on,published,position)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [req.params.id, parsed.data.title, parsed.data.notes, video.provider, video.ref,
+     parsed.data.durationSeconds || null, parsed.data.recordedOn || null, parsed.data.published, next.position],
+  );
+  await audit({ actorId: req.user.id, action: 'lesson.created', entityType: 'lesson', entityId: row.id, ip: req.ip });
+  res.status(201).json(row);
+}));
+
+router.patch('/lessons/:id', asyncRoute(async (req, res) => {
+  const parsed = lessonInput.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid lesson.' });
+  const current = await one('SELECT * FROM course_lessons WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Lesson not found.' });
+  const data = parsed.data;
+  const video = resolveVideo(data, current);
+  const row = await one(
+    `UPDATE course_lessons SET title=$1,notes=$2,video_provider=$3,video_ref=$4,
+       duration_seconds=$5,recorded_on=$6,published=$7,updated_at=now()
+     WHERE id=$8 RETURNING *`,
+    [data.title ?? current.title, data.notes ?? current.notes, video.provider, video.ref,
+     data.durationSeconds === undefined ? current.duration_seconds : (data.durationSeconds || null),
+     data.recordedOn === undefined ? current.recorded_on : (data.recordedOn || null),
+     data.published ?? current.published, current.id],
+  );
+  res.json(row);
+}));
+
+router.delete('/lessons/:id', asyncRoute(async (req, res) => {
+  await query('DELETE FROM course_lessons WHERE id=$1', [req.params.id]);
+  await audit({ actorId: req.user.id, action: 'lesson.deleted', entityType: 'lesson', entityId: req.params.id, ip: req.ip });
+  res.status(204).end();
+}));
+
+/* Reordering. The whole ordered list arrives at once rather than one move at a
+   time, so a drag that lands in the wrong place cannot leave two things holding
+   the same position. */
+router.put('/courses/:id/order', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    modules: z.array(z.object({
+      id: z.string().uuid(),
+      lessons: z.array(z.string().uuid()).optional().default([]),
+    })),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid order.' });
+  await transaction(async (client) => {
+    for (const [index, module] of parsed.data.modules.entries()) {
+      await client.query('UPDATE course_modules SET position=$1 WHERE id=$2 AND course_id=$3',
+        [index, module.id, req.params.id]);
+      for (const [lessonIndex, lessonId] of module.lessons.entries()) {
+        await client.query('UPDATE course_lessons SET position=$1 WHERE id=$2 AND module_id=$3',
+          [lessonIndex, lessonId, module.id]);
+      }
+    }
+  });
+  res.json({ ok: true });
+}));
+
+/* A handout on a lesson, reusing the same document check the feed uses. */
+router.post('/lessons/:id/attachments', documentUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a file to upload.' });
+  const document = sniffDocument(req.file.buffer, req.file.originalname);
+  if (!document) return res.status(400).json({ error: 'Lessons take PDFs and Word documents (.docx).' });
+  const storedName = `lesson-${crypto.randomUUID()}${document.extension}`;
+  await fs.writeFile(path.join(config.uploadDir, storedName), req.file.buffer);
+  const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM lesson_attachments WHERE lesson_id=$1', [req.params.id]);
+  const row = await one(
+    `INSERT INTO lesson_attachments(lesson_id,url,stored_name,file_name,mime_type,size_bytes,position)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [req.params.id, `/uploads/${storedName}`, storedName, req.file.originalname.slice(0, 200),
+     document.mimeType, req.file.size, next.position],
+  );
+  res.status(201).json(row);
+}));
+
+router.delete('/lesson-attachments/:id', asyncRoute(async (req, res) => {
+  const current = await one('SELECT * FROM lesson_attachments WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Attachment not found.' });
+  if (current.stored_name) {
+    await fs.unlink(path.join(config.uploadDir, path.basename(current.stored_name))).catch(() => {});
+  }
+  await query('DELETE FROM lesson_attachments WHERE id=$1', [current.id]);
+  res.status(204).end();
 }));
 
 export default router;

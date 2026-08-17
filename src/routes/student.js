@@ -15,6 +15,7 @@ import { nextClassAt, joinLinkFor } from '../classtime.js';
 import { listThreads, getThread, createThread, createPost, unreadCount, markRead,
   listCategories, toggleReaction, topContributors, REACTIONS } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
+import { listCoursesForStudent, getCourse, studentCanSeeLesson, setLessonProgress } from '../courses.js';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -573,6 +574,41 @@ router.delete('/dismissals/:kind/:refId', asyncRoute(async (req, res) => {
   await query('DELETE FROM dismissed_deadlines WHERE student_id=$1 AND kind=$2 AND ref_id=$3',
     [req.user.id, parsed.data.kind, parsed.data.refId]);
   res.status(204).end();
+}));
+
+/* ------------------------------------------------------------------
+   Courses
+   ------------------------------------------------------------------ */
+
+router.get('/courses', asyncRoute(async (req, res) => {
+  const klass = await studentClass(req.user.id);
+  res.json({ courses: await listCoursesForStudent({ studentId: req.user.id, classId: klass?.id || null }) });
+}));
+
+router.get('/courses/:id', asyncRoute(async (req, res) => {
+  const klass = await studentClass(req.user.id);
+  const course = await getCourse({ courseId: req.params.id, viewerId: req.user.id, classId: klass?.id || null });
+  if (!course) return res.status(404).json({ error: 'Course not found.' });
+  res.json(course);
+}));
+
+/* Marking a lesson watched. Belongs to the student who watched it, so there is
+   no course or lesson id in the path that could be pointed at somebody else's
+   progress. */
+router.post('/lessons/:id/progress', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    completed: z.boolean().optional().default(true),
+    positionSeconds: z.coerce.number().int().min(0).max(60 * 60 * 12).optional().default(0),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid progress.' });
+  const klass = await studentClass(req.user.id);
+  if (!await studentCanSeeLesson({ lessonId: req.params.id, classId: klass?.id || null })) {
+    return res.status(404).json({ error: 'Lesson not found.' });
+  }
+  res.json(await setLessonProgress({
+    studentId: req.user.id, lessonId: req.params.id,
+    completed: parsed.data.completed, positionSeconds: parsed.data.positionSeconds,
+  }));
 }));
 
 /* ------------------------------------------------------------------

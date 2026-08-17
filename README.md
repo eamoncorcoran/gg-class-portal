@@ -1,4 +1,4 @@
-# Gaeilgeoir Guides Class Portal V33
+# Gaeilgeoir Guides Class Portal V34
 
 
 A private internal SaaS application for managing Gaeilgeoir Guides classes, student accounts, weekly attendance, check-ins, homework, deadlines, reminders and returned teacher feedback.
@@ -348,6 +348,59 @@ is no weekly field to forget to fill in. A single session that moves to a
 different room can override the link on its own week, and every other week falls
 back to the class link. Times resolve in the **class** timezone, so a student
 reading from abroad is still told when the Dublin class starts.
+
+### Courses
+
+**Courses** is where the class recordings live. A course holds sections, a
+section holds lessons, and a lesson is a recording with the notes that go with
+it. Students get a shelf of course cards showing how far through each one they
+are; opening a course puts them back at the first lesson they have not finished.
+
+The lesson page is the shape people know from every course platform: the
+recording large at the top, the title and notes under it, and the contents beside
+it with a tick against everything already watched.
+
+**Marking progress.** Every lesson has a **Mark as complete** button that toggles
+both ways — pressing it again marks the lesson not complete. A lesson watched
+past nine tenths ticks itself, because that is what finishing a lesson means and
+nobody should have to remember to press a button afterwards; the button is still
+there for anybody who wants to mark it early or undo it.
+
+Progress belongs to the student who made it. This sounds obvious and is the thing
+course platforms get wrong: a `complete` flag on the lesson row means the first
+person to finish a lesson marks it finished for everybody. `tests/courses.test.js`
+holds that line.
+
+A course scoped to one class is seen only by that class; a course left open is
+seen by every class, which is what a course taught identically to the Monday and
+Thursday groups needs. Draft courses and draft lessons are the administrator's
+alone.
+
+#### Where the video lives
+
+**A Zoom recording cannot be embedded.** Webinar and meeting recordings share the
+same playback infrastructure, Zoom serves those pages with framing blocked, and
+there is no embed product for them. Zoom also is not a library: cloud recording
+is a paid feature with a few gigabytes per licence, and a year of weekly
+90-minute classes is tens of gigabytes, so the files have to move off Zoom
+whatever else is decided.
+
+So a lesson stores a **provider and a reference** rather than being tied to one
+host:
+
+| Provider | What it is for |
+| --- | --- |
+| `bunny` | Bunny Stream. Transcodes to adaptive streaming, so a student on weak mobile data gets a lower bitrate instead of a spinning wheel |
+| `youtube` | Embedded through `youtube-nocookie`. Free, but an unlisted video is not a private one |
+| `loom` | Loom share links |
+| `mp4` | A file served from this application |
+
+Pasting a whole link or a bare id both work, and a link that does not match the
+host chosen is refused rather than saved and left to render as an empty box.
+
+For a year of recordings watched largely on phones, Bunny Stream is the one worth
+paying for; the adaptive streaming is the entire difference on a bad connection.
+Nothing in the schema depends on that choice, so it can be changed later.
 
 ### The class board
 
@@ -999,3 +1052,19 @@ twice — and confirms that a Vimeo or ordinary link is left alone.
   progress bar while it uploads and a tick when it lands. Files can be removed
   before posting, several can go at once, and one that is too large is refused
   on the spot with the reason on the row rather than after a minute of uploading.
+
+## V34 changes
+
+- **Courses.** Class recordings arranged into sections and lessons, with a
+  player page, notes, handouts and per-student progress. Students mark a lesson
+  complete or not complete, and a lesson watched past nine tenths ticks itself.
+  Course cards show how far through each one somebody is, and opening a course
+  resumes at the first lesson they have not finished.
+- **The video host is a field, not an assumption.** Bunny Stream, YouTube, Loom
+  or a file we serve — chosen per lesson. Zoom recordings cannot be embedded, so
+  the file has to live somewhere that will play it, and which somewhere is a
+  decision about cost and about mobile data rather than one for the schema.
+- **Courses in both navigations**, including the bar at the bottom on a phone.
+
+Migration `018_courses`. New tests: `tests/courses.test.js` and
+`tests/lessonvideo.test.js`.

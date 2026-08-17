@@ -34,6 +34,9 @@ const state = {
   community: null,
   communityClassId: null,
   communityThread: null,
+  courses: null,
+  course: null,
+  lessonId: null,
   boardCategoryId: null,
   boardSort: 'new',
 };
@@ -68,6 +71,8 @@ const svg = {
   heart: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 7.694c-1.4-1.6-3.2-2.2-4.9-1.7-2.4.7-3.6 3.3-2.8 5.7.9 2.9 4.4 5.6 7.7 7.6 3.3-2 6.8-4.7 7.7-7.6.8-2.4-.4-5-2.8-5.7-1.7-.5-3.5.1-4.9 1.7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   comment: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 10.5h8M8 14h5m-6.2 6L9.3 22.5c.25.25.38.38.52.43a.7.7 0 0 0 .43 0c.15-.05.27-.18.52-.43L13 20h2.2c1.68 0 2.52 0 3.16-.33a3 3 0 0 0 1.31-1.31C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.33-3.16a3 3 0 0 0-1.31-1.31C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 0 0-1.31 1.31C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.33 3.16a3 3 0 0 0 1.31 1.31C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   gif: `<svg viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10.2 10.2a2.4 2.4 0 1 0 .3 3.4v-1.2H9.3M13.9 9.6v4.8M20 9.6h-2.9v4.8m0-2.7h2.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  chevronLeft: `<svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  cap: `<svg viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5 12 4l9.5 4.5L12 13 2.5 8.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M6.5 10.7v4.6c0 .6.3 1.1.8 1.4 1.2.7 2.9 1.3 4.7 1.3s3.5-.6 4.7-1.3c.5-.3.8-.8.8-1.4v-4.6M21 9v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   cloudUp: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 16V9m0 0-3 3m3-3 3 3M6.5 19a4.5 4.5 0 0 1-.42-8.98 6 6 0 0 1 11.65-1.9A4.75 4.75 0 0 1 17.5 19H6.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   trash: `<svg viewBox="0 0 24 24" fill="none"><path d="M15 5V4.2c0-.84 0-1.26-.16-1.58a1.5 1.5 0 0 0-.66-.66C13.86 1.8 13.44 1.8 12.6 1.8h-1.2c-.84 0-1.26 0-1.58.16a1.5 1.5 0 0 0-.66.66C9 2.94 9 3.36 9 4.2V5m2 5.5v5m2-5v5M3.5 5h17m-1.7 0v11.4c0 1.26 0 1.89-.25 2.37a2.25 2.25 0 0 1-.98.98c-.48.25-1.11.25-2.37.25H8.8c-1.26 0-1.89 0-2.37-.25a2.25 2.25 0 0 1-.98-.98c-.25-.48-.25-1.11-.25-2.37V5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   tick: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8 12.2l2.6 2.6L16 9.4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -934,12 +939,13 @@ function mobileNav() {
     ? [
         ['tracker', svg.grid, 'Tracker'],
         ['assignments', svg.book, 'Homework'],
+        ['courses', svg.cap, 'Courses'],
         ['community', svg.board, 'Board'],
-        ['people', svg.users, 'People'],
       ]
     : [
         ['calendar', svg.calendar, 'Deadlines'],
         ['tracker', svg.grid, 'Tracker'],
+        ['courses', svg.cap, 'Courses'],
         ['community', svg.board, 'Board'],
       ];
   const badge = (view) => {
@@ -1118,6 +1124,7 @@ function adminNav() {
     <div class="nav-label">Manage</div><nav class="nav">
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.book, 'Homework')}
+      ${adminNavButton('courses', svg.cap, 'Courses')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
       ${adminNavButton('community', svg.board, 'Class board')}
       ${adminNavButton('attendance', svg.upload, 'Attendance upload')}
@@ -1145,6 +1152,7 @@ function bindShellNavigation() {
 async function showStudentView(view) {
   state.view = view;
   try {
+    if (view === 'courses' && !state.course) await loadCourses();
     if (view === 'community') {
       const params = new URLSearchParams();
       if (state.boardSort === 'top') params.set('sort', 'top');
@@ -1194,6 +1202,10 @@ async function renderAdmin() {
       state.checkinClassId ||= state.classes[0]?.id || null;
       state.teachingWeeks = state.checkinClassId ? await api(`/api/admin/teaching-weeks?classId=${state.checkinClassId}`) : [];
       title = 'Weekly check-ins'; content = checkinsView();
+    } else if (state.view === 'courses') {
+      state.classes = await api('/api/admin/classes');
+      if (state.course) { title = 'Courses'; content = coursePage(); }
+      else { await loadCourses(); title = 'Courses'; content = coursesView(); }
     } else if (state.view === 'community') {
       state.classes = await api('/api/admin/classes');
       state.communityClassId ||= state.activeClassId || state.classes[0]?.id || null;
@@ -1209,6 +1221,7 @@ async function renderAdmin() {
     }
     shell({ nav: adminNav(), content, title, roleLabel: 'Administrator' });
     bindAdminView();
+    if (state.view === 'courses') bindCourse();
   } catch (error) {
     showToast(error.message, 'error');
     if (error.status === 401) renderAuth('login');
@@ -1895,6 +1908,376 @@ function bindCheckins() {
       showToast('Week saved');
     } catch (error) { showToast(error.message, 'error'); }
   }));
+}
+
+/* ------------------------------------------------------------------
+   Courses.
+
+   A shelf of course cards, then a lesson page: the recording large at the top,
+   the notes under it, and the contents beside it with a tick against everything
+   already watched. One implementation for both roles — the administrator gets
+   editing controls in the same places rather than a separate screen, because a
+   course being built and a course being taken are the same thing seen twice.
+   ------------------------------------------------------------------ */
+
+const courseApi = () => (isAdmin() ? '/api/admin' : '/api/student');
+
+async function loadCourses() {
+  try { state.courses = (await api(`${courseApi()}/courses`)).courses; }
+  catch (error) { showToast(error.message, 'error'); state.courses = []; }
+}
+
+async function openCourse(courseId, lessonId = null) {
+  try { state.course = await api(`${courseApi()}/courses/${courseId}`); }
+  catch (error) { return showToast(error.message, 'error'); }
+  // Straight to where they left off, unless a particular lesson was asked for.
+  state.lessonId = lessonId || state.course.resumeLessonId;
+  renderCourseView();
+}
+
+function renderCourseView() {
+  if (isAdmin()) {
+    shell({ nav: adminNav(), content: coursePage(), title: 'Courses', roleLabel: 'Administrator' });
+    bindAdminView();
+  } else {
+    state.view = 'courses';
+    renderStudent();
+  }
+  bindCourse();
+}
+
+const allLessons = (course) => (course?.modules || []).flatMap((module) => module.lessons);
+const currentLesson = () => allLessons(state.course).find((lesson) => lesson.id === state.lessonId) || null;
+
+/* ---- The shelf --------------------------------------------------- */
+
+function courseCard(course) {
+  const percent = course.percent || 0;
+  const lessons = course.lesson_count || 0;
+  return `<article class="cc" data-open-course="${course.id}">
+    <div class="cc-cover" ${course.cover_url ? `style="background-image:url('${escapeHtml(course.cover_url)}')"` : ''}>
+      ${course.cover_url ? '' : `<span>${escapeHtml(initials(course.title))}</span>`}
+      ${course.published === false ? '<b class="cc-draft">Draft</b>' : ''}
+    </div>
+    <div class="cc-body">
+      <h3>${escapeHtml(course.title)}</h3>
+      ${course.description ? `<p>${escapeHtml(course.description)}</p>` : ''}
+      <div class="cc-foot">
+        <span class="cc-count">${lessons} ${lessons === 1 ? 'lesson' : 'lessons'}</span>
+        ${isAdmin() ? '' : `<span class="cc-pct">${percent}%</span>`}
+      </div>
+      ${isAdmin() ? '' : `<div class="cc-bar"><span style="width:${percent}%"></span></div>`}
+    </div>
+  </article>`;
+}
+
+function coursesView() {
+  const courses = state.courses || [];
+  const body = courses.length
+    ? `<div class="cc-grid">${courses.map(courseCard).join('')}</div>`
+    : `<div class="feed-empty"><h3>No courses yet</h3><p>${isAdmin()
+        ? 'Create one, add a section for each term, then a lesson for each class recording.'
+        : 'Your class recordings will appear here once your teacher has added them.'}</p></div>`;
+
+  if (isAdmin()) {
+    return `<div class="feed-head">
+        <div><h1>Courses</h1><p>Class recordings and the notes that go with them.</p></div>
+        <div class="feed-head-actions"><button class="btn primary" id="new-course">New course</button></div>
+      </div>${body}`;
+  }
+  return `${studentHero()}${body}`;
+}
+
+/* ---- One course -------------------------------------------------- */
+
+/* The player. An embedded host gets an iframe; a file we hold gets a plain
+   <video>, which also lets us put somebody back where they stopped. */
+function lessonPlayer(lesson) {
+  if (!lesson) return '<div class="lp-empty">Pick a lesson from the list.</div>';
+  if (!lesson.video) {
+    return `<div class="lp-empty">
+      <strong>No recording yet</strong>
+      <span>${isAdmin() ? 'Add one by editing this lesson.' : 'This lesson has notes only for now.'}</span>
+    </div>`;
+  }
+  if (lesson.video.type === 'iframe') {
+    return `<div class="lp-frame"><iframe src="${escapeHtml(lesson.video.src)}"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+      referrerpolicy="strict-origin-when-cross-origin" allowfullscreen title="${escapeHtml(lesson.title)}"></iframe></div>`;
+  }
+  return `<div class="lp-frame"><video id="lesson-video" controls playsinline preload="metadata"
+    src="${escapeHtml(lesson.video.src)}"></video></div>`;
+}
+
+function lessonRow(lesson, index, active) {
+  return `<button class="ll ${active ? 'on' : ''} ${lesson.completed ? 'done' : ''} ${lesson.published === false ? 'draft' : ''}"
+    data-open-lesson="${lesson.id}">
+    <span class="ll-tick">${lesson.completed ? svg.tick : `<i>${index}</i>`}</span>
+    <span class="ll-copy">
+      <strong>${escapeHtml(lesson.title)}</strong>
+      <span>${lesson.durationLabel ? escapeHtml(lesson.durationLabel) : ''}${lesson.published === false ? ' · Draft' : ''}</span>
+    </span>
+  </button>`;
+}
+
+function courseContents() {
+  const course = state.course;
+  let number = 0;
+  return `<aside class="lc">
+    <div class="lc-head">
+      <strong>${escapeHtml(course.title)}</strong>
+      ${isAdmin() ? '' : `<span>${course.completedCount} of ${course.lessonCount} done</span>
+        <div class="cc-bar"><span style="width:${course.percent}%"></span></div>`}
+    </div>
+    ${course.modules.map((module) => `<section class="lc-mod">
+      <h4>${escapeHtml(module.title)}${isAdmin() ? `<button class="lc-add" data-add-lesson="${module.id}" title="Add a lesson">+</button>` : ''}</h4>
+      ${module.lessons.map((lesson) => lessonRow(lesson, (number += 1), lesson.id === state.lessonId)).join('')
+        || '<p class="lc-empty">No lessons in this section yet.</p>'}
+    </section>`).join('')}
+    ${isAdmin() ? '<button class="btn small lc-newmod" id="add-module">Add a section</button>' : ''}
+  </aside>`;
+}
+
+function coursePage() {
+  const course = state.course;
+  if (!course) return '';
+  const lesson = currentLesson();
+  const lessons = allLessons(course);
+  const at = lessons.findIndex((item) => item.id === state.lessonId);
+  const next = at >= 0 ? lessons[at + 1] : null;
+
+  return `<div class="cp">
+    <button class="cp-back" id="back-to-courses">${svg.chevronLeft} All courses</button>
+    <div class="cp-main">
+      <div class="cp-stage">
+        ${lessonPlayer(lesson)}
+        ${lesson ? `<div class="cp-meta">
+          <div>
+            <h1>${escapeHtml(lesson.title)}</h1>
+            <span>${lesson.recordedOn ? `Recorded ${escapeHtml(fmtDate(lesson.recordedOn, { dateStyle: 'medium' }))}` : ''}${lesson.durationLabel ? `${lesson.recordedOn ? ' · ' : ''}${escapeHtml(lesson.durationLabel)}` : ''}</span>
+          </div>
+          <div class="cp-actions">
+            ${isAdmin()
+              ? `<button class="btn small" data-edit-lesson="${lesson.id}">Edit lesson</button>
+                 <button class="btn small danger" data-delete-lesson="${lesson.id}">Delete</button>`
+              : `<button class="btn ${lesson.completed ? 'is-done' : 'primary'}" id="toggle-complete"
+                   data-lesson="${lesson.id}" data-done="${lesson.completed}"
+                   aria-pressed="${Boolean(lesson.completed)}"
+                   title="${lesson.completed ? 'Click to mark as not complete' : 'Mark this lesson complete'}">
+                   ${lesson.completed ? `${svg.tick} Completed` : 'Mark as complete'}
+                 </button>
+                 ${next ? `<button class="btn" data-open-lesson="${next.id}">Next lesson</button>` : ''}`}
+          </div>
+        </div>
+        ${lesson.notes ? `<div class="cp-notes">${escapeHtml(lesson.notes).replace(/\n/g, '<br>')}</div>` : ''}
+        ${lesson.attachments?.length ? attachmentsPreview(lesson.attachments.map((item) => ({ ...item, kind: 'file' })), true) : ''}` : ''}
+      </div>
+      ${courseContents()}
+    </div>
+  </div>`;
+}
+
+function bindCourse() {
+  document.querySelectorAll('[data-open-course]').forEach((card) =>
+    card.addEventListener('click', () => openCourse(card.dataset.openCourse)));
+  document.getElementById('back-to-courses')?.addEventListener('click', async () => {
+    state.course = null;
+    state.lessonId = null;
+    await loadCourses();
+    renderCourseView();
+  });
+  document.querySelectorAll('[data-open-lesson]').forEach((button) =>
+    button.addEventListener('click', () => {
+      state.lessonId = button.dataset.openLesson;
+      renderCourseView();
+      document.querySelector('.cp-stage')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }));
+
+  document.getElementById('toggle-complete')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const done = button.dataset.done === 'true';
+    try {
+      await api(`/api/student/lessons/${button.dataset.lesson}/progress`, {
+        method: 'POST', body: { completed: !done },
+      });
+    } catch (error) { return showToast(error.message, 'error'); }
+    await openCourse(state.course.id, state.lessonId);
+    showToast(done ? 'Marked as not complete' : 'Marked as complete');
+  });
+
+  /* Watching most of it is what finishing a lesson means, so it ticks itself.
+     The button stays for anybody who wants to mark it early or undo it. */
+  const video = document.getElementById('lesson-video');
+  if (video) {
+    const lesson = currentLesson();
+    if (lesson?.lastPositionSeconds > 5) video.currentTime = lesson.lastPositionSeconds;
+    video.addEventListener('timeupdate', debounce(async () => {
+      if (!video.duration) return;
+      const done = video.currentTime / video.duration > 0.9;
+      if (done && !currentLesson()?.completed) {
+        await api(`/api/student/lessons/${lesson.id}/progress`, {
+          method: 'POST', body: { completed: true, positionSeconds: Math.floor(video.currentTime) },
+        }).catch(() => {});
+        await openCourse(state.course.id, state.lessonId);
+      }
+    }, 4000));
+  }
+
+  if (isAdmin()) bindCourseAdmin();
+}
+
+/* ---- Building a course ------------------------------------------- */
+
+function bindCourseAdmin() {
+  document.getElementById('new-course')?.addEventListener('click', () => openCourseModal());
+  document.getElementById('add-module')?.addEventListener('click', async () => {
+    const title = window.prompt('Name this section', 'Term 1');
+    if (!title?.trim()) return;
+    try {
+      await api(`/api/admin/courses/${state.course.id}/modules`, { method: 'POST', body: { title: title.trim() } });
+      await openCourse(state.course.id, state.lessonId);
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+  document.querySelectorAll('[data-add-lesson]').forEach((button) =>
+    button.addEventListener('click', (event) => { event.stopPropagation(); openLessonModal(button.dataset.addLesson); }));
+  document.querySelectorAll('[data-edit-lesson]').forEach((button) =>
+    button.addEventListener('click', () => openLessonModal(null, currentLesson())));
+  document.querySelectorAll('[data-delete-lesson]').forEach((button) =>
+    button.addEventListener('click', async () => {
+      const lesson = currentLesson();
+      const ok = await askConfirm({
+        title: `Delete “${lesson.title}”?`,
+        message: 'The recording link and everybody’s record of having watched it go with it. This cannot be undone.',
+        confirmLabel: 'Delete lesson', danger: true,
+      });
+      if (!ok) return;
+      try {
+        await api(`/api/admin/lessons/${lesson.id}`, { method: 'DELETE' });
+        await openCourse(state.course.id);
+        showToast('Lesson deleted');
+      } catch (error) { showToast(error.message, 'error'); }
+    }));
+}
+
+function openCourseModal(course = null) {
+  const classes = state.classes || [];
+  modal({
+    title: course ? 'Course settings' : 'New course',
+    subtitle: 'A course holds sections, and a section holds the class recordings.',
+    body: `<form id="course-form">
+      <div class="form-field"><label>Title</label><input name="title" required value="${escapeHtml(course?.title || '')}" placeholder="Irish for Primary Teaching"></div>
+      <div class="form-field"><label>Description</label><textarea name="description" rows="3">${escapeHtml(course?.description || '')}</textarea></div>
+      <div class="form-field"><label>Who sees it</label>
+        <select name="classId">
+          <option value="">Every class</option>
+          ${classes.map((row) => `<option value="${row.id}" ${course?.class_id === row.id ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}
+        </select>
+        <p class="muted small">A course taught the same way to both groups should stay on “Every class”.</p>
+      </div>
+      <label class="check-row"><input type="checkbox" name="published" ${course?.published ? 'checked' : ''}> Visible to students</label>
+    </form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button>${course ? `<button class="btn danger" id="delete-course">Delete</button>` : ''}<button class="btn primary" id="save-course">${course ? 'Save' : 'Create course'}</button>`,
+    onOpen() {
+      document.getElementById('save-course').addEventListener('click', async () => {
+        const form = document.getElementById('course-form');
+        const data = new FormData(form);
+        const body = {
+          title: String(data.get('title') || '').trim(),
+          description: String(data.get('description') || '').trim(),
+          classId: data.get('classId') || null,
+          published: form.published.checked,
+        };
+        if (!body.title) return showToast('Give the course a title.', 'error');
+        try {
+          if (course) await api(`/api/admin/courses/${course.id}`, { method: 'PATCH', body });
+          else await api('/api/admin/courses', { method: 'POST', body });
+          closeModal();
+          await loadCourses();
+          if (course) await openCourse(course.id, state.lessonId); else renderCourseView();
+          showToast(course ? 'Course saved' : 'Course created');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+      document.getElementById('delete-course')?.addEventListener('click', async () => {
+        let impact;
+        try { impact = await api(`/api/admin/courses/${course.id}/impact`); }
+        catch (error) { return showToast(error.message, 'error'); }
+        const ok = await askConfirm({
+          title: `Delete “${course.title}”?`,
+          message: `${impact.lessons} lesson${impact.lessons === 1 ? '' : 's'} and ${impact.progress} record${impact.progress === 1 ? '' : 's'} of students having watched them go with it. This cannot be undone.`,
+          confirmLabel: 'Delete course', danger: true,
+        });
+        if (!ok) return;
+        try {
+          await api(`/api/admin/courses/${course.id}`, { method: 'DELETE' });
+          closeModal();
+          state.course = null;
+          await loadCourses();
+          renderCourseView();
+          showToast('Course deleted');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* Adding a recording. The host is chosen and the link pasted; whole URLs and
+   bare ids both work, because nobody should have to know which one their host
+   wants. */
+function openLessonModal(moduleId, lesson = null) {
+  const providers = [
+    ['bunny', 'Bunny Stream'],
+    ['youtube', 'YouTube'],
+    ['loom', 'Loom'],
+    ['mp4', 'A file on this server'],
+  ];
+  const minutes = lesson?.durationSeconds ? Math.round(lesson.durationSeconds / 60) : '';
+  modal({
+    title: lesson ? 'Edit lesson' : 'New lesson',
+    wide: true,
+    body: `<form id="lesson-form">
+      <div class="form-field"><label>Title</label><input name="title" required value="${escapeHtml(lesson?.title || '')}" placeholder="Week 1: An aimsir chaite"></div>
+      <div class="form-row">
+        <div class="form-field"><label>Recording host</label>
+          <select name="videoProvider">
+            <option value="">No recording yet</option>
+            ${providers.map(([value, label]) => `<option value="${value}" ${lesson?.videoProvider === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field"><label>Length in minutes</label><input name="minutes" type="number" min="0" value="${minutes}"></div>
+        <div class="form-field"><label>Recorded on</label><input name="recordedOn" type="date" value="${lesson?.recordedOn ? String(lesson.recordedOn).slice(0, 10) : ''}"></div>
+      </div>
+      <div class="form-field"><label>Link or id</label>
+        <input name="video" value="${escapeHtml(lesson?.videoRef || '')}" placeholder="Paste the share link">
+        <p class="muted small">A whole link or a bare id, whichever you have. Zoom recording links will not work — Zoom blocks playback outside its own pages, so the file has to be uploaded to one of the hosts above.</p>
+      </div>
+      <div class="form-field"><label>Notes</label><textarea name="notes" rows="5" placeholder="What this class covered, and anything to do before the next one.">${escapeHtml(lesson?.notes || '')}</textarea></div>
+      <label class="check-row"><input type="checkbox" name="published" ${lesson === null || lesson.published ? 'checked' : ''}> Visible to students</label>
+    </form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-lesson">${lesson ? 'Save lesson' : 'Add lesson'}</button>`,
+    onOpen() {
+      document.getElementById('save-lesson').addEventListener('click', async () => {
+        const form = document.getElementById('lesson-form');
+        const data = new FormData(form);
+        const body = {
+          title: String(data.get('title') || '').trim(),
+          notes: String(data.get('notes') || '').trim(),
+          videoProvider: data.get('videoProvider') || null,
+          video: String(data.get('video') || '').trim() || null,
+          durationSeconds: data.get('minutes') ? Number(data.get('minutes')) * 60 : null,
+          recordedOn: data.get('recordedOn') || null,
+          published: form.published.checked,
+        };
+        if (!body.title) return showToast('Give the lesson a title.', 'error');
+        try {
+          if (lesson) await api(`/api/admin/lessons/${lesson.id}`, { method: 'PATCH', body });
+          else await api(`/api/admin/modules/${moduleId}/lessons`, { method: 'POST', body });
+          closeModal();
+          await openCourse(state.course.id, lesson ? state.lessonId : null);
+          showToast(lesson ? 'Lesson saved' : 'Lesson added');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
 }
 
 /* ------------------------------------------------------------------
@@ -3849,6 +4232,7 @@ function studentNav() {
   return `<div class="nav-label">My course</div><nav class="nav">
     ${studentNavButton('calendar', svg.calendar, 'Deadlines')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
+    ${studentNavButton('courses', svg.cap, 'Courses')}
     ${studentNavButton('community', svg.board, 'Class board', state.studentData?.communityUnread || 0)}
   </nav>`;
 }
@@ -3863,17 +4247,19 @@ async function loadStudent() {
   renderStudent();
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Class board', calendar: 'Deadlines' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Class board', courses: 'Courses', calendar: 'Deadlines' };
 
 function renderStudent() {
   let content = '';
   if (!state.studentData.class && state.view !== 'account') {
     content = `${studentHero()}<div class="empty-state"><h3>You are not in a class yet</h3><p>Your account is active but has not been added to a class group. Contact Gaeilgeoir Guides and they will add you.</p></div>`;
   } else if (state.view === 'tracker') content = studentTrackerView();
+  else if (state.view === 'courses') content = state.course ? coursePage() : coursesView();
   else if (state.view === 'community') content = studentCommunityView();
   else content = studentCalendarView();
   shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Deadlines', roleLabel: 'Student', notificationCount: state.studentData.notifications });
   bindStudentView();
+  if (state.view === 'courses') bindCourse();
 }
 
 /* The class link, shown where a student already goes on the evening of a class.
@@ -3906,6 +4292,7 @@ function nextClassBanner() {
 
 const STUDENT_HERO_COPY = {
   community: { title: 'here is your class board', line: 'Ask a question or answer somebody else. Your teacher reads it too.' },
+  courses: { title: 'here are your courses', line: 'Every class recording, with the notes that go with it.' },
 };
 
 function studentHero() {
@@ -3913,7 +4300,7 @@ function studentHero() {
     || { title: 'here are your deadlines', line: 'Complete check-ins and homework, then view your returned teacher feedback.' };
   return `<section class="student-hero"><div><h1>Hi ${escapeHtml(state.user.name.split(' ')[0])}, ${escapeHtml(copy.title)}</h1><p>${escapeHtml(copy.line)}</p></div>${state.studentData.class ? `<span class="hero-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</section>
   ${nextClassBanner()}
-  ${state.view === 'community' ? '' : studentGoals()}`;
+  ${state.view === 'community' || state.view === 'courses' ? '' : studentGoals()}`;
 }
 
 /* The server works this out in src/status.js, so the counting rule lives in one

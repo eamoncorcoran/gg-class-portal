@@ -104,6 +104,22 @@
 
     /* Enough likes that the counts are not all zero, spread so the Top sort
        actually reorders the feed. */
+    const courses = [
+      { id:'co1', class_id:null, title:'Irish for Primary Teaching', description:'Every class recording, in the order we taught them.', cover_url:null, published:true, position:0 },
+    ];
+    const courseModules = [
+      { id:'cm1', course_id:'co1', title:'Term 1: Foundations', position:0 },
+      { id:'cm2', course_id:'co1', title:'Term 2: The classroom', position:1 },
+    ];
+    const courseLessons = [
+      { id:'cl1', module_id:'cm1', title:'Week 1: An aimsir chaite', notes:'The past tense, and the ten irregular verbs. Work through the handout before Thursday.', video_provider:'youtube', video_ref:'aqz-KE-bpKQ', duration_seconds:5400, recorded_on:'2026-09-07', published:true, position:0 },
+      { id:'cl2', module_id:'cm1', title:'Week 2: An aimsir láithreach', notes:'The present tense, and the difference between tá and is.', video_provider:'youtube', video_ref:'aqz-KE-bpKQ', duration_seconds:4800, recorded_on:'2026-09-14', published:true, position:1 },
+      { id:'cl3', module_id:'cm2', title:'Week 3: Classroom phrases', notes:'Fifty phrases you can use from Monday morning.', video_provider:'youtube', video_ref:'aqz-KE-bpKQ', duration_seconds:3900, recorded_on:'2026-09-21', published:true, position:0 },
+      { id:'cl4', module_id:'cm2', title:'Week 4: Correcting written work', notes:'Not recorded yet.', video_provider:null, video_ref:null, duration_seconds:null, recorded_on:null, published:true, position:1 },
+    ];
+    // Sarah has watched the first one.
+    const lessonProgress = [{ student_id:'s1', lesson_id:'cl1', last_position_seconds:0 }];
+
     const attachments = [
       { id:'at1', thread_id:'t1', kind:'file', url:'#', file_name:'How-this-works.pdf', mime_type:'application/pdf', size_bytes:118000, position:0 },
       { id:'at2', thread_id:'t5', kind:'gif', url:'https://media.giphy.com/media/xUOxf1XbxSNwZMSMSc/giphy.gif', position:0 },
@@ -136,6 +152,7 @@
       sessionUserId:'admin1',
       users, classes, weeks, assignments, attendance, checkins, homework, notes:[], withdrawals:[], homeworkFiles:[], dismissals:[],
       threads, posts, reads:[], categories, likes, attachments,
+      courses, courseModules, courseLessons, lessonProgress,
       settings:{
         email:{provider:'console',fromName:'Gaeilgeoir Guides',fromAddress:'support@gaeilgeoirguides.com',replyTo:'support@gaeilgeoirguides.com',webhookUrl:'',smtpHost:'',smtpUser:'',configured:false},
         reminders:{
@@ -199,6 +216,10 @@
     if(!Array.isArray(stored.categories)) stored.categories=fresh.categories;
     if(!Array.isArray(stored.likes)) stored.likes=fresh.likes;
     if(!Array.isArray(stored.attachments)) stored.attachments=fresh.attachments;
+    if(!Array.isArray(stored.courses)) {
+      stored.courses=fresh.courses; stored.courseModules=fresh.courseModules;
+      stored.courseLessons=fresh.courseLessons; stored.lessonProgress=fresh.lessonProgress;
+    }
     (stored.classes || []).forEach((klass) => {
       const seeded=fresh.classes.find((row)=>row.id===klass.id);
       if(klass.join_url===undefined) klass.join_url=seeded?.join_url??null;
@@ -465,6 +486,53 @@
     return {startsAt:start.toISOString(),timezone:klass.timezone||'Europe/Dublin',minutesAway,
       live:minutesAway<=0,soon:minutesAway>0&&minutesAway<=12*60,
       joinUrl:klass.join_url||null,note:klass.join_note||null};
+  }
+
+  /* Courses. Mirrors src/courses.js: progress is per student, drafts stay out of
+     a student's view, and the player is told what kind of source it has. */
+  function lessonVideo(row){
+    if(!row.video_provider||!row.video_ref) return null;
+    if(row.video_provider==='youtube') return {type:'iframe',provider:'youtube',src:`https://www.youtube-nocookie.com/embed/${row.video_ref}`};
+    if(row.video_provider==='loom') return {type:'iframe',provider:'loom',src:`https://www.loom.com/embed/${row.video_ref}`};
+    if(row.video_provider==='bunny'){const [lib,vid]=row.video_ref.split('/');return {type:'iframe',provider:'bunny',src:`https://iframe.mediadelivery.net/embed/${lib}/${vid}`};}
+    return {type:'file',provider:'mp4',src:row.video_ref};
+  }
+  function lessonDuration(seconds){
+    const total=Number(seconds)||0; if(!total) return '';
+    const h=Math.floor(total/3600), m=Math.round((total%3600)/60);
+    return h?`${h}h ${m}m`:`${m}m`;
+  }
+  function courseRows(viewerId,isAdmin){
+    return (db.courses||[]).filter((c)=>isAdmin||c.published).map((c)=>{
+      const lessons=lessonsOfCourse(c.id,isAdmin);
+      const done=lessons.filter((l)=>(db.lessonProgress||[]).some((p)=>p.student_id===viewerId&&p.lesson_id===l.id)).length;
+      return {...c,lesson_count:lessons.length,completed_count:done,
+        percent:lessons.length?Math.round((done/lessons.length)*100):0};
+    });
+  }
+  function lessonsOfCourse(courseId,isAdmin){
+    const moduleIds=(db.courseModules||[]).filter((m)=>m.course_id===courseId).map((m)=>m.id);
+    return (db.courseLessons||[]).filter((l)=>moduleIds.includes(l.module_id)&&(isAdmin||l.published));
+  }
+  function courseDetail(courseId,viewerId,isAdmin){
+    const course=(db.courses||[]).find((c)=>c.id===courseId&&(isAdmin||c.published));
+    if(!course) return null;
+    const modules=(db.courseModules||[]).filter((m)=>m.course_id===courseId)
+      .sort((a,b)=>a.position-b.position)
+      .map((m)=>({id:m.id,title:m.title,position:m.position,
+        lessons:(db.courseLessons||[]).filter((l)=>l.module_id===m.id&&(isAdmin||l.published))
+          .sort((a,b)=>a.position-b.position)
+          .map((l)=>({id:l.id,title:l.title,notes:l.notes,published:l.published,
+            recordedOn:l.recorded_on,durationLabel:lessonDuration(l.duration_seconds),
+            durationSeconds:l.duration_seconds,
+            completed:(db.lessonProgress||[]).some((p)=>p.student_id===viewerId&&p.lesson_id===l.id),
+            lastPositionSeconds:0,attachments:[],video:lessonVideo(l),
+            ...(isAdmin?{videoProvider:l.video_provider,videoRef:l.video_ref}:{})}))}));
+    const all=modules.flatMap((m)=>m.lessons);
+    const done=all.filter((l)=>l.completed).length;
+    return {...course,modules,lessonCount:all.length,completedCount:done,
+      percent:all.length?Math.round((done/all.length)*100):0,
+      resumeLessonId:(all.find((l)=>!l.completed)||all[0])?.id||null};
   }
 
   const originalFetch=window.fetch.bind(window);
@@ -878,6 +946,34 @@
     if(params&&method==='DELETE'){
       db.homeworkFiles=(db.homeworkFiles||[]).filter((f)=>f.id!==params.fileId); save();
       return json(null,204);
+    }
+
+    if(path==='/api/student/courses'&&method==='GET'){
+      const student=previewStudent(user);
+      return json({courses:courseRows(student.id,false)});
+    }
+    params=match(path,'/api/student/courses/:id');
+    if(params&&method==='GET'){
+      const detail=courseDetail(params.id,previewStudent(user).id,false);
+      return detail?json(detail):error('Course not found',404);
+    }
+    params=match(path,'/api/student/lessons/:id/progress');
+    if(params&&method==='POST'){
+      const student=previewStudent(user);
+      db.lessonProgress=db.lessonProgress||[];
+      if(body.completed===false){
+        db.lessonProgress=db.lessonProgress.filter((p)=>!(p.student_id===student.id&&p.lesson_id===params.id));
+      } else if(!db.lessonProgress.some((p)=>p.student_id===student.id&&p.lesson_id===params.id)){
+        db.lessonProgress.push({student_id:student.id,lesson_id:params.id,last_position_seconds:body.positionSeconds||0});
+      }
+      save();
+      return json({completed:body.completed!==false});
+    }
+    if(path==='/api/admin/courses'&&method==='GET') return json({courses:courseRows(user.id,true)});
+    params=match(path,'/api/admin/courses/:id');
+    if(params&&method==='GET'){
+      const detail=courseDetail(params.id,user.id,true);
+      return detail?json(detail):error('Course not found',404);
     }
 
     if(path==='/api/gifs'&&method==='GET'){
