@@ -53,3 +53,28 @@ test('the oversize message names the actual limit', () => {
   assert.match(middleware, new RegExp(`under ${limit}MB`),
     'the message in middleware.js disagrees with the limit in admin.js');
 });
+
+/* The bug this pins: an uploaded file comes back as a path under /uploads
+   rather than a full address, and requiring a complete URL rejected every one
+   of them — reporting it, because the whole body then failed to parse, as a
+   missing title. */
+test('an uploaded path is a valid attachment address, and a hostile one is not', () => {
+  const admin = fs.readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
+  const start = admin.indexOf('const attachmentUrl = z.string()');
+  assert.ok(start !== -1, 'attachmentUrl is no longer where this test expects it');
+  const rule = admin.slice(start, admin.indexOf(');', start));
+
+  const accepts = (value) =>
+    value.startsWith('/uploads/') || /^https?:\/\//i.test(value);
+
+  // The rule in the file has to be the one being asserted here.
+  assert.match(rule, /startsWith\('\/uploads\/'\)/);
+  assert.match(rule, /\^https\?/);
+
+  assert.equal(accepts('/uploads/post-abc.pdf'), true);
+  assert.equal(accepts('https://media.giphy.com/media/x/giphy.gif'), true);
+  assert.equal(accepts('http://www.loom.com/share/abc12345'), true);
+  assert.equal(accepts('javascript:alert(1)'), false);
+  assert.equal(accepts('data:text/html,<script>'), false);
+  assert.equal(accepts('../../etc/passwd'), false);
+});

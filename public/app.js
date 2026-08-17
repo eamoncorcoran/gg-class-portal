@@ -68,6 +68,9 @@ const svg = {
   heart: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 7.694c-1.4-1.6-3.2-2.2-4.9-1.7-2.4.7-3.6 3.3-2.8 5.7.9 2.9 4.4 5.6 7.7 7.6 3.3-2 6.8-4.7 7.7-7.6.8-2.4-.4-5-2.8-5.7-1.7-.5-3.5.1-4.9 1.7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   comment: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 10.5h8M8 14h5m-6.2 6L9.3 22.5c.25.25.38.38.52.43a.7.7 0 0 0 .43 0c.15-.05.27-.18.52-.43L13 20h2.2c1.68 0 2.52 0 3.16-.33a3 3 0 0 0 1.31-1.31C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.33-3.16a3 3 0 0 0-1.31-1.31C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 0 0-1.31 1.31C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.33 3.16a3 3 0 0 0 1.31 1.31C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   gif: `<svg viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10.2 10.2a2.4 2.4 0 1 0 .3 3.4v-1.2H9.3M13.9 9.6v4.8M20 9.6h-2.9v4.8m0-2.7h2.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  cloudUp: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 16V9m0 0-3 3m3-3 3 3M6.5 19a4.5 4.5 0 0 1-.42-8.98 6 6 0 0 1 11.65-1.9A4.75 4.75 0 0 1 17.5 19H6.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none"><path d="M15 5V4.2c0-.84 0-1.26-.16-1.58a1.5 1.5 0 0 0-.66-.66C13.86 1.8 13.44 1.8 12.6 1.8h-1.2c-.84 0-1.26 0-1.58.16a1.5 1.5 0 0 0-.66.66C9 2.94 9 3.36 9 4.2V5m2 5.5v5m2-5v5M3.5 5h17m-1.7 0v11.4c0 1.26 0 1.89-.25 2.37a2.25 2.25 0 0 1-.98.98c-.48.25-1.11.25-2.37.25H8.8c-1.26 0-1.89 0-2.37-.25a2.25 2.25 0 0 1-.98-.98c-.25-.48-.25-1.11-.25-2.37V5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  tick: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8 12.2l2.6 2.6L16 9.4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   smile: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.3" stroke="currentColor" stroke-width="2"/><path d="M8.4 14.2a4.4 4.4 0 0 0 7.2 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="10" r="1.15" fill="currentColor"/><circle cx="15" cy="10" r="1.15" fill="currentColor"/></svg>`,
   play: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="2"/><path d="M10 8.6v6.8l5.5-3.4L10 8.6Z" fill="currentColor"/></svg>`,
   camera2: `<svg viewBox="0 0 24 24" fill="none"><path d="M3 9.5A2.5 2.5 0 0 1 5.5 7h1.2c.5 0 .95-.28 1.17-.72l.66-1.31A1.5 1.5 0 0 1 9.87 4h4.26c.57 0 1.09.32 1.34.83l.66 1.31c.22.44.68.86 1.17.86h1.2A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-7Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="2"/></svg>`,
@@ -2046,26 +2049,109 @@ function captureComposer() {
   };
 }
 
-function attachmentChip(item, index) {
-  const label = item.kind === 'file' ? (item.fileName || 'Document')
-    : item.kind === 'loom' ? 'Loom video' : 'GIF';
-  const icon = item.kind === 'file' ? svg.note : item.kind === 'loom' ? svg.video : svg.gif;
-  return `<span class="chip-file">
-    ${item.kind === 'gif' ? `<img src="${escapeHtml(item.preview || item.url)}" alt="">` : icon}
-    <span>${escapeHtml(label)}</span>
-    <button type="button" class="chip-x" data-drop-attachment="${index}" aria-label="Remove">${svg.x}</button>
-  </span>`;
+const MAX_ATTACHMENT_MB = 40;
+
+/** "2.4 MB", the way a file manager writes it. */
+function fileSize(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function attachmentFormat(item) {
+  if (item.kind === 'gif') return 'GIF';
+  if (item.kind === 'loom') return 'LOOM';
+  if (item.kind === 'youtube') return 'VIDEO';
+  return /\.docx$/i.test(item.fileName || '') || String(item.mimeType || '').includes('wordprocessingml')
+    ? 'DOCX' : 'PDF';
+}
+
+/* One row per attachment: the format as a badge, the name, the size, and either
+   a progress bar while it is going up or a tick once it is there. Modelled on
+   the Untitled UI file uploader, which is the same design language the rest of
+   this interface already uses. */
+function attachmentRow(item, index) {
+  const format = attachmentFormat(item);
+  const failed = Boolean(item.error);
+  const uploading = !failed && item.progress != null && item.progress < 100;
+  return `<div class="fu-row ${failed ? 'is-failed' : ''}" data-attachment="${index}">
+    <span class="fu-badge fu-${format.toLowerCase()}">
+      ${item.kind === 'gif' ? `<img src="${escapeHtml(item.preview || item.url)}" alt="">` : `<i>${format}</i>`}
+    </span>
+    <div class="fu-copy">
+      <strong>${escapeHtml(item.fileName || (item.kind === 'gif' ? 'GIF' : format))}</strong>
+      <span>${failed ? escapeHtml(item.error) : item.sizeBytes ? fileSize(item.sizeBytes) : format}</span>
+      ${uploading ? `<div class="fu-bar"><span style="width:${item.progress}%"></span></div>` : ''}
+    </div>
+    ${uploading
+      ? `<span class="fu-pct">${item.progress}%</span>`
+      : failed
+        ? ''
+        : `<span class="fu-done">${svg.tick}</span>`}
+    <button type="button" class="fu-x" data-drop-attachment="${index}" aria-label="Remove ${escapeHtml(item.fileName || 'attachment')}">${svg.trash}</button>
+  </div>`;
 }
 
 function renderDraftAttachments() {
   const holder = document.getElementById('draft-attachments');
   if (!holder) return;
-  holder.innerHTML = draftAttachments.map(attachmentChip).join('');
+  holder.innerHTML = draftAttachments.map(attachmentRow).join('');
   holder.classList.toggle('hidden', !draftAttachments.length);
   holder.querySelectorAll('[data-drop-attachment]').forEach((button) => button.addEventListener('click', () => {
     draftAttachments.splice(Number(button.dataset.dropAttachment), 1);
     renderDraftAttachments();
   }));
+}
+
+/* XHR rather than fetch, because fetch cannot report upload progress and a
+   40MB scan over a slow connection with no feedback looks like a hung page. */
+function uploadDocument(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('file', file);
+    const request = new XMLHttpRequest();
+    request.open('POST', '/api/admin/community/attachments');
+    request.withCredentials = true;
+    request.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    });
+    request.addEventListener('load', () => {
+      let payload = {};
+      try { payload = JSON.parse(request.responseText); } catch { /* handled below */ }
+      if (request.status >= 200 && request.status < 300) resolve(payload);
+      else reject(new Error(payload.error || 'That file could not be uploaded.'));
+    });
+    request.addEventListener('error', () => reject(new Error('That file could not be uploaded.')));
+    request.send(form);
+  });
+}
+
+/* Checked here as well as on the server so somebody does not watch a 60MB file
+   upload for a minute only to be told at the end. */
+async function acceptDocuments(files) {
+  for (const file of [...files]) {
+    if (file.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
+      draftAttachments.push({ kind: 'file', fileName: file.name, sizeBytes: file.size,
+        error: `Too large — the limit is ${MAX_ATTACHMENT_MB}MB.` });
+      renderDraftAttachments();
+      continue;
+    }
+    const row = { kind: 'file', fileName: file.name, sizeBytes: file.size, progress: 0 };
+    draftAttachments.push(row);
+    renderDraftAttachments();
+    try {
+      const uploaded = await uploadDocument(file, (percent) => {
+        row.progress = percent;
+        renderDraftAttachments();
+      });
+      Object.assign(row, uploaded, { progress: 100 });
+    } catch (error) {
+      row.error = error.message;
+      delete row.progress;
+    }
+    renderDraftAttachments();
+  }
 }
 
 function openComposer({ restore = false } = {}) {
@@ -2095,7 +2181,14 @@ function openComposer({ restore = false } = {}) {
       <input name="title" id="composer-title" placeholder="Title" autocomplete="off" required value="${escapeHtml(draft?.title || '')}">
       <textarea id="composer-body" name="body" rows="6" placeholder="Write something… paste a YouTube or Loom link and it will play here" required>${escapeHtml(draft?.body || '')}</textarea>
       <div id="video-preview" class="hidden"></div>
-      <div id="draft-attachments" class="chip-row hidden"></div>
+      ${admin ? `<label class="fu-zone" id="fu-zone">
+        <input type="file" id="pdf-input" multiple class="fu-input"
+          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        <span class="fu-icon">${svg.cloudUp}</span>
+        <span class="fu-lead"><b>Click to upload</b> or drag and drop</span>
+        <span class="fu-hint">PDF or Word document, up to ${MAX_ATTACHMENT_MB}MB</span>
+      </label>` : ''}
+      <div id="draft-attachments" class="fu-list hidden"></div>
 
       ${admin ? `<details class="schedule-block" ${draft?.when ? 'open' : ''}>
         <summary>${svg.calendar} Schedule for later</summary>
@@ -2108,7 +2201,6 @@ function openComposer({ restore = false } = {}) {
 
       <footer class="cw-foot">
         <div class="composer-tools">
-          ${admin ? tool('attach-pdf', svg.note, 'Attach a PDF or Word document') : ''}
           ${tool('attach-gif', svg.gif, 'Add a GIF')}
           ${admin ? `<button type="button" class="tool" id="attach-dictate" title="Dictate" aria-label="Dictate">${svg.mic}</button>` : ''}
           <input type="file" id="pdf-input" class="hidden"
@@ -2126,18 +2218,25 @@ function openComposer({ restore = false } = {}) {
       bindDictation();
       renderDraftAttachments();
       if (!draft) document.getElementById('composer-title')?.focus();
-      document.getElementById('attach-pdf')?.addEventListener('click', () => document.getElementById('pdf-input').click());
-      document.getElementById('pdf-input')?.addEventListener('change', async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        const form = new FormData();
-        form.append('file', file);
-        try {
-          const uploaded = await api('/api/admin/community/attachments', { method: 'POST', body: form });
-          draftAttachments.push(uploaded);
-          renderDraftAttachments();
-        } catch (error) { showToast(error.message, 'error'); }
+      const fileInput = document.getElementById('pdf-input');
+      fileInput?.addEventListener('change', async (event) => {
+        if (event.target.files.length) await acceptDocuments(event.target.files);
         event.target.value = '';
+      });
+
+      /* Drag and drop over the whole zone. The counter is because dragging over
+         a child fires leave on the parent, which otherwise makes the highlight
+         flicker as the pointer crosses the icon. */
+      const zone = document.getElementById('fu-zone');
+      let depth = 0;
+      zone?.addEventListener('dragenter', (event) => { event.preventDefault(); depth += 1; zone.classList.add('is-over'); });
+      zone?.addEventListener('dragover', (event) => event.preventDefault());
+      zone?.addEventListener('dragleave', () => { depth -= 1; if (depth <= 0) { depth = 0; zone.classList.remove('is-over'); } });
+      zone?.addEventListener('drop', async (event) => {
+        event.preventDefault();
+        depth = 0;
+        zone.classList.remove('is-over');
+        if (event.dataTransfer?.files?.length) await acceptDocuments(event.dataTransfer.files);
       });
       // The dictate control itself lives in a hidden slot so the toolbar keeps
       // one consistent row of icons; this button drives it.
@@ -2180,8 +2279,11 @@ async function submitComposer() {
     title: String(data.get('title') || '').trim(),
     body: String(data.get('body') || '').trim(),
     categoryId: data.get('categoryId') || null,
-    attachments: draftAttachments.map(({ kind, url, storedName, fileName, mimeType, sizeBytes }) =>
-      (kind === 'file' ? { kind, url, storedName, fileName, mimeType, sizeBytes } : { kind, url })),
+    attachments: draftAttachments
+      // A row that failed or is still going up has no address to save.
+      .filter((item) => item.url && !item.error)
+      .map(({ kind, url, storedName, fileName, mimeType, sizeBytes }) =>
+        (kind === 'file' ? { kind, url, storedName, fileName, mimeType, sizeBytes } : { kind, url })),
   };
   if (!body.title || !body.body) return showToast('Give your post a line and a message.', 'error');
   if (isAdmin()) {

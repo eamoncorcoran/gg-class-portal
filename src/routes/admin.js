@@ -1185,9 +1185,18 @@ router.get('/community/thread/:id', asyncRoute(async (req, res) => {
 
 /* Attachments a post can carry. Files are uploaded here first and referenced by
    the post that follows, so a half-written post never leaves an orphan row. */
+/* An uploaded file comes back as a path under /uploads rather than a full
+   address, because the host is whatever the portal is being served from.
+   Requiring a complete URL here rejected every uploaded document and — because
+   the whole body then failed to parse — reported it as a missing title. */
+const attachmentUrl = z.string().min(1).max(2000).refine(
+  (value) => value.startsWith('/uploads/') || /^https?:\/\//i.test(value),
+  'An attachment must be an uploaded file or a web address.',
+);
+
 const attachmentInput = z.object({
   kind: z.enum(['file', 'loom', 'gif', 'youtube']),
-  url: z.string().url(),
+  url: attachmentUrl,
   storedName: z.string().max(200).nullable().optional(),
   fileName: z.string().max(200).nullable().optional(),
   mimeType: z.string().max(120).nullable().optional(),
@@ -1204,7 +1213,16 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
     publishedAt: z.string().datetime().nullable().optional(),
     attachments: z.array(attachmentInput).max(6).optional().default([]),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the post a title and a message.' });
+  // An attachment that will not validate is not a missing title, and saying so
+  // sends somebody hunting through a form that is already filled in.
+  if (!parsed.success) {
+    const onAttachment = parsed.error.issues[0]?.path?.[0] === 'attachments';
+    return res.status(400).json({
+      error: onAttachment
+        ? 'That attachment could not be added. Try uploading it again.'
+        : 'Give the post a title and a message.',
+    });
+  }
   const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.classId]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
   const category = parsed.data.categoryId

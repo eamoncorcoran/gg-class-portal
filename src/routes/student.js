@@ -635,10 +635,17 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
        disk. Videos arrive as links in the body rather than through this. */
     attachments: z.array(z.object({
       kind: z.literal('gif'),
-      url: z.string().url(),
+      url: z.string().min(1).max(2000).refine((value) => /^https?:\/\//i.test(value)),
     })).max(4).optional().default([]),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give your post a title and a message.' });
+  if (!parsed.success) {
+    const onAttachment = parsed.error.issues[0]?.path?.[0] === 'attachments';
+    return res.status(400).json({
+      error: onAttachment
+        ? 'That attachment could not be added. Try adding it again.'
+        : 'Give your post a title and a message.',
+    });
+  }
   // A category from another class would put the post somewhere its own filters
   // could never reach.
   const category = parsed.data.categoryId

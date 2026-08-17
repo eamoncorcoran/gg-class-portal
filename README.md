@@ -1,4 +1,4 @@
-# Gaeilgeoir Guides Class Portal V32
+# Gaeilgeoir Guides Class Portal V33
 
 
 A private internal SaaS application for managing Gaeilgeoir Guides classes, student accounts, weekly attendance, check-ins, homework, deadlines, reminders and returned teacher feedback.
@@ -384,7 +384,7 @@ class card and the month's most active members.
 
 | Kind | Who can add it | How it is added |
 | --- | --- | --- |
-| PDF or Word `.docx` | Administrator only | The document button in the composer |
+| PDF or Word `.docx` | Administrator only | Drop it on the composer, or click to choose |
 | YouTube | Anyone | Paste the link into the post |
 | Loom | Anyone | Paste the link into the post |
 | GIF | Anyone | The GIF button in the composer |
@@ -983,3 +983,19 @@ twice — and confirms that a Vimeo or ordinary link is left alone.
   status, so they were falling through as "Something went wrong" — which tells
   the person uploading nothing and invites them to try the same file again. The
   cap is now 40MB and the message names it.
+
+## V33 changes
+
+- **Posting with a file attached failed.** An uploaded document comes back as a
+  path under `/uploads` rather than a full web address, and the attachment
+  schema demanded a complete URL — so the whole body failed to validate and the
+  error said *Give the post a title and a message*, sending you back to a form
+  that was already filled in. Uploaded paths are accepted now, `javascript:` and
+  `data:` addresses are not, and a genuine attachment problem says it is an
+  attachment problem.
+- **A proper file uploader**, in the Untitled UI shape the rest of the interface
+  already borrows from: a dashed drop zone that takes drag-and-drop or a click,
+  then a row per file with its format on a coloured badge, its size, a real
+  progress bar while it uploads and a tick when it lands. Files can be removed
+  before posting, several can go at once, and one that is too large is refused
+  on the spot with the reason on the row rather than after a minute of uploading.
