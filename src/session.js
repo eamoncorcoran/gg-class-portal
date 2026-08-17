@@ -31,7 +31,7 @@ export async function loadSession(req, res, next) {
   if (!token) return next();
   const row = await one(
     `SELECT s.id session_id, s.expires_at, s.last_seen_at, u.id, u.role, u.name, u.email, u.active,
-            u.must_change_password, u.must_set_avatar, u.avatar_path
+            u.must_change_password, u.must_set_avatar, u.avatar_path, u.is_super_admin
      FROM sessions s JOIN users u ON u.id=s.user_id
      WHERE s.token_hash=$1 AND s.expires_at > now()`,
     [hashToken(token)],
@@ -50,6 +50,9 @@ export async function loadSession(req, res, next) {
     // person in front of it still owes us something before they can continue.
     mustSetAvatar: row.must_set_avatar,
     hasAvatar: Boolean(row.avatar_path),
+    // Creating an administrator is the one action that hands somebody every
+    // other action, so it is gated separately from being one.
+    isSuperAdmin: Boolean(row.is_super_admin),
     sessionId: row.session_id,
   };
   const lastSeen = new Date(row.last_seen_at || 0).getTime();
@@ -78,6 +81,14 @@ export function requireAuth(req, res, next) {
 export function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Administrator access required.' });
+  return next();
+}
+
+export function requireSuperAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
+  if (req.user.role !== 'admin' || !req.user.isSuperAdmin) {
+    return res.status(403).json({ error: 'Only a super administrator can do that.' });
+  }
   return next();
 }
 

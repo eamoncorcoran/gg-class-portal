@@ -1166,3 +1166,23 @@ details.leaving summary:hover{color:var(--text-secondary)}
   .zi-row{flex-wrap:wrap}
   .zi-row .select{max-width:none;width:100%}
 }
+
+/* The drafted reply on the class board. Sits above the box rather than inside
+   it: a draft that fills the box is one you must delete before you can
+   disagree with it. */
+.rd{margin-top:20px;padding:13px 15px;border:1px solid var(--brand-200);border-radius:var(--radius-md);background:var(--brand-25)}
+.rd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px}
+.rd-head>span:first-child{color:var(--brand-800);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.rd-tools{display:flex;gap:12px}
+.rd-body{color:var(--text-secondary);font-size:13.5px;line-height:1.6}
+.rd-fail{color:var(--text-tertiary);font-size:12.5px}
+.rd p{margin:0}
+.reply-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.reply-actions .btn{margin-top:0}
+.rr{display:inline-flex;align-items:center;gap:9px}
+.rr-status{color:var(--text-tertiary);font-size:11.5px}
+.cmt-voice{margin-top:9px}
+.acct-photo{display:flex;align-items:center;gap:16px;margin-bottom:22px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+.acct-photo .avatar-preview{width:64px;height:64px}
+.acct-photo .avatar-preview svg{width:22px;height:22px}
+.acct-photo p{margin:7px 0 0}

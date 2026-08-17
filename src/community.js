@@ -1,4 +1,5 @@
 import { one, query } from './db.js';
+import { withVoiceNotes } from './voice.js';
 
 /* The class feed.
    ------------------------------------------------------------------
@@ -66,6 +67,7 @@ const THREAD_COLUMNS = `
   t.id, t.class_id, t.title, t.body, t.pinned, t.locked, t.created_at,
   t.last_activity_at, t.deleted_at, t.category_id, t.published_at,
   t.published_at > now() scheduled,
+  t.ai_draft, t.ai_draft_state, t.ai_drafted_at,
   ${AUTHOR} author,
   cat.name category_name,
   ${ATTACHMENTS},
@@ -106,6 +108,19 @@ export async function listThreads({
   return result.rows;
 }
 
+/**
+ * Everything a student is allowed to see of a post.
+ *
+ * The drafted reply is a working note for the teacher: what a model proposed
+ * before anybody read it. Stripped on the way out rather than hidden in the
+ * interface, so opening the network tab reveals nothing the screen does not.
+ */
+export function forStudentView(thread) {
+  if (!thread) return thread;
+  const { ai_draft: _d, ai_draft_state: _s, ai_drafted_at: _a, ...rest } = thread;
+  return rest;
+}
+
 /** One post with its comments, each carrying its own like state. */
 export async function getThread({ threadId, viewerId, includeDeleted = false, includeScheduled = false }) {
   const thread = await one(
@@ -121,6 +136,7 @@ export async function getThread({ threadId, viewerId, includeDeleted = false, in
   if (!thread) return null;
   const comments = await query(
     `SELECT p.id, p.body, p.created_at, p.deleted_at, ${AUTHOR} author,
+            p.teacher_audio_path, p.teacher_audio_mime, p.teacher_audio_seconds, p.teacher_audio_recorded_at,
             ${reactionsFor('post', 'p.id')} reactions
      FROM discussion_posts p
      LEFT JOIN users u ON u.id=p.author_id
@@ -128,7 +144,9 @@ export async function getThread({ threadId, viewerId, includeDeleted = false, in
      ORDER BY p.created_at`,
     [threadId, viewerId],
   );
-  return { ...thread, comments: comments.rows };
+  // The audio path never leaves the server; withVoiceNote turns it into the
+  // authenticated URL the player asks for.
+  return { ...thread, comments: withVoiceNotes(comments.rows, 'comment') };
 }
 
 /** Is this person entitled to see this class board at all. */
@@ -167,12 +185,19 @@ export async function createThread({
    the attachment rather than the writing. */
 export async function addAttachments(threadId, attachments = []) {
   for (const [index, item] of attachments.entries()) {
-    await query(
+    const row = await one(
       `INSERT INTO discussion_attachments(thread_id,kind,url,stored_name,file_name,mime_type,size_bytes,position)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
       [threadId, item.kind, item.url, item.storedName || null, item.fileName || null,
        item.mimeType || null, item.sizeBytes || 0, index],
     );
+    /* An uploaded file is addressed through the authenticated route rather than
+       the public uploads path, so it is readable by the class and nobody else.
+       A GIF or a video link is somebody else's public URL and stays as it is. */
+    if (item.kind === 'file' && item.storedName) {
+      await query('UPDATE discussion_attachments SET url=$1 WHERE id=$2',
+        [`/api/media/attachment/post/${row.id}`, row.id]);
+    }
   }
 }
 
@@ -298,4 +323,50 @@ export async function topContributors({ classId, days = 30, limit = 5 }) {
     [classId, String(days), limit],
   );
   return result.rows;
+}
+
+/**
+ * The drafted reply for one post, written once and kept.
+ *
+ * Drafted when an administrator first opens the post rather than when a student
+ * writes it: every post gets read, only some get replied to, and drafting for
+ * all of them bills for work nobody asked for. `force` is the regenerate button.
+ */
+export async function draftReplyFor({ threadId, force = false }) {
+  const thread = await one(
+    `SELECT t.id, t.title, t.body, t.ai_draft, t.ai_draft_state, u.name author_name
+     FROM discussion_threads t LEFT JOIN users u ON u.id=t.author_id
+     WHERE t.id=$1 AND t.deleted_at IS NULL`,
+    [threadId],
+  );
+  if (!thread) return null;
+  if (!force && thread.ai_draft_state === 'drafted' && thread.ai_draft) {
+    return { draft: thread.ai_draft, state: 'drafted', cached: true };
+  }
+
+  // What has already been said, so the draft does not repeat somebody.
+  const comments = await query(
+    `SELECT p.body, u.name, u.role FROM discussion_posts p
+     LEFT JOIN users u ON u.id=p.author_id
+     WHERE p.thread_id=$1 AND p.deleted_at IS NULL ORDER BY p.created_at LIMIT 20`,
+    [threadId],
+  );
+
+  const { draftCommunityReply } = await import('./ai.js');
+  try {
+    const draft = await draftCommunityReply({
+      post: { title: thread.title, body: thread.body, author: thread.author_name },
+      commentsSoFar: comments.rows.map((row) => ({ author: row.name, role: row.role, body: row.body })),
+    });
+    await query(
+      `UPDATE discussion_threads SET ai_draft=$1, ai_draft_state='drafted', ai_drafted_at=now() WHERE id=$2`,
+      [draft, threadId],
+    );
+    return { draft, state: 'drafted', cached: false };
+  } catch (error) {
+    await query(`UPDATE discussion_threads SET ai_draft_state='failed' WHERE id=$1`, [threadId]);
+    /* A failed draft is not a failed page. The teacher writes their own reply,
+       which is what they were going to do anyway. */
+    return { draft: null, state: 'failed', error: error.message };
+  }
 }

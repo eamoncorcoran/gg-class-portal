@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import fs from 'node:fs/promises';
@@ -8,7 +9,7 @@ import { DateTime } from 'luxon';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { asyncRoute } from '../middleware.js';
-import { requireAdmin } from '../session.js';
+import { requireAdmin, requireSuperAdmin } from '../session.js';
 import { one, query, transaction } from '../db.js';
 import { generateStrongPassword, hashPassword } from '../security.js';
 import { sendStudentInvite, sendNudge } from '../email.js';
@@ -18,7 +19,7 @@ import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
 import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
-import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS } from '../community.js';
+import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress } from '../courses.js';
 import { parseVideoSource, VIDEO_PROVIDERS } from '../lessonvideo.js';
@@ -1105,6 +1106,10 @@ router.post('/dictate', audioUpload.single('audio'), asyncRoute(async (req, res)
 const VOICE_TARGETS = {
   checkin: { table: 'checkins', label: 'Check-in' },
   homework: { table: 'homework_submissions', label: 'Homework submission' },
+  /* A comment on the class board carries the same four columns, so recording,
+     replacing and removing all work here without a second implementation.
+     Recording stays the teacher's: students have no recorder anywhere. */
+  comment: { table: 'discussion_posts', label: 'Comment' },
 };
 
 function voiceTarget(type) {
@@ -1310,9 +1315,12 @@ router.post('/community/attachments', documentUpload.single('file'), asyncRoute(
     });
   }
   const storedName = `post-${crypto.randomUUID()}${document.extension}`;
-  await fs.writeFile(path.join(config.uploadDir, storedName), req.file.buffer);
+  // Private: a file posted to a class board is for that class, not for anybody
+  // who ends up with the address.
+  await fs.writeFile(path.join(config.privateUploadDir, storedName), req.file.buffer);
   res.status(201).json({
     kind: 'file',
+    // Rewritten to the authenticated route once the attachment row exists.
     url: `/uploads/${storedName}`,
     storedName,
     fileName: req.file.originalname.slice(0, 200),
@@ -1564,14 +1572,18 @@ router.post('/lessons/:id/attachments', documentUpload.single('file'), asyncRout
   const document = sniffDocument(req.file.buffer, req.file.originalname);
   if (!document) return res.status(400).json({ error: 'Lessons take PDFs and Word documents (.docx).' });
   const storedName = `lesson-${crypto.randomUUID()}${document.extension}`;
-  await fs.writeFile(path.join(config.uploadDir, storedName), req.file.buffer);
+  await fs.writeFile(path.join(config.privateUploadDir, storedName), req.file.buffer);
   const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM lesson_attachments WHERE lesson_id=$1', [req.params.id]);
   const row = await one(
     `INSERT INTO lesson_attachments(lesson_id,url,stored_name,file_name,mime_type,size_bytes,position)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [req.params.id, `/uploads/${storedName}`, storedName, req.file.originalname.slice(0, 200),
+     VALUES ($1,'',$2,$3,$4,$5,$6) RETURNING *`,
+    [req.params.id, storedName, req.file.originalname.slice(0, 200),
      document.mimeType, req.file.size, next.position],
   );
+  // The address is the authenticated route, which needs the row's own id.
+  await query('UPDATE lesson_attachments SET url=$1 WHERE id=$2',
+    [`/api/media/attachment/lesson/${row.id}`, row.id]);
+  row.url = `/api/media/attachment/lesson/${row.id}`;
   res.status(201).json(row);
 }));
 
@@ -1675,6 +1687,104 @@ router.get('/zoom/imports', asyncRoute(async (_req, res) => {
      ORDER BY i.started_at DESC LIMIT 50`,
   );
   res.json({ imports: rows.rows });
+}));
+
+/* ------------------------------------------------------------------
+   Administrators
+   ------------------------------------------------------------------
+   Behind requireSuperAdmin rather than requireAdmin. Creating an administrator
+   hands somebody every other action in the application, so an ordinary admin
+   account being compromised should not extend to minting more accounts like it.
+   ------------------------------------------------------------------ */
+
+router.get('/admins', requireSuperAdmin, asyncRoute(async (req, res) => {
+  const rows = await query(
+    `SELECT id, name, email, active, is_super_admin, must_change_password,
+            last_login_at, created_at
+     FROM users WHERE role='admin' ORDER BY created_at`,
+  );
+  res.json({ admins: rows.rows, me: req.user.id });
+}));
+
+router.post('/admins', requireSuperAdmin, asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    name: z.string().trim().min(2).max(120),
+    email: z.string().email(),
+    superAdmin: z.boolean().optional().default(false),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give a name and a valid email address.' });
+
+  const existing = await one('SELECT id, role FROM users WHERE email=$1', [parsed.data.email.trim()]);
+  if (existing) {
+    return res.status(409).json({
+      error: existing.role === 'admin'
+        ? 'That email already belongs to an administrator.'
+        : 'That email already belongs to a student. Use a different address.',
+    });
+  }
+
+  /* The same invitation path students get: a strong temporary password, emailed,
+     changed on first login, and a photograph asked for on the way in. */
+  const temporaryPassword = generateStrongPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+  const admin = await one(
+    `INSERT INTO users(role,name,email,password_hash,must_change_password,must_set_avatar,is_super_admin)
+     VALUES ('admin',$1,$2,$3,true,true,$4)
+     RETURNING id,name,email,role,is_super_admin`,
+    [parsed.data.name, parsed.data.email.trim(), passwordHash, parsed.data.superAdmin],
+  );
+
+  let emailStatus = 'sent';
+  try { await sendStudentInvite({ student: admin, temporaryPassword }); }
+  catch (error) { emailStatus = 'failed'; console.error(error); }
+
+  await audit({
+    actorId: req.user.id, action: 'admin.created', entityType: 'user', entityId: admin.id,
+    metadata: { email: admin.email, superAdmin: parsed.data.superAdmin, emailStatus }, ip: req.ip,
+  });
+  res.status(201).json({ ...admin, emailStatus });
+}));
+
+/* Suspending an administrator, or changing whether they can create others.
+   Two things are refused outright: removing the last super administrator, which
+   would lock everybody out of this screen permanently, and demoting or
+   suspending yourself, which is the same mistake with an extra step. */
+router.patch('/admins/:id', requireSuperAdmin, asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    active: z.boolean().optional(),
+    superAdmin: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid change.' });
+
+  const target = await one(`SELECT * FROM users WHERE id=$1 AND role='admin'`, [req.params.id]);
+  if (!target) return res.status(404).json({ error: 'Administrator not found.' });
+
+  if (target.id === req.user.id && (parsed.data.active === false || parsed.data.superAdmin === false)) {
+    return res.status(409).json({ error: 'You cannot remove your own access. Ask another super administrator.' });
+  }
+
+  const losingSuper = target.is_super_admin && (parsed.data.superAdmin === false || parsed.data.active === false);
+  if (losingSuper) {
+    const remaining = await one(
+      `SELECT count(*)::int count FROM users
+       WHERE role='admin' AND is_super_admin=true AND active=true AND id<>$1`,
+      [target.id],
+    );
+    if (!remaining.count) {
+      return res.status(409).json({ error: 'That is the last super administrator. Promote somebody else first.' });
+    }
+  }
+
+  const row = await one(
+    `UPDATE users SET active=$1, is_super_admin=$2, updated_at=now() WHERE id=$3
+     RETURNING id,name,email,active,is_super_admin`,
+    [parsed.data.active ?? target.active, parsed.data.superAdmin ?? target.is_super_admin, target.id],
+  );
+  // Suspending somebody should end their session, not wait for it to expire.
+  if (row.active === false) await query('DELETE FROM sessions WHERE user_id=$1', [row.id]);
+
+  await audit({ actorId: req.user.id, action: 'admin.updated', entityType: 'user', entityId: row.id, metadata: parsed.data, ip: req.ip });
+  res.json(row);
 }));
 
 export default router;

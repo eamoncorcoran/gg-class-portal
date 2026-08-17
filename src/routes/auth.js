@@ -75,6 +75,7 @@ router.post('/login', loginLimiter, asyncRoute(async (req, res) => {
     mustChangePassword: user.must_change_password,
     mustSetAvatar: user.must_set_avatar,
     hasAvatar: Boolean(user.avatar_path),
+    isSuperAdmin: Boolean(user.is_super_admin),
   } });
 }));
 

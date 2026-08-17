@@ -73,3 +73,41 @@ export async function draftHomeworkFeedback(payload) {
     generalFeedback: parsed.generalFeedback?.trim() || '',
   };
 }
+
+/**
+ * A drafted reply to a post on the class board.
+ *
+ * Given the post, who wrote it and what has already been said underneath, so the
+ * draft does not repeat a point somebody has already made. Written for the
+ * teacher to edit — it is a starting point, not a reply, and nothing sends it
+ * without them.
+ */
+export async function draftCommunityReply(payload) {
+  const { client, model } = await clientAndConfig();
+  const prompts = await getSetting('prompts', {});
+  const response = await client.responses.create({
+    model,
+    input: [
+      {
+        role: 'system',
+        content: prompts.communityReplyPrompt
+          || 'You are a warm, experienced Irish-language teacher replying to a post on your class board. Answer the question actually asked in 2 to 4 short sentences. Never mention being an assistant or a model.',
+      },
+      { role: 'user', content: JSON.stringify(payload) },
+    ],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'community_reply',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: { reply: { type: 'string' } },
+          required: ['reply'],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+  return JSON.parse(response.output_text).reply;
+}

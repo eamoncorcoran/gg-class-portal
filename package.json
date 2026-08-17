@@ -1,6 +1,6 @@
 {
   "name": "gaeilgeoir-guides-internal-saas",
-  "version": "35.0.0",
+  "version": "36.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -18,7 +18,8 @@
     "preflight": "node scripts/preflight.js",
     "smoke": "node scripts/smoke.js",
     "build:preview": "node scripts/build-preview.js",
-    "backup": "node scripts/backup.js"
+    "backup": "node scripts/backup.js",
+    "secure-attachments": "node scripts/secure-attachments.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

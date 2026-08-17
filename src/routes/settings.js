@@ -63,6 +63,8 @@ router.put('/prompts', asyncRoute(async (req, res) => {
     checkinPrompt: z.string().min(20),
     correctionPrompt: z.string().min(20),
     generalFeedbackPrompt: z.string().min(20),
+    // The drafted reply on the class board.
+    communityReplyPrompt: z.string().min(20),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Each prompt must contain clear instructions.' });
   await setSetting('prompts', parsed.data, req.user.id);

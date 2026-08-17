@@ -13,7 +13,7 @@ import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
 import { nextClassAt, joinLinkFor } from '../classtime.js';
 import { listThreads, getThread, createThread, createPost, unreadCount, markRead,
-  listCategories, toggleReaction, topContributors, REACTIONS } from '../community.js';
+  listCategories, toggleReaction, topContributors, REACTIONS, forStudentView } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForStudent, getCourse, studentCanSeeLesson, setLessonProgress } from '../courses.js';
 import multer from 'multer';
@@ -24,6 +24,28 @@ import { config } from '../config.js';
 
 const router = Router();
 router.use(requireStudent);
+
+/**
+ * The photograph gate.
+ *
+ * Until this ran on the server it ran only in the browser: the sign-in screen
+ * sent somebody to the upload step, but every student route answered normally
+ * to anything that skipped it. A gate the client enforces is a suggestion.
+ *
+ * Answers 428 — the status for "you must do something first" — with a code the
+ * interface reads, so a session that gets here mid-flight is sent to the upload
+ * step rather than shown a broken screen.
+ *
+ * Students already on the course when this shipped are unaffected: their
+ * must_set_avatar is false.
+ */
+router.use(asyncRoute(async (req, res, next) => {
+  if (!req.user.mustSetAvatar || req.user.hasAvatar) return next();
+  return res.status(428).json({
+    error: 'Add a photograph of yourself to continue.',
+    code: 'avatar_required',
+  });
+}));
 
 const homeworkUpload = multer({
   storage: multer.memoryStorage(),
@@ -632,13 +654,15 @@ router.get('/community', asyncRoute(async (req, res) => {
   if (!klass) return;
   const sort = req.query.sort === 'hot' ? 'hot' : 'new';
   const categoryId = req.query.categoryId || null;
-  const [threads, categories, contributors] = await Promise.all([
+  const [rawThreads, categories, contributors] = await Promise.all([
     listThreads({ classId: klass.id, viewerId: req.user.id, categoryId, sort }),
     listCategories(klass.id),
     topContributors({ classId: klass.id }),
   ]);
   res.json({
-    threads, categories, contributors, sort, categoryId,
+    // The teacher's drafted replies are working notes and never leave the server.
+    threads: rawThreads.map(forStudentView),
+    categories, contributors, sort, categoryId,
     unread: await unreadCount({ userId: req.user.id, classId: klass.id }),
   });
 }));
@@ -656,7 +680,7 @@ router.get('/community/thread/:id', asyncRoute(async (req, res) => {
   if (!klass) return;
   const thread = await getThread({ threadId: req.params.id, viewerId: req.user.id });
   if (!thread || thread.class_id !== klass.id) return res.status(404).json({ error: 'Post not found.' });
-  res.json(thread);
+  res.json(forStudentView(thread));
 }));
 
 router.post('/community/threads', asyncRoute(async (req, res) => {

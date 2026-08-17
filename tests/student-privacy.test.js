@@ -103,3 +103,49 @@ test('the student hero copy is present and says nothing about drafting', () => {
   const block = app.slice(start, app.indexOf('};', start));
   assert.doesNotMatch(block, /\bAI\b|draft/i);
 });
+
+/* The drafted reply on the class board is the same kind of working note as the
+   homework drafts: what a model proposed before the teacher read it. A student
+   must not receive it, and must not be able to tell one existed. */
+
+test('the drafted board reply is stripped from what a student receives', async () => {
+  const community = fs.readFileSync(new URL('../src/community.js', import.meta.url), 'utf8');
+  const start = community.indexOf('export function forStudentView(thread)');
+  assert.ok(start !== -1, 'forStudentView is no longer where this test expects it');
+  const source = community.slice(start, community.indexOf('/** One post with its comments', start));
+  const forStudentView = new Function(`${source.replace('export ', '')}; return forStudentView;`)();
+
+  const stripped = forStudentView({
+    id: 'x', title: 'A question', body: 'Anyone?',
+    ai_draft: 'model text', ai_draft_state: 'drafted', ai_drafted_at: '2026-01-01',
+  });
+  assert.equal('ai_draft' in stripped, false);
+  assert.equal('ai_draft_state' in stripped, false);
+  assert.equal('ai_drafted_at' in stripped, false);
+  assert.equal(stripped.title, 'A question');
+  assert.equal(forStudentView(null), null);
+});
+
+test('every student board response passes through the stripper', () => {
+  /* Both the feed and a single post. A route that returns a raw thread would
+     hand a student the draft. */
+  const start = studentRoutes.indexOf("router.get('/community'");
+  const end = studentRoutes.indexOf("router.post('/community/threads'");
+  const section = studentRoutes.slice(start, end);
+  assert.match(section, /threads: rawThreads\.map\(forStudentView\)/);
+  assert.match(section, /res\.json\(forStudentView\(thread\)\)/);
+});
+
+test('the reply recorder and the draft never render for a student', () => {
+  // Both are inside the admin branch of the thread drawer.
+  const start = app.indexOf('function renderThreadDrawer()');
+  const end = app.indexOf('function openScheduleModal', start);
+  const drawer = app.slice(start, end);
+
+  assert.match(drawer, /\$\{admin \? `<div class="rd" id="reply-draft"/,
+    'the draft slot must be behind the admin check');
+  assert.match(drawer, /\$\{admin \? replyRecorder\(\) : ''\}/,
+    'the recorder must be behind the admin check');
+  assert.match(drawer, /if \(admin\) loadReplyDraft\(thread\.id\)/,
+    'drafting must only be requested for an administrator');
+});
