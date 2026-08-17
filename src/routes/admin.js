@@ -24,6 +24,10 @@ import { extractVideoLinks } from '../videolinks.js';
 const router = Router();
 router.use(requireAdmin);
 
+/* Course notes and scanned handouts get large. Generous rather than tight,
+   with a message that says so when it is exceeded. */
+const POST_ATTACHMENT_MB = 40;
+
 const allowedUploads = new Set([
   'text/csv','application/pdf','image/png','image/jpeg','image/webp','image/gif',
   'application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -1239,75 +1243,62 @@ router.patch('/community/thread/:id/schedule', asyncRoute(async (req, res) => {
   res.json(row);
 }));
 
-/* A PDF to hang off a post. Uploads are the administrator's alone: the class
-   feed should not be a route by which arbitrary files arrive on the server. */
-router.post('/community/attachments', diskUpload.single('file'), asyncRoute(async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Choose a file to upload.' });
-  const mime = String(req.file.mimetype).split(';')[0];
-  if (mime !== 'application/pdf') {
-    await fs.unlink(req.file.path).catch(() => {});
-    return res.status(400).json({ error: 'Posts take PDFs. For anything else, put it in the homework resources.' });
+/* A document to hang off a post. Uploads are the administrator's alone: the
+   class feed should not be a route by which arbitrary files arrive on the
+   server.
+
+   Held in memory rather than written straight to disk, because what a browser
+   claims a file is cannot be trusted. A PDF dragged out of some file managers
+   arrives labelled `application/octet-stream`, and a .docx is a zip, so both
+   were being refused on a label while being perfectly good documents. The bytes
+   decide instead. */
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: POST_ATTACHMENT_MB * 1024 * 1024, files: 1 },
+});
+
+/** What the file actually is, read from its first bytes. */
+function sniffDocument(buffer, fileName) {
+  const extension = path.extname(String(fileName || '')).toLowerCase();
+  if (buffer.length >= 4) {
+    // %PDF
+    if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+      return { kind: 'pdf', mimeType: 'application/pdf', extension: '.pdf' };
+    }
+    // PK\x03\x04 — every Office file is a zip, so the extension separates them.
+    const zip = buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+    if (zip && extension === '.docx') {
+      return {
+        kind: 'docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        extension: '.docx',
+      };
+    }
   }
+  return null;
+}
+
+router.post('/community/attachments', documentUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a file to upload.' });
+  const document = sniffDocument(req.file.buffer, req.file.originalname);
+  if (!document) {
+    return res.status(400).json({
+      error: 'Posts take PDFs and Word documents (.docx). For anything else, put it in the homework resources.',
+    });
+  }
+  const storedName = `post-${crypto.randomUUID()}${document.extension}`;
+  await fs.writeFile(path.join(config.uploadDir, storedName), req.file.buffer);
   res.status(201).json({
     kind: 'file',
-    url: `/uploads/${path.basename(req.file.path)}`,
-    storedName: path.basename(req.file.path),
+    url: `/uploads/${storedName}`,
+    storedName,
     fileName: req.file.originalname.slice(0, 200),
-    mimeType: mime,
+    mimeType: document.mimeType,
     sizeBytes: req.file.size,
+    label: document.kind.toUpperCase(),
   });
 }));
 
-router.post('/community/react/:type/:id', asyncRoute(async (req, res) => {
-  const parsed = z.object({ emoji: z.enum(REACTIONS) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'That is not one of the reactions.' });
-  const type = req.params.type === 'post' ? 'post' : 'thread';
-  res.json(await toggleReaction({ userId: req.user.id, targetType: type, targetId: req.params.id, emoji: parsed.data.emoji }));
-}));
-
-/* Categories. Kept editable because the useful set for a Leaving Certificate
-   group is not the useful set for a teaching diploma group. */
-router.get('/community/:classId/categories', asyncRoute(async (req, res) => {
-  res.json(await listCategories(req.params.classId));
-}));
-
-router.post('/community/:classId/categories', asyncRoute(async (req, res) => {
-  const parsed = z.object({ name: z.string().trim().min(1).max(40) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the category a short name.' });
-  const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.classId]);
-  if (!klass) return res.status(404).json({ error: 'Class not found.' });
-  const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM discussion_categories WHERE class_id=$1', [klass.id]);
-  const row = await one(
-    `INSERT INTO discussion_categories(class_id,name,position) VALUES ($1,$2,$3)
-     ON CONFLICT (class_id,name) DO NOTHING RETURNING *`,
-    [klass.id, parsed.data.name, next.position],
-  );
-  if (!row) return res.status(409).json({ error: 'That category already exists.' });
-  res.status(201).json(row);
-}));
-
-/* Deleting a category leaves its posts alone: they simply become uncategorised.
-   Losing a conversation because a filter was renamed would be indefensible. */
-router.delete('/community/categories/:id', asyncRoute(async (req, res) => {
-  const current = await one('SELECT * FROM discussion_categories WHERE id=$1', [req.params.id]);
-  if (!current) return res.status(404).json({ error: 'Category not found.' });
-  await query('DELETE FROM discussion_categories WHERE id=$1', [current.id]);
-  await audit({ actorId: req.user.id, action: 'community.category_deleted', entityType: 'category', entityId: current.id, metadata: { name: current.name }, ip: req.ip });
-  res.status(204).end();
-}));
-
-router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
-  const parsed = z.object({ body: z.string().trim().min(1).max(20000) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Write a reply before sending.' });
-  const thread = await one('SELECT * FROM discussion_threads WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
-  if (!thread) return res.status(404).json({ error: 'Thread not found.' });
-  // A locked thread still takes a reply from the teacher: locking is for ending a
-  // conversation, and the last word is usually theirs.
-  const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body });
-  res.status(201).json(row);
-}));
-
-/* Pin, lock and remove. Everything reversible, and every use recorded. */
 router.patch('/community/thread/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ pinned: z.boolean().optional(), locked: z.boolean().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid thread change.' });

@@ -993,8 +993,16 @@
     }
     if(path==='/api/admin/community/attachments'&&method==='POST'){
       const file=body.get&&body.get('file');
-      return json({kind:'file',url:file?URL.createObjectURL(file):'#',storedName:'preview',
-        fileName:file?file.name:'Attachment.pdf',mimeType:'application/pdf',sizeBytes:file?file.size:0},201);
+      if(!file) return error('Choose a file to upload.',400);
+      /* The server reads the first bytes; the preview has no server, so it goes
+         on the extension. Same two formats, same refusal for anything else. */
+      const name=String(file.name||'');
+      const isDocx=/\.docx$/i.test(name), isPdf=/\.pdf$/i.test(name);
+      if(!isDocx&&!isPdf) return error('Posts take PDFs and Word documents (.docx). For anything else, put it in the homework resources.',400);
+      if(file.size>40*1024*1024) return error('That file is too large. Try one under 40MB.',413);
+      return json({kind:'file',url:URL.createObjectURL(file),storedName:'preview',fileName:name,
+        mimeType:isDocx?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf',
+        sizeBytes:file.size},201);
     }
     params=match(path,'/api/admin/community/react/:type/:id');
     if(params&&method==='POST'){

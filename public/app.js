@@ -2047,7 +2047,7 @@ function captureComposer() {
 }
 
 function attachmentChip(item, index) {
-  const label = item.kind === 'file' ? (item.fileName || 'PDF')
+  const label = item.kind === 'file' ? (item.fileName || 'Document')
     : item.kind === 'loom' ? 'Loom video' : 'GIF';
   const icon = item.kind === 'file' ? svg.note : item.kind === 'loom' ? svg.video : svg.gif;
   return `<span class="chip-file">
@@ -2108,10 +2108,11 @@ function openComposer({ restore = false } = {}) {
 
       <footer class="cw-foot">
         <div class="composer-tools">
-          ${admin ? tool('attach-pdf', svg.note, 'Attach a PDF') : ''}
+          ${admin ? tool('attach-pdf', svg.note, 'Attach a PDF or Word document') : ''}
           ${tool('attach-gif', svg.gif, 'Add a GIF')}
           ${admin ? `<button type="button" class="tool" id="attach-dictate" title="Dictate" aria-label="Dictate">${svg.mic}</button>` : ''}
-          <input type="file" id="pdf-input" accept="application/pdf" class="hidden">
+          <input type="file" id="pdf-input" class="hidden"
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
         </div>
         <div class="cw-actions">
           ${admin ? `<label class="cw-pin"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin</label>` : ''}
@@ -2270,8 +2271,10 @@ function attachmentsPreview(items = [], full = false) {
         referrerpolicy="strict-origin-when-cross-origin"
         allowfullscreen loading="lazy" title="${label}"></iframe></div>`;
     }
+    const format = /\.docx$/i.test(item.fileName || '') || String(item.mimeType || '').includes('wordprocessingml')
+      ? 'DOCX' : 'PDF';
     return `<a class="att-strip" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
-      ${svg.note}<span>${escapeHtml(item.fileName || 'PDF')}</span><em>PDF</em></a>`;
+      ${svg.note}<span>${escapeHtml(item.fileName || 'Document')}</span><em>${format}</em></a>`;
   }).join('')}</div>`;
 }
 

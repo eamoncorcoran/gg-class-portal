@@ -1,4 +1,4 @@
-# Gaeilgeoir Guides Class Portal V31
+# Gaeilgeoir Guides Class Portal V32
 
 
 A private internal SaaS application for managing Gaeilgeoir Guides classes, student accounts, weekly attendance, check-ins, homework, deadlines, reminders and returned teacher feedback.
@@ -384,7 +384,7 @@ class card and the month's most active members.
 
 | Kind | Who can add it | How it is added |
 | --- | --- | --- |
-| PDF | Administrator only | The paperclip in the composer |
+| PDF or Word `.docx` | Administrator only | The document button in the composer |
 | YouTube | Anyone | Paste the link into the post |
 | Loom | Anyone | Paste the link into the post |
 | GIF | Anyone | The GIF button in the composer |
@@ -402,6 +402,13 @@ so a class board is not setting advertising cookies on students.
 route by which arbitrary files arrive on the server, so students have no upload
 control at all — they can paste video links and pick GIFs, neither of which
 touches the disk.
+
+What a file *is* is read from its first bytes rather than taken from what the
+browser called it. A PDF dragged out of some file managers arrives labelled
+`application/octet-stream`, and every Office document is a zip — trusting the
+label meant refusing perfectly good documents while accepting anything renamed
+to `.pdf`. Uploads are capped at 40MB, and going over says so plainly instead of
+failing with a generic error.
 
 GIF search needs a `GIPHY_API_KEY`. Signing up at
 [developers.giphy.com](https://developers.giphy.com) is free and takes no card;
@@ -962,3 +969,17 @@ twice — and confirms that a Vimeo or ordinary link is left alone.
 - **One user section.** The name and avatar sat in both the sidebar footer and
   the top bar; the sidebar copy is gone and account settings open from the chip
   in the top right.
+
+## V32 changes
+
+- **Word documents.** Posts now take a `.docx` as well as a PDF.
+- **Uploads that were being refused now work.** The type was taken from what the
+  browser claimed rather than from the file, so a PDF labelled
+  `application/octet-stream` — which is how one arrives out of several file
+  managers — was rejected before it reached the route that would have accepted
+  it. The first bytes decide instead: `%PDF` for a PDF, a zip signature plus a
+  `.docx` extension for Word. A file renamed to `.pdf` is still refused.
+- **An oversized file says so.** Multer's own errors carry a code rather than a
+  status, so they were falling through as "Something went wrong" — which tells
+  the person uploading nothing and invites them to try the same file again. The
+  cap is now 40MB and the message names it.
