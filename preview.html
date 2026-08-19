@@ -834,17 +834,35 @@ details.leaving summary:hover{color:var(--text-secondary)}
   background:linear-gradient(140deg,var(--brand-700),var(--brand-500));color:#fff;font-size:12px;font-weight:700}
 .side-top strong{display:block;font-size:13.5px;font-weight:680;letter-spacing:-.02em}
 .side-top span{color:var(--text-tertiary);font-size:11.5px}
-.side-stats{display:flex;gap:24px;margin:14px 0 0;padding-top:13px;border-top:1px solid var(--gray-100)}
-.side-stats div{display:grid;gap:1px}
-.side-stats dt{color:var(--text-quaternary);font-size:10px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;order:2}
-.side-stats dd{margin:0;font-size:19px;font-weight:700;letter-spacing:-.04em;order:1}
-.rank{list-style:none;margin:0;padding:0}
-.rank li{display:flex;align-items:center;gap:9px;padding:5px 0}
-.rank-n{width:13px;color:var(--text-quaternary);font-size:11px;font-weight:700}
+
+/* The next class, under the class name. Quiet most of the week; it earns the
+   green and the button only once the class is actually close. */
+.side-next{display:flex;align-items:center;gap:12px;margin:14px -16px -16px;padding:13px 16px;
+  border-top:1px solid var(--gray-100);border-radius:0 0 var(--radius-xl) var(--radius-xl);
+  background:var(--gray-25)}
+.side-next-copy{flex:1;min-width:0;display:grid;gap:1px}
+.side-next-copy span{color:var(--text-quaternary);font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em}
+.side-next-copy strong{font-size:13px;font-weight:660;letter-spacing:-.015em}
+.side-next-copy em{color:var(--text-tertiary);font-size:11.5px;font-style:normal;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-next.is-live{background:var(--brand-25);border-top-color:var(--brand-100)}
+.side-next.is-live .side-next-copy strong{color:var(--brand-700)}
+.side-next .btn.small{flex:0 0 auto}
+
+.rank{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.rank li{display:flex;align-items:center;gap:10px;padding:6px 7px;margin:0 -7px;border-radius:var(--radius-sm)}
+.rank li:hover{background:var(--gray-50)}
+.rank-n{width:16px;flex:0 0 auto;color:var(--text-quaternary);font-size:11px;font-weight:700;text-align:center}
+/* The top three are the only ones anybody reads as a position rather than a
+   row, so they get the weight and the rest stay quiet. */
+.rank li.is-top .rank-n{color:var(--brand-700)}
 .rank-name{flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rank-v{color:var(--text-tertiary);font-size:11.5px;font-weight:650}
-.side-empty{margin:0;color:var(--text-tertiary);font-size:12.5px}
-.side-foot{margin:11px 0 0;color:var(--text-quaternary);font-size:10.5px;line-height:1.5}
+.rank li.is-top .rank-name{font-weight:650;color:var(--text-primary)}
+.rank-v{flex:0 0 auto;min-width:22px;padding:1px 6px;border-radius:999px;background:var(--gray-100);
+  color:var(--text-tertiary);font-size:11px;font-weight:650;text-align:center}
+.rank li.is-top .rank-v{background:var(--brand-50);color:var(--brand-700)}
+.side-empty{margin:0;color:var(--text-tertiary);font-size:12.5px;line-height:1.6}
 
 /* ---- Writing a post ---------------------------------------------- */
 .composer-form{display:flex;flex-direction:column}
@@ -2484,7 +2502,9 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     params=match(path,'/api/admin/community/:classId');
     if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
       const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
-      return json({class:{...klass,label:classLabel(klass)},...boardPayload(params.classId,true,user.id,url,true)});
+      return json({class:{...klass,label:classLabel(klass)},
+        nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id)),
+        ...boardPayload(params.classId,true,user.id,url,true)});
     }
     params=match(path,'/api/admin/community/thread/:id/schedule');
     if(params&&method==='PATCH'){
@@ -5824,14 +5844,22 @@ function feedFilters() {
   </div>`;
 }
 
+/* The column beside the feed.
+   ------------------------------------------------------------------
+   It carried a stat block with one number in it — how many posts the board had
+   — which is a figure nobody has ever needed. What a person actually wants
+   here is when they next have to be somewhere, so the next class moved in and
+   the counter went out. The leaderboard stays: it is the one thing in the
+   column that makes somebody post again. */
 function feedSide() {
   const data = state.community;
   const klass = isAdmin() ? data?.class : state.studentData?.class;
-  const next = state.studentData?.nextClass;
+  // The teacher gets it from the board payload, a student from their bootstrap.
+  const next = isAdmin() ? data?.nextClass : state.studentData?.nextClass;
   const contributors = data?.contributors || [];
-  const posts = (data?.threads || []).filter((row) => !row.deleted_at && !row.scheduled).length;
+
   return `<aside class="side">
-    <section class="side-card">
+    <section class="side-card side-class">
       <div class="side-top">
         <div class="side-mark">${escapeHtml(initials(klass?.programme_name || 'GG'))}</div>
         <div>
@@ -5839,23 +5867,51 @@ function feedSide() {
           <span>${escapeHtml(klass ? `${DAY_NAMES[klass.day_of_week]}s at ${String(klass.start_time).slice(0, 5)}` : '')}</span>
         </div>
       </div>
-      <dl class="side-stats">
-        <div><dt>${posts === 1 ? 'Post' : 'Posts'}</dt><dd>${posts}</dd></div>
-      </dl>
+      ${next ? sideNextClass(next) : ''}
     </section>
+
     <section class="side-card">
       <h4>Most active this month</h4>
       ${contributors.length
-        ? `<ol class="rank">${contributors.map((row, index) => `<li>
+        ? `<ol class="rank">${contributors.map((row, index) => `<li class="${index < 3 ? 'is-top' : ''}">
             <span class="rank-n">${index + 1}</span>
             ${boardAvatar({ id: row.id, name: row.name, avatar: row.avatar }, 'sm')}
             <span class="rank-name">${escapeHtml(row.name)}</span>
             <span class="rank-v">${row.total}</span>
           </li>`).join('')}</ol>`
-        : '<p class="side-empty">Nobody has posted in the last thirty days.</p>'}
-      <p class="side-foot">Counts what people wrote, not likes they collected.</p>
+        : '<p class="side-empty">Nobody has posted yet this month. Be the first.</p>'}
     </section>
   </aside>`;
+}
+
+/* The next class, in the column rather than only on the deadlines screen —
+   somebody reading the board on a Monday evening should not have to go looking
+   for the link. Wording follows the banner: a countdown when it is close, the
+   day otherwise. */
+function sideNextClass(next) {
+  const when = new Date(next.startsAt);
+  const label = next.live
+    ? 'Happening now'
+    : next.soon
+      ? `Starts in ${relativeWhen(next.minutesAway)}`
+      : when.toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'short' });
+  return `<div class="side-next ${next.live ? 'is-live' : ''}">
+    <div class="side-next-copy">
+      <span>${next.isExtra ? 'Extra session' : 'Next class'}</span>
+      <strong>${escapeHtml(label)}</strong>
+      ${next.note ? `<em>${escapeHtml(next.note)}</em>` : ''}
+    </div>
+    ${next.joinUrl && (next.live || next.soon)
+      ? `<a class="btn primary small" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener">Join</a>`
+      : ''}
+  </div>`;
+}
+
+/** "40 minutes", "3 hours" — enough precision for a countdown, no more. */
+function relativeWhen(minutes) {
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
 function feedEmpty(admin) {

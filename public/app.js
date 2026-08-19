@@ -3216,14 +3216,22 @@ function feedFilters() {
   </div>`;
 }
 
+/* The column beside the feed.
+   ------------------------------------------------------------------
+   It carried a stat block with one number in it — how many posts the board had
+   — which is a figure nobody has ever needed. What a person actually wants
+   here is when they next have to be somewhere, so the next class moved in and
+   the counter went out. The leaderboard stays: it is the one thing in the
+   column that makes somebody post again. */
 function feedSide() {
   const data = state.community;
   const klass = isAdmin() ? data?.class : state.studentData?.class;
-  const next = state.studentData?.nextClass;
+  // The teacher gets it from the board payload, a student from their bootstrap.
+  const next = isAdmin() ? data?.nextClass : state.studentData?.nextClass;
   const contributors = data?.contributors || [];
-  const posts = (data?.threads || []).filter((row) => !row.deleted_at && !row.scheduled).length;
+
   return `<aside class="side">
-    <section class="side-card">
+    <section class="side-card side-class">
       <div class="side-top">
         <div class="side-mark">${escapeHtml(initials(klass?.programme_name || 'GG'))}</div>
         <div>
@@ -3231,23 +3239,51 @@ function feedSide() {
           <span>${escapeHtml(klass ? `${DAY_NAMES[klass.day_of_week]}s at ${String(klass.start_time).slice(0, 5)}` : '')}</span>
         </div>
       </div>
-      <dl class="side-stats">
-        <div><dt>${posts === 1 ? 'Post' : 'Posts'}</dt><dd>${posts}</dd></div>
-      </dl>
+      ${next ? sideNextClass(next) : ''}
     </section>
+
     <section class="side-card">
       <h4>Most active this month</h4>
       ${contributors.length
-        ? `<ol class="rank">${contributors.map((row, index) => `<li>
+        ? `<ol class="rank">${contributors.map((row, index) => `<li class="${index < 3 ? 'is-top' : ''}">
             <span class="rank-n">${index + 1}</span>
             ${boardAvatar({ id: row.id, name: row.name, avatar: row.avatar }, 'sm')}
             <span class="rank-name">${escapeHtml(row.name)}</span>
             <span class="rank-v">${row.total}</span>
           </li>`).join('')}</ol>`
-        : '<p class="side-empty">Nobody has posted in the last thirty days.</p>'}
-      <p class="side-foot">Counts what people wrote, not likes they collected.</p>
+        : '<p class="side-empty">Nobody has posted yet this month. Be the first.</p>'}
     </section>
   </aside>`;
+}
+
+/* The next class, in the column rather than only on the deadlines screen —
+   somebody reading the board on a Monday evening should not have to go looking
+   for the link. Wording follows the banner: a countdown when it is close, the
+   day otherwise. */
+function sideNextClass(next) {
+  const when = new Date(next.startsAt);
+  const label = next.live
+    ? 'Happening now'
+    : next.soon
+      ? `Starts in ${relativeWhen(next.minutesAway)}`
+      : when.toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'short' });
+  return `<div class="side-next ${next.live ? 'is-live' : ''}">
+    <div class="side-next-copy">
+      <span>${next.isExtra ? 'Extra session' : 'Next class'}</span>
+      <strong>${escapeHtml(label)}</strong>
+      ${next.note ? `<em>${escapeHtml(next.note)}</em>` : ''}
+    </div>
+    ${next.joinUrl && (next.live || next.soon)
+      ? `<a class="btn primary small" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener">Join</a>`
+      : ''}
+  </div>`;
+}
+
+/** "40 minutes", "3 hours" — enough precision for a countdown, no more. */
+function relativeWhen(minutes) {
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
 function feedEmpty(admin) {

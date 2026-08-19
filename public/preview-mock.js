@@ -1147,7 +1147,9 @@
     params=match(path,'/api/admin/community/:classId');
     if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
       const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
-      return json({class:{...klass,label:classLabel(klass)},...boardPayload(params.classId,true,user.id,url,true)});
+      return json({class:{...klass,label:classLabel(klass)},
+        nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id)),
+        ...boardPayload(params.classId,true,user.id,url,true)});
     }
     params=match(path,'/api/admin/community/thread/:id/schedule');
     if(params&&method==='PATCH'){

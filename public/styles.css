@@ -825,17 +825,35 @@ details.leaving summary:hover{color:var(--text-secondary)}
   background:linear-gradient(140deg,var(--brand-700),var(--brand-500));color:#fff;font-size:12px;font-weight:700}
 .side-top strong{display:block;font-size:13.5px;font-weight:680;letter-spacing:-.02em}
 .side-top span{color:var(--text-tertiary);font-size:11.5px}
-.side-stats{display:flex;gap:24px;margin:14px 0 0;padding-top:13px;border-top:1px solid var(--gray-100)}
-.side-stats div{display:grid;gap:1px}
-.side-stats dt{color:var(--text-quaternary);font-size:10px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;order:2}
-.side-stats dd{margin:0;font-size:19px;font-weight:700;letter-spacing:-.04em;order:1}
-.rank{list-style:none;margin:0;padding:0}
-.rank li{display:flex;align-items:center;gap:9px;padding:5px 0}
-.rank-n{width:13px;color:var(--text-quaternary);font-size:11px;font-weight:700}
+
+/* The next class, under the class name. Quiet most of the week; it earns the
+   green and the button only once the class is actually close. */
+.side-next{display:flex;align-items:center;gap:12px;margin:14px -16px -16px;padding:13px 16px;
+  border-top:1px solid var(--gray-100);border-radius:0 0 var(--radius-xl) var(--radius-xl);
+  background:var(--gray-25)}
+.side-next-copy{flex:1;min-width:0;display:grid;gap:1px}
+.side-next-copy span{color:var(--text-quaternary);font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em}
+.side-next-copy strong{font-size:13px;font-weight:660;letter-spacing:-.015em}
+.side-next-copy em{color:var(--text-tertiary);font-size:11.5px;font-style:normal;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-next.is-live{background:var(--brand-25);border-top-color:var(--brand-100)}
+.side-next.is-live .side-next-copy strong{color:var(--brand-700)}
+.side-next .btn.small{flex:0 0 auto}
+
+.rank{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.rank li{display:flex;align-items:center;gap:10px;padding:6px 7px;margin:0 -7px;border-radius:var(--radius-sm)}
+.rank li:hover{background:var(--gray-50)}
+.rank-n{width:16px;flex:0 0 auto;color:var(--text-quaternary);font-size:11px;font-weight:700;text-align:center}
+/* The top three are the only ones anybody reads as a position rather than a
+   row, so they get the weight and the rest stay quiet. */
+.rank li.is-top .rank-n{color:var(--brand-700)}
 .rank-name{flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rank-v{color:var(--text-tertiary);font-size:11.5px;font-weight:650}
-.side-empty{margin:0;color:var(--text-tertiary);font-size:12.5px}
-.side-foot{margin:11px 0 0;color:var(--text-quaternary);font-size:10.5px;line-height:1.5}
+.rank li.is-top .rank-name{font-weight:650;color:var(--text-primary)}
+.rank-v{flex:0 0 auto;min-width:22px;padding:1px 6px;border-radius:999px;background:var(--gray-100);
+  color:var(--text-tertiary);font-size:11px;font-weight:650;text-align:center}
+.rank li.is-top .rank-v{background:var(--brand-50);color:var(--brand-700)}
+.side-empty{margin:0;color:var(--text-tertiary);font-size:12.5px;line-height:1.6}
 
 /* ---- Writing a post ---------------------------------------------- */
 .composer-form{display:flex;flex-direction:column}

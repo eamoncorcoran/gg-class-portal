@@ -22,6 +22,7 @@ import { FILE_TYPE_GROUPS } from '../documents.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
+import { nextClassWithSessions, joinLinkFor } from '../classtime.js';
 import { parseVideoSource, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
@@ -1268,8 +1269,23 @@ router.get('/community/:classId', asyncRoute(async (req, res) => {
     listCategories(klass.id),
     topContributors({ classId: klass.id }),
   ]);
+  /* The teacher is at the same class the students are, so the column beside the
+     feed says when it is, the same as it does for them. */
+  const sessions = (await query(
+    `SELECT id, starts_at, duration_minutes, join_url, label, cancelled
+     FROM class_sessions WHERE class_id=$1 AND starts_at > now() - interval '4 hours'
+     ORDER BY starts_at`, [klass.id],
+  )).rows;
+  const next = nextClassWithSessions(klass, sessions);
+  const overrideWeeks = next
+    ? (await query('SELECT week_start, join_url FROM weeks WHERE class_id=$1 AND week_start=$2', [klass.id, next.weekStart])).rows
+    : [];
+
   res.json({
     class: { ...klass, label: classLabel(klass) },
+    nextClass: next
+      ? { ...next, joinUrl: next.sessionJoinUrl || joinLinkFor(klass, overrideWeeks, next), note: next.sessionLabel || klass.join_note || null }
+      : null,
     threads, categories, contributors, sort, categoryId,
   });
 }));
