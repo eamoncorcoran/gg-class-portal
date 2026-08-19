@@ -52,6 +52,10 @@ const svg = {
   grid: `<svg viewBox="0 0 24 24" fill="none"><path d="M8.4 3H4.6c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C3 3.76 3 4.04 3 4.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C3.76 10 4.04 10 4.6 10h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C10 9.24 10 8.96 10 8.4V4.6c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C9.24 3 8.96 3 8.4 3Zm11 0h-3.8c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C14 3.76 14 4.04 14 4.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C14.76 10 15.04 10 15.6 10h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C21 9.24 21 8.96 21 8.4V4.6c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C20.24 3 19.96 3 19.4 3Zm0 11h-3.8c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C14 14.76 14 15.04 14 15.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C14.76 21 15.04 21 15.6 21h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C21 20.24 21 19.96 21 19.4v-3.8c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C20.24 14 19.96 14 19.4 14Zm-11 0H4.6c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C3 14.76 3 15.04 3 15.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C3.76 21 4.04 21 4.6 21h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C10 20.24 10 19.96 10 19.4v-3.8c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C9.24 14 8.96 14 8.4 14Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   mail: `<svg viewBox="0 0 24 24" fill="none"><path d="m2 7 8.165 5.715c.661.463.992.695 1.351.784a2 2 0 0 0 .968 0c.36-.09.69-.32 1.351-.784L22 7M6.8 20h10.4c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C22 17.72 22 16.88 22 15.2V8.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C19.72 4 18.88 4 17.2 4H6.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C2 6.28 2 7.12 2 8.8v6.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   spark: `<svg viewBox="0 0 24 24" fill="none"><path d="M4.5 22v-5m0-10V2M2 4.5h5m-5 15h5M13 3l-1.734 4.509c-.282.733-.423 1.1-.643 1.408a3 3 0 0 1-.706.707c-.308.219-.675.36-1.408.642L4 12l4.509 1.734c.733.282 1.1.423 1.408.643.273.194.512.433.707.706.219.308.36.675.642 1.408L13 21l1.734-4.509c.282-.733.423-1.1.643-1.408.194-.273.433-.512.706-.707.308-.219.675-.36 1.408-.642L22 12l-4.509-1.734c-.733-.282-1.1-.423-1.408-.642a3 3 0 0 1-.706-.707c-.22-.308-.36-.675-.643-1.408L13 3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  paperclip: `<svg viewBox="0 0 24 24" fill="none"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  chevronDown: `<svg viewBox="0 0 24 24" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   upload: `<svg viewBox="0 0 24 24" fill="none"><path d="m8 16 4-4m0 0 4 4m-4-4v9m8-4.257A5.5 5.5 0 0 0 16.5 7a.62.62 0 0 1-.534-.302 7.5 7.5 0 1 0-11.78 9.096" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   settings: `<svg viewBox="0 0 24 24" fill="none"><path d="M15.05 9H5.5a2.5 2.5 0 0 1 0-5h9.55m-6.1 16h9.55a2.5 2.5 0 0 0 0-5H8.95M3 17.5a3.5 3.5 0 1 0 7 0 3.5 3.5 0 0 0-7 0Zm18-11a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   logout: `<svg viewBox="0 0 24 24" fill="none"><path d="m16 17 5-5m0 0-5-5m5 5H9m0-9H7.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C3 5.28 3 6.12 3 7.8v8.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C5.28 21 6.12 21 7.8 21H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -2842,6 +2846,57 @@ async function acceptDocuments(files) {
   }
 }
 
+/* Where the post is going.
+   ------------------------------------------------------------------
+   A native <select> inside a dialog looks like a form control that escaped from
+   somewhere else — it takes the operating system's styling, not the
+   application's, and on a Mac it is grey and cramped. This is a button and a
+   menu, which can be given the same weight as everything else around it. The
+   real value rides along in a hidden input so the form still reads normally. */
+function categoryPicker(categories, selectedId) {
+  const current = categories.find((row) => row.id === selectedId) || categories[0];
+  return `<div class="cat-picker" id="cat-picker">
+    <input type="hidden" name="categoryId" id="cat-value" value="${escapeHtml(current?.id || '')}">
+    <button type="button" class="cat-button" id="cat-button" aria-haspopup="listbox" aria-expanded="false">
+      <span>posting in</span><b id="cat-label">${escapeHtml(current?.name || 'General')}</b>${svg.chevronDown}
+    </button>
+    <div class="cat-menu hidden" id="cat-menu" role="listbox">
+      ${categories.map((row) => `<button type="button" class="cat-option ${row.id === current?.id ? 'is-on' : ''}"
+        role="option" aria-selected="${row.id === current?.id}" data-cat="${row.id}" data-name="${escapeHtml(row.name)}">
+        <span>${escapeHtml(row.name)}</span>${svg.check}
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+
+function bindCategoryPicker() {
+  const picker = document.getElementById('cat-picker');
+  if (!picker) return;
+  const button = document.getElementById('cat-button');
+  const menu = document.getElementById('cat-menu');
+  const close = () => { menu.classList.add('hidden'); button.setAttribute('aria-expanded', 'false'); };
+
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const opening = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !opening);
+    button.setAttribute('aria-expanded', String(opening));
+  });
+  menu.querySelectorAll('.cat-option').forEach((option) => option.addEventListener('click', () => {
+    document.getElementById('cat-value').value = option.dataset.cat;
+    document.getElementById('cat-label').textContent = option.dataset.name;
+    menu.querySelectorAll('.cat-option').forEach((other) => {
+      other.classList.toggle('is-on', other === option);
+      other.setAttribute('aria-selected', String(other === option));
+    });
+    close();
+  }));
+  // Clicking anywhere else closes it, as a native select would.
+  document.addEventListener('click', close);
+  picker.addEventListener('click', (event) => event.stopPropagation());
+  button.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+}
+
 function openComposer({ restore = false } = {}) {
   const categories = state.community?.categories || [];
   const admin = isAdmin();
@@ -2857,11 +2912,7 @@ function openComposer({ restore = false } = {}) {
         ${boardAvatar(me(), 'sm')}
         <div class="cw-who">
           <strong>${escapeHtml(state.user.name)}</strong>
-          ${categories.length
-            ? `<span class="cw-in">posting in
-                <select name="categoryId" class="cw-cat">${categories.map((row) => `<option value="${row.id}" ${row.id === (draft?.categoryId || state.boardCategoryId) ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')}</select>
-              </span>`
-            : ''}
+          ${categories.length ? categoryPicker(categories, draft?.categoryId || state.boardCategoryId) : ''}
         </div>
         <button type="button" class="cw-x" data-close-modal aria-label="Close">${svg.x}</button>
       </header>
@@ -2869,7 +2920,7 @@ function openComposer({ restore = false } = {}) {
       <input name="title" id="composer-title" placeholder="Title" autocomplete="off" required value="${escapeHtml(draft?.title || '')}">
       <textarea id="composer-body" name="body" rows="6" placeholder="Write something… paste a YouTube or Loom link and it will play here" required>${escapeHtml(draft?.body || '')}</textarea>
       <div id="video-preview" class="hidden"></div>
-      ${admin ? `<label class="fu-zone" id="fu-zone">
+      ${admin ? `<label class="fu-zone hidden" id="fu-zone">
         <input type="file" id="pdf-input" multiple class="fu-input"
           accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
         <span class="fu-icon">${svg.cloudUp}</span>
@@ -2878,24 +2929,22 @@ function openComposer({ restore = false } = {}) {
       </label>` : ''}
       <div id="draft-attachments" class="fu-list hidden"></div>
 
-      ${admin ? `<details class="schedule-block" ${draft?.when ? 'open' : ''}>
-        <summary>${svg.calendar} Schedule for later</summary>
-        <div class="schedule-body">
-          <label class="field-label" for="composer-when">Appears to students at</label>
-          <input type="datetime-local" id="composer-when" class="compact" value="${escapeHtml(draft?.when || '')}">
-          <p class="muted small">Times in ${escapeHtml(classTimezone())}. Until then it sits in your feed marked Scheduled, and nobody is notified.</p>
-        </div>
-      </details>` : ''}
+      ${admin ? `<div class="schedule-row hidden" id="schedule-row">
+        <label for="composer-when">Appears to students at</label>
+        <input type="datetime-local" id="composer-when" value="${escapeHtml(draft?.when || '')}">
+        <button type="button" class="cw-x small" id="schedule-clear" aria-label="Do not schedule">${svg.x}</button>
+        <p class="muted small">Times in ${escapeHtml(classTimezone())}. Until then it sits in your feed marked Scheduled, and nobody is notified.</p>
+      </div>` : ''}
 
       <footer class="cw-foot">
         <div class="composer-tools">
+          ${admin ? tool('attach-file', svg.paperclip || svg.cloudUp, 'Attach a file') : ''}
           ${tool('attach-gif', svg.gif, 'Add a GIF')}
-          ${admin ? `<button type="button" class="tool" id="attach-dictate" title="Dictate" aria-label="Dictate">${svg.mic}</button>` : ''}
-          <input type="file" id="pdf-input" class="hidden"
-            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          ${admin ? tool('attach-dictate', svg.mic, 'Dictate') : ''}
+          ${admin ? tool('attach-schedule', svg.calendar, 'Schedule for later') : ''}
         </div>
         <div class="cw-actions">
-          ${admin ? `<label class="cw-pin"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin</label>` : ''}
+          ${admin ? `<label class="cw-pin"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin to the top</label>` : ''}
           <button type="button" class="btn" data-close-modal>Cancel</button>
           <button type="button" class="btn primary" id="save-thread">Post</button>
         </div>
@@ -2904,8 +2953,35 @@ function openComposer({ restore = false } = {}) {
     </form>`,
     onOpen() {
       bindDictation();
+      bindCategoryPicker();
       renderDraftAttachments();
       if (!draft) document.getElementById('composer-title')?.focus();
+
+      /* The upload zone and the schedule row are folded away until asked for.
+         An empty drop target and an empty date field took up half the dialog
+         before there was anything in either of them. */
+      const zone = document.getElementById('fu-zone');
+      const scheduleRow = document.getElementById('schedule-row');
+      const reveal = (element, toolId) => {
+        element?.classList.remove('hidden');
+        document.getElementById(toolId)?.classList.add('is-on');
+      };
+      if (draft?.when) reveal(scheduleRow, 'attach-schedule');
+      document.getElementById('attach-file')?.addEventListener('click', () => {
+        if (zone?.classList.contains('hidden')) { reveal(zone, 'attach-file'); document.getElementById('pdf-input')?.click(); }
+        else { zone?.classList.add('hidden'); document.getElementById('attach-file')?.classList.remove('is-on'); }
+      });
+      document.getElementById('attach-schedule')?.addEventListener('click', () => {
+        if (scheduleRow?.classList.contains('hidden')) reveal(scheduleRow, 'attach-schedule');
+        else { scheduleRow?.classList.add('hidden'); document.getElementById('attach-schedule')?.classList.remove('is-on'); }
+      });
+      document.getElementById('schedule-clear')?.addEventListener('click', () => {
+        const when = document.getElementById('composer-when');
+        if (when) when.value = '';
+        scheduleRow?.classList.add('hidden');
+        document.getElementById('attach-schedule')?.classList.remove('is-on');
+      });
+
       const fileInput = document.getElementById('pdf-input');
       fileInput?.addEventListener('change', async (event) => {
         if (event.target.files.length) await acceptDocuments(event.target.files);
@@ -2915,7 +2991,6 @@ function openComposer({ restore = false } = {}) {
       /* Drag and drop over the whole zone. The counter is because dragging over
          a child fires leave on the parent, which otherwise makes the highlight
          flicker as the pointer crosses the icon. */
-      const zone = document.getElementById('fu-zone');
       let depth = 0;
       zone?.addEventListener('dragenter', (event) => { event.preventDefault(); depth += 1; zone.classList.add('is-over'); });
       zone?.addEventListener('dragover', (event) => event.preventDefault());
@@ -2930,6 +3005,17 @@ function openComposer({ restore = false } = {}) {
       // one consistent row of icons; this button drives it.
       document.getElementById('attach-dictate')?.addEventListener('click', () =>
         document.querySelector('#dictate-slot .dictate-btn')?.click());
+
+      /* Dragging a file onto the dialog rather than onto the folded-away zone is
+         the obvious thing to try, so it opens the zone and takes the file. */
+      const form = document.getElementById('thread-form');
+      form.addEventListener('dragover', (event) => event.preventDefault());
+      form.addEventListener('drop', async (event) => {
+        if (!admin || !event.dataTransfer?.files?.length) return;
+        event.preventDefault();
+        reveal(zone, 'attach-file');
+        await acceptDocuments(event.dataTransfer.files);
+      });
       const bodyField = document.getElementById('composer-body');
       bodyField.addEventListener('input', debounce(showVideoPreview, 250));
       bodyField.addEventListener('paste', () => setTimeout(showVideoPreview, 30));
@@ -3001,22 +3087,23 @@ function openGifPicker() {
     title: 'Add a GIF',
     subtitle: 'Searches Giphy.',
     wide: true,
-    body: `<input id="gif-q" placeholder="Search — try “maith thú”, “well done”, “tired”" autocomplete="off">
-      <div id="gif-results" class="gif-grid"><p class="muted small">Loading…</p></div>`,
+    body: `<div class="gif-search">${svg.search || ''}<input id="gif-q" placeholder="Search — try “maith thú”, “well done”, “tired”" autocomplete="off"></div>
+      <div id="gif-results" class="gif-grid"><p class="gif-state">Loading…</p></div>`,
     footer: `<button class="btn" id="gif-back">Back to the post</button>`,
     onOpen() {
       document.getElementById('gif-back').addEventListener('click', () => openComposer({ restore: true }));
       const results = document.getElementById('gif-results');
       const load = async (query) => {
-        results.innerHTML = '<p class="muted small">Searching…</p>';
+        results.innerHTML = '<p class="gif-state">Searching…</p>';
         let payload;
         try { payload = await api(`/api/gifs${query ? `?q=${encodeURIComponent(query)}` : ''}`); }
-        catch { results.innerHTML = '<p class="muted small">GIF search is unavailable right now.</p>'; return; }
+        catch { results.innerHTML = '<p class="gif-state">GIF search is unavailable right now.</p>'; return; }
         if (!payload.configured) {
-          results.innerHTML = '<p class="muted small">GIF search is not set up. Add a GIPHY_API_KEY to the environment file and restart.</p>';
+          results.innerHTML = `<p class="gif-state"><strong>GIF search is not set up.</strong>
+            Add a GIPHY_API_KEY to the environment file and restart. A Giphy developer key is free.</p>`;
           return;
         }
-        if (!payload.results.length) { results.innerHTML = '<p class="muted small">Nothing found.</p>'; return; }
+        if (!payload.results.length) { results.innerHTML = '<p class="gif-state">Nothing found. Try a different word.</p>'; return; }
         results.innerHTML = payload.results.map((gif) =>
           `<button type="button" class="gif-pick" data-gif="${escapeHtml(gif.url)}" data-preview="${escapeHtml(gif.preview)}">
             <img src="${escapeHtml(gif.preview)}" alt="${escapeHtml(gif.title)}" loading="lazy">
