@@ -325,9 +325,34 @@ the people still on the course.
 - GoHighLevel webhook, SMTP or console delivery
 - Editable templates and test-email controls
 
+### Class setup
+
+**Classes & students → Class setup** holds everything about one class in one
+place.
+
+**Whether it has a board.** Not every group wants a community. A class set up
+without one never shows Community in its students' menu, and the routes behind
+it refuse as well — hiding a button is not the same as closing a door. Anything
+already posted is kept and comes back if the board is turned on again.
+
+**Which courses it carries.** A course used to belong to one class or to all of
+them, which could not express two groups out of three. Courses and classes are
+now many-to-many: tick the courses a class is enrolled in, or mark a course
+*open to every class* if it is taught identically everywhere.
+
+**Extra sessions.** A second evening that week, a catch-up, a class that moved.
+Each carries its own date, length and — where the room differs — its own link.
+Whichever comes first, the extra sitting or the weekly slot, is the one students
+are shown, and a session with its own link uses that instead of the class link.
+Cancelling keeps the row, struck through, so it is clear it was called off
+rather than never entered.
+
+**Recordings watched.** How far each student in the class has got through the
+class recordings they can see, across every course rather than one at a time.
+
 ### The weekly class link
 
-**Classes & students → Class link** takes a join address and an optional note.
+**Classes & students → Class setup** takes a join address and an optional note.
 Students then see a banner on every screen, and the wording changes as the class
 approaches:
 
@@ -555,6 +580,43 @@ ranking by contribution rewards turning up. A feed where the teacher is
 permanently first is a noticeboard.
 
 Withdrawn students keep reading and lose posting, like everywhere else.
+
+### Scheduling a term of posts
+
+Writing next term's twelve posts one at a time through the composer is the job
+this replaces. The planning already happens in a spreadsheet, so the spreadsheet
+is what it takes.
+
+**Community → Scheduled** shows what is queued, drawn as a calendar month by
+month — a term is planned in months, and the empty days are the point when you
+are looking for the week you forgot. Times are shown in the **class** timezone,
+not the reader's, so a teacher checking from abroad sees the hour the post
+actually goes out.
+
+**Download template** gives a CSV with the columns filled in and three example
+rows, dated from next week, using this class's own categories.
+
+**Import a spreadsheet** reads the file and shows every row back before writing
+anything — a bad date in row nine should not leave eight posts on the board and
+a half-finished import. Each row is either going in or it is not, and it says
+which:
+
+| Column | Accepts |
+| --- | --- |
+| Date | `25/12/2026 09:00`, `25/12/2026`, `2026-12-25T09:00`. Day-first. Times read as the class timezone. |
+| Title | Required. |
+| Body | Required. Commas and line breaks are fine inside quotes. |
+| Category | Optional, but must already exist on this board. |
+| Pinned | `yes` / `no`. |
+
+Column headings are matched however they are capitalised, and the common
+alternatives work too — `When` for Date, `Subject` for Title, `Message` for
+Body, `Section` for Category. Row numbers in the preview count the header as
+line 1, so they agree with what the spreadsheet shows.
+
+A row with a date already gone by is not refused; it is flagged as publishing at
+once. Rows with real problems are skipped and named. The import is one
+transaction, so a failure halfway leaves the board exactly as it was.
 
 ### Profile pictures
 

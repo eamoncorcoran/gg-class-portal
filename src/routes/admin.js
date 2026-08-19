@@ -65,7 +65,12 @@ const diskUpload = multer({
   }),
   limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 20 },
   fileFilter(_req, file, callback) {
-    if (!allowedUploads.has(file.mimetype)) return callback(Object.assign(new Error('This file type is not allowed.'), { status: 400 }));
+    /* The type comes from the browser, and browsers disagree about CSV: some
+       say text/csv, some say application/vnd.ms-excel, and some give up and say
+       application/octet-stream. The file is parsed as CSV straight afterwards
+       and refused if it is not one, so the extension is the better gate here. */
+    const isCsv = path.extname(file.originalname).toLowerCase() === '.csv';
+    if (!isCsv && !allowedUploads.has(file.mimetype)) return callback(Object.assign(new Error('This file type is not allowed.'), { status: 400 }));
     callback(null, true);
   },
 });
@@ -1288,6 +1293,188 @@ router.get('/community/:classId', asyncRoute(async (req, res) => {
       : null,
     threads, categories, contributors, sort, categoryId,
   });
+}));
+
+/* Scheduling a term of posts at once.
+   ------------------------------------------------------------------
+   Writing one post a week into the composer for twelve weeks is the thing this
+   is meant to replace. A spreadsheet is where that planning already happens, so
+   the import takes one and answers with what it made of every row before
+   anything is written — a wrong date column in row nine should not leave eight
+   posts on the board and a half-finished import.
+
+   The dry run and the real thing share one parser, so what is previewed is
+   exactly what lands. */
+const SCHEDULE_COLUMNS = {
+  date: ['date', 'publish', 'publish at', 'published at', 'when', 'appears at', 'scheduled for'],
+  title: ['title', 'subject', 'heading'],
+  body: ['body', 'message', 'post', 'text', 'content'],
+  category: ['category', 'section', 'topic'],
+  pinned: ['pinned', 'pin'],
+};
+
+function columnFrom(row, names) {
+  const keys = Object.keys(row);
+  for (const name of names) {
+    const key = keys.find((candidate) => candidate.trim().toLowerCase() === name);
+    if (key && String(row[key]).trim()) return String(row[key]).trim();
+  }
+  return '';
+}
+
+/* A spreadsheet writes dates the way the person's computer does. Accepts the
+   ISO form, the Irish day-first form, and either with a time; anything else is
+   reported on its own row rather than guessed at. */
+function parseScheduleDate(text, timezone) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  const iso = DateTime.fromISO(raw, { zone: timezone });
+  if (iso.isValid) return iso;
+  for (const format of ['dd/MM/yyyy HH:mm', 'dd/MM/yyyy', 'd/M/yyyy HH:mm', 'd/M/yyyy',
+                        'dd-MM-yyyy HH:mm', 'dd-MM-yyyy', 'yyyy-MM-dd HH:mm']) {
+    const parsed = DateTime.fromFormat(raw, format, { zone: timezone });
+    if (parsed.isValid) return parsed;
+  }
+  return null;
+}
+
+function readScheduleCsv(content, { categories, timezone }) {
+  const rows = parse(content, { columns: true, skip_empty_lines: true, trim: true, bom: true });
+  return rows.map((row, index) => {
+    const line = index + 2; // Header is line 1, so a person counting in a spreadsheet agrees.
+    const title = columnFrom(row, SCHEDULE_COLUMNS.title);
+    const body = columnFrom(row, SCHEDULE_COLUMNS.body);
+    const dateText = columnFrom(row, SCHEDULE_COLUMNS.date);
+    const categoryText = columnFrom(row, SCHEDULE_COLUMNS.category);
+    const pinnedText = columnFrom(row, SCHEDULE_COLUMNS.pinned).toLowerCase();
+
+    const when = parseScheduleDate(dateText, timezone);
+    const category = categoryText
+      ? categories.find((item) => item.name.trim().toLowerCase() === categoryText.toLowerCase())
+      : null;
+
+    const problems = [];
+    if (!title) problems.push('no title');
+    if (!body) problems.push('no message');
+    if (!dateText) problems.push('no date');
+    else if (!when) problems.push(`the date “${dateText}” could not be read`);
+    if (categoryText && !category) problems.push(`there is no category called “${categoryText}”`);
+
+    return {
+      line, title, body,
+      publishedAt: when ? when.toUTC().toISO() : null,
+      localWhen: when ? when.toFormat('ccc d LLL yyyy, HH:mm') : dateText,
+      categoryId: category?.id || null,
+      categoryName: category?.name || (categoryText || null),
+      pinned: ['yes', 'y', 'true', '1', 'pin', 'pinned'].includes(pinnedText),
+      past: Boolean(when && when < DateTime.now().setZone(timezone)),
+      problems,
+    };
+  });
+}
+
+/* A file to start from, so nobody has to guess the column names. */
+router.get('/community/:classId/schedule-template', asyncRoute(async (req, res) => {
+  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  const categories = await listCategories(klass.id);
+  const zone = klass.timezone || config.defaultTimezone;
+  const first = DateTime.now().setZone(zone).plus({ days: 7 }).set({ hour: 9, minute: 0 });
+  const name = (categories[0]?.name) || 'General';
+  const second = categories[1]?.name || name;
+
+  const lines = [
+    'Date,Title,Body,Category,Pinned',
+    `${first.toFormat('dd/MM/yyyy HH:mm')},Welcome to week one,"Post the week ahead here. A comma is fine inside quotes, and so is a line break.",${name},yes`,
+    `${first.plus({ weeks: 1 }).toFormat('dd/MM/yyyy HH:mm')},Week two: what we are covering,"One row per post. Delete these three rows and write your own.",${second},no`,
+    `${first.plus({ weeks: 2 }).toFormat('dd/MM/yyyy HH:mm')},Week three,"Dates can be written 25/12/2026 09:00 or 2026-12-25T09:00. Times are ${zone}.",${name},no`,
+  ];
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="scheduled-posts-template.csv"');
+  res.send(`${lines.join('\n')}\n`);
+}));
+
+/* Read the file and say what would happen. Nothing is written. */
+router.post('/community/:classId/schedule-preview', diskUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a CSV file.' });
+  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
+  if (!klass) { await fs.unlink(req.file.path).catch(() => {}); return res.status(404).json({ error: 'Class not found.' }); }
+  const content = await fs.readFile(req.file.path, 'utf8');
+  await fs.unlink(req.file.path).catch(() => {});
+
+  let rows;
+  try {
+    rows = readScheduleCsv(content, {
+      categories: await listCategories(klass.id),
+      timezone: klass.timezone || config.defaultTimezone,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: `That file could not be read as a CSV. ${error.message}` });
+  }
+  if (!rows.length) return res.status(400).json({ error: 'That file has a header but no rows.' });
+  res.json({
+    timezone: klass.timezone || config.defaultTimezone,
+    rows,
+    ready: rows.filter((row) => !row.problems.length).length,
+    problems: rows.filter((row) => row.problems.length).length,
+  });
+}));
+
+/* Write them. Rows with problems are skipped and named rather than silently
+   dropped, and the whole thing is one transaction so a failure halfway leaves
+   the board as it was. */
+router.post('/community/:classId/schedule-import', diskUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a CSV file.' });
+  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
+  if (!klass) { await fs.unlink(req.file.path).catch(() => {}); return res.status(404).json({ error: 'Class not found.' }); }
+  const content = await fs.readFile(req.file.path, 'utf8');
+  await fs.unlink(req.file.path).catch(() => {});
+
+  let rows;
+  try {
+    rows = readScheduleCsv(content, {
+      categories: await listCategories(klass.id),
+      timezone: klass.timezone || config.defaultTimezone,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: `That file could not be read as a CSV. ${error.message}` });
+  }
+
+  const usable = rows.filter((row) => !row.problems.length);
+  if (!usable.length) return res.status(400).json({ error: 'No row in that file could be used. Fix the problems listed and try again.' });
+
+  const created = [];
+  await transaction(async (client) => {
+    for (const row of usable) {
+      const thread = await client.query(
+        `INSERT INTO discussion_threads(class_id,author_id,title,body,category_id,pinned,published_at,last_activity_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$7) RETURNING id,title,published_at`,
+        [klass.id, req.user.id, row.title, row.body, row.categoryId, row.pinned, row.publishedAt],
+      );
+      created.push(thread.rows[0]);
+    }
+  });
+
+  await audit({ actorId: req.user.id, action: 'community.schedule.imported', entityType: 'class',
+    entityId: klass.id, metadata: { created: created.length, skipped: rows.length - usable.length }, ip: req.ip });
+  res.status(201).json({
+    created: created.length,
+    skipped: rows.filter((row) => row.problems.length),
+  });
+}));
+
+/* What is queued, for the calendar. Everything not yet published, oldest first,
+   so it reads as a plan rather than as a feed. */
+router.get('/community/:classId/scheduled', asyncRoute(async (req, res) => {
+  const result = await query(
+    `SELECT t.id, t.title, t.body, t.pinned, t.published_at, c.name category_name, c.id category_id
+     FROM discussion_threads t
+     LEFT JOIN discussion_categories c ON c.id=t.category_id
+     WHERE t.class_id=$1 AND t.deleted_at IS NULL AND t.published_at > now()
+     ORDER BY t.published_at`, [req.params.classId],
+  );
+  const klass = await one('SELECT timezone FROM classes WHERE id=$1', [req.params.classId]);
+  res.json({ timezone: klass?.timezone || config.defaultTimezone, posts: result.rows });
 }));
 
 router.get('/community/thread/:id', asyncRoute(async (req, res) => {

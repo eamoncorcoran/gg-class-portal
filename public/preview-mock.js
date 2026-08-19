@@ -477,6 +477,64 @@
 
   /* The next sitting of a class, worked out the same way src/classtime.js does it
      on the server: from the class day, time and timezone rather than a stored row. */
+
+  /* A CSV reader for the preview only. Handles quoted fields and the two date
+     forms the template uses; the server's is stricter and does more. */
+  function previewScheduleRows(text,classId){
+    const lines=String(text||'').split(/\r?\n/).filter((line)=>line.trim());
+    if(lines.length<2) return [];
+    const header=splitCsvLine(lines[0]).map((h)=>h.trim().toLowerCase());
+    const at=(cells,names)=>{
+      for(const name of names){const index=header.indexOf(name);if(index>=0&&cells[index])return cells[index].trim();}
+      return '';
+    };
+    const categories=db.categories.filter((c)=>c.class_id===classId);
+    return lines.slice(1).map((line,index)=>{
+      const cells=splitCsvLine(line);
+      const title=at(cells,['title','subject','heading']);
+      const body=at(cells,['body','message','post','text','content']);
+      const dateText=at(cells,['date','publish','publish at','when','appears at']);
+      const categoryText=at(cells,['category','section','topic']);
+      const pinnedText=at(cells,['pinned','pin']).toLowerCase();
+      const when=previewParseDate(dateText);
+      const category=categoryText?categories.find((c)=>c.name.toLowerCase()===categoryText.toLowerCase()):null;
+      const problems=[];
+      if(!title)problems.push('no title');
+      if(!body)problems.push('no message');
+      if(!dateText)problems.push('no date');
+      else if(!when)problems.push(`the date \u201c${dateText}\u201d could not be read`);
+      if(categoryText&&!category)problems.push(`there is no category called \u201c${categoryText}\u201d`);
+      return {line:index+2,title,body,
+        publishedAt:when?when.toISOString():null,
+        localWhen:when?when.toUTCString().slice(0,22):dateText,
+        categoryId:category?category.id:null,
+        categoryName:category?category.name:(categoryText||null),
+        pinned:['yes','y','true','1','pin','pinned'].includes(pinnedText),
+        past:Boolean(when&&when.getTime()<PREVIEW_NOW),
+        problems};
+    });
+  }
+  function splitCsvLine(line){
+    const cells=[];let cell='';let quoted=false;
+    for(let i=0;i<line.length;i+=1){
+      const ch=line[i];
+      if(ch==='"'){ if(quoted&&line[i+1]==='"'){cell+='"';i+=1;} else quoted=!quoted; }
+      else if(ch===','&&!quoted){cells.push(cell);cell='';}
+      else cell+=ch;
+    }
+    cells.push(cell);
+    return cells;
+  }
+  function previewParseDate(text){
+    const raw=String(text||'').trim();
+    if(!raw) return null;
+    let match=raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[ T](\d{2}):(\d{2}))?$/);
+    if(match) return new RealDate(RealDate.UTC(+match[3],+match[2]-1,+match[1],+(match[4]||0),+(match[5]||0)));
+    match=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+    if(match) return new RealDate(RealDate.UTC(+match[1],+match[2]-1,+match[3],+(match[4]||0),+(match[5]||0)));
+    return null;
+  }
+
   function previewNextClass(klass,sessions){
     if(!klass?.day_of_week||!klass?.start_time)return null;
     const [hour,minute]=String(klass.start_time).split(':').map(Number);
@@ -1150,6 +1208,59 @@
       return json({class:{...klass,label:classLabel(klass)},
         nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id)),
         ...boardPayload(params.classId,true,user.id,url,true)});
+    }
+    /* The scheduled queue and the spreadsheet import. The preview has no CSV
+       parser to hand, so it reads the file with a small one of its own — enough
+       to show the shape of the screen, and it refuses the same rows the server
+       would. */
+    params=match(path,'/api/admin/community/:classId/scheduled');
+    if(params&&method==='GET'){
+      const klass=db.classes.find((item)=>item.id===params.classId);
+      const posts=db.threads.filter((t)=>t.class_id===params.classId&&!t.deleted_at
+        &&new RealDate(t.published_at).getTime()>PREVIEW_NOW)
+        .sort((a,b)=>new RealDate(a.published_at)-new RealDate(b.published_at))
+        .map((t)=>({id:t.id,title:t.title,body:t.body,pinned:t.pinned,published_at:t.published_at,
+          category_id:t.category_id,
+          category_name:(db.categories.find((c)=>c.id===t.category_id)||{}).name||null}));
+      return json({timezone:klass?.timezone||'Europe/Dublin',posts});
+    }
+    params=match(path,'/api/admin/community/:classId/schedule-template');
+    if(params&&method==='GET'){
+      const names=db.categories.filter((c)=>c.class_id===params.classId).map((c)=>c.name);
+      const first=new RealDate(PREVIEW_NOW+7*86400000);
+      const day=(offset)=>{const d=new RealDate(first.getTime()+offset*7*86400000);
+        return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}/${d.getUTCFullYear()} 09:00`;};
+      const csv=['Date,Title,Body,Category,Pinned',
+        `${day(0)},Welcome to week one,"Post the week ahead here. A comma is fine inside quotes.",${names[0]||'General'},yes`,
+        `${day(1)},Week two: what we are covering,"One row per post. Delete these rows and write your own.",${names[1]||names[0]||'General'},no`,
+        `${day(2)},Week three,"Dates can be written 25/12/2026 09:00 or 2026-12-25T09:00.",${names[0]||'General'},no`].join('\n');
+      return new Response(`${csv}\n`,{status:200,headers:{'Content-Type':'text/csv; charset=utf-8'}});
+    }
+    params=match(path,'/api/admin/community/:classId/schedule-preview');
+    if(params&&method==='POST'){
+      const file=body&&body.get&&body.get('file');
+      if(!file) return error('Choose a CSV file.',400);
+      const rows=previewScheduleRows(await file.text(),params.classId);
+      if(!rows.length) return error('That file has a header but no rows.',400);
+      return json({timezone:'Europe/Dublin',rows,
+        ready:rows.filter((r)=>!r.problems.length).length,
+        problems:rows.filter((r)=>r.problems.length).length});
+    }
+    params=match(path,'/api/admin/community/:classId/schedule-import');
+    if(params&&method==='POST'){
+      const file=body&&body.get&&body.get('file');
+      if(!file) return error('Choose a CSV file.',400);
+      const rows=previewScheduleRows(await file.text(),params.classId);
+      const usable=rows.filter((r)=>!r.problems.length);
+      if(!usable.length) return error('No row in that file could be used. Fix the problems listed and try again.',400);
+      for(const row of usable){
+        db.threads.push({id:`t${db.counters.thread=(db.counters.thread||90)+1}`,class_id:params.classId,
+          author_id:currentUser().id,category_id:row.categoryId,title:row.title,body:row.body,
+          pinned:row.pinned,locked:false,deleted_at:null,created_at:new RealDate(PREVIEW_NOW).toISOString(),
+          published_at:row.publishedAt,last_activity_at:row.publishedAt});
+      }
+      save();
+      return json({created:usable.length,skipped:rows.filter((r)=>r.problems.length)},201);
     }
     params=match(path,'/api/admin/community/thread/:id/schedule');
     if(params&&method==='PATCH'){

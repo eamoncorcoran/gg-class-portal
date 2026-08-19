@@ -3317,6 +3317,7 @@ function communityView() {
       <div class="feed-head-actions">
         <select class="select" id="community-class">${classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
         <button class="btn" id="manage-categories">Categories</button>
+        <button class="btn" id="open-schedule-plan">${svg.calendar} Scheduled</button>
       </div>
     </div>
     ${feedLayout(true)}`;
@@ -3452,6 +3453,221 @@ function renderThreadDrawer() {
       }));
     },
   });
+}
+
+/* A term of posts in one go.
+   ------------------------------------------------------------------
+   Writing next term's twelve posts one at a time through the composer is the
+   job this replaces. The planning already happens in a spreadsheet, so the
+   spreadsheet is what it takes.
+
+   Two screens: what is already queued, and bringing in a file. The file is read
+   and shown back before anything is written, because a bad date in row nine
+   should not leave eight posts on the board. */
+async function openSchedulePlan() {
+  let plan;
+  try { plan = await api(`/api/admin/community/${state.communityClassId}/scheduled`); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  modal({
+    title: 'Scheduled posts',
+    subtitle: `Not yet visible to students. Times in ${plan.timezone}.`,
+    wide: true,
+    body: `<div class="plan">
+      ${plan.posts.length ? scheduleCalendar(plan) : `<div class="plan-empty">
+        <strong>Nothing is queued</strong>
+        <span>Posts you schedule, one at a time or from a spreadsheet, wait here until their date.</span>
+      </div>`}
+    </div>`,
+    footer: `<button class="btn" data-close-modal>Close</button>
+      <button class="btn" id="download-template">Download template</button>
+      <button class="btn primary" id="open-schedule-import">Import a spreadsheet</button>`,
+    onOpen() {
+      document.getElementById('open-schedule-import').addEventListener('click', openScheduleImport);
+      document.getElementById('download-template').addEventListener('click', downloadScheduleTemplate);
+      bindPlanRows();
+    },
+  });
+}
+
+/* Month by month, because a term is planned in months. A day with something on
+   it carries the post; the rest are there to give the dates somewhere to sit. */
+function scheduleCalendar(plan) {
+  /* Everything here is read in the class timezone, not the reader's. A teacher
+     checking the plan from abroad wants to know that the post goes out at nine
+     on a Tuesday morning in Dublin — rendering it in their own clock would put
+     it in the wrong cell as well as at the wrong time, and the heading already
+     promises Dublin. */
+  const zone = plan.timezone || 'Europe/Dublin';
+  const inZone = (iso) => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date(iso)).reduce((all, part) => ({ ...all, [part.type]: part.value }), {});
+    return {
+      year: Number(parts.year), month: Number(parts.month), day: Number(parts.day),
+      time: `${parts.hour}:${parts.minute}`,
+    };
+  };
+
+  const byDay = new Map();
+  let earliest = null;
+  let latest = null;
+  for (const post of plan.posts) {
+    const at = inZone(post.published_at);
+    const key = `${at.year}-${at.month}-${at.day}`;
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push({ ...post, at });
+    const stamp = at.year * 12 + at.month;
+    if (earliest === null || stamp < earliest) earliest = stamp;
+    if (latest === null || stamp > latest) latest = stamp;
+  }
+
+  const months = [];
+  for (let stamp = earliest; stamp <= latest; stamp += 1) {
+    months.push({ year: Math.floor((stamp - 1) / 12), month: ((stamp - 1) % 12) + 1 });
+  }
+
+  return months.map(({ year, month }) => {
+    const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    // Monday-first, matching the rest of the application.
+    const lead = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7;
+
+    const cells = [
+      ...Array.from({ length: lead }, () => '<div class="plan-cell is-blank"></div>'),
+      ...Array.from({ length: days }, (_, index) => {
+        const posts = byDay.get(`${year}-${month}-${index + 1}`) || [];
+        return `<div class="plan-cell ${posts.length ? 'has-post' : ''}">
+          <span class="plan-date">${index + 1}</span>
+          ${posts.map((post) => `<button type="button" class="plan-chip" data-plan-post="${post.id}"
+            title="${escapeHtml(post.title)}">
+            <b>${escapeHtml(post.at.time)}</b>
+            <span>${escapeHtml(post.title)}</span>
+          </button>`).join('')}
+        </div>`;
+      }),
+    ];
+
+    return `<section class="plan-month">
+      <h4>${escapeHtml(new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-IE', { month: 'long', year: 'numeric', timeZone: 'UTC' }))}</h4>
+      <div class="plan-grid">
+        ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => `<div class="plan-head">${day}</div>`).join('')}
+        ${cells.join('')}
+      </div>
+    </section>`;
+  }).join('');
+}
+
+function bindPlanRows() {
+  document.querySelectorAll('[data-plan-post]').forEach((button) => button.addEventListener('click', async () => {
+    closeModal();
+    await openThread(button.dataset.planPost);
+  }));
+}
+
+/* Fetched rather than linked to. A plain download link would leave the page,
+   and a failure would land somebody on a bare error rather than telling them
+   what went wrong where they are. */
+async function downloadScheduleTemplate() {
+  try {
+    const response = await fetch(`/api/admin/community/${state.communityClassId}/schedule-template`, { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('The template could not be prepared.');
+    const url = URL.createObjectURL(new Blob([await response.text()], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'scheduled-posts-template.csv';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    // Freed on the next turn of the loop, once the browser has taken it.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+/* The file, read and shown back before anything is written. */
+function openScheduleImport() {
+  modal({
+    title: 'Import scheduled posts',
+    subtitle: 'One row per post. Nothing is written until you have seen what it read.',
+    wide: true,
+    body: `<label class="fu-zone" id="csv-zone">
+        <input class="fu-input" type="file" id="csv-input" accept=".csv,text/csv">
+        <span class="fu-icon">${svg.cloudUp}</span>
+        <span class="fu-lead"><b>Click to upload</b> or drag a CSV here</span>
+        <span class="fu-hint">Columns: Date, Title, Body, Category, Pinned</span>
+      </label>
+      <p class="muted small">Dates can be written 25/12/2026 09:00 or 2026-12-25T09:00. A category must already exist. Not sure of the shape? <button type="button" class="text-link" id="template-link">Download the template</button>.</p>
+      <div id="csv-preview"></div>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="csv-import" disabled>Import</button>`,
+    onOpen() {
+      document.getElementById('template-link')?.addEventListener('click', downloadScheduleTemplate);
+      const input = document.getElementById('csv-input');
+      const zone = document.getElementById('csv-zone');
+      const preview = document.getElementById('csv-preview');
+      const importButton = document.getElementById('csv-import');
+      let chosen = null;
+
+      const read = async (file) => {
+        if (!file) return;
+        chosen = file;
+        preview.innerHTML = '<p class="muted small">Reading…</p>';
+        importButton.disabled = true;
+        const form = new FormData();
+        form.append('file', file);
+        let result;
+        try { result = await api(`/api/admin/community/${state.communityClassId}/schedule-preview`, { method: 'POST', body: form }); }
+        catch (error) { preview.innerHTML = `<p class="csv-bad">${escapeHtml(error.message)}</p>`; return; }
+        preview.innerHTML = schedulePreview(result);
+        importButton.disabled = result.ready === 0;
+        importButton.textContent = result.ready
+          ? `Schedule ${result.ready} post${result.ready === 1 ? '' : 's'}`
+          : 'Nothing to import';
+      };
+
+      input.addEventListener('change', () => read(input.files?.[0]));
+      ['dragenter', 'dragover'].forEach((type) => zone.addEventListener(type, (event) => {
+        event.preventDefault(); zone.classList.add('is-over');
+      }));
+      ['dragleave', 'drop'].forEach((type) => zone.addEventListener(type, () => zone.classList.remove('is-over')));
+      zone.addEventListener('drop', (event) => { event.preventDefault(); read(event.dataTransfer?.files?.[0]); });
+
+      importButton.addEventListener('click', async () => {
+        if (!chosen) return;
+        const form = new FormData();
+        form.append('file', chosen);
+        importButton.disabled = true;
+        try {
+          const result = await api(`/api/admin/community/${state.communityClassId}/schedule-import`, { method: 'POST', body: form });
+          closeModal();
+          await reloadBoard();
+          showToast(`${result.created} post${result.created === 1 ? '' : 's'} scheduled${result.skipped.length ? `, ${result.skipped.length} skipped` : ''}`);
+        } catch (error) { importButton.disabled = false; showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* Every row, in file order, with its problems named. A row is either going in
+   or it is not, and it says which — a count alone leaves somebody guessing
+   which nine of their twelve posts made it. */
+function schedulePreview(result) {
+  return `<div class="csv-summary">
+      <span class="csv-ok">${result.ready} ready</span>
+      ${result.problems ? `<span class="csv-bad">${result.problems} with problems</span>` : ''}
+      <span class="muted small">Times read as ${escapeHtml(result.timezone)}</span>
+    </div>
+    <div class="table-wrap"><table class="data-table compact">
+      <thead><tr><th>Row</th><th>When</th><th>Title</th><th>Category</th><th></th></tr></thead>
+      <tbody>${result.rows.map((row) => `<tr class="${row.problems.length ? 'is-bad' : ''}">
+        <td>${row.line}</td>
+        <td>${escapeHtml(row.localWhen || '—')}${row.past && !row.problems.length ? '<b class="csv-note">publishes at once</b>' : ''}</td>
+        <td>${escapeHtml(row.title || '—')}${row.pinned ? ' <span class="pill">Pinned</span>' : ''}</td>
+        <td>${escapeHtml(row.categoryName || '—')}</td>
+        <td>${row.problems.length
+          ? `<span class="csv-bad">${escapeHtml(row.problems.join('; '))}</span>`
+          : '<span class="csv-ok">will be scheduled</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
 }
 
 function openScheduleModal(thread) {
@@ -3668,6 +3884,7 @@ function openCategoryModal() {
 function bindFeed() {
   document.getElementById('open-composer')?.addEventListener('click', openComposer);
   document.getElementById('manage-categories')?.addEventListener('click', openCategoryModal);
+  document.getElementById('open-schedule-plan')?.addEventListener('click', openSchedulePlan);
   document.querySelectorAll('[data-board-category]').forEach((button) => button.addEventListener('click', () => {
     state.boardCategoryId = button.dataset.boardCategory || null;
     reloadBoard();

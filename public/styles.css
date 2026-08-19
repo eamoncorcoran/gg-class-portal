@@ -1337,3 +1337,41 @@ details.leaving summary:hover{color:var(--text-secondary)}
   .session-actions{width:100%}
 }
 .cc-who{color:var(--text-quaternary);font-size:11.5px;font-weight:600}
+
+/* ---- Scheduled posts --------------------------------------------- */
+/* A term is planned in months, so the queue is drawn as months rather than as a
+   list of dates. A day with nothing on it is still drawn: the gaps are the
+   point when you are looking for the week you forgot. */
+.plan{display:grid;gap:22px}
+.plan-month h4{margin:0 0 10px;font-size:13px;font-weight:680;letter-spacing:-.01em}
+.plan-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;
+  border:1px solid var(--border);border-radius:var(--radius-md);background:var(--border);overflow:hidden}
+.plan-head{padding:7px 8px;background:var(--gray-50);color:var(--text-quaternary);
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;text-align:center}
+.plan-cell{min-height:74px;padding:5px;background:var(--surface);display:grid;gap:3px;align-content:start}
+.plan-cell.is-blank{background:var(--gray-25)}
+.plan-cell.has-post{background:var(--brand-25)}
+.plan-date{color:var(--text-quaternary);font-size:10.5px;font-weight:650}
+.plan-chip{display:grid;gap:1px;width:100%;padding:5px 6px;border:0;border-radius:var(--radius-xs);
+  background:var(--brand-600);color:#fff;text-align:left;cursor:pointer;overflow:hidden}
+.plan-chip:hover{background:var(--brand-700)}
+.plan-chip b{font-size:9.5px;font-weight:700;opacity:.85}
+.plan-chip span{font-size:10.5px;font-weight:600;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.plan-empty{display:grid;gap:5px;padding:40px 24px;border:1px dashed var(--border-strong);
+  border-radius:var(--radius-lg);text-align:center}
+.plan-empty strong{font-size:14.5px;font-weight:660}
+.plan-empty span{color:var(--text-tertiary);font-size:13px;line-height:1.6}
+
+/* What the file was read as, before any of it is written. */
+.csv-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 10px}
+.csv-ok{color:var(--brand-700);font-size:12px;font-weight:680}
+.csv-bad{color:var(--error-600);font-size:12px;font-weight:640}
+.data-table tr.is-bad td{background:var(--error-50)}
+.csv-note{display:block;color:var(--warning-700);font-size:10.5px;font-weight:650}
+
+@media (max-width:700px){
+  .plan-grid{grid-template-columns:repeat(7,minmax(38px,1fr));overflow-x:auto}
+  .plan-cell{min-height:58px}
+  .plan-chip span{display:none}
+}

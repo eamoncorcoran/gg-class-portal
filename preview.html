@@ -1346,6 +1346,44 @@ details.leaving summary:hover{color:var(--text-secondary)}
   .session-actions{width:100%}
 }
 .cc-who{color:var(--text-quaternary);font-size:11.5px;font-weight:600}
+
+/* ---- Scheduled posts --------------------------------------------- */
+/* A term is planned in months, so the queue is drawn as months rather than as a
+   list of dates. A day with nothing on it is still drawn: the gaps are the
+   point when you are looking for the week you forgot. */
+.plan{display:grid;gap:22px}
+.plan-month h4{margin:0 0 10px;font-size:13px;font-weight:680;letter-spacing:-.01em}
+.plan-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;
+  border:1px solid var(--border);border-radius:var(--radius-md);background:var(--border);overflow:hidden}
+.plan-head{padding:7px 8px;background:var(--gray-50);color:var(--text-quaternary);
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;text-align:center}
+.plan-cell{min-height:74px;padding:5px;background:var(--surface);display:grid;gap:3px;align-content:start}
+.plan-cell.is-blank{background:var(--gray-25)}
+.plan-cell.has-post{background:var(--brand-25)}
+.plan-date{color:var(--text-quaternary);font-size:10.5px;font-weight:650}
+.plan-chip{display:grid;gap:1px;width:100%;padding:5px 6px;border:0;border-radius:var(--radius-xs);
+  background:var(--brand-600);color:#fff;text-align:left;cursor:pointer;overflow:hidden}
+.plan-chip:hover{background:var(--brand-700)}
+.plan-chip b{font-size:9.5px;font-weight:700;opacity:.85}
+.plan-chip span{font-size:10.5px;font-weight:600;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.plan-empty{display:grid;gap:5px;padding:40px 24px;border:1px dashed var(--border-strong);
+  border-radius:var(--radius-lg);text-align:center}
+.plan-empty strong{font-size:14.5px;font-weight:660}
+.plan-empty span{color:var(--text-tertiary);font-size:13px;line-height:1.6}
+
+/* What the file was read as, before any of it is written. */
+.csv-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 10px}
+.csv-ok{color:var(--brand-700);font-size:12px;font-weight:680}
+.csv-bad{color:var(--error-600);font-size:12px;font-weight:640}
+.data-table tr.is-bad td{background:var(--error-50)}
+.csv-note{display:block;color:var(--warning-700);font-size:10.5px;font-weight:650}
+
+@media (max-width:700px){
+  .plan-grid{grid-template-columns:repeat(7,minmax(38px,1fr));overflow-x:auto}
+  .plan-cell{min-height:58px}
+  .plan-chip span{display:none}
+}
 </style>
 </head>
 <body>
@@ -1832,6 +1870,64 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
 
   /* The next sitting of a class, worked out the same way src/classtime.js does it
      on the server: from the class day, time and timezone rather than a stored row. */
+
+  /* A CSV reader for the preview only. Handles quoted fields and the two date
+     forms the template uses; the server's is stricter and does more. */
+  function previewScheduleRows(text,classId){
+    const lines=String(text||'').split(/\r?\n/).filter((line)=>line.trim());
+    if(lines.length<2) return [];
+    const header=splitCsvLine(lines[0]).map((h)=>h.trim().toLowerCase());
+    const at=(cells,names)=>{
+      for(const name of names){const index=header.indexOf(name);if(index>=0&&cells[index])return cells[index].trim();}
+      return '';
+    };
+    const categories=db.categories.filter((c)=>c.class_id===classId);
+    return lines.slice(1).map((line,index)=>{
+      const cells=splitCsvLine(line);
+      const title=at(cells,['title','subject','heading']);
+      const body=at(cells,['body','message','post','text','content']);
+      const dateText=at(cells,['date','publish','publish at','when','appears at']);
+      const categoryText=at(cells,['category','section','topic']);
+      const pinnedText=at(cells,['pinned','pin']).toLowerCase();
+      const when=previewParseDate(dateText);
+      const category=categoryText?categories.find((c)=>c.name.toLowerCase()===categoryText.toLowerCase()):null;
+      const problems=[];
+      if(!title)problems.push('no title');
+      if(!body)problems.push('no message');
+      if(!dateText)problems.push('no date');
+      else if(!when)problems.push(`the date \u201c${dateText}\u201d could not be read`);
+      if(categoryText&&!category)problems.push(`there is no category called \u201c${categoryText}\u201d`);
+      return {line:index+2,title,body,
+        publishedAt:when?when.toISOString():null,
+        localWhen:when?when.toUTCString().slice(0,22):dateText,
+        categoryId:category?category.id:null,
+        categoryName:category?category.name:(categoryText||null),
+        pinned:['yes','y','true','1','pin','pinned'].includes(pinnedText),
+        past:Boolean(when&&when.getTime()<PREVIEW_NOW),
+        problems};
+    });
+  }
+  function splitCsvLine(line){
+    const cells=[];let cell='';let quoted=false;
+    for(let i=0;i<line.length;i+=1){
+      const ch=line[i];
+      if(ch==='"'){ if(quoted&&line[i+1]==='"'){cell+='"';i+=1;} else quoted=!quoted; }
+      else if(ch===','&&!quoted){cells.push(cell);cell='';}
+      else cell+=ch;
+    }
+    cells.push(cell);
+    return cells;
+  }
+  function previewParseDate(text){
+    const raw=String(text||'').trim();
+    if(!raw) return null;
+    let match=raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[ T](\d{2}):(\d{2}))?$/);
+    if(match) return new RealDate(RealDate.UTC(+match[3],+match[2]-1,+match[1],+(match[4]||0),+(match[5]||0)));
+    match=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+    if(match) return new RealDate(RealDate.UTC(+match[1],+match[2]-1,+match[3],+(match[4]||0),+(match[5]||0)));
+    return null;
+  }
+
   function previewNextClass(klass,sessions){
     if(!klass?.day_of_week||!klass?.start_time)return null;
     const [hour,minute]=String(klass.start_time).split(':').map(Number);
@@ -2505,6 +2601,59 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
       return json({class:{...klass,label:classLabel(klass)},
         nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id)),
         ...boardPayload(params.classId,true,user.id,url,true)});
+    }
+    /* The scheduled queue and the spreadsheet import. The preview has no CSV
+       parser to hand, so it reads the file with a small one of its own — enough
+       to show the shape of the screen, and it refuses the same rows the server
+       would. */
+    params=match(path,'/api/admin/community/:classId/scheduled');
+    if(params&&method==='GET'){
+      const klass=db.classes.find((item)=>item.id===params.classId);
+      const posts=db.threads.filter((t)=>t.class_id===params.classId&&!t.deleted_at
+        &&new RealDate(t.published_at).getTime()>PREVIEW_NOW)
+        .sort((a,b)=>new RealDate(a.published_at)-new RealDate(b.published_at))
+        .map((t)=>({id:t.id,title:t.title,body:t.body,pinned:t.pinned,published_at:t.published_at,
+          category_id:t.category_id,
+          category_name:(db.categories.find((c)=>c.id===t.category_id)||{}).name||null}));
+      return json({timezone:klass?.timezone||'Europe/Dublin',posts});
+    }
+    params=match(path,'/api/admin/community/:classId/schedule-template');
+    if(params&&method==='GET'){
+      const names=db.categories.filter((c)=>c.class_id===params.classId).map((c)=>c.name);
+      const first=new RealDate(PREVIEW_NOW+7*86400000);
+      const day=(offset)=>{const d=new RealDate(first.getTime()+offset*7*86400000);
+        return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}/${d.getUTCFullYear()} 09:00`;};
+      const csv=['Date,Title,Body,Category,Pinned',
+        `${day(0)},Welcome to week one,"Post the week ahead here. A comma is fine inside quotes.",${names[0]||'General'},yes`,
+        `${day(1)},Week two: what we are covering,"One row per post. Delete these rows and write your own.",${names[1]||names[0]||'General'},no`,
+        `${day(2)},Week three,"Dates can be written 25/12/2026 09:00 or 2026-12-25T09:00.",${names[0]||'General'},no`].join('\n');
+      return new Response(`${csv}\n`,{status:200,headers:{'Content-Type':'text/csv; charset=utf-8'}});
+    }
+    params=match(path,'/api/admin/community/:classId/schedule-preview');
+    if(params&&method==='POST'){
+      const file=body&&body.get&&body.get('file');
+      if(!file) return error('Choose a CSV file.',400);
+      const rows=previewScheduleRows(await file.text(),params.classId);
+      if(!rows.length) return error('That file has a header but no rows.',400);
+      return json({timezone:'Europe/Dublin',rows,
+        ready:rows.filter((r)=>!r.problems.length).length,
+        problems:rows.filter((r)=>r.problems.length).length});
+    }
+    params=match(path,'/api/admin/community/:classId/schedule-import');
+    if(params&&method==='POST'){
+      const file=body&&body.get&&body.get('file');
+      if(!file) return error('Choose a CSV file.',400);
+      const rows=previewScheduleRows(await file.text(),params.classId);
+      const usable=rows.filter((r)=>!r.problems.length);
+      if(!usable.length) return error('No row in that file could be used. Fix the problems listed and try again.',400);
+      for(const row of usable){
+        db.threads.push({id:`t${db.counters.thread=(db.counters.thread||90)+1}`,class_id:params.classId,
+          author_id:currentUser().id,category_id:row.categoryId,title:row.title,body:row.body,
+          pinned:row.pinned,locked:false,deleted_at:null,created_at:new RealDate(PREVIEW_NOW).toISOString(),
+          published_at:row.publishedAt,last_activity_at:row.publishedAt});
+      }
+      save();
+      return json({created:usable.length,skipped:rows.filter((r)=>r.problems.length)},201);
     }
     params=match(path,'/api/admin/community/thread/:id/schedule');
     if(params&&method==='PATCH'){
@@ -5945,6 +6094,7 @@ function communityView() {
       <div class="feed-head-actions">
         <select class="select" id="community-class">${classes.map((row) => `<option value="${row.id}" ${row.id === state.communityClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
         <button class="btn" id="manage-categories">Categories</button>
+        <button class="btn" id="open-schedule-plan">${svg.calendar} Scheduled</button>
       </div>
     </div>
     ${feedLayout(true)}`;
@@ -6080,6 +6230,221 @@ function renderThreadDrawer() {
       }));
     },
   });
+}
+
+/* A term of posts in one go.
+   ------------------------------------------------------------------
+   Writing next term's twelve posts one at a time through the composer is the
+   job this replaces. The planning already happens in a spreadsheet, so the
+   spreadsheet is what it takes.
+
+   Two screens: what is already queued, and bringing in a file. The file is read
+   and shown back before anything is written, because a bad date in row nine
+   should not leave eight posts on the board. */
+async function openSchedulePlan() {
+  let plan;
+  try { plan = await api(`/api/admin/community/${state.communityClassId}/scheduled`); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  modal({
+    title: 'Scheduled posts',
+    subtitle: `Not yet visible to students. Times in ${plan.timezone}.`,
+    wide: true,
+    body: `<div class="plan">
+      ${plan.posts.length ? scheduleCalendar(plan) : `<div class="plan-empty">
+        <strong>Nothing is queued</strong>
+        <span>Posts you schedule, one at a time or from a spreadsheet, wait here until their date.</span>
+      </div>`}
+    </div>`,
+    footer: `<button class="btn" data-close-modal>Close</button>
+      <button class="btn" id="download-template">Download template</button>
+      <button class="btn primary" id="open-schedule-import">Import a spreadsheet</button>`,
+    onOpen() {
+      document.getElementById('open-schedule-import').addEventListener('click', openScheduleImport);
+      document.getElementById('download-template').addEventListener('click', downloadScheduleTemplate);
+      bindPlanRows();
+    },
+  });
+}
+
+/* Month by month, because a term is planned in months. A day with something on
+   it carries the post; the rest are there to give the dates somewhere to sit. */
+function scheduleCalendar(plan) {
+  /* Everything here is read in the class timezone, not the reader's. A teacher
+     checking the plan from abroad wants to know that the post goes out at nine
+     on a Tuesday morning in Dublin — rendering it in their own clock would put
+     it in the wrong cell as well as at the wrong time, and the heading already
+     promises Dublin. */
+  const zone = plan.timezone || 'Europe/Dublin';
+  const inZone = (iso) => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date(iso)).reduce((all, part) => ({ ...all, [part.type]: part.value }), {});
+    return {
+      year: Number(parts.year), month: Number(parts.month), day: Number(parts.day),
+      time: `${parts.hour}:${parts.minute}`,
+    };
+  };
+
+  const byDay = new Map();
+  let earliest = null;
+  let latest = null;
+  for (const post of plan.posts) {
+    const at = inZone(post.published_at);
+    const key = `${at.year}-${at.month}-${at.day}`;
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push({ ...post, at });
+    const stamp = at.year * 12 + at.month;
+    if (earliest === null || stamp < earliest) earliest = stamp;
+    if (latest === null || stamp > latest) latest = stamp;
+  }
+
+  const months = [];
+  for (let stamp = earliest; stamp <= latest; stamp += 1) {
+    months.push({ year: Math.floor((stamp - 1) / 12), month: ((stamp - 1) % 12) + 1 });
+  }
+
+  return months.map(({ year, month }) => {
+    const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    // Monday-first, matching the rest of the application.
+    const lead = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7;
+
+    const cells = [
+      ...Array.from({ length: lead }, () => '<div class="plan-cell is-blank"></div>'),
+      ...Array.from({ length: days }, (_, index) => {
+        const posts = byDay.get(`${year}-${month}-${index + 1}`) || [];
+        return `<div class="plan-cell ${posts.length ? 'has-post' : ''}">
+          <span class="plan-date">${index + 1}</span>
+          ${posts.map((post) => `<button type="button" class="plan-chip" data-plan-post="${post.id}"
+            title="${escapeHtml(post.title)}">
+            <b>${escapeHtml(post.at.time)}</b>
+            <span>${escapeHtml(post.title)}</span>
+          </button>`).join('')}
+        </div>`;
+      }),
+    ];
+
+    return `<section class="plan-month">
+      <h4>${escapeHtml(new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-IE', { month: 'long', year: 'numeric', timeZone: 'UTC' }))}</h4>
+      <div class="plan-grid">
+        ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => `<div class="plan-head">${day}</div>`).join('')}
+        ${cells.join('')}
+      </div>
+    </section>`;
+  }).join('');
+}
+
+function bindPlanRows() {
+  document.querySelectorAll('[data-plan-post]').forEach((button) => button.addEventListener('click', async () => {
+    closeModal();
+    await openThread(button.dataset.planPost);
+  }));
+}
+
+/* Fetched rather than linked to. A plain download link would leave the page,
+   and a failure would land somebody on a bare error rather than telling them
+   what went wrong where they are. */
+async function downloadScheduleTemplate() {
+  try {
+    const response = await fetch(`/api/admin/community/${state.communityClassId}/schedule-template`, { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('The template could not be prepared.');
+    const url = URL.createObjectURL(new Blob([await response.text()], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'scheduled-posts-template.csv';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    // Freed on the next turn of the loop, once the browser has taken it.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+/* The file, read and shown back before anything is written. */
+function openScheduleImport() {
+  modal({
+    title: 'Import scheduled posts',
+    subtitle: 'One row per post. Nothing is written until you have seen what it read.',
+    wide: true,
+    body: `<label class="fu-zone" id="csv-zone">
+        <input class="fu-input" type="file" id="csv-input" accept=".csv,text/csv">
+        <span class="fu-icon">${svg.cloudUp}</span>
+        <span class="fu-lead"><b>Click to upload</b> or drag a CSV here</span>
+        <span class="fu-hint">Columns: Date, Title, Body, Category, Pinned</span>
+      </label>
+      <p class="muted small">Dates can be written 25/12/2026 09:00 or 2026-12-25T09:00. A category must already exist. Not sure of the shape? <button type="button" class="text-link" id="template-link">Download the template</button>.</p>
+      <div id="csv-preview"></div>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="csv-import" disabled>Import</button>`,
+    onOpen() {
+      document.getElementById('template-link')?.addEventListener('click', downloadScheduleTemplate);
+      const input = document.getElementById('csv-input');
+      const zone = document.getElementById('csv-zone');
+      const preview = document.getElementById('csv-preview');
+      const importButton = document.getElementById('csv-import');
+      let chosen = null;
+
+      const read = async (file) => {
+        if (!file) return;
+        chosen = file;
+        preview.innerHTML = '<p class="muted small">Reading…</p>';
+        importButton.disabled = true;
+        const form = new FormData();
+        form.append('file', file);
+        let result;
+        try { result = await api(`/api/admin/community/${state.communityClassId}/schedule-preview`, { method: 'POST', body: form }); }
+        catch (error) { preview.innerHTML = `<p class="csv-bad">${escapeHtml(error.message)}</p>`; return; }
+        preview.innerHTML = schedulePreview(result);
+        importButton.disabled = result.ready === 0;
+        importButton.textContent = result.ready
+          ? `Schedule ${result.ready} post${result.ready === 1 ? '' : 's'}`
+          : 'Nothing to import';
+      };
+
+      input.addEventListener('change', () => read(input.files?.[0]));
+      ['dragenter', 'dragover'].forEach((type) => zone.addEventListener(type, (event) => {
+        event.preventDefault(); zone.classList.add('is-over');
+      }));
+      ['dragleave', 'drop'].forEach((type) => zone.addEventListener(type, () => zone.classList.remove('is-over')));
+      zone.addEventListener('drop', (event) => { event.preventDefault(); read(event.dataTransfer?.files?.[0]); });
+
+      importButton.addEventListener('click', async () => {
+        if (!chosen) return;
+        const form = new FormData();
+        form.append('file', chosen);
+        importButton.disabled = true;
+        try {
+          const result = await api(`/api/admin/community/${state.communityClassId}/schedule-import`, { method: 'POST', body: form });
+          closeModal();
+          await reloadBoard();
+          showToast(`${result.created} post${result.created === 1 ? '' : 's'} scheduled${result.skipped.length ? `, ${result.skipped.length} skipped` : ''}`);
+        } catch (error) { importButton.disabled = false; showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* Every row, in file order, with its problems named. A row is either going in
+   or it is not, and it says which — a count alone leaves somebody guessing
+   which nine of their twelve posts made it. */
+function schedulePreview(result) {
+  return `<div class="csv-summary">
+      <span class="csv-ok">${result.ready} ready</span>
+      ${result.problems ? `<span class="csv-bad">${result.problems} with problems</span>` : ''}
+      <span class="muted small">Times read as ${escapeHtml(result.timezone)}</span>
+    </div>
+    <div class="table-wrap"><table class="data-table compact">
+      <thead><tr><th>Row</th><th>When</th><th>Title</th><th>Category</th><th></th></tr></thead>
+      <tbody>${result.rows.map((row) => `<tr class="${row.problems.length ? 'is-bad' : ''}">
+        <td>${row.line}</td>
+        <td>${escapeHtml(row.localWhen || '—')}${row.past && !row.problems.length ? '<b class="csv-note">publishes at once</b>' : ''}</td>
+        <td>${escapeHtml(row.title || '—')}${row.pinned ? ' <span class="pill">Pinned</span>' : ''}</td>
+        <td>${escapeHtml(row.categoryName || '—')}</td>
+        <td>${row.problems.length
+          ? `<span class="csv-bad">${escapeHtml(row.problems.join('; '))}</span>`
+          : '<span class="csv-ok">will be scheduled</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
 }
 
 function openScheduleModal(thread) {
@@ -6296,6 +6661,7 @@ function openCategoryModal() {
 function bindFeed() {
   document.getElementById('open-composer')?.addEventListener('click', openComposer);
   document.getElementById('manage-categories')?.addEventListener('click', openCategoryModal);
+  document.getElementById('open-schedule-plan')?.addEventListener('click', openSchedulePlan);
   document.querySelectorAll('[data-board-category]').forEach((button) => button.addEventListener('click', () => {
     state.boardCategoryId = button.dataset.boardCategory || null;
     reloadBoard();
