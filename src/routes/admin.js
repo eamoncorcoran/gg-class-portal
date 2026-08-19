@@ -1763,9 +1763,74 @@ router.patch('/modules/:id', asyncRoute(async (req, res) => {
   res.json(row);
 }));
 
+/* Deleting a section takes its lessons and everybody's record of having watched
+   them. The count is shown before the button is offered, the same as a course. */
+router.get('/modules/:id/impact', asyncRoute(async (req, res) => {
+  const module = await one('SELECT id, title FROM course_modules WHERE id=$1', [req.params.id]);
+  if (!module) return res.status(404).json({ error: 'Section not found.' });
+  const counts = await one(
+    `SELECT
+       (SELECT count(*)::int FROM course_lessons WHERE module_id=$1) lessons,
+       (SELECT count(*)::int FROM lesson_progress p
+          JOIN course_lessons l ON l.id=p.lesson_id WHERE l.module_id=$1) progress`,
+    [req.params.id],
+  );
+  res.json({ ...module, ...counts });
+}));
+
 router.delete('/modules/:id', asyncRoute(async (req, res) => {
   await query('DELETE FROM course_modules WHERE id=$1', [req.params.id]);
+  await audit({ actorId: req.user.id, action: 'course.module.deleted', entityType: 'module', entityId: req.params.id, ip: req.ip });
   res.status(204).end();
+}));
+
+/* Copy a course, so last year's can be run again without rebuilding it.
+   ------------------------------------------------------------------
+   Sections, lessons, notes and recording links come across; nobody's progress
+   does, because the copy is a course nobody has taken yet. It arrives
+   unpublished and enrolled in nothing, so it can be worked on before anybody
+   sees it — copying a live course straight onto a class's screen is not a thing
+   anybody wants to happen by accident. */
+router.post('/courses/:id/duplicate', asyncRoute(async (req, res) => {
+  const source = await one('SELECT * FROM courses WHERE id=$1', [req.params.id]);
+  if (!source) return res.status(404).json({ error: 'Course not found.' });
+  const parsed = z.object({ title: z.string().trim().min(2).max(200).optional() }).safeParse(req.body || {});
+  const title = parsed.success && parsed.data.title ? parsed.data.title : `${source.title} (copy)`;
+
+  const copy = await transaction(async (client) => {
+    const next = await client.query('SELECT COALESCE(max(position),-1)+1 position FROM courses');
+    const created = await client.query(
+      `INSERT INTO courses(title,description,cover_url,published,position,created_by,open_to_all)
+       VALUES ($1,$2,$3,false,$4,$5,false) RETURNING *`,
+      [title, source.description, source.cover_url, next.rows[0].position, req.user.id],
+    );
+    const course = created.rows[0];
+
+    const modules = await client.query(
+      'SELECT * FROM course_modules WHERE course_id=$1 ORDER BY position, created_at', [source.id]);
+    for (const [index, module] of modules.rows.entries()) {
+      const newModule = await client.query(
+        'INSERT INTO course_modules(course_id,title,position) VALUES ($1,$2,$3) RETURNING id',
+        [course.id, module.title, index],
+      );
+      const lessons = await client.query(
+        'SELECT * FROM course_lessons WHERE module_id=$1 ORDER BY position, created_at', [module.id]);
+      for (const [lessonIndex, lesson] of lessons.rows.entries()) {
+        await client.query(
+          `INSERT INTO course_lessons(module_id,title,notes,video_provider,video_ref,
+             duration_seconds,recorded_on,published,position)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [newModule.rows[0].id, lesson.title, lesson.notes, lesson.video_provider, lesson.video_ref,
+           lesson.duration_seconds, lesson.recorded_on, lesson.published, lessonIndex],
+        );
+      }
+    }
+    return course;
+  });
+
+  await audit({ actorId: req.user.id, action: 'course.duplicated', entityType: 'course', entityId: copy.id,
+    metadata: { from: source.id }, ip: req.ip });
+  res.status(201).json(copy);
 }));
 
 const lessonInput = z.object({
@@ -1847,13 +1912,22 @@ router.put('/courses/:id/order', asyncRoute(async (req, res) => {
     })),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid order.' });
+  /* The order sent is the whole shape of the course, so a lesson listed under a
+     different section than it currently sits in is a move. Scoping the update
+     to this course's own modules is what stops an id from another course being
+     dragged in by a crafted request. */
   await transaction(async (client) => {
+    const own = await client.query('SELECT id FROM course_modules WHERE course_id=$1', [req.params.id]);
+    const mine = new Set(own.rows.map((row) => row.id));
     for (const [index, module] of parsed.data.modules.entries()) {
+      if (!mine.has(module.id)) continue;
       await client.query('UPDATE course_modules SET position=$1 WHERE id=$2 AND course_id=$3',
         [index, module.id, req.params.id]);
       for (const [lessonIndex, lessonId] of module.lessons.entries()) {
-        await client.query('UPDATE course_lessons SET position=$1 WHERE id=$2 AND module_id=$3',
-          [lessonIndex, lessonId, module.id]);
+        await client.query(
+          `UPDATE course_lessons SET position=$1, module_id=$2
+           WHERE id=$3 AND module_id IN (SELECT id FROM course_modules WHERE course_id=$4)`,
+          [lessonIndex, module.id, lessonId, req.params.id]);
       }
     }
   });

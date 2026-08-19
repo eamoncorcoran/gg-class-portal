@@ -1095,10 +1095,153 @@
       return json({completed:body.completed!==false});
     }
     if(path==='/api/admin/courses'&&method==='GET') return json({courses:courseRows(user.id,true)});
+    if(path==='/api/admin/courses'&&method==='POST'){
+      if(!body.title) return error('Give the course a title.',400);
+      const row={id:`co${db.counters.course=(db.counters.course||1)+1}`,title:body.title,
+        description:body.description||'',cover_url:body.coverUrl||null,published:Boolean(body.published),
+        open_to_all:Boolean(body.openToAll),position:(db.courses||[]).length};
+      db.courses=(db.courses||[]).concat(row);
+      db.courseClasses=(db.courseClasses||[]).concat((body.classIds||[]).map((id)=>({course_id:row.id,class_id:id})));
+      save();return json(row,201);
+    }
+
+    /* Managing a course: everything the real admin routes do. The preview is
+       how this is shown to somebody without a database behind it, so the
+       management has to work here too, not only the reading. */
+    params=match(path,'/api/admin/courses/:id/impact');
+    if(params&&method==='GET'){
+      const lessons=lessonsOfCourse(params.id,true);
+      const ids=new Set(lessons.map((l)=>l.id));
+      return json({lessons:lessons.length,
+        progress:(db.lessonProgress||[]).filter((p)=>ids.has(p.lesson_id)).length,
+        modules:(db.courseModules||[]).filter((m)=>m.course_id===params.id).length});
+    }
+    params=match(path,'/api/admin/courses/:id/duplicate');
+    if(params&&method==='POST'){
+      const source=(db.courses||[]).find((c)=>c.id===params.id);
+      if(!source) return error('Course not found',404);
+      const copy={...source,id:`co${db.counters.course=(db.counters.course||1)+1}`,
+        title:body?.title||`${source.title} (copy)`,published:false,open_to_all:false,
+        position:(db.courses||[]).length};
+      db.courses.push(copy);
+      // Sections and lessons come across; nobody's progress does.
+      for(const module of (db.courseModules||[]).filter((m)=>m.course_id===source.id).sort((a,b)=>a.position-b.position)){
+        const newModule={id:`cm${db.counters.module=(db.counters.module||90)+1}`,course_id:copy.id,
+          title:module.title,position:module.position};
+        db.courseModules.push(newModule);
+        for(const lesson of (db.courseLessons||[]).filter((l)=>l.module_id===module.id).sort((a,b)=>a.position-b.position)){
+          db.courseLessons.push({...lesson,id:`cl${db.counters.lesson=(db.counters.lesson||90)+1}`,
+            module_id:newModule.id});
+        }
+      }
+      save();return json(copy,201);
+    }
+    params=match(path,'/api/admin/courses/:id/order');
+    if(params&&method==='PUT'){
+      const mine=new Set((db.courseModules||[]).filter((m)=>m.course_id===params.id).map((m)=>m.id));
+      (body.modules||[]).forEach((mod,index)=>{
+        if(!mine.has(mod.id))return;
+        const module=db.courseModules.find((m)=>m.id===mod.id);
+        if(module)module.position=index;
+        (mod.lessons||[]).forEach((lessonId,lessonIndex)=>{
+          const lesson=db.courseLessons.find((l)=>l.id===lessonId);
+          // Only lessons already inside this course can be reordered or moved.
+          if(!lesson)return;
+          const owner=db.courseModules.find((m)=>m.id===lesson.module_id);
+          if(!owner||owner.course_id!==params.id)return;
+          lesson.position=lessonIndex;lesson.module_id=mod.id;
+        });
+      });
+      save();return json({ok:true});
+    }
+    params=match(path,'/api/admin/courses/:id/modules');
+    if(params&&method==='POST'){
+      if(!body.title) return error('Give the section a title.',400);
+      const row={id:`cm${db.counters.module=(db.counters.module||90)+1}`,course_id:params.id,title:body.title,
+        position:(db.courseModules||[]).filter((m)=>m.course_id===params.id).length};
+      db.courseModules.push(row);save();return json(row,201);
+    }
     params=match(path,'/api/admin/courses/:id');
     if(params&&method==='GET'){
       const detail=courseDetail(params.id,user.id,true);
       return detail?json(detail):error('Course not found',404);
+    }
+    if(params&&method==='PATCH'){
+      const row=(db.courses||[]).find((c)=>c.id===params.id);
+      if(!row) return error('Course not found',404);
+      if(body.title!==undefined)row.title=body.title;
+      if(body.description!==undefined)row.description=body.description;
+      if(body.coverUrl!==undefined)row.cover_url=body.coverUrl||null;
+      if(body.published!==undefined)row.published=body.published;
+      if(body.openToAll!==undefined)row.open_to_all=body.openToAll;
+      if(body.classIds){
+        db.courseClasses=(db.courseClasses||[]).filter((cc)=>cc.course_id!==row.id)
+          .concat(body.classIds.map((id)=>({course_id:row.id,class_id:id})));
+      }
+      save();return json(row);
+    }
+    if(params&&method==='DELETE'){
+      const moduleIds=(db.courseModules||[]).filter((m)=>m.course_id===params.id).map((m)=>m.id);
+      const lessonIds=(db.courseLessons||[]).filter((l)=>moduleIds.includes(l.module_id)).map((l)=>l.id);
+      db.courseLessons=(db.courseLessons||[]).filter((l)=>!lessonIds.includes(l.id));
+      db.courseModules=(db.courseModules||[]).filter((m)=>!moduleIds.includes(m.id));
+      db.lessonProgress=(db.lessonProgress||[]).filter((p)=>!lessonIds.includes(p.lesson_id));
+      db.courseClasses=(db.courseClasses||[]).filter((cc)=>cc.course_id!==params.id);
+      db.courses=(db.courses||[]).filter((c)=>c.id!==params.id);
+      save();return json({},204);
+    }
+
+    params=match(path,'/api/admin/modules/:id/impact');
+    if(params&&method==='GET'){
+      const module=(db.courseModules||[]).find((m)=>m.id===params.id);
+      if(!module) return error('Section not found',404);
+      const lessons=(db.courseLessons||[]).filter((l)=>l.module_id===params.id);
+      const ids=new Set(lessons.map((l)=>l.id));
+      return json({id:module.id,title:module.title,lessons:lessons.length,
+        progress:(db.lessonProgress||[]).filter((p)=>ids.has(p.lesson_id)).length});
+    }
+    params=match(path,'/api/admin/modules/:id/lessons');
+    if(params&&method==='POST'){
+      if(!body.title) return error('Give the lesson a title.',400);
+      const row={id:`cl${db.counters.lesson=(db.counters.lesson||90)+1}`,module_id:params.id,title:body.title,
+        notes:body.notes||'',video_provider:body.videoProvider||null,video_ref:body.video||null,
+        duration_seconds:body.durationSeconds||null,recorded_on:body.recordedOn||null,
+        published:body.published!==false,
+        position:(db.courseLessons||[]).filter((l)=>l.module_id===params.id).length};
+      db.courseLessons.push(row);save();return json(row,201);
+    }
+    params=match(path,'/api/admin/modules/:id');
+    if(params&&method==='PATCH'){
+      const row=(db.courseModules||[]).find((m)=>m.id===params.id);
+      if(!row) return error('Section not found',404);
+      if(!body.title) return error('Give the section a title.',400);
+      row.title=body.title;save();return json(row);
+    }
+    if(params&&method==='DELETE'){
+      const lessonIds=(db.courseLessons||[]).filter((l)=>l.module_id===params.id).map((l)=>l.id);
+      db.courseLessons=(db.courseLessons||[]).filter((l)=>l.module_id!==params.id);
+      db.lessonProgress=(db.lessonProgress||[]).filter((p)=>!lessonIds.includes(p.lesson_id));
+      db.courseModules=(db.courseModules||[]).filter((m)=>m.id!==params.id);
+      save();return json({},204);
+    }
+
+    params=match(path,'/api/admin/lessons/:id');
+    if(params&&method==='PATCH'){
+      const row=(db.courseLessons||[]).find((l)=>l.id===params.id);
+      if(!row) return error('Lesson not found',404);
+      if(body.title!==undefined)row.title=body.title;
+      if(body.notes!==undefined)row.notes=body.notes;
+      if(body.published!==undefined)row.published=body.published;
+      if(body.videoProvider!==undefined)row.video_provider=body.videoProvider||null;
+      if(body.video!==undefined)row.video_ref=body.video||null;
+      if(body.durationSeconds!==undefined)row.duration_seconds=body.durationSeconds||null;
+      if(body.recordedOn!==undefined)row.recorded_on=body.recordedOn||null;
+      save();return json(row);
+    }
+    if(params&&method==='DELETE'){
+      db.courseLessons=(db.courseLessons||[]).filter((l)=>l.id!==params.id);
+      db.lessonProgress=(db.lessonProgress||[]).filter((p)=>p.lesson_id!==params.id);
+      save();return json({},204);
     }
 
     if(path==='/api/gifs'&&method==='GET'){

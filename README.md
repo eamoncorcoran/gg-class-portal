@@ -430,6 +430,31 @@ merely being hard to guess. Without the key playback still works, but a copied
 link keeps working — the interface says so rather than letting you assume
 otherwise.
 
+### Managing a course
+
+Every course carries a menu — on its card in the grid, and again on the course
+itself once open.
+
+| Action | What it does |
+| --- | --- |
+| Edit course | Title, description, cover photo, who sees it |
+| Publish / Unpublish | An unpublished course is invisible to students but keeps everything. This is how a finished course is put away without losing it. |
+| Duplicate | Copies the sections, lessons, notes and recording links so last year's course can be run again. Nobody's progress comes across, and the copy arrives as a draft enrolled in nothing, so it can be worked on before anybody sees it. |
+| Delete course | Takes its lessons and everybody's record of having watched them. The count is shown first. |
+
+**Sections** can be renamed, moved up or down, and deleted. Deleting one says how
+many lessons and watch records go with it, and suggests moving them elsewhere
+first.
+
+**Lessons** carry their own menu on every row of the contents list, not just the
+one being watched: edit, publish or unpublish, move up or down, move to another
+section, delete. A lesson moved to another section goes to the end of it, and
+nobody's record of having watched it is affected.
+
+Unpublishing is the reversible one throughout, and the delete confirmations say
+so — a course or a lesson that is simply finished should be unpublished, not
+deleted.
+
 ### Importing from Zoom
 
 Class ends, Zoom finishes processing, the recording appears in the portal as a

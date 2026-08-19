@@ -255,3 +255,116 @@ test('deleting a class or a course takes its enrolments with it', dbTest, async 
     assert.equal(left.rowCount, 0);
   } finally { await cleanup(); }
 });
+
+/* Management: the actions that had backend routes but no way to ask for them,
+   plus the reordering that can now move a lesson between sections. */
+
+test('reordering can move a lesson to another section, but not across courses', dbTest, async () => {
+  const { one, query, transaction } = await import('../src/db.js');
+  const { klass, course, module, lessons, cleanup } = await fixture();
+
+  const second = await one(
+    'INSERT INTO course_modules(course_id,title,position) VALUES ($1,\'Term 2\',1) RETURNING *', [course.id]);
+  // A whole separate course, whose lessons must stay where they are.
+  const outsider = await one(
+    `INSERT INTO courses(title,published) VALUES ('Someone else''s course',true) RETURNING *`);
+  const outsiderModule = await one(
+    'INSERT INTO course_modules(course_id,title,position) VALUES ($1,\'Theirs\',0) RETURNING *', [outsider.id]);
+  const outsiderLesson = await one(
+    `INSERT INTO course_lessons(module_id,title,position) VALUES ($1,'Theirs',0) RETURNING *`, [outsiderModule.id]);
+
+  /* The same shape the route applies, exercised directly: the route is thin and
+     this is the part with the rules in it. */
+  const applyOrder = async (courseId, modules) => transaction(async (client) => {
+    const own = await client.query('SELECT id FROM course_modules WHERE course_id=$1', [courseId]);
+    const mine = new Set(own.rows.map((row) => row.id));
+    for (const [index, mod] of modules.entries()) {
+      if (!mine.has(mod.id)) continue;
+      await client.query('UPDATE course_modules SET position=$1 WHERE id=$2 AND course_id=$3', [index, mod.id, courseId]);
+      for (const [lessonIndex, lessonId] of mod.lessons.entries()) {
+        await client.query(
+          `UPDATE course_lessons SET position=$1, module_id=$2
+           WHERE id=$3 AND module_id IN (SELECT id FROM course_modules WHERE course_id=$4)`,
+          [lessonIndex, mod.id, lessonId, courseId]);
+      }
+    }
+  });
+
+  try {
+    // Move the first lesson out of its section and into the second.
+    await applyOrder(course.id, [
+      { id: module.id, lessons: [lessons[1].id, lessons[2].id] },
+      { id: second.id, lessons: [lessons[0].id] },
+    ]);
+    const moved = await one('SELECT module_id, position FROM course_lessons WHERE id=$1', [lessons[0].id]);
+    assert.equal(moved.module_id, second.id, 'the lesson should have changed section');
+    assert.equal(moved.position, 0);
+    // The two left behind close the gap rather than keeping their old numbers.
+    const stayed = await query('SELECT id, position FROM course_lessons WHERE module_id=$1 ORDER BY position', [module.id]);
+    assert.deepEqual(stayed.rows.map((row) => row.position), [0, 1]);
+
+    /* A crafted request naming another course's section and lesson must do
+       nothing at all — this is the only place an id from outside is accepted. */
+    await applyOrder(course.id, [{ id: outsiderModule.id, lessons: [outsiderLesson.id] }]);
+    const untouched = await one('SELECT module_id, position FROM course_lessons WHERE id=$1', [outsiderLesson.id]);
+    assert.equal(untouched.module_id, outsiderModule.id);
+    assert.equal(untouched.position, 0);
+
+    // And a lesson from another course cannot be pulled into this one.
+    await applyOrder(course.id, [{ id: second.id, lessons: [outsiderLesson.id] }]);
+    const stillTheirs = await one('SELECT module_id FROM course_lessons WHERE id=$1', [outsiderLesson.id]);
+    assert.equal(stillTheirs.module_id, outsiderModule.id, 'another course’s lesson must not be movable');
+  } finally {
+    await query('DELETE FROM courses WHERE id=$1', [outsider.id]);
+    await cleanup();
+  }
+});
+
+test('duplicating a course copies its shape but nobody’s progress', dbTest, async () => {
+  const { setLessonProgress } = await import('../src/courses.js');
+  const { one, query } = await import('../src/db.js');
+  const { klass, alice, course, module, lessons, cleanup } = await fixture();
+  await setLessonProgress({ studentId: alice.id, lessonId: lessons[0].id, completed: true });
+  await query('UPDATE courses SET published=true, open_to_all=true WHERE id=$1', [course.id]);
+  await query('UPDATE course_lessons SET published=false WHERE id=$1', [lessons[2].id]);
+
+  // The same copy the route performs.
+  const copy = await one(
+    `INSERT INTO courses(title,description,cover_url,published,position,open_to_all)
+     SELECT title || ' (copy)', description, cover_url, false, position, false
+     FROM courses WHERE id=$1 RETURNING *`, [course.id]);
+  const newModule = await one(
+    'INSERT INTO course_modules(course_id,title,position) VALUES ($1,$2,0) RETURNING *', [copy.id, module.title]);
+  for (const [index, lesson] of lessons.entries()) {
+    await query(
+      `INSERT INTO course_lessons(module_id,title,notes,video_provider,video_ref,published,position)
+       SELECT $1,title,notes,video_provider,video_ref,published,$2 FROM course_lessons WHERE id=$3`,
+      [newModule.id, index, lesson.id]);
+  }
+
+  try {
+    // A copy nobody has taken yet: no progress rows point into it.
+    const progress = await one(
+      `SELECT count(*)::int n FROM lesson_progress p JOIN course_lessons l ON l.id=p.lesson_id
+       WHERE l.module_id=$1`, [newModule.id]);
+    assert.equal(progress.n, 0, 'the copy must not inherit anybody’s watch history');
+    // The original keeps its own.
+    const original = await one(
+      `SELECT count(*)::int n FROM lesson_progress p JOIN course_lessons l ON l.id=p.lesson_id
+       WHERE l.module_id=$1`, [module.id]);
+    assert.equal(original.n, 1);
+
+    // A draft, reaching nobody, whatever the original was.
+    assert.equal(copy.published, false);
+    assert.equal(copy.open_to_all, false);
+    const enrolments = await one('SELECT count(*)::int n FROM course_classes WHERE course_id=$1', [copy.id]);
+    assert.equal(enrolments.n, 0, 'a copy must not land on a class’s screen by itself');
+
+    // Draft lessons stay drafts rather than being published by the copy.
+    const copied = await query('SELECT title, published FROM course_lessons WHERE module_id=$1 ORDER BY position', [newModule.id]);
+    assert.deepEqual(copied.rows.map((row) => row.published), [true, true, false]);
+  } finally {
+    await query('DELETE FROM courses WHERE id=$1', [copy.id]);
+    await cleanup();
+  }
+});

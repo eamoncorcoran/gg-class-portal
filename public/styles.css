@@ -1179,12 +1179,28 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .lc-mod+.lc-mod{border-top:1px solid var(--gray-100)}
 .lc-mod h4{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 5px;padding:0 16px;
   color:var(--text-quaternary);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.lc-mod-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lc-mod-tools{display:flex;align-items:center;gap:3px;flex:0 0 auto}
 .lc-add{width:20px;height:20px;display:grid;place-items:center;border:0;border-radius:var(--radius-xs);
-  background:var(--gray-100);color:var(--text-secondary);font-size:14px;line-height:1}
+  background:var(--gray-100);color:var(--text-secondary);font-size:14px;line-height:1;cursor:pointer}
+.lc-add:hover{background:var(--gray-200);color:var(--text-primary)}
+.lc-add svg{width:13px;height:13px}
 .lc-empty{margin:0;padding:2px 16px 6px;color:var(--text-quaternary);font-size:11.5px}
+/* The row holds the lesson button and, for an administrator, its own menu.
+   The menu is hidden until the row is hovered or focused, so the list still
+   reads as a list of lessons rather than a list of controls. */
+.ll-row{position:relative;display:flex;align-items:stretch}
+.ll-row.on{background:var(--brand-25);box-shadow:inset 3px 0 0 var(--brand-600)}
+.ll-row:hover{background:var(--gray-25)}
+.ll-row.on:hover{background:var(--brand-25)}
+.ll-menu{position:absolute;top:50%;right:8px;transform:translateY(-50%);
+  display:grid;place-items:center;width:24px;height:24px;border:0;border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--text-tertiary);opacity:0;cursor:pointer;box-shadow:var(--shadow-xs)}
+.ll-menu svg{width:14px;height:14px}
+.ll-row:hover .ll-menu,.ll-menu:focus-visible{opacity:1}
+.ll-menu:hover{color:var(--text-primary)}
 .ll{display:flex;align-items:center;gap:11px;width:100%;padding:9px 16px;border:0;background:transparent;text-align:left}
-.ll:hover{background:var(--gray-25)}
-.ll.on{background:var(--brand-25);box-shadow:inset 3px 0 0 var(--brand-600)}
+.ll.on{box-shadow:none}
 .ll.draft{opacity:.62}
 .ll-tick{display:grid;place-items:center;width:22px;height:22px;flex:0 0 auto;border-radius:999px;
   border:1px solid var(--border-strong);color:var(--text-quaternary);font-size:10px;font-weight:700}
@@ -1374,4 +1390,43 @@ details.leaving summary:hover{color:var(--text-secondary)}
   .plan-grid{grid-template-columns:repeat(7,minmax(38px,1fr));overflow-x:auto}
   .plan-cell{min-height:58px}
   .plan-chip span{display:none}
+}
+
+/* ---- The little action menu -------------------------------------- */
+/* One popover, used by the course cards, the sections and the lessons. Put on
+   the body and positioned against whatever opened it, so it is never clipped by
+   a card's own overflow. */
+.pop-menu{position:fixed;z-index:80;min-width:196px;padding:5px;
+  border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);
+  box-shadow:var(--shadow-lg);display:grid;gap:1px}
+.pop-menu hr{margin:4px 5px;border:0;border-top:1px solid var(--border)}
+.pop-item{display:flex;align-items:center;gap:10px;width:100%;padding:8px 9px;border:0;
+  border-radius:var(--radius-sm);background:transparent;color:var(--text-secondary);
+  font-size:13px;font-weight:560;text-align:left;cursor:pointer}
+.pop-item:hover{background:var(--gray-50);color:var(--text-primary)}
+.pop-item svg{width:15px;height:15px;flex:0 0 auto;color:var(--text-quaternary)}
+.pop-item:hover svg{color:var(--text-tertiary)}
+.pop-item.is-danger{color:var(--error-600)}
+.pop-item.is-danger:hover{background:var(--error-50)}
+.pop-item.is-danger svg,.pop-item.is-danger:hover svg{color:var(--error-600)}
+
+/* Manage button on a course card. Sits over the cover, so it carries its own
+   backing rather than relying on whatever photo is behind it. */
+.cc-menu{position:absolute;top:9px;right:9px;display:grid;place-items:center;width:28px;height:28px;
+  border:0;border-radius:var(--radius-sm);background:rgba(16,24,40,.55);color:#fff;
+  opacity:0;cursor:pointer;backdrop-filter:blur(4px)}
+.cc-menu svg{width:15px;height:15px}
+.cc:hover .cc-menu,.cc-menu:focus-visible{opacity:1}
+.cc-menu:hover{background:rgba(16,24,40,.78)}
+
+/* The bar above a course being managed. */
+.cp-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.cp-top .cp-back{margin-bottom:0}
+.cp-top-right{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.cp-top-right .btn.small svg{width:15px;height:15px}
+
+@media (max-width:700px){
+  /* No hover on touch, so the menus are always there. */
+  .cc-menu,.ll-menu{opacity:1}
+  .cp-top{flex-wrap:wrap}
 }

@@ -52,6 +52,14 @@ const svg = {
   grid: `<svg viewBox="0 0 24 24" fill="none"><path d="M8.4 3H4.6c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C3 3.76 3 4.04 3 4.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C3.76 10 4.04 10 4.6 10h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C10 9.24 10 8.96 10 8.4V4.6c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C9.24 3 8.96 3 8.4 3Zm11 0h-3.8c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C14 3.76 14 4.04 14 4.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C14.76 10 15.04 10 15.6 10h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C21 9.24 21 8.96 21 8.4V4.6c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C20.24 3 19.96 3 19.4 3Zm0 11h-3.8c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C14 14.76 14 15.04 14 15.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C14.76 21 15.04 21 15.6 21h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C21 20.24 21 19.96 21 19.4v-3.8c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C20.24 14 19.96 14 19.4 14Zm-11 0H4.6c-.56 0-.84 0-1.054.109a1 1 0 0 0-.437.437C3 14.76 3 15.04 3 15.6v3.8c0 .56 0 .84.109 1.054a1 1 0 0 0 .437.437C3.76 21 4.04 21 4.6 21h3.8c.56 0 .84 0 1.054-.109a1 1 0 0 0 .437-.437C10 20.24 10 19.96 10 19.4v-3.8c0-.56 0-.84-.109-1.054a1 1 0 0 0-.437-.437C9.24 14 8.96 14 8.4 14Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   mail: `<svg viewBox="0 0 24 24" fill="none"><path d="m2 7 8.165 5.715c.661.463.992.695 1.351.784a2 2 0 0 0 .968 0c.36-.09.69-.32 1.351-.784L22 7M6.8 20h10.4c1.68 0 2.52 0 3.162-.327a3 3 0 0 0 1.311-1.311C22 17.72 22 16.88 22 15.2V8.8c0-1.68 0-2.52-.327-3.162a3 3 0 0 0-1.311-1.311C19.72 4 18.88 4 17.2 4H6.8c-1.68 0-2.52 0-3.162.327a3 3 0 0 0-1.311 1.311C2 6.28 2 7.12 2 8.8v6.4c0 1.68 0 2.52.327 3.162a3 3 0 0 0 1.311 1.311C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   spark: `<svg viewBox="0 0 24 24" fill="none"><path d="M4.5 22v-5m0-10V2M2 4.5h5m-5 15h5M13 3l-1.734 4.509c-.282.733-.423 1.1-.643 1.408a3 3 0 0 1-.706.707c-.308.219-.675.36-1.408.642L4 12l4.509 1.734c.733.282 1.1.423 1.408.643.273.194.512.433.707.706.219.308.36.675.642 1.408L13 21l1.734-4.509c.282-.733.423-1.1.643-1.408.194-.273.433-.512.706-.707.308-.219.675-.36 1.408-.642L22 12l-4.509-1.734c-.733-.282-1.1-.423-1.408-.642a3 3 0 0 1-.706-.707c-.22-.308-.36-.675-.643-1.408L13 3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  dots: `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>`,
+  copy: `<svg viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  eye: `<svg viewBox="0 0 24 24" fill="none"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>`,
+  eyeOff: `<svg viewBox="0 0 24 24" fill="none"><path d="M3 3l18 18M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.4-1.2M6.7 6.8C4 8.3 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.7-1.3M9.9 5.2A9.6 9.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.4 3.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  arrowUp: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 19V5m0 0-6 6m6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  arrowDown: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14m0 0 6-6m-6 6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  pencil: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 20h4L20 8a2.8 2.8 0 0 0-4-4L4 16v4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   search: `<svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   paperclip: `<svg viewBox="0 0 24 24" fill="none"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   check: `<svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -2043,6 +2051,8 @@ function courseCard(course) {
     <div class="cc-cover" ${course.cover_url ? `style="background-image:url('${escapeHtml(course.cover_url)}')"` : ''}>
       ${course.cover_url ? '' : `<span>${escapeHtml(initials(course.title))}</span>`}
       ${course.published === false ? '<b class="cc-draft">Draft</b>' : ''}
+      ${isAdmin() ? `<button type="button" class="cc-menu" data-course-menu="${course.id}"
+        aria-label="Manage ${escapeHtml(course.title)}" title="Manage this course">${svg.dots}</button>` : ''}
     </div>
     <div class="cc-body">
       <h3>${escapeHtml(course.title)}</h3>
@@ -2105,15 +2115,24 @@ function lessonPlayer(lesson) {
     src="${escapeHtml(lesson.video.src)}"></video></div>`;
 }
 
-function lessonRow(lesson, index, active) {
-  return `<button class="ll ${active ? 'on' : ''} ${lesson.completed ? 'done' : ''} ${lesson.published === false ? 'draft' : ''}"
-    data-open-lesson="${lesson.id}">
-    <span class="ll-tick">${lesson.completed ? svg.tick : `<i>${index}</i>`}</span>
-    <span class="ll-copy">
-      <strong>${escapeHtml(lesson.title)}</strong>
-      <span>${lesson.durationLabel ? escapeHtml(lesson.durationLabel) : ''}${lesson.published === false ? ' · Draft' : ''}</span>
-    </span>
-  </button>`;
+/* One lesson in the contents list. A row rather than a single button, because
+   for an administrator it carries its own menu, and a button cannot live inside
+   a button. For a student it is exactly what it was. */
+function lessonRow(lesson, index, active, place = null) {
+  const admin = isAdmin();
+  return `<div class="ll-row ${active ? 'on' : ''}">
+    <button class="ll ${active ? 'on' : ''} ${lesson.completed ? 'done' : ''} ${lesson.published === false ? 'draft' : ''}"
+      data-open-lesson="${lesson.id}">
+      <span class="ll-tick">${lesson.completed ? svg.tick : `<i>${index}</i>`}</span>
+      <span class="ll-copy">
+        <strong>${escapeHtml(lesson.title)}</strong>
+        <span>${lesson.durationLabel ? escapeHtml(lesson.durationLabel) : ''}${lesson.published === false ? ' · Draft' : ''}</span>
+      </span>
+    </button>
+    ${admin && place ? `<button class="ll-menu" data-lesson-menu="${lesson.id}"
+      data-module-id="${place.moduleId}" data-lesson-index="${place.lessonIndex}"
+      aria-label="Manage ${escapeHtml(lesson.title)}" title="Manage this lesson">${svg.dots}</button>` : ''}
+  </div>`;
 }
 
 function courseContents() {
@@ -2125,9 +2144,19 @@ function courseContents() {
       ${isAdmin() ? '' : `<span>${course.completedCount} of ${course.lessonCount} done</span>
         <div class="cc-bar"><span style="width:${course.percent}%"></span></div>`}
     </div>
-    ${course.modules.map((module) => `<section class="lc-mod">
-      <h4>${escapeHtml(module.title)}${isAdmin() ? `<button class="lc-add" data-add-lesson="${module.id}" title="Add a lesson">+</button>` : ''}</h4>
-      ${module.lessons.map((lesson) => lessonRow(lesson, (number += 1), lesson.id === state.lessonId)).join('')
+    ${course.modules.map((module, moduleIndex) => `<section class="lc-mod">
+      <h4>
+        <span class="lc-mod-title">${escapeHtml(module.title)}</span>
+        ${isAdmin() ? `<span class="lc-mod-tools">
+          <button class="lc-add" data-add-lesson="${module.id}" title="Add a lesson" aria-label="Add a lesson to ${escapeHtml(module.title)}">+</button>
+          <button class="lc-add" data-module-menu="${module.id}" data-module-index="${moduleIndex}"
+            title="Manage this section" aria-label="Manage ${escapeHtml(module.title)}">${svg.dots}</button>
+        </span>` : ''}
+      </h4>
+      ${module.lessons.map((lesson, lessonIndex) => lessonRow(
+          lesson, (number += 1), lesson.id === state.lessonId,
+          { moduleId: module.id, moduleIndex, lessonIndex, lessonCount: module.lessons.length }))
+        .join('')
         || '<p class="lc-empty">No lessons in this section yet.</p>'}
     </section>`).join('')}
     ${isAdmin() ? '<button class="btn small lc-newmod" id="add-module">Add a section</button>' : ''}
@@ -2143,7 +2172,14 @@ function coursePage() {
   const next = at >= 0 ? lessons[at + 1] : null;
 
   return `<div class="cp">
-    <button class="cp-back" id="back-to-courses">${svg.chevronLeft} All courses</button>
+    <div class="cp-top">
+      <button class="cp-back" id="back-to-courses">${svg.chevronLeft} All courses</button>
+      ${isAdmin() ? `<div class="cp-top-right">
+        ${course.published === false ? '<span class="pill">Draft</span>' : ''}
+        <button class="btn small" id="course-edit">Edit course</button>
+        <button class="btn small" id="course-manage" aria-label="More course actions">${svg.dots}</button>
+      </div>` : ''}
+    </div>
     <div class="cp-main">
       <div class="cp-stage">
         ${lessonPlayer(lesson)}
@@ -2227,33 +2263,214 @@ function bindCourse() {
 function bindCourseAdmin() {
   document.getElementById('new-course')?.addEventListener('click', () => openCourseModal());
   document.getElementById('open-zoom')?.addEventListener('click', openZoomImport);
-  document.getElementById('add-module')?.addEventListener('click', async () => {
-    const title = window.prompt('Name this section', 'Term 1');
-    if (!title?.trim()) return;
-    try {
-      await api(`/api/admin/courses/${state.course.id}/modules`, { method: 'POST', body: { title: title.trim() } });
-      await openCourse(state.course.id, state.lessonId);
-    } catch (error) { showToast(error.message, 'error'); }
+
+  // The card menu, on the courses grid.
+  document.querySelectorAll('[data-course-menu]').forEach((button) =>
+    button.addEventListener('click', (event) => {
+      event.stopPropagation(); // The card itself opens the course.
+      const course = (state.courses || []).find((row) => row.id === button.dataset.courseMenu);
+      if (course) actionMenu(button, courseActions(course));
+    }));
+
+  // The same actions from inside the course.
+  document.getElementById('course-edit')?.addEventListener('click', () => openCourseModal(state.course));
+  document.getElementById('course-manage')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    actionMenu(event.currentTarget, courseActions(state.course));
   });
+
+  document.getElementById('add-module')?.addEventListener('click', () => openSectionModal());
   document.querySelectorAll('[data-add-lesson]').forEach((button) =>
     button.addEventListener('click', (event) => { event.stopPropagation(); openLessonModal(button.dataset.addLesson); }));
+
+  // Section menu: rename, move, delete.
+  document.querySelectorAll('[data-module-menu]').forEach((button) =>
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const index = Number(button.dataset.moduleIndex);
+      const module = state.course.modules[index];
+      const last = state.course.modules.length - 1;
+      actionMenu(button, [
+        { label: 'Rename section', icon: svg.pencil, run: () => openSectionModal(module) },
+        ...(index > 0 ? [{ label: 'Move up', icon: svg.arrowUp, run: () => moveModule(index, -1) }] : []),
+        ...(index < last ? [{ label: 'Move down', icon: svg.arrowDown, run: () => moveModule(index, 1) }] : []),
+        { separator: true },
+        { label: 'Delete section', icon: svg.trash, danger: true, run: () => confirmDeleteSection(module) },
+      ]);
+    }));
+
+  // Lesson menu, on every row rather than only the one being watched.
+  document.querySelectorAll('[data-lesson-menu]').forEach((button) =>
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const moduleIndex = state.course.modules.findIndex((row) => row.id === button.dataset.moduleId);
+      const module = state.course.modules[moduleIndex];
+      const lessonIndex = Number(button.dataset.lessonIndex);
+      const lesson = module.lessons[lessonIndex];
+      const published = lesson.published !== false;
+      const others = state.course.modules.filter((row) => row.id !== module.id);
+      actionMenu(button, [
+        { label: 'Edit lesson', icon: svg.pencil, run: () => openLessonModal(null, lesson) },
+        {
+          label: published ? 'Unpublish' : 'Publish',
+          icon: published ? svg.eyeOff : svg.eye,
+          run: () => setLessonPublished(lesson, !published),
+        },
+        ...(lessonIndex > 0 ? [{ label: 'Move up', icon: svg.arrowUp, run: () => moveLesson(moduleIndex, lessonIndex, -1) }] : []),
+        ...(lessonIndex < module.lessons.length - 1
+          ? [{ label: 'Move down', icon: svg.arrowDown, run: () => moveLesson(moduleIndex, lessonIndex, 1) }] : []),
+        ...(others.length ? [{ label: 'Move to another section…', icon: svg.copy, run: () => openMoveLesson(lesson, module) }] : []),
+        { separator: true },
+        { label: 'Delete lesson', icon: svg.trash, danger: true, run: () => confirmDeleteLesson(lesson) },
+      ]);
+    }));
+
+  // The buttons beside the player still work on whatever is open.
   document.querySelectorAll('[data-edit-lesson]').forEach((button) =>
     button.addEventListener('click', () => openLessonModal(null, currentLesson())));
   document.querySelectorAll('[data-delete-lesson]').forEach((button) =>
-    button.addEventListener('click', async () => {
-      const lesson = currentLesson();
-      const ok = await askConfirm({
-        title: `Delete “${lesson.title}”?`,
-        message: 'The recording link and everybody’s record of having watched it go with it. This cannot be undone.',
-        confirmLabel: 'Delete lesson', danger: true,
+    button.addEventListener('click', () => confirmDeleteLesson(currentLesson())));
+}
+
+/* Naming a section. This used to be window.prompt, which returns false without
+   asking anything inside a sandboxed iframe — the section simply never got
+   made, with nothing on screen to say why. */
+function openSectionModal(module = null) {
+  modal({
+    title: module ? 'Rename section' : 'Add a section',
+    subtitle: 'A section groups the recordings — a term, a module, a theme.',
+    body: `<form id="section-form"><div class="form-field"><label>Section name</label>
+      <input name="title" required maxlength="200" value="${escapeHtml(module?.title || '')}" placeholder="Term 1: Foundations"></div></form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-section">${module ? 'Save' : 'Add section'}</button>`,
+    onOpen() {
+      const input = document.querySelector('#section-form input');
+      input.focus();
+      input.select();
+      const save = async () => {
+        const title = input.value.trim();
+        if (!title) return showToast('Give the section a name.', 'error');
+        try {
+          if (module) await api(`/api/admin/modules/${module.id}`, { method: 'PATCH', body: { title } });
+          else await api(`/api/admin/courses/${state.course.id}/modules`, { method: 'POST', body: { title } });
+          closeModal();
+          await openCourse(state.course.id, state.lessonId);
+          showToast(module ? 'Section renamed' : 'Section added');
+        } catch (error) { showToast(error.message, 'error'); }
+      };
+      document.getElementById('save-section').addEventListener('click', save);
+      document.getElementById('section-form').addEventListener('submit', (event) => { event.preventDefault(); save(); });
+    },
+  });
+}
+
+async function confirmDeleteSection(module) {
+  let impact;
+  try { impact = await api(`/api/admin/modules/${module.id}/impact`); }
+  catch (error) { return showToast(error.message, 'error'); }
+  const ok = await askConfirm({
+    title: `Delete “${module.title}”?`,
+    message: impact.lessons
+      ? `${impact.lessons} lesson${impact.lessons === 1 ? '' : 's'} and ${impact.progress} record${impact.progress === 1 ? '' : 's'} of students having watched them go with it. This cannot be undone — move the lessons to another section first if you want to keep them.`
+      : 'This section is empty, so nothing else goes with it.',
+    confirmLabel: 'Delete section', danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api(`/api/admin/modules/${module.id}`, { method: 'DELETE' });
+    await openCourse(state.course.id);
+    showToast('Section deleted');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function confirmDeleteLesson(lesson) {
+  if (!lesson) return;
+  const ok = await askConfirm({
+    title: `Delete “${lesson.title}”?`,
+    message: 'The recording link and everybody’s record of having watched it go with it. This cannot be undone — to take it off students’ screens without losing it, unpublish it instead.',
+    confirmLabel: 'Delete lesson', danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api(`/api/admin/lessons/${lesson.id}`, { method: 'DELETE' });
+    // Whatever was open may be the thing just deleted, so let the course decide.
+    state.lessonId = null;
+    await openCourse(state.course.id);
+    showToast('Lesson deleted');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+/* Taking one recording off students' screens without deleting it — the usual
+   reason being that it was published before it was ready. */
+async function setLessonPublished(lesson, published) {
+  try {
+    await api(`/api/admin/lessons/${lesson.id}`, { method: 'PATCH', body: { title: lesson.title, published } });
+    await openCourse(state.course.id, state.lessonId);
+    showToast(published ? 'Lesson published' : 'Lesson hidden from students');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+/* Order.
+   ------------------------------------------------------------------
+   The whole shape of the course is sent each time rather than a single move,
+   which is what the server's order route already expected and nothing had ever
+   called. Rearranging locally first means the list is only ever saved in a
+   state we have actually drawn. */
+function currentOrder() {
+  return state.course.modules.map((module) => ({
+    id: module.id,
+    lessons: module.lessons.map((lesson) => lesson.id),
+  }));
+}
+
+async function saveOrder(modules) {
+  try {
+    await api(`/api/admin/courses/${state.course.id}/order`, { method: 'PUT', body: { modules } });
+    await openCourse(state.course.id, state.lessonId);
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function moveModule(index, by) {
+  const modules = currentOrder();
+  const target = index + by;
+  if (target < 0 || target >= modules.length) return;
+  [modules[index], modules[target]] = [modules[target], modules[index]];
+  await saveOrder(modules);
+}
+
+async function moveLesson(moduleIndex, lessonIndex, by) {
+  const modules = currentOrder();
+  const lessons = modules[moduleIndex].lessons;
+  const target = lessonIndex + by;
+  if (target < 0 || target >= lessons.length) return;
+  [lessons[lessonIndex], lessons[target]] = [lessons[target], lessons[lessonIndex]];
+  await saveOrder(modules);
+}
+
+/* Moving a lesson to a different section. It goes to the end of wherever it
+   lands, which is nearly always where a recording being filed belongs; from
+   there it can be nudged up. */
+function openMoveLesson(lesson, from) {
+  const others = state.course.modules.filter((row) => row.id !== from.id);
+  modal({
+    title: 'Move to another section',
+    subtitle: `“${lesson.title}” is in ${from.title}.`,
+    body: `<form id="move-form"><div class="form-field"><label>Move it to</label>
+      <select name="moduleId">${others.map((row) => `<option value="${row.id}">${escapeHtml(row.title)}</option>`).join('')}</select>
+      <p class="muted small">It goes to the end of that section. Nobody’s record of having watched it is affected.</p>
+    </div></form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-move">Move lesson</button>`,
+    onOpen() {
+      document.getElementById('save-move').addEventListener('click', async () => {
+        const to = document.querySelector('#move-form select').value;
+        const modules = currentOrder();
+        for (const module of modules) module.lessons = module.lessons.filter((id) => id !== lesson.id);
+        modules.find((module) => module.id === to)?.lessons.push(lesson.id);
+        closeModal();
+        await saveOrder(modules);
+        showToast('Lesson moved');
       });
-      if (!ok) return;
-      try {
-        await api(`/api/admin/lessons/${lesson.id}`, { method: 'DELETE' });
-        await openCourse(state.course.id);
-        showToast('Lesson deleted');
-      } catch (error) { showToast(error.message, 'error'); }
-    }));
+    },
+  });
 }
 
 /* The cover photo for a course, in the same uploader the rest of the app uses.
@@ -2309,6 +2526,121 @@ function bindCoverField() {
     preview.style.backgroundImage = '';
     preview.classList.remove('has-image');
   });
+}
+
+/* Managing a course.
+   ------------------------------------------------------------------
+   Everything the server could already do to a course had no way of being asked
+   for: the settings dialog existed but nothing ever opened it with a course in
+   hand, so a course, once made, could not be renamed, unpublished, copied or
+   removed. This is that menu, on the card and again on the course itself.
+
+   A small popover rather than a dialog, because these are one-click actions and
+   a modal for "unpublish" is a modal too many. */
+function actionMenu(anchorElement, items) {
+  document.querySelectorAll('.pop-menu').forEach((open) => open.remove());
+  const menu = document.createElement('div');
+  menu.className = 'pop-menu';
+  menu.innerHTML = items.map((item, index) => (item.separator
+    ? '<hr>'
+    : `<button type="button" class="pop-item ${item.danger ? 'is-danger' : ''}" data-index="${index}">
+        ${item.icon || ''}<span>${escapeHtml(item.label)}</span>
+      </button>`)).join('');
+  document.body.append(menu);
+
+  /* Positioned against the button, then nudged back on screen if it would hang
+     off the bottom or the right — a menu on the last card in a row would
+     otherwise open into nowhere. */
+  const box = anchorElement.getBoundingClientRect();
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
+  const left = Math.min(box.left, window.innerWidth - width - 12);
+  const top = box.bottom + height + 12 > window.innerHeight
+    ? Math.max(12, box.top - height - 6)
+    : box.bottom + 6;
+  menu.style.left = `${Math.max(12, left)}px`;
+  menu.style.top = `${top}px`;
+
+  menu.querySelectorAll('.pop-item').forEach((button) => button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    menu.remove();
+    items[Number(button.dataset.index)].run?.();
+  }));
+
+  const close = () => { menu.remove(); document.removeEventListener('click', close); };
+  // Deferred, or the click that opened it closes it again.
+  setTimeout(() => document.addEventListener('click', close), 0);
+  document.addEventListener('keydown', function escape(event) {
+    if (event.key !== 'Escape') return;
+    close();
+    document.removeEventListener('keydown', escape);
+  });
+}
+
+/** The management actions for one course, used from the card and the course page. */
+function courseActions(course) {
+  const published = course.published !== false;
+  return [
+    { label: 'Edit course', icon: svg.pencil, run: () => openCourseModal(course) },
+    {
+      label: published ? 'Unpublish' : 'Publish',
+      icon: published ? svg.eyeOff : svg.eye,
+      run: () => setCoursePublished(course, !published),
+    },
+    { label: 'Duplicate', icon: svg.copy, run: () => duplicateCourse(course) },
+    { separator: true },
+    { label: 'Delete course', icon: svg.trash, danger: true, run: () => confirmDeleteCourse(course) },
+  ];
+}
+
+/* Unpublishing is the reversible one, so it happens on the spot and says what it
+   did. It is also how a past course is put away without losing it. */
+async function setCoursePublished(course, published) {
+  try {
+    await api(`/api/admin/courses/${course.id}`, { method: 'PATCH', body: { published } });
+    await refreshCourses(course.id);
+    showToast(published ? 'Course published' : 'Course hidden from students');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+/* Copying is how last year's course is run again. The copy arrives unpublished
+   and enrolled in nothing, and we open it, because the next thing anybody wants
+   is to change the dates in it. */
+async function duplicateCourse(course) {
+  try {
+    const copy = await api(`/api/admin/courses/${course.id}/duplicate`, { method: 'POST', body: {} });
+    await loadCourses();
+    await openCourse(copy.id);
+    showToast('Copied. The copy is a draft until you publish it.');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function confirmDeleteCourse(course) {
+  let impact;
+  try { impact = await api(`/api/admin/courses/${course.id}/impact`); }
+  catch (error) { return showToast(error.message, 'error'); }
+  const ok = await askConfirm({
+    title: `Delete “${course.title}”?`,
+    message: `${impact.lessons} lesson${impact.lessons === 1 ? '' : 's'} and ${impact.progress} record${impact.progress === 1 ? '' : 's'} of students having watched them go with it. This cannot be undone — to put a finished course away without losing it, unpublish it instead.`,
+    confirmLabel: 'Delete course', danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api(`/api/admin/courses/${course.id}`, { method: 'DELETE' });
+    // Back to the list: the thing that was being looked at is gone.
+    state.course = null;
+    state.lessonId = null;
+    await loadCourses();
+    renderCourseView();
+    showToast('Course deleted');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+/** Reload the list, and the open course too if it is the one that changed. */
+async function refreshCourses(courseId = null) {
+  await loadCourses();
+  if (state.course && (!courseId || state.course.id === courseId)) await openCourse(state.course.id, state.lessonId);
+  else renderCourseView();
 }
 
 function openCourseModal(course = null) {
