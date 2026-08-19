@@ -63,3 +63,48 @@ export function joinLinkFor(classRow, weeks = [], next = null) {
     : null;
   return override?.join_url || classRow?.join_url || null;
 }
+
+/**
+ * The next class, counting the occasional extra session.
+ *
+ * The weekly slot covers the ordinary week. Some weeks carry an extra evening,
+ * and from a student's side that is simply the next class — so whichever comes
+ * sooner wins, and the link travels with it rather than with the class.
+ *
+ * A cancelled session is skipped but not forgotten: it stays on the row so the
+ * administrator can see they called it off.
+ */
+export function nextClassWithSessions(classRow, sessions = [], now = DateTime.utc()) {
+  const reference = (now.isLuxonDateTime ? now : DateTime.fromJSDate(new Date(now)));
+  const recurring = nextClassAt(classRow, reference);
+
+  const upcoming = (sessions || [])
+    .filter((session) => !session.cancelled)
+    .map((session) => {
+      const starts = DateTime.fromJSDate(new Date(session.starts_at)).setZone(classRow?.timezone || 'Europe/Dublin');
+      const endsAt = starts.plus({ minutes: session.duration_minutes || CLASS_RUNS_FOR_MINUTES });
+      return { session, starts, endsAt };
+    })
+    // Still to come, or under way — a class that began twenty minutes ago is
+    // the one somebody is looking for.
+    .filter((item) => reference < item.endsAt)
+    .sort((a, b) => a.starts - b.starts)[0];
+
+  if (!upcoming) return recurring;
+  if (recurring && DateTime.fromISO(recurring.startsAt) <= upcoming.starts) return recurring;
+
+  const minutesAway = Math.round(upcoming.starts.diff(reference, 'minutes').minutes);
+  return {
+    startsAt: upcoming.starts.toUTC().toISO(),
+    timezone: classRow?.timezone || 'Europe/Dublin',
+    minutesAway,
+    live: minutesAway <= 0,
+    soon: minutesAway > 0 && minutesAway <= SOON_WITHIN_HOURS * 60,
+    weekStart: upcoming.starts.startOf('week').toISODate(),
+    // An extra session brings its own link; without one it falls back to the
+    // class link, which is usually the same room.
+    sessionJoinUrl: upcoming.session.join_url || null,
+    sessionLabel: upcoming.session.label || null,
+    isExtra: true,
+  };
+}

@@ -21,7 +21,7 @@ import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToke
 import { FILE_TYPE_GROUPS } from '../documents.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
-import { listCoursesForAdmin, getCourse, courseProgress } from '../courses.js';
+import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
 import { parseVideoSource, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
@@ -144,13 +144,22 @@ router.post('/classes', asyncRoute(async (req, res) => {
     dayOfWeek: z.coerce.number().int().min(1).max(7),
     startTime: z.string().regex(/^\d{2}:\d{2}$/),
     timezone: z.string().min(3).default(config.defaultTimezone),
+    // Not every group wants a board. A class set up without one never shows
+    // Community at all, rather than showing an empty one.
+    hasCommunity: z.boolean().optional().default(true),
+    courseIds: z.array(z.string().uuid()).optional().default([]),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Enter a programme name, day, time and timezone.' });
   const row = await one(
-    `INSERT INTO classes(programme_name,day_of_week,start_time,timezone)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [parsed.data.programmeName, parsed.data.dayOfWeek, parsed.data.startTime, parsed.data.timezone],
+    `INSERT INTO classes(programme_name,day_of_week,start_time,timezone,has_community)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [parsed.data.programmeName, parsed.data.dayOfWeek, parsed.data.startTime, parsed.data.timezone,
+     parsed.data.hasCommunity],
   );
+  for (const courseId of parsed.data.courseIds) {
+    await query('INSERT INTO course_classes(course_id,class_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [courseId, row.id]);
+  }
   await ensureWeeksForClass(row);
   await audit({ actorId: req.user.id, action: 'class.created', entityType: 'class', entityId: row.id, metadata: parsed.data, ip: req.ip });
   res.status(201).json({ ...row, label: classLabel(row) });
@@ -167,6 +176,9 @@ router.patch('/classes/:id', asyncRoute(async (req, res) => {
     // offering students a button that goes nowhere.
     joinUrl: z.string().url().or(z.literal('')).nullable().optional(),
     joinNote: z.string().max(200).optional(),
+    hasCommunity: z.boolean().optional(),
+    // Present means "these are the courses now", absent means leave them alone.
+    courseIds: z.array(z.string().uuid()).optional(),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid class settings. A class link must be a full https:// address.' });
   const current = await one('SELECT * FROM classes WHERE id=$1', [req.params.id]);
@@ -175,11 +187,18 @@ router.patch('/classes/:id', asyncRoute(async (req, res) => {
   const joinUrl = data.joinUrl === undefined ? current.join_url : (data.joinUrl || null);
   const row = await one(
     `UPDATE classes SET programme_name=$1,day_of_week=$2,start_time=$3,timezone=$4,active=$5,
-       join_url=$6,join_note=$7,updated_at=now()
-     WHERE id=$8 RETURNING *`,
+       join_url=$6,join_note=$7,has_community=$8,updated_at=now()
+     WHERE id=$9 RETURNING *`,
     [data.programmeName ?? current.programme_name, data.dayOfWeek ?? current.day_of_week, data.startTime ?? String(current.start_time).slice(0,5), data.timezone ?? current.timezone, data.active ?? current.active,
-     joinUrl, data.joinNote ?? current.join_note, current.id],
+     joinUrl, data.joinNote ?? current.join_note, data.hasCommunity ?? current.has_community, current.id],
   );
+  if (data.courseIds) {
+    await query('DELETE FROM course_classes WHERE class_id=$1', [current.id]);
+    for (const courseId of data.courseIds) {
+      await query('INSERT INTO course_classes(course_id,class_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+        [courseId, current.id]);
+    }
+  }
   await ensureWeeksForClass(row);
   await audit({ actorId: req.user.id, action: 'class.updated', entityType: 'class', entityId: row.id, metadata: data, ip: req.ip });
   res.json({ ...row, label: classLabel(row) });
@@ -189,6 +208,74 @@ router.patch('/classes/:id', asyncRoute(async (req, res) => {
    attendance record, check-in, assignment and submission. The students themselves
    survive — they simply end up unassigned — but everything they did in this class
    is gone. Closing a class hides it everywhere while keeping all of that. */
+/* Everything the class screen needs to be set up in one place: whether it has a
+   board, which courses it carries, and the extra sittings on top of the weekly
+   slot. */
+router.get('/classes/:id/setup', asyncRoute(async (req, res) => {
+  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.id]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  const sessions = await query(
+    `SELECT id, starts_at, duration_minutes, join_url, label, cancelled
+     FROM class_sessions WHERE class_id=$1 ORDER BY starts_at DESC`, [klass.id]);
+  res.json({
+    class: { ...klass, label: classLabel(klass) },
+    courses: await coursesForClass(klass.id),
+    sessions: sessions.rows,
+    recordings: await classRecordingProgress(klass.id),
+  });
+}));
+
+/* An extra sitting: a second evening that week, a catch-up, a moved class. It
+   carries its own time and, when the room differs, its own link. */
+router.post('/classes/:id/sessions', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    startsAt: z.string().min(10),
+    durationMinutes: z.coerce.number().int().min(15).max(480).optional().default(90),
+    joinUrl: z.string().url().or(z.literal('')).nullable().optional(),
+    label: z.string().max(120).optional().default(''),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the session a date and time. A link must be a full https:// address.' });
+  const when = new Date(parsed.data.startsAt);
+  if (Number.isNaN(when.getTime())) return res.status(400).json({ error: 'That date and time could not be read.' });
+  const row = await one(
+    `INSERT INTO class_sessions(class_id,starts_at,duration_minutes,join_url,label)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [req.params.id, when.toISOString(), parsed.data.durationMinutes, parsed.data.joinUrl || null, parsed.data.label],
+  );
+  await audit({ actorId: req.user.id, action: 'class.session.added', entityType: 'class', entityId: req.params.id, metadata: parsed.data, ip: req.ip });
+  res.status(201).json(row);
+}));
+
+/* Cancelling keeps the row so the administrator can see they called it off;
+   deleting is for one entered by mistake. */
+router.patch('/classes/:id/sessions/:sessionId', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    startsAt: z.string().min(10).optional(),
+    durationMinutes: z.coerce.number().int().min(15).max(480).optional(),
+    joinUrl: z.string().url().or(z.literal('')).nullable().optional(),
+    label: z.string().max(120).optional(),
+    cancelled: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid session.' });
+  const current = await one('SELECT * FROM class_sessions WHERE id=$1 AND class_id=$2', [req.params.sessionId, req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Session not found.' });
+  const data = parsed.data;
+  const row = await one(
+    `UPDATE class_sessions SET starts_at=$1,duration_minutes=$2,join_url=$3,label=$4,cancelled=$5
+     WHERE id=$6 RETURNING *`,
+    [data.startsAt ? new Date(data.startsAt).toISOString() : current.starts_at,
+     data.durationMinutes ?? current.duration_minutes,
+     data.joinUrl === undefined ? current.join_url : (data.joinUrl || null),
+     data.label ?? current.label, data.cancelled ?? current.cancelled, current.id],
+  );
+  res.json(row);
+}));
+
+router.delete('/classes/:id/sessions/:sessionId', asyncRoute(async (req, res) => {
+  await query('DELETE FROM class_sessions WHERE id=$1 AND class_id=$2', [req.params.sessionId, req.params.id]);
+  res.status(204).end();
+}));
+
 router.get('/classes/:id/impact', asyncRoute(async (req, res) => {
   const klass = await one('SELECT id, programme_name, day_of_week, start_time, active FROM classes WHERE id=$1', [req.params.id]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
@@ -1388,9 +1475,10 @@ router.get('/courses/:id/progress', asyncRoute(async (req, res) => {
 const courseInput = z.object({
   title: z.string().trim().min(2).max(200),
   description: z.string().max(4000).optional().default(''),
-  // Null means every class sees it, which is what a course taught identically
-  // to both groups needs.
-  classId: z.string().uuid().nullable().optional(),
+  // Open to all is the shortcut for a course taught identically to every group;
+  // otherwise it is enrolled class by class.
+  openToAll: z.boolean().optional(),
+  classIds: z.array(z.string().uuid()).optional(),
   coverUrl: z.string().max(2000).nullable().optional(),
   published: z.boolean().optional().default(false),
 });
@@ -1400,11 +1488,13 @@ router.post('/courses', asyncRoute(async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'Give the course a title.' });
   const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM courses');
   const row = await one(
-    `INSERT INTO courses(class_id,title,description,cover_url,published,position,created_by)
+    `INSERT INTO courses(title,description,cover_url,published,position,created_by,open_to_all)
      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [parsed.data.classId || null, parsed.data.title, parsed.data.description,
-     parsed.data.coverUrl || null, parsed.data.published, next.position, req.user.id],
+    [parsed.data.title, parsed.data.description,
+     parsed.data.coverUrl || null, parsed.data.published, next.position, req.user.id,
+     parsed.data.openToAll ?? false],
   );
+  await setCourseClasses(row.id, parsed.data.classIds || []);
   await audit({ actorId: req.user.id, action: 'course.created', entityType: 'course', entityId: row.id, ip: req.ip });
   res.status(201).json(row);
 }));
@@ -1416,13 +1506,14 @@ router.patch('/courses/:id', asyncRoute(async (req, res) => {
   if (!current) return res.status(404).json({ error: 'Course not found.' });
   const data = parsed.data;
   const row = await one(
-    `UPDATE courses SET title=$1,description=$2,class_id=$3,cover_url=$4,published=$5,updated_at=now()
+    `UPDATE courses SET title=$1,description=$2,open_to_all=$3,cover_url=$4,published=$5,updated_at=now()
      WHERE id=$6 RETURNING *`,
     [data.title ?? current.title, data.description ?? current.description,
-     data.classId === undefined ? current.class_id : (data.classId || null),
+     data.openToAll ?? current.open_to_all,
      data.coverUrl === undefined ? current.cover_url : (data.coverUrl || null),
      data.published ?? current.published, current.id],
   );
+  if (data.classIds) await setCourseClasses(current.id, data.classIds);
   await audit({ actorId: req.user.id, action: 'course.updated', entityType: 'course', entityId: row.id, ip: req.ip });
   res.json(row);
 }));

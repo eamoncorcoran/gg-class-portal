@@ -1530,8 +1530,8 @@ function peopleView() {
     <div class="tabs"><button class="tab active" data-people-tab="classes">Classes</button><button class="tab" data-people-tab="students">Students</button></div>
     <section id="classes-tab"><div class="class-grid">${state.classes.map((klass) => `
       <article class="card class-card"><div class="card-actions"><div><h3>${escapeHtml(classLabel(klass))}</h3><p>Separate tracker, attendance and homework.</p></div><button class="btn small" data-open-class="${klass.id}">Open tracker</button></div>
-      <div class="mini-stats"><span class="mini-stat">${klass.student_count || 0} students</span><span class="mini-stat">${escapeHtml(klass.timezone)}</span><span class="mini-stat ${klass.join_url ? 'good' : ''}">${klass.join_url ? 'Class link set' : 'No class link'}</span></div>
-      <div class="actions stack-top"><button class="btn small" data-class-link="${klass.id}">${svg.video} Class link</button><button class="btn small danger" data-delete-class="${klass.id}">Delete class</button></div></article>`).join('') || '<div class="empty-state"><h3>No classes yet</h3><p>Add your first class to begin.</p></div>'}</div></section>
+      <div class="mini-stats"><span class="mini-stat">${klass.student_count || 0} students</span><span class="mini-stat">${escapeHtml(klass.timezone)}</span><span class="mini-stat ${klass.join_url ? 'good' : ''}">${klass.join_url ? 'Class link set' : 'No class link'}</span><span class="mini-stat">${klass.has_community === false ? 'No board' : 'Has a board'}</span></div>
+      <div class="actions stack-top"><button class="btn small" data-class-link="${klass.id}">${svg.settings || svg.video} Class setup</button><button class="btn small danger" data-delete-class="${klass.id}">Delete class</button></div></article>`).join('') || '<div class="empty-state"><h3>No classes yet</h3><p>Add your first class to begin.</p></div>'}</div></section>
     <section id="students-tab" class="hidden"><div class="card table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Email</th><th>Current class</th><th>Login</th><th></th></tr></thead><tbody>
       ${state.students.map((student) => `<tr><td><button class="text-link strong-link" data-open-student="${student.id}">${escapeHtml(student.name)}</button></td><td>${escapeHtml(student.email)}</td><td><select class="select" data-student-class="${student.id}">${state.classes.map((klass) => `<option value="${klass.id}" ${student.class_id === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}</select></td><td>${student.last_login_at ? `<span class="pill green">Last login ${fmtDate(student.last_login_at)}</span>` : '<span class="pill orange">Invite pending</span>'}</td><td><div class="row-actions"><button class="btn small" data-open-student="${student.id}">${svg.note} Notes</button><button class="btn small" data-resend="${student.id}">Resend invite</button><button class="btn small" data-reset-student="${student.id}">Reset password</button></div></td></tr>`).join('')}
     </tbody></table></div></section>`;
@@ -2045,7 +2045,15 @@ function courseCard(course) {
       ${course.description ? `<p>${escapeHtml(course.description)}</p>` : ''}
       <div class="cc-foot">
         <span class="cc-count">${lessons} ${lessons === 1 ? 'lesson' : 'lessons'}</span>
-        ${isAdmin() ? '' : `<span class="cc-pct">${percent}%</span>`}
+        ${isAdmin()
+          // Who a course reaches is the thing most easily got wrong, so it is on
+          // the card rather than one click inside the settings.
+          ? `<span class="cc-who">${course.open_to_all
+              ? 'Every class'
+              : (course.classes?.length
+                  ? `${course.classes.length} class${course.classes.length === 1 ? '' : 'es'}`
+                  : 'No class yet')}</span>`
+          : `<span class="cc-pct">${percent}%</span>`}
       </div>
       ${isAdmin() ? '' : `<div class="cc-bar"><span style="width:${percent}%"></span></div>`}
     </div>
@@ -2244,6 +2252,61 @@ function bindCourseAdmin() {
     }));
 }
 
+/* The cover photo for a course, in the same uploader the rest of the app uses.
+   A course without one falls back to its initials on a tint rather than a photo
+   somebody has to find, so this is genuinely optional. */
+function coverField(current = '') {
+  return `<input type="hidden" name="coverUrl" id="cover-url" value="${escapeHtml(current)}">
+    <div class="cover-field" id="cover-field">
+      <div class="cover-preview ${current ? 'has-image' : ''}" id="cover-preview"
+        ${current ? `style="background-image:url('${escapeHtml(current)}')"` : ''}></div>
+      <div class="fu-zone cover-zone">
+        <input class="fu-input" type="file" id="cover-input" accept="image/png,image/jpeg,image/webp">
+        <span class="fu-icon">${svg.upload || ''}</span>
+        <span class="fu-lead"><b>Click to upload</b> or drag a photo here</span>
+        <span class="fu-hint">PNG, JPG or WEBP. Landscape works best.</span>
+      </div>
+      ${current ? '<button type="button" class="btn subtle small" id="cover-clear">Remove photo</button>' : ''}
+    </div>`;
+}
+
+function bindCoverField() {
+  const input = document.getElementById('cover-input');
+  const zone = input?.closest('.fu-zone');
+  if (!input) return;
+  const preview = document.getElementById('cover-preview');
+  const hidden = document.getElementById('cover-url');
+
+  const send = async (file) => {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) return showToast('Choose an image file.', 'error');
+    const form = new FormData();
+    form.append('files', file);
+    zone.classList.add('is-busy');
+    try {
+      const uploaded = await api('/api/admin/uploads', { method: 'POST', body: form });
+      const url = uploaded.files?.[0]?.url;
+      if (!url) throw new Error('The upload did not come back.');
+      hidden.value = url;
+      preview.style.backgroundImage = `url('${url}')`;
+      preview.classList.add('has-image');
+    } catch (error) { showToast(error.message, 'error'); }
+    finally { zone.classList.remove('is-busy'); }
+  };
+
+  input.addEventListener('change', () => send(input.files?.[0]));
+  ['dragenter', 'dragover'].forEach((type) => zone.addEventListener(type, (event) => {
+    event.preventDefault(); zone.classList.add('is-over');
+  }));
+  ['dragleave', 'drop'].forEach((type) => zone.addEventListener(type, () => zone.classList.remove('is-over')));
+  zone.addEventListener('drop', (event) => { event.preventDefault(); send(event.dataTransfer?.files?.[0]); });
+  document.getElementById('cover-clear')?.addEventListener('click', () => {
+    hidden.value = '';
+    preview.style.backgroundImage = '';
+    preview.classList.remove('has-image');
+  });
+}
+
 function openCourseModal(course = null) {
   const classes = state.classes || [];
   modal({
@@ -2252,24 +2315,35 @@ function openCourseModal(course = null) {
     body: `<form id="course-form">
       <div class="form-field"><label>Title</label><input name="title" required value="${escapeHtml(course?.title || '')}" placeholder="Irish for Primary Teaching"></div>
       <div class="form-field"><label>Description</label><textarea name="description" rows="3">${escapeHtml(course?.description || '')}</textarea></div>
+      <div class="form-field"><label>Cover photo</label>
+        ${coverField(course?.cover_url || '')}
+      </div>
       <div class="form-field"><label>Who sees it</label>
-        <select name="classId">
-          <option value="">Every class</option>
-          ${classes.map((row) => `<option value="${row.id}" ${course?.class_id === row.id ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}
-        </select>
-        <p class="muted small">A course taught the same way to both groups should stay on “Every class”.</p>
+        <label class="check-row"><input type="checkbox" name="openToAll" id="course-open-all" ${course?.open_to_all ? 'checked' : ''}> Every class, including ones added later</label>
+        <div class="class-picker ${course?.open_to_all ? 'is-off' : ''}" id="course-classes">
+          ${classes.length
+            ? classes.map((row) => `<label class="check-row"><input type="checkbox" name="classIds" value="${row.id}" ${(course?.classes || []).some((c) => c.id === row.id) ? 'checked' : ''}> ${escapeHtml(classLabel(row))}</label>`).join('')
+            : '<p class="muted small">No classes yet.</p>'}
+        </div>
       </div>
       <label class="check-row"><input type="checkbox" name="published" ${course?.published ? 'checked' : ''}> Visible to students</label>
     </form>`,
     footer: `<button class="btn" data-close-modal>Cancel</button>${course ? `<button class="btn danger" id="delete-course">Delete</button>` : ''}<button class="btn primary" id="save-course">${course ? 'Save' : 'Create course'}</button>`,
     onOpen() {
+      // Picking classes is meaningless while the course is open to everybody.
+      const openAll = document.getElementById('course-open-all');
+      const picker = document.getElementById('course-classes');
+      openAll?.addEventListener('change', () => picker.classList.toggle('is-off', openAll.checked));
+      bindCoverField();
       document.getElementById('save-course').addEventListener('click', async () => {
         const form = document.getElementById('course-form');
         const data = new FormData(form);
         const body = {
           title: String(data.get('title') || '').trim(),
           description: String(data.get('description') || '').trim(),
-          classId: data.get('classId') || null,
+          openToAll: form.openToAll.checked,
+          classIds: form.openToAll.checked ? [] : data.getAll('classIds'),
+          coverUrl: String(data.get('coverUrl') || '').trim() || null,
           published: form.published.checked,
         };
         if (!body.title) return showToast('Give the course a title.', 'error');
@@ -3491,28 +3565,168 @@ function bindFeed() {
 /* The weekly class link. Lives on the class rather than on each week, because a
    recurring meeting has one link for the term and asking again every week is a
    weekly chance to forget. */
-function openClassLinkModal(classId) {
-  const klass = state.classes.find((row) => row.id === classId);
-  if (!klass) return;
+/* Everything about one class in one place: the link, whether it has a board,
+   which courses it carries, the extra sittings, and how far people have got
+   through the recordings. It was a link-only dialog before, which meant the rest
+   had nowhere to live. */
+async function openClassSetupModal(classId) {
+  let setup;
+  try { setup = await api(`/api/admin/classes/${classId}/setup`); }
+  catch (error) { return showToast(error.message, 'error'); }
+  const klass = setup.class;
+
   modal({
-    title: 'Class link',
-    subtitle: `${classLabel(klass)} · shown to students on their deadlines screen`,
-    body: `<form id="class-link-form">
-      <div class="form-field"><label>Join address</label><input name="joinUrl" type="url" value="${escapeHtml(klass.join_url || '')}" placeholder="https://us02web.zoom.us/j/..."></div>
-      <div class="form-field"><label>Note, optional</label><input name="joinNote" maxlength="200" value="${escapeHtml(klass.join_note || '')}" placeholder="Passcode 4821"></div>
-      <p class="muted small">Students see this on every screen, with the wording changing as the class approaches: the day and time all week, a countdown from twelve hours out, then “Happening now”. Clearing the address removes the banner rather than leaving a button that goes nowhere.</p>
-    </form>`,
-    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-class-link">Save link</button>`,
+    title: 'Class setup',
+    subtitle: classLabel(klass),
+    wide: true,
+    body: `<form id="class-setup-form" class="setup">
+      <section class="setup-block">
+        <h4>Class link</h4>
+        <div class="form-field"><label>Join address</label><input name="joinUrl" type="url" value="${escapeHtml(klass.join_url || '')}" placeholder="https://us02web.zoom.us/j/..."></div>
+        <div class="form-field"><label>Note, optional</label><input name="joinNote" maxlength="200" value="${escapeHtml(klass.join_note || '')}" placeholder="Passcode 4821"></div>
+        <p class="muted small">Students see this from twelve hours before the class until it is over. Clearing the address removes the banner rather than leaving a button that goes nowhere.</p>
+      </section>
+
+      <section class="setup-block">
+        <h4>Community</h4>
+        <label class="check-row"><input type="checkbox" name="hasCommunity" ${klass.has_community ? 'checked' : ''}> This class has a board</label>
+        <p class="muted small">Turned off, Community disappears from these students’ menu entirely. Anything already posted is kept and comes back if it is turned on again.</p>
+      </section>
+
+      <section class="setup-block">
+        <h4>Courses</h4>
+        ${setup.courses.length ? `<div class="class-picker">${setup.courses.map((course) => `
+          <label class="check-row ${course.open_to_all ? 'is-fixed' : ''}">
+            <input type="checkbox" name="courseIds" value="${course.id}" ${course.enrolled || course.open_to_all ? 'checked' : ''} ${course.open_to_all ? 'disabled' : ''}>
+            ${escapeHtml(course.title)}${course.open_to_all ? ' <span class="pill">Every class</span>' : ''}
+          </label>`).join('')}</div>` : '<p class="muted small">No courses yet.</p>'}
+      </section>
+    </form>
+
+    <section class="setup-block">
+      <h4>Extra sessions</h4>
+      <p class="muted small">A second evening that week, a catch-up, a moved class. Whichever comes first — this or the weekly slot — is the one students are shown, and a session with its own link uses that instead of the class link.</p>
+      <div id="session-list">${sessionRows(setup.sessions)}</div>
+      <form id="session-form" class="session-form">
+        <div class="form-field"><label>Date and time</label><input name="startsAt" type="datetime-local" required></div>
+        <div class="form-field"><label>Minutes</label><input name="durationMinutes" type="number" value="90" min="15" max="480"></div>
+        <div class="form-field"><label>Label, optional</label><input name="label" maxlength="120" placeholder="Catch-up session"></div>
+        <div class="form-field"><label>Link, optional</label><input name="joinUrl" type="url" placeholder="Leave empty to use the class link"></div>
+        <button type="submit" class="btn">Add session</button>
+      </form>
+    </section>
+
+    <section class="setup-block">
+      <h4>Recordings watched</h4>
+      ${setup.recordings.length ? `<div class="table-wrap"><table class="data-table compact">
+        <thead><tr><th>Student</th><th>Watched</th><th></th></tr></thead>
+        <tbody>${setup.recordings.map((row) => `<tr>
+          <td>${escapeHtml(row.name)}</td>
+          <td>${row.completed_count} of ${row.lesson_count}</td>
+          <td class="pct-cell"><div class="cc-bar"><span style="width:${row.percent}%"></span></div><b>${row.percent}%</b></td>
+        </tr>`).join('')}</tbody></table></div>`
+        : '<p class="muted small">Nobody is in this class yet, or it has no recordings.</p>'}
+    </section>`,
+    footer: `<button class="btn" data-close-modal>Close</button><button class="btn primary" id="save-class-setup">Save</button>`,
     onOpen() {
-      document.getElementById('save-class-link').addEventListener('click', async () => {
-        const data = new FormData(document.getElementById('class-link-form'));
+      document.getElementById('save-class-setup').addEventListener('click', async () => {
+        const form = document.getElementById('class-setup-form');
+        const data = new FormData(form);
         try {
-          await api(`/api/admin/classes/${classId}`, { method: 'PATCH', body: { joinUrl: String(data.get('joinUrl') || '').trim(), joinNote: String(data.get('joinNote') || '').trim() } });
-          closeModal(); await renderAdmin(); showToast('Class link saved');
+          await api(`/api/admin/classes/${classId}`, {
+            method: 'PATCH',
+            body: {
+              joinUrl: String(data.get('joinUrl') || '').trim(),
+              joinNote: String(data.get('joinNote') || '').trim(),
+              hasCommunity: form.hasCommunity.checked,
+              // Courses open to every class are ticked and disabled, so they
+              // never appear here — which is right, they are not enrolments.
+              courseIds: data.getAll('courseIds'),
+            },
+          });
+          closeModal(); await renderAdmin(); showToast('Class saved');
         } catch (error) { showToast(error.message, 'error'); }
       });
+
+      document.getElementById('session-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(event.target);
+        if (!data.get('startsAt')) return showToast('Pick a date and time.', 'error');
+        try {
+          await api(`/api/admin/classes/${classId}/sessions`, {
+            method: 'POST',
+            body: {
+              startsAt: new Date(String(data.get('startsAt'))).toISOString(),
+              durationMinutes: Number(data.get('durationMinutes')) || 90,
+              label: String(data.get('label') || '').trim(),
+              joinUrl: String(data.get('joinUrl') || '').trim(),
+            },
+          });
+          event.target.reset();
+          await refreshSessions(classId);
+          showToast('Session added');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+
+      bindSessionRows(classId);
     },
   });
+}
+
+/* An extra sitting, past or future. A cancelled one stays on the list, struck
+   through, so it is clear it was called off rather than never entered. */
+function sessionRows(sessions = []) {
+  if (!sessions.length) return '<p class="muted small">No extra sessions.</p>';
+  return `<ul class="session-list">${sessions.map((session) => {
+    const when = new Date(session.starts_at);
+    const past = when.getTime() < Date.now();
+    return `<li class="session-row ${session.cancelled ? 'is-cancelled' : ''} ${past ? 'is-past' : ''}">
+      <div class="session-when">
+        <strong>${escapeHtml(when.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' }))}</strong>
+        <span>${escapeHtml(when.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' }))} · ${session.duration_minutes} min</span>
+      </div>
+      <div class="session-meta">
+        ${session.label ? `<span>${escapeHtml(session.label)}</span>` : ''}
+        ${session.join_url ? '<span class="pill green">Own link</span>' : ''}
+        ${session.cancelled ? '<span class="pill">Cancelled</span>' : ''}
+      </div>
+      <div class="session-actions">
+        ${session.cancelled
+          ? `<button type="button" class="btn small" data-session-restore="${session.id}">Restore</button>`
+          : `<button type="button" class="btn small" data-session-cancel="${session.id}">Cancel</button>`}
+        <button type="button" class="btn small danger" data-session-delete="${session.id}">Delete</button>
+      </div>
+    </li>`;
+  }).join('')}</ul>`;
+}
+
+async function refreshSessions(classId) {
+  const setup = await api(`/api/admin/classes/${classId}/setup`);
+  document.getElementById('session-list').innerHTML = sessionRows(setup.sessions);
+  bindSessionRows(classId);
+}
+
+function bindSessionRows(classId) {
+  const list = document.getElementById('session-list');
+  if (!list) return;
+  const act = async (id, body) => {
+    try {
+      await api(`/api/admin/classes/${classId}/sessions/${id}`, { method: 'PATCH', body });
+      await refreshSessions(classId);
+    } catch (error) { showToast(error.message, 'error'); }
+  };
+  list.querySelectorAll('[data-session-cancel]').forEach((button) =>
+    button.addEventListener('click', () => act(button.dataset.sessionCancel, { cancelled: true })));
+  list.querySelectorAll('[data-session-restore]').forEach((button) =>
+    button.addEventListener('click', () => act(button.dataset.sessionRestore, { cancelled: false })));
+  list.querySelectorAll('[data-session-delete]').forEach((button) => button.addEventListener('click', async () => {
+    const ok = await askConfirm({ title: 'Delete this session?', message: 'Students will no longer see it.', confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
+    try {
+      await api(`/api/admin/classes/${classId}/sessions/${button.dataset.sessionDelete}`, { method: 'DELETE' });
+      await refreshSessions(classId);
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
 }
 
 /* Who can run this place.
@@ -3728,7 +3942,7 @@ function bindAdminView() {
   document.getElementById('import-students')?.addEventListener('click', openStudentImportModal);
   document.querySelectorAll('[data-open-class]').forEach((button) => button.addEventListener('click', () => { state.activeClassId = button.dataset.openClass; state.view = 'tracker'; renderAdmin(); }));
   document.querySelectorAll('[data-delete-class]').forEach((button) => button.addEventListener('click', () => confirmDeleteClass(button.dataset.deleteClass)));
-  document.querySelectorAll('[data-class-link]').forEach((button) => button.addEventListener('click', () => openClassLinkModal(button.dataset.classLink)));
+  document.querySelectorAll('[data-class-link]').forEach((button) => button.addEventListener('click', () => openClassSetupModal(button.dataset.classLink)));
   document.getElementById('community-class')?.addEventListener('change', (event) => {
     state.communityClassId = event.target.value;
     // A category belongs to one class, so carrying the filter across would filter
@@ -3782,13 +3996,29 @@ async function studentAccessAction(id, action) {
 function openClassModal() {
   modal({
     title: 'Add class', subtitle: 'Creates a separate weekly tracker and assignment stream.',
-    body: `<form id="class-form"><div class="form-field"><label>Programme name</label><input name="programmeName" value="Irish for Primary Teaching" required></div><div class="form-field"><label>Day</label><select name="dayOfWeek">${DAY_NAMES.slice(1).map((day, index) => `<option value="${index + 1}">${day}</option>`).join('')}</select></div><div class="form-field"><label>Start time</label><input name="startTime" type="time" value="19:00" required></div><div class="form-field"><label>Timezone</label><input name="timezone" value="Europe/Dublin" required></div></form>`,
+    body: `<form id="class-form"><div class="form-field"><label>Programme name</label><input name="programmeName" value="Irish for Primary Teaching" required></div><div class="form-field"><label>Day</label><select name="dayOfWeek">${DAY_NAMES.slice(1).map((day, index) => `<option value="${index + 1}">${day}</option>`).join('')}</select></div><div class="form-field"><label>Start time</label><input name="startTime" type="time" value="19:00" required></div><div class="form-field"><label>Timezone</label><input name="timezone" value="Europe/Dublin" required></div>
+      <label class="check-row"><input type="checkbox" name="hasCommunity" checked> Give this class a community board</label>
+      <p class="muted small">Without one, Community never appears in these students’ menu. It can be turned on later.</p>
+      ${state.courses?.length ? `<div class="form-field"><label>Courses</label><div class="class-picker">${state.courses.map((course) => `
+        <label class="check-row"><input type="checkbox" name="courseIds" value="${course.id}"> ${escapeHtml(course.title)}</label>`).join('')}</div></div>` : ''}
+    </form>`,
     footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-class">Add class</button>`,
     onOpen() {
       document.getElementById('save-class').addEventListener('click', async () => {
-        const form = new FormData(document.getElementById('class-form'));
+        const element = document.getElementById('class-form');
+        const form = new FormData(element);
         try {
-          const klass = await api('/api/admin/classes', { method: 'POST', body: Object.fromEntries(form) });
+          const klass = await api('/api/admin/classes', {
+            method: 'POST',
+            body: {
+              programmeName: form.get('programmeName'),
+              dayOfWeek: form.get('dayOfWeek'),
+              startTime: form.get('startTime'),
+              timezone: form.get('timezone'),
+              hasCommunity: element.hasCommunity.checked,
+              courseIds: form.getAll('courseIds'),
+            },
+          });
           closeModal(); state.classes.push(klass); state.activeClassId = klass.id; state.view = 'tracker'; await renderAdmin(); showToast('Class created');
         } catch (error) { showToast(error.message, 'error'); }
       });
@@ -4680,7 +4910,10 @@ function studentNav() {
     ${studentNavButton('calendar', svg.calendar, 'Deadlines')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
-    ${studentNavButton('community', svg.board, 'Community', state.studentData?.communityUnread || 0)}
+    ${/* A class set up without a board never shows Community at all. */
+      state.studentData?.hasCommunity
+        ? studentNavButton('community', svg.board, 'Community', state.studentData?.communityUnread || 0)
+        : ''}
   </nav>`;
 }
 
@@ -4702,7 +4935,11 @@ function renderStudent() {
     content = `${studentHeader()}<div class="empty-state"><h3>You are not in a class yet</h3><p>Your account is active but has not been added to a class group. Contact Gaeilgeoir Guides and they will add you.</p></div>`;
   } else if (state.view === 'tracker') content = studentTrackerView();
   else if (state.view === 'courses') content = state.course ? coursePage() : coursesView();
-  else if (state.view === 'community') content = studentCommunityView();
+  else if (state.view === 'community') {
+    // Reachable by a stale hash after a class loses its board.
+    if (state.studentData?.hasCommunity) content = studentCommunityView();
+    else { state.view = 'calendar'; content = studentCalendarView(); }
+  }
   else content = studentCalendarView();
   shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Deadlines', roleLabel: 'Student', notificationCount: state.studentData.notifications });
   bindStudentView();

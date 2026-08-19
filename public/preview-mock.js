@@ -16,8 +16,8 @@
 
   function seed() {
     const classes = [
-      { id:'c1', programme_name:'Irish for Primary Teaching', day_of_week:1, start_time:'19:00', timezone:'Europe/Dublin', active:true, created_at:iso('2026-06-01'), student_count:5, label:'Irish for Primary Teaching | Monday | 19:00', join_url:'https://us02web.zoom.us/j/8123456789', join_note:'Passcode 4821' },
-      { id:'c2', programme_name:'Irish for Primary Teaching', day_of_week:4, start_time:'19:00', timezone:'Europe/Dublin', active:true, created_at:iso('2026-06-02'), student_count:2, label:'Irish for Primary Teaching | Thursday | 19:00', join_url:null, join_note:null },
+      { id:'c1', programme_name:'Irish for Primary Teaching', day_of_week:1, start_time:'19:00', timezone:'Europe/Dublin', active:true, has_community:true, created_at:iso('2026-06-01'), student_count:5, label:'Irish for Primary Teaching | Monday | 19:00', join_url:'https://us02web.zoom.us/j/8123456789', join_note:'Passcode 4821' },
+      { id:'c2', programme_name:'Irish for Primary Teaching', day_of_week:4, start_time:'19:00', timezone:'Europe/Dublin', active:true, has_community:true, created_at:iso('2026-06-02'), student_count:2, label:'Irish for Primary Teaching | Thursday | 19:00', join_url:null, join_note:null },
     ];
     const users = [
       { id:'admin1', role:'admin', name:'Éamon Corcoran', email:'admin@gaeilgeoirguides.com', mustChangePassword:false, active:true },
@@ -105,7 +105,14 @@
     /* Enough likes that the counts are not all zero, spread so the Top sort
        actually reorders the feed. */
     const courses = [
-      { id:'co1', class_id:null, title:'Irish for Primary Teaching', description:'Every class recording, in the order we taught them.', cover_url:null, published:true, position:0 },
+      { id:'co1', open_to_all:true, title:'Irish for Primary Teaching', description:'Every class recording, in the order we taught them.', cover_url:null, published:true, position:0 },
+    ];
+    /* Which classes each course reaches, and the odd extra sitting on top of the
+       weekly slot. */
+    const courseClasses = [];
+    const classSessions = [
+      { id:'cs1', class_id:'c1', starts_at:iso('2026-08-13T18:30:00Z'), duration_minutes:60,
+        join_url:'https://us02web.zoom.us/j/8891122334', label:'Catch-up: an aimsir chaite', cancelled:false },
     ];
     const courseModules = [
       { id:'cm1', course_id:'co1', title:'Term 1: Foundations', position:0 },
@@ -152,7 +159,7 @@
       sessionUserId:'admin1',
       users, classes, weeks, assignments, attendance, checkins, homework, notes:[], withdrawals:[], homeworkFiles:[], dismissals:[],
       threads, posts, reads:[], categories, likes, attachments,
-      courses, courseModules, courseLessons, lessonProgress,
+      courses, courseModules, courseLessons, lessonProgress, courseClasses, classSessions,
       settings:{
         email:{provider:'console',fromName:'Gaeilgeoir Guides',fromAddress:'support@gaeilgeoirguides.com',replyTo:'support@gaeilgeoirguides.com',webhookUrl:'',smtpHost:'',smtpUser:'',configured:false},
         reminders:{
@@ -470,7 +477,7 @@
 
   /* The next sitting of a class, worked out the same way src/classtime.js does it
      on the server: from the class day, time and timezone rather than a stored row. */
-  function previewNextClass(klass){
+  function previewNextClass(klass,sessions){
     if(!klass?.day_of_week||!klass?.start_time)return null;
     const [hour,minute]=String(klass.start_time).split(':').map(Number);
     // The preview clock is fixed, so this only has to be right for one instant.
@@ -482,10 +489,17 @@
     // Europe/Dublin is UTC+1 in August, so 19:00 local is 18:00 UTC.
     start.setUTCHours(hour-1,minute,0,0);
     if(start.getTime()+120*60000<now.getTime())start.setUTCDate(start.getUTCDate()+7);
-    const minutesAway=Math.round((start.getTime()-now.getTime())/60000);
-    return {startsAt:start.toISOString(),timezone:klass.timezone||'Europe/Dublin',minutesAway,
-      live:minutesAway<=0,soon:minutesAway>0&&minutesAway<=12*60,
-      joinUrl:klass.join_url||null,note:klass.join_note||null};
+    let when=start, extra=null;
+    // Mirrors nextClassWithSessions: soonest wins, cancelled ones are skipped.
+    for(const session of (sessions||[]).filter((x)=>!x.cancelled)){
+      const at=new RealDate(session.starts_at);
+      if(at.getTime()+(session.duration_minutes||120)*60000<now.getTime())continue;
+      if(at.getTime()<when.getTime()){when=at;extra=session;}
+    }
+    const minutesAway=Math.round((when.getTime()-now.getTime())/60000);
+    return {startsAt:when.toISOString(),timezone:klass.timezone||'Europe/Dublin',minutesAway,
+      live:minutesAway<=0,soon:minutesAway>0&&minutesAway<=12*60,isExtra:Boolean(extra),
+      joinUrl:extra?.join_url||klass.join_url||null,note:extra?.label||klass.join_note||null};
   }
 
   /* Courses. Mirrors src/courses.js: progress is per student, drafts stay out of
@@ -502,11 +516,14 @@
     const h=Math.floor(total/3600), m=Math.round((total%3600)/60);
     return h?`${h}h ${m}m`:`${m}m`;
   }
-  function courseRows(viewerId,isAdmin){
-    return (db.courses||[]).filter((c)=>isAdmin||c.published).map((c)=>{
+  function courseRows(viewerId,isAdmin,classId){
+    return (db.courses||[]).filter((c)=>isAdmin||(c.published&&(c.open_to_all
+      ||(db.courseClasses||[]).some((cc)=>cc.course_id===c.id&&cc.class_id===classId)))).map((c)=>{
       const lessons=lessonsOfCourse(c.id,isAdmin);
       const done=lessons.filter((l)=>(db.lessonProgress||[]).some((p)=>p.student_id===viewerId&&p.lesson_id===l.id)).length;
+      const classIds=(db.courseClasses||[]).filter((cc)=>cc.course_id===c.id).map((cc)=>cc.class_id);
       return {...c,lesson_count:lessons.length,completed_count:done,
+        classes:db.classes.filter((k)=>classIds.includes(k.id)),
         percent:lessons.length?Math.round((done/lessons.length)*100):0};
     });
   }
@@ -517,6 +534,7 @@
   function courseDetail(courseId,viewerId,isAdmin){
     const course=(db.courses||[]).find((c)=>c.id===courseId&&(isAdmin||c.published));
     if(!course) return null;
+    const enrolledIds=(db.courseClasses||[]).filter((cc)=>cc.course_id===courseId).map((cc)=>cc.class_id);
     const modules=(db.courseModules||[]).filter((m)=>m.course_id===courseId)
       .sort((a,b)=>a.position-b.position)
       .map((m)=>({id:m.id,title:m.title,position:m.position,
@@ -532,6 +550,7 @@
     const done=all.filter((l)=>l.completed).length;
     return {...course,modules,lessonCount:all.length,completedCount:done,
       percent:all.length?Math.round((done/all.length)*100):0,
+      ...(isAdmin?{classes:db.classes.filter((k)=>enrolledIds.includes(k.id))}:{}),
       resumeLessonId:(all.find((l)=>!l.completed)||all[0])?.id||null};
   }
 
@@ -561,15 +580,63 @@
     if(path==='/api/admin/bootstrap'&&method==='GET') return json({classes:db.classes.map((item)=>({...item,label:classLabel(item),student_count:studentRows(item.id).length})),counts:{students:studentRows().length,assignments:db.assignments.length}});
     if(path==='/api/admin/classes'&&method==='GET') return json(db.classes.map((item)=>({...item,label:classLabel(item),student_count:studentRows(item.id).length})));
     if(path==='/api/admin/classes'&&method==='POST'){
-      const id=`c${db.counters.class++}`;const row={id,programme_name:body.programmeName,day_of_week:Number(body.dayOfWeek),start_time:body.startTime,timezone:body.timezone||'Europe/Dublin',active:true,created_at:new RealDate(PREVIEW_NOW).toISOString()};
-      row.label=classLabel(row);db.classes.push(row);save();return json(row,201);
+      const id=`c${db.counters.class++}`;const row={id,programme_name:body.programmeName,day_of_week:Number(body.dayOfWeek),start_time:body.startTime,timezone:body.timezone||'Europe/Dublin',active:true,has_community:body.hasCommunity!==false,created_at:new RealDate(PREVIEW_NOW).toISOString()};
+      row.label=classLabel(row);db.classes.push(row);
+      db.courseClasses=(db.courseClasses||[]).concat((body.courseIds||[]).map((courseId)=>({course_id:courseId,class_id:id})));
+      save();return json(row,201);
     }
     let params=match(path,'/api/admin/classes/:id');
     if(params&&method==='PATCH'){
       const row=db.classes.find((item)=>item.id===params.id);if(!row)return error('Class not found',404);
       if(body.programmeName)row.programme_name=body.programmeName;if(body.dayOfWeek)row.day_of_week=Number(body.dayOfWeek);if(body.startTime)row.start_time=body.startTime;if(body.timezone)row.timezone=body.timezone;if(body.active!==undefined)row.active=body.active;
       if(body.joinUrl!==undefined)row.join_url=body.joinUrl||null;if(body.joinNote!==undefined)row.join_note=body.joinNote||null;
+      if(body.hasCommunity!==undefined)row.has_community=body.hasCommunity;
+      if(body.courseIds){
+        db.courseClasses=(db.courseClasses||[]).filter((cc)=>cc.class_id!==row.id)
+          .concat(body.courseIds.map((courseId)=>({course_id:courseId,class_id:row.id})));
+      }
       row.label=classLabel(row);save();return json(row);
+    }
+    /* Class setup: the board flag, the courses, the extra sittings and how far
+       people have got through the recordings. */
+    params=match(path,'/api/admin/classes/:id/setup');
+    if(params&&method==='GET'){
+      const klass=db.classes.find((item)=>item.id===params.id);if(!klass)return error('Class not found',404);
+      const lessons=(db.courses||[]).filter((c)=>c.published&&(c.open_to_all||
+          (db.courseClasses||[]).some((cc)=>cc.course_id===c.id&&cc.class_id===klass.id)))
+        .flatMap((c)=>lessonsOfCourse(c.id,false));
+      return json({
+        class:{...klass,label:classLabel(klass)},
+        courses:(db.courses||[]).map((c)=>({id:c.id,title:c.title,open_to_all:c.open_to_all,
+          enrolled:(db.courseClasses||[]).some((cc)=>cc.course_id===c.id&&cc.class_id===klass.id)})),
+        sessions:(db.classSessions||[]).filter((x)=>x.class_id===klass.id)
+          .sort((a,b)=>new RealDate(b.starts_at)-new RealDate(a.starts_at)),
+        recordings:studentRows(klass.id).map((student)=>{
+          const done=lessons.filter((l)=>(db.lessonProgress||[]).some((pr)=>pr.student_id===student.id&&pr.lesson_id===l.id)).length;
+          return {id:student.id,name:student.name,lesson_count:lessons.length,completed_count:done,
+            percent:lessons.length?Math.round((done/lessons.length)*100):0};
+        }),
+      });
+    }
+    params=match(path,'/api/admin/classes/:id/sessions');
+    if(params&&method==='POST'){
+      if(!body.startsAt)return error('Give the session a date and time.',400);
+      const row={id:`cs${db.counters.session=(db.counters.session||1)+1}`,class_id:params.id,
+        starts_at:body.startsAt,duration_minutes:Number(body.durationMinutes)||90,
+        join_url:body.joinUrl||null,label:body.label||'',cancelled:false};
+      db.classSessions=(db.classSessions||[]).concat(row);save();return json(row,201);
+    }
+    params=match(path,'/api/admin/classes/:id/sessions/:sessionId');
+    if(params&&method==='PATCH'){
+      const row=(db.classSessions||[]).find((x)=>x.id===params.sessionId);if(!row)return error('Session not found',404);
+      if(body.cancelled!==undefined)row.cancelled=body.cancelled;
+      if(body.startsAt)row.starts_at=body.startsAt;
+      if(body.label!==undefined)row.label=body.label;
+      if(body.joinUrl!==undefined)row.join_url=body.joinUrl||null;
+      save();return json(row);
+    }
+    if(params&&method==='DELETE'){
+      db.classSessions=(db.classSessions||[]).filter((x)=>x.id!==params.sessionId);save();return json({},204);
     }
     if(path==='/api/admin/students'&&method==='GET') return json(studentRows(url.searchParams.get('classId')));
     if(path==='/api/admin/students'&&method==='POST'){
@@ -950,7 +1017,7 @@
 
     if(path==='/api/student/courses'&&method==='GET'){
       const student=previewStudent(user);
-      return json({courses:courseRows(student.id,false)});
+      return json({courses:courseRows(student.id,false,student.class_id)});
     }
     params=match(path,'/api/student/courses/:id');
     if(params&&method==='GET'){
@@ -1013,7 +1080,7 @@
       const checkins=db.checkins.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id));
       const homework=db.homework.filter((item)=>item.student_id===student.id&&assignmentIds.has(item.assignment_id));
       const notifications=checkins.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length+homework.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length;
-      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass),communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
+      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
     }
     if(path==='/api/student/dismissals'&&method==='POST'){
       const student=user.role==='student'?user:db.users.find((u)=>u.id==='s1');

@@ -29,7 +29,9 @@ export async function listCoursesForStudent({ studentId, classId }) {
                JOIN course_modules m ON m.id=l.module_id
               WHERE m.course_id=c.id AND l.published=true AND p.student_id=$1) completed_count
      FROM courses c
-     WHERE c.published=true AND (c.class_id IS NULL OR c.class_id=$2)
+     WHERE c.published=true
+       AND (c.open_to_all = true
+            OR EXISTS (SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=$2))
      ORDER BY c.position, c.created_at`,
     [studentId, classId],
   );
@@ -39,11 +41,16 @@ export async function listCoursesForStudent({ studentId, classId }) {
 /** Every course, draft included, for the administrator. */
 export async function listCoursesForAdmin() {
   const result = await query(
-    `SELECT c.*, k.programme_name, k.day_of_week, k.start_time,
+    `SELECT c.*,
             (SELECT count(*)::int FROM course_lessons l
                JOIN course_modules m ON m.id=l.module_id WHERE m.course_id=c.id) lesson_count,
-            (SELECT count(*)::int FROM course_modules m WHERE m.course_id=c.id) module_count
-     FROM courses c LEFT JOIN classes k ON k.id=c.class_id
+            (SELECT count(*)::int FROM course_modules m WHERE m.course_id=c.id) module_count,
+            COALESCE((SELECT json_agg(jsonb_build_object('id',k.id,
+                        'programme_name',k.programme_name,'day_of_week',k.day_of_week,
+                        'start_time',k.start_time))
+                      FROM course_classes cc JOIN classes k ON k.id=cc.class_id
+                      WHERE cc.course_id=c.id),'[]'::json) classes
+     FROM courses c
      ORDER BY c.position, c.created_at`,
   );
   return result.rows;
@@ -65,10 +72,20 @@ export async function getCourse({ courseId, viewerId, classId, isAdmin = false }
   const course = await one(
     `SELECT c.* FROM courses c
      WHERE c.id=$1
-       ${isAdmin ? '' : 'AND c.published=true AND (c.class_id IS NULL OR c.class_id=$2)'}`,
+       ${isAdmin ? '' : `AND c.published=true
+         AND (c.open_to_all = true
+              OR EXISTS (SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=$2))`}`,
     isAdmin ? [courseId] : [courseId, classId],
   );
   if (!course) return null;
+  // The settings form needs to show which classes are ticked, so it travels
+  // with the course rather than being fetched separately.
+  if (isAdmin) {
+    const enrolled = await query(
+      `SELECT k.id, k.programme_name, k.day_of_week, k.start_time
+       FROM course_classes cc JOIN classes k ON k.id=cc.class_id WHERE cc.course_id=$1`, [courseId]);
+    course.classes = enrolled.rows;
+  }
 
   const lessons = await query(
     `SELECT l.*, m.title module_title, m.position module_position, m.id module_id,
@@ -145,7 +162,8 @@ export async function studentCanSeeLesson({ lessonId, classId }) {
      JOIN course_modules m ON m.id=l.module_id
      JOIN courses c ON c.id=m.course_id
      WHERE l.id=$1 AND l.published=true AND c.published=true
-       AND (c.class_id IS NULL OR c.class_id=$2)`,
+       AND (c.open_to_all = true
+            OR EXISTS (SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=$2))`,
     [lessonId, classId],
   ));
 }
@@ -184,13 +202,63 @@ export async function courseProgress(courseId) {
      FROM users u
      WHERE u.role='student' AND u.active=true
        AND (
-         (SELECT class_id FROM courses WHERE id=$1) IS NULL
+         (SELECT open_to_all FROM courses WHERE id=$1)
          OR EXISTS (SELECT 1 FROM class_students cs
-                     WHERE cs.student_id=u.id AND cs.active=true
-                       AND cs.class_id=(SELECT class_id FROM courses WHERE id=$1))
+                     JOIN course_classes cc ON cc.class_id=cs.class_id AND cc.course_id=$1
+                    WHERE cs.student_id=u.id AND cs.active=true)
        )
      ORDER BY u.name`,
     [courseId],
+  );
+  return result.rows.map(withProgress);
+}
+
+/** Which classes a course is for. Replaces the set wholesale rather than diffing. */
+export async function setCourseClasses(courseId, classIds = []) {
+  await query('DELETE FROM course_classes WHERE course_id=$1', [courseId]);
+  for (const classId of classIds) {
+    await query('INSERT INTO course_classes(course_id,class_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [courseId, classId]);
+  }
+}
+
+/** The courses one class is enrolled in, for the class screen. */
+export async function coursesForClass(classId) {
+  const result = await query(
+    `SELECT c.id, c.title, c.open_to_all,
+            EXISTS (SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=$1) enrolled
+     FROM courses c ORDER BY c.position, c.created_at`,
+    [classId],
+  );
+  return result.rows;
+}
+
+/**
+ * How far each student in a class has got through the recordings.
+ *
+ * Across every course they can see rather than one at a time, because the
+ * question on a class screen is "is this person keeping up", not "how did they
+ * do on course three".
+ */
+export async function classRecordingProgress(classId) {
+  const result = await query(
+    `WITH visible AS (
+       SELECT l.id FROM course_lessons l
+       JOIN course_modules m ON m.id=l.module_id
+       JOIN courses c ON c.id=m.course_id
+       WHERE l.published=true AND c.published=true
+         AND (c.open_to_all = true
+              OR EXISTS (SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=$1))
+     )
+     SELECT u.id, u.name,
+            (SELECT count(*)::int FROM visible) lesson_count,
+            (SELECT count(*)::int FROM lesson_progress p
+              WHERE p.student_id=u.id AND p.lesson_id IN (SELECT id FROM visible)) completed_count
+     FROM users u
+     JOIN class_students cs ON cs.student_id=u.id AND cs.class_id=$1 AND cs.active=true
+     WHERE u.role='student' AND u.active=true
+     ORDER BY u.name`,
+    [classId],
   );
   return result.rows.map(withProgress);
 }

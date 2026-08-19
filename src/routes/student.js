@@ -11,7 +11,7 @@ import { ensureWeeksForClass } from '../weeks.js';
 import { withVoiceNote, withVoiceNotes } from '../voice.js';
 import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
-import { nextClassAt, joinLinkFor } from '../classtime.js';
+import { nextClassAt, nextClassWithSessions, joinLinkFor } from '../classtime.js';
 import { listThreads, getThread, createThread, createPost, unreadCount, markRead,
   listCategories, toggleReaction, topContributors, REACTIONS, forStudentView } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
@@ -182,7 +182,14 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
      and timezone rather than stored, so there is no weekly row to forget to fill
      in. The week the sitting falls in is looked up separately because it may be
      ahead of the weeks a student can otherwise see. */
-  const next = nextClassAt(klass);
+  /* Extra sessions are pulled in so an added Thursday shows as the next class
+     with its own link, rather than the usual Monday. */
+  const sessions = (await query(
+    `SELECT id, starts_at, duration_minutes, join_url, label, cancelled
+     FROM class_sessions WHERE class_id=$1 AND starts_at > now() - interval '4 hours'
+     ORDER BY starts_at`, [klass.id],
+  )).rows;
+  const next = nextClassWithSessions(klass, sessions);
   const overrideWeeks = next
     ? (await query('SELECT week_start, join_url FROM weeks WHERE class_id=$1 AND week_start=$2', [klass.id, next.weekStart])).rows
     : [];
@@ -194,7 +201,17 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
       ...klass,
       label: `${klass.programme_name} | ${['','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][klass.day_of_week]} | ${String(klass.start_time).slice(0,5)}`,
     },
-    nextClass: next ? { ...next, joinUrl: joinLinkFor(klass, overrideWeeks, next), note: klass.join_note || null } : null,
+    nextClass: next
+      ? {
+          ...next,
+          // A session's own link wins; otherwise the week override, otherwise
+          // the class link.
+          joinUrl: next.sessionJoinUrl || joinLinkFor(klass, overrideWeeks, next),
+          note: next.sessionLabel || klass.join_note || null,
+        }
+      : null,
+    // Hidden entirely for a class without one, and for anybody with no class.
+    hasCommunity: Boolean(klass.has_community),
     communityUnread: community,
     weeks: weeksResult.rows,
     attendance: attendanceResult.rows,
@@ -665,6 +682,12 @@ async function boardClass(req, res) {
   const klass = await studentClass(req.user.id);
   if (!klass) {
     res.status(404).json({ error: 'You are not in a class yet.' });
+    return null;
+  }
+  /* A class set up without a board has no Community in its menu, and no board
+     behind it either — hiding the button is not the same as closing the door. */
+  if (!klass.has_community) {
+    res.status(404).json({ error: 'This class does not have a community board.' });
     return null;
   }
   return klass;

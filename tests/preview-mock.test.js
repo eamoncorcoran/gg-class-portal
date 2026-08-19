@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { DateTime } from 'luxon';
 import { studentProgress } from '../src/status.js';
-import { nextClassAt } from '../src/classtime.js';
+import { nextClassAt, nextClassWithSessions } from '../src/classtime.js';
 
 /* The preview has to carry its own copy of this, because it runs with no server
    behind it. Two copies drift, and the drift is invisible until the preview
@@ -60,4 +60,41 @@ test('the preview mock finds the same next class as the server', () => {
     assert.equal(preview.live, server.live, `live disagrees for day ${klass.day_of_week}`);
     assert.equal(preview.soon, server.soon, `soon disagrees for day ${klass.day_of_week}`);
   }
+});
+
+/* The extra sitting is the part most easily got wrong in two places at once: the
+   preview would happily show Monday while the server shows Thursday. */
+test('the preview mock agrees with the server about extra sessions', () => {
+  const previewNextClass = previewNextClassFromMock();
+  const now = DateTime.fromISO('2026-08-09T15:00:00Z', { zone: 'utc' });
+  const klass = { day_of_week: 1, start_time: '19:00', timezone: 'Europe/Dublin', join_url: 'https://zoom.example/a', join_note: 'Passcode' };
+
+  // Sooner than Monday, with its own link: it wins, and takes the link with it.
+  const sooner = [{ id: 'x', starts_at: '2026-08-09T17:00:00Z', duration_minutes: 60, join_url: 'https://zoom.example/extra', label: 'Catch-up', cancelled: false }];
+  const preview = previewNextClass(klass, sooner);
+  const server = nextClassWithSessions(klass, sooner, now);
+  assert.equal(preview.startsAt, server.startsAt);
+  assert.equal(preview.isExtra, true);
+  assert.equal(server.isExtra, true);
+  assert.equal(preview.joinUrl, 'https://zoom.example/extra');
+  assert.equal(server.sessionJoinUrl, 'https://zoom.example/extra');
+
+  // Cancelled: both fall back to the weekly slot.
+  const cancelled = [{ ...sooner[0], cancelled: true }];
+  assert.equal(previewNextClass(klass, cancelled).startsAt, nextClassAt(klass, now).startsAt);
+  assert.equal(nextClassWithSessions(klass, cancelled, now).startsAt, nextClassAt(klass, now).startsAt);
+
+  // Later than Monday: the weekly slot still wins.
+  const later = [{ ...sooner[0], starts_at: '2026-08-20T17:00:00Z', cancelled: false }];
+  assert.equal(previewNextClass(klass, later).startsAt, nextClassAt(klass, now).startsAt);
+  assert.equal(nextClassWithSessions(klass, later, now).startsAt, nextClassAt(klass, now).startsAt);
+});
+
+/* A class without a board must not have one behind the button either. */
+test('the board is closed on the server for a class without one', () => {
+  const routes = fs.readFileSync(new URL('../src/routes/student.js', import.meta.url), 'utf8');
+  const start = routes.indexOf('async function boardClass(');
+  assert.ok(start !== -1, 'boardClass is no longer where this test expects it');
+  const body = routes.slice(start, routes.indexOf("router.get('/community'", start));
+  assert.match(body, /!klass\.has_community/, 'boardClass must refuse a class that has no board');
 });

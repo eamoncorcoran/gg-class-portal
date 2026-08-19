@@ -1214,3 +1214,53 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .dl-opt input{width:auto;margin:2px 0 0;flex:0 0 auto;box-shadow:none}
 .dl-opt span{display:grid;gap:2px;color:var(--text-tertiary);font-size:12px;line-height:1.5}
 .dl-opt strong{color:var(--text);font-size:13px;font-weight:660}
+
+/* Course cover photo. The preview carries the same 16:9 the card uses, so what
+   is chosen here is what appears on the courses grid. */
+.cover-field{display:grid;gap:10px}
+.cover-preview{aspect-ratio:16/9;border-radius:var(--radius-md);border:1px solid var(--border);
+  background:linear-gradient(135deg,var(--brand-500),var(--brand-700));background-size:cover;background-position:center}
+.cover-preview.has-image{border-color:var(--gray-300)}
+.cover-zone{margin-top:0}
+.fu-zone.is-busy{opacity:.6;pointer-events:none}
+.cover-field .btn.small{justify-self:start}
+
+/* Which classes a course belongs to. Dimmed rather than removed while it is
+   open to everybody, so the choice underneath is still visible. */
+.class-picker{display:grid;gap:8px;margin-top:10px;padding-left:2px}
+.class-picker.is-off{opacity:.4;pointer-events:none}
+
+/* Class setup. Sections rather than one long form, because the link, the board,
+   the courses and the extra sittings are four unrelated decisions. */
+.setup-block{padding:18px 0;border-top:1px solid var(--border)}
+.setup-block:first-child{padding-top:0;border-top:0}
+.setup-block h4{margin:0 0 12px;font-size:13px;font-weight:680;letter-spacing:-.01em}
+.check-row.is-fixed{opacity:.65}
+
+.session-list{display:grid;gap:8px;margin:0 0 14px;padding:0;list-style:none}
+.session-row{display:flex;align-items:center;gap:14px;padding:11px 13px;border:1px solid var(--border);
+  border-radius:var(--radius-md);background:var(--bg-primary)}
+.session-when{display:grid;gap:1px;min-width:130px}
+.session-when strong{font-size:13px;font-weight:650}
+.session-when span{color:var(--text-quaternary);font-size:11.5px}
+.session-meta{flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  color:var(--text-tertiary);font-size:12.5px}
+.session-actions{display:flex;gap:6px;flex:0 0 auto}
+.session-row.is-cancelled .session-when,.session-row.is-cancelled .session-meta span:not(.pill){text-decoration:line-through}
+.session-row.is-past{opacity:.6}
+
+.session-form{display:grid;grid-template-columns:minmax(0,1.4fr) 90px minmax(0,1fr) minmax(0,1.2fr) auto;
+  gap:10px;align-items:end}
+.session-form .form-field{margin:0}
+
+.data-table.compact td,.data-table.compact th{padding:9px 12px;font-size:12.5px}
+.pct-cell{display:flex;align-items:center;gap:10px;min-width:150px}
+.pct-cell .cc-bar{flex:1;margin-top:0}
+.pct-cell b{font-size:11.5px;font-weight:700;color:var(--brand-700)}
+
+@media (max-width:700px){
+  .session-form{grid-template-columns:minmax(0,1fr)}
+  .session-row{flex-wrap:wrap}
+  .session-actions{width:100%}
+}
+.cc-who{color:var(--text-quaternary);font-size:11.5px;font-weight:600}
