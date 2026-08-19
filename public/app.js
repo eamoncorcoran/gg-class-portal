@@ -3261,12 +3261,17 @@ function feedSide() {
    for the link. Wording follows the banner: a countdown when it is close, the
    day otherwise. */
 function sideNextClass(next) {
-  const when = new Date(next.startsAt);
+  /* In the class timezone, not the reader's. Formatted in a browser set to
+     Singapore, a seven o'clock Monday class in Dublin reads as Tuesday — and
+     the banner two inches above it would still say Monday. */
   const label = next.live
     ? 'Happening now'
     : next.soon
       ? `Starts in ${relativeWhen(next.minutesAway)}`
-      : when.toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'short' });
+      : new Date(next.startsAt).toLocaleDateString('en-IE', {
+          weekday: 'long', day: 'numeric', month: 'short',
+          timeZone: next.timezone || 'Europe/Dublin',
+        });
   return `<div class="side-next ${next.live ? 'is-live' : ''}">
     <div class="side-next-copy">
       <span>${next.isExtra ? 'Extra session' : 'Next class'}</span>
@@ -3946,7 +3951,7 @@ async function openClassSetupModal(classId) {
     <section class="setup-block">
       <h4>Extra sessions</h4>
       <p class="muted small">A second evening that week, a catch-up, a moved class. Whichever comes first — this or the weekly slot — is the one students are shown, and a session with its own link uses that instead of the class link.</p>
-      <div id="session-list">${sessionRows(setup.sessions)}</div>
+      <div id="session-list">${sessionRows(setup.sessions, klass.timezone)}</div>
       <form id="session-form" class="session-form">
         <div class="form-field"><label>Date and time</label><input name="startsAt" type="datetime-local" required></div>
         <div class="form-field"><label>Minutes</label><input name="durationMinutes" type="number" value="90" min="15" max="480"></div>
@@ -4008,22 +4013,26 @@ async function openClassSetupModal(classId) {
         } catch (error) { showToast(error.message, 'error'); }
       });
 
-      bindSessionRows(classId);
+      bindSessionRows(classId, klass.timezone);
     },
   });
 }
 
 /* An extra sitting, past or future. A cancelled one stays on the list, struck
    through, so it is clear it was called off rather than never entered. */
-function sessionRows(sessions = []) {
+function sessionRows(sessions = [], timezone = 'Europe/Dublin') {
   if (!sessions.length) return '<p class="muted small">No extra sessions.</p>';
   return `<ul class="session-list">${sessions.map((session) => {
     const when = new Date(session.starts_at);
     const past = when.getTime() < Date.now();
+    // The class timezone, so somebody setting this up from abroad is reading
+    // the hour their students will turn up at.
+    const day = when.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: timezone });
+    const time = when.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit', timeZone: timezone });
     return `<li class="session-row ${session.cancelled ? 'is-cancelled' : ''} ${past ? 'is-past' : ''}">
       <div class="session-when">
-        <strong>${escapeHtml(when.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' }))}</strong>
-        <span>${escapeHtml(when.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' }))} · ${session.duration_minutes} min</span>
+        <strong>${escapeHtml(day)}</strong>
+        <span>${escapeHtml(time)} · ${session.duration_minutes} min</span>
       </div>
       <div class="session-meta">
         ${session.label ? `<span>${escapeHtml(session.label)}</span>` : ''}
@@ -4042,8 +4051,8 @@ function sessionRows(sessions = []) {
 
 async function refreshSessions(classId) {
   const setup = await api(`/api/admin/classes/${classId}/setup`);
-  document.getElementById('session-list').innerHTML = sessionRows(setup.sessions);
-  bindSessionRows(classId);
+  document.getElementById('session-list').innerHTML = sessionRows(setup.sessions, setup.class.timezone);
+  bindSessionRows(classId, setup.class.timezone);
 }
 
 function bindSessionRows(classId) {

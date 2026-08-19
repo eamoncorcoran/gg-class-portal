@@ -6038,12 +6038,17 @@ function feedSide() {
    for the link. Wording follows the banner: a countdown when it is close, the
    day otherwise. */
 function sideNextClass(next) {
-  const when = new Date(next.startsAt);
+  /* In the class timezone, not the reader's. Formatted in a browser set to
+     Singapore, a seven o'clock Monday class in Dublin reads as Tuesday — and
+     the banner two inches above it would still say Monday. */
   const label = next.live
     ? 'Happening now'
     : next.soon
       ? `Starts in ${relativeWhen(next.minutesAway)}`
-      : when.toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'short' });
+      : new Date(next.startsAt).toLocaleDateString('en-IE', {
+          weekday: 'long', day: 'numeric', month: 'short',
+          timeZone: next.timezone || 'Europe/Dublin',
+        });
   return `<div class="side-next ${next.live ? 'is-live' : ''}">
     <div class="side-next-copy">
       <span>${next.isExtra ? 'Extra session' : 'Next class'}</span>
