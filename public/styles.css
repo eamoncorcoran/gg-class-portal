@@ -1186,3 +1186,31 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .acct-photo .avatar-preview{width:64px;height:64px}
 .acct-photo .avatar-preview svg{width:22px;height:22px}
 .acct-photo p{margin:7px 0 0}
+
+/* The student page header. A title and a line, not a greeting. */
+.sh{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin:0 0 20px}
+.sh h1{margin:0;font-size:25px;line-height:1.15;font-weight:680;letter-spacing:-.04em}
+.sh p{margin:5px 0 0;color:var(--text-tertiary);font-size:13.5px}
+.sh-class{flex:0 0 auto;padding:6px 11px;border:1px solid var(--border);border-radius:999px;background:var(--surface);
+  color:var(--text-secondary);font-size:11px;font-weight:620;white-space:nowrap}
+.win-note{margin:0 0 16px;padding:9px 13px;border-left:2px solid var(--border-strong);
+  color:var(--text-tertiary);font-size:12px;line-height:1.55}
+.win-note strong{color:var(--text-secondary);font-weight:650}
+@media (max-width:760px){
+  .sh{flex-direction:column;gap:10px;margin-bottom:16px}
+  .sh h1{font-size:22px}
+  .sh-class{white-space:normal}
+}
+.closed-note{display:grid;gap:5px;padding:15px 16px;border-radius:var(--radius-md);
+  border:1px solid var(--error-100);background:var(--error-50)}
+.closed-note.is-in{border-color:var(--brand-200);background:var(--brand-25)}
+.closed-note strong{font-size:14px;font-weight:670;color:var(--error-700)}
+.closed-note.is-in strong{color:var(--brand-800)}
+.closed-note span{color:var(--text-secondary);font-size:13px;line-height:1.55}
+.dl-choice{display:grid;gap:8px}
+.dl-opt{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--border);
+  border-radius:var(--radius-md);background:var(--surface);cursor:pointer}
+.dl-opt:has(input:checked){border-color:var(--brand-400);background:var(--brand-25);box-shadow:0 0 0 3px rgba(80,175,55,.10)}
+.dl-opt input{width:auto;margin:2px 0 0;flex:0 0 auto;box-shadow:none}
+.dl-opt span{display:grid;gap:2px;color:var(--text-tertiary);font-size:12px;line-height:1.5}
+.dl-opt strong{color:var(--text);font-size:13px;font-weight:660}

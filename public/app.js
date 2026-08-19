@@ -713,6 +713,12 @@ function attendanceState(attendance) {
    it means "this is waiting on you". From a student's side, handing work in is a
    good outcome, so submitted is green and the label carries the difference. */
 function homeworkState(submission, assignment, now = Date.now()) {
+  // A soft deadline accepts late work and says so rather than hiding it.
+  if (submission?.submitted_late && submission.status !== 'draft') {
+    return submission.status === 'returned'
+      ? { tone: 'green', icon: 'book', label: 'Returned', hint: 'Handed in late, and marked' }
+      : { tone: 'green', icon: 'book', label: 'Submitted late', hint: 'Handed in after the deadline' };
+  }
   if (submission?.status === 'returned') return { tone: 'green', icon: 'book', label: 'Returned', hint: 'Corrections and feedback have been returned. Open it to read them.' };
   if (submission?.status === 'submitted') return { tone: 'green', icon: 'book', label: 'Submitted', hint: 'Submitted. Open it to see what you sent.' };
   if (assignmentClosed(assignment, now)) return { tone: 'red', icon: 'x', label: 'Missed', hint: 'The deadline passed without a submission' };
@@ -1172,7 +1178,7 @@ function adminNav() {
       ${adminNavButton('assignments', svg.book, 'Homework')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
-      ${adminNavButton('community', svg.board, 'Class board')}
+      ${adminNavButton('community', svg.board, 'Community')}
       ${adminNavButton('attendance', svg.upload, 'Attendance upload')}
       ${adminNavButton('reminders', svg.mail, 'Email reminders')}
       ${adminNavButton('ai', svg.spark, 'OpenAI & prompts')}
@@ -1262,7 +1268,7 @@ async function renderAdmin() {
       state.classes = await api('/api/admin/classes');
       state.communityClassId ||= state.activeClassId || state.classes[0]?.id || null;
       state.community = state.communityClassId ? await api(`/api/admin/community/${state.communityClassId}`) : null;
-      title = 'Class board'; content = communityView();
+      title = 'Community'; content = communityView();
     } else if (state.view === 'admins') {
       /* Guarded on the server as well: the navigation item being hidden is a
          courtesy, not the control. */
@@ -1306,6 +1312,12 @@ function trackerMaps() {
 const ADMIN_ICON = { checkin: 'talk', homework: 'book' };
 
 function adminTrackerState(type, record, deadline, assignment = null, week = null) {
+  // Work handed in after a soft deadline is marked so it can be seen at a glance.
+  if (type === 'homework' && record?.submitted_late && record.status !== 'draft') {
+    return record.status === 'returned'
+      ? { tone: 'green', icon: 'book', label: 'Returned', hint: 'Handed in late' }
+      : { tone: 'orange', icon: 'book', label: 'To review, late', hint: 'Handed in after the deadline' };
+  }
   if (type === 'attendance') return attendanceState(record);
   const icon = ADMIN_ICON[type];
   const noun = type === 'homework' ? 'Homework' : 'Check-in';
@@ -2057,7 +2069,7 @@ function coursesView() {
         </div>
       </div>${body}`;
   }
-  return `${studentHero()}${body}`;
+  return `${studentHeader()}${body}`;
 }
 
 /* ---- One course -------------------------------------------------- */
@@ -2620,7 +2632,7 @@ async function reloadBoard() {
       : await api(`/api/student/community${suffix}`);
   } catch (error) { return showToast(error.message, 'error'); }
   if (isAdmin()) {
-    shell({ nav: adminNav(), content: communityView(), title: 'Class board', roleLabel: 'Administrator' });
+    shell({ nav: adminNav(), content: communityView(), title: 'Community', roleLabel: 'Administrator' });
     bindAdminView();
   } else renderStudent();
 }
@@ -3114,7 +3126,7 @@ function communityView() {
 }
 
 function studentCommunityView() {
-  return `${studentHero()}${feedLayout(false)}`;
+  return `${studentHeader()}${feedLayout(false)}`;
 }
 
 /* ------------------------------------------------------------------
@@ -3653,7 +3665,7 @@ function aiSettingsView() {
         <div class="form-field"><label>Weekly check-in response</label><textarea id="checkin-prompt">${escapeHtml(prompts.checkinPrompt || '')}</textarea></div>
         <div class="form-field"><label>Irish corrections, An Caighdeán Oifigiúil</label><textarea id="correction-prompt" class="tall">${escapeHtml(prompts.correctionPrompt || '')}</textarea></div>
         <div class="form-field"><label>General teacher feedback</label><textarea id="general-prompt">${escapeHtml(prompts.generalFeedbackPrompt || '')}</textarea></div>
-        <div class="form-field"><label>Class board reply</label>
+        <div class="form-field"><label>Community reply</label>
           <textarea id="community-prompt">${escapeHtml(prompts.communityReplyPrompt || '')}</textarea>
           <p class="muted small">The draft offered above the reply box when you open a post on the board. It is a starting point you edit — nothing is ever sent without you pressing Comment, and students never see the draft or know one existed.</p>
         </div>
@@ -3834,7 +3846,15 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
     <div class="form-field"><label>Loom share or embed URL</label><input name="loomUrl" type="url" value="${escapeHtml(assignment?.loom_url || '')}" placeholder="https://www.loom.com/share/..."></div>
     <div class="form-field"><label>Visible from</label><input name="visibleAt" type="datetime-local" value="${toZonedInput(assignment?.visible_at || new Date())}" required><div class="muted small">Times are ${escapeHtml(classTimezone())} (${escapeHtml(timezoneAbbreviation())}).</div></div>
     <div class="form-field"><label>Deadline</label><input name="deadlineAt" type="datetime-local" value="${assignment?.deadline_at ? toZonedInput(assignment.deadline_at) : (prefillDeadline || toZonedInput(new Date(Date.now() + 7 * 86400000)))}" required></div>
-    <div class="input-row"><label class="toggle-row"><span class="toggle"><input name="hardDeadline" type="checkbox" ${assignment?.hard_deadline !== false ? 'checked' : ''}><span></span></span>Hard deadline</label><label class="toggle-row"><span class="toggle"><input name="remindersEnabled" type="checkbox" ${assignment?.reminders_enabled !== false ? 'checked' : ''}><span></span></span>Email reminders</label></div>
+    <div class="form-field"><label>When the deadline passes</label>
+      <div class="dl-choice">
+        <label class="dl-opt"><input type="radio" name="deadlineKind" value="hard" ${assignment?.hard_deadline !== false ? 'checked' : ''}>
+          <span><strong>Hard</strong>The assignment closes. Students see that the deadline has passed and the questions are not shown.</span></label>
+        <label class="dl-opt"><input type="radio" name="deadlineKind" value="soft" ${assignment?.hard_deadline === false ? 'checked' : ''}>
+          <span><strong>Soft</strong>Students can still hand it in, and the submission is marked late.</span></label>
+      </div>
+    </div>
+    <div class="input-row"><label class="toggle-row"><span class="toggle"><input name="remindersEnabled" type="checkbox" ${assignment?.reminders_enabled !== false ? 'checked' : ''}><span></span></span>Email reminders</label></div>
     ${uploadSettingsBlock(assignment)}
     <div class="section-title">Files students can use</div><div class="form-field"><input id="assignment-files" type="file" multiple></div><div id="resource-list">${resources.map((resource) => `<span class="resource-chip" data-existing-resource='${escapeHtml(JSON.stringify({ fileName: resource.fileName || resource.filename, fileUrl: resource.fileUrl || resource.fileurl, mimeType: resource.mimeType || resource.mimetype || '' }))}'>${escapeHtml(resource.fileName || resource.filename)}</span>`).join('')}</div>
     <div class="section-title">Rolling questions</div><div id="question-list">${questions.map((question, index) => questionBuilder(question, index)).join('')}</div><button class="btn small" type="button" id="add-question">Add question</button>
@@ -3933,7 +3953,7 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
             classId: assignment?.class_id || fd.get('classId'), weekId: fd.get('weekId') || null,
             title: fd.get('title'), instructions: fd.get('instructions'), loomUrl: fd.get('loomUrl') || null,
             visibleAt: fromZonedInput(fd.get('visibleAt')), deadlineAt: fromZonedInput(fd.get('deadlineAt')),
-            hardDeadline: form.hardDeadline.checked, remindersEnabled: form.remindersEnabled.checked,
+            hardDeadline: form.deadlineKind.value === 'hard', remindersEnabled: form.remindersEnabled.checked,
             allowUploads: form.allowUploads.checked,
             uploadsRequired: form.uploadsRequired.checked,
             acceptedFileTypes: [...document.querySelectorAll('[data-file-type]:checked')].map((box) => box.dataset.fileType),
@@ -4660,7 +4680,7 @@ function studentNav() {
     ${studentNavButton('calendar', svg.calendar, 'Deadlines')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
-    ${studentNavButton('community', svg.board, 'Class board', state.studentData?.communityUnread || 0)}
+    ${studentNavButton('community', svg.board, 'Community', state.studentData?.communityUnread || 0)}
   </nav>`;
 }
 
@@ -4674,12 +4694,12 @@ async function loadStudent() {
   renderStudent();
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Class board', courses: 'Courses', calendar: 'Deadlines' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Deadlines' };
 
 function renderStudent() {
   let content = '';
   if (!state.studentData.class && state.view !== 'account') {
-    content = `${studentHero()}<div class="empty-state"><h3>You are not in a class yet</h3><p>Your account is active but has not been added to a class group. Contact Gaeilgeoir Guides and they will add you.</p></div>`;
+    content = `${studentHeader()}<div class="empty-state"><h3>You are not in a class yet</h3><p>Your account is active but has not been added to a class group. Contact Gaeilgeoir Guides and they will add you.</p></div>`;
   } else if (state.view === 'tracker') content = studentTrackerView();
   else if (state.view === 'courses') content = state.course ? coursePage() : coursesView();
   else if (state.view === 'community') content = studentCommunityView();
@@ -4717,23 +4737,28 @@ function nextClassBanner() {
   </section>`;
 }
 
-const STUDENT_HERO_COPY = {
-  community: { title: 'here is your class board', line: 'Ask a question or answer somebody else. Your teacher reads it too.' },
-  courses: { title: 'here are your courses', line: 'Every class recording, with the notes that go with it.' },
+const STUDENT_PAGE = {
+  calendar: { title: 'Deadlines', line: 'Check-ins and homework, and the feedback that comes back.' },
+  tracker: { title: 'Weekly tracker', line: 'Every week of the course at a glance.' },
+  courses: { title: 'Courses', line: 'Class recordings, with the notes that go with them.' },
+  community: { title: 'Community', line: 'Ask a question, or answer somebody else.' },
 };
 
-function studentHero() {
-  const copy = STUDENT_HERO_COPY[state.view]
-    || { title: 'here are your deadlines', line: 'Complete check-ins and homework, then view your returned teacher feedback.' };
-  return `<section class="student-hero"><div><h1>Hi ${escapeHtml(state.user.name.split(' ')[0])}, ${escapeHtml(copy.title)}</h1><p>${escapeHtml(copy.line)}</p></div>${state.studentData.class ? `<span class="hero-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</section>
-  ${nextClassBanner()}
-  ${state.view === 'community' || state.view === 'courses' ? '' : studentGoals()}`;
-}
-
-/* The server works this out in src/status.js, so the counting rule lives in one
-   place and is covered by tests. */
-function studentProgress() {
-  return state.studentData?.progress || { checkins: 0, homework: 0, total: 0, next: null, toNext: 0, towards: 0, justHit: null };
+/* A page title, not a greeting.
+   ------------------------------------------------------------------
+   The panel that used to sit here said hello on every screen and took a third
+   of a phone before anything useful. A person who signs in knows their own
+   name; what they do not know is which screen they are on. */
+function studentHeader() {
+  const copy = STUDENT_PAGE[state.view] || STUDENT_PAGE.calendar;
+  return `<header class="sh">
+    <div>
+      <h1>${escapeHtml(copy.title)}</h1>
+      <p>${escapeHtml(copy.line)}</p>
+    </div>
+    ${state.studentData?.class ? `<span class="sh-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}
+  </header>
+  ${nextClassBanner()}`;
 }
 
 function studentGoals() {
@@ -4837,7 +4862,7 @@ function studentCalendarView() {
     <button class="btn ${item.status.tone === 'red' ? '' : 'primary'} small" data-open-student-item="${item.type}" data-week-id="${item.week?.id || ''}" data-assignment-id="${item.assignment?.id || ''}">${item.status.tone === 'red' ? 'View' : 'Open'}</button>
   </article>`;
 
-  return `${studentHero()}${studentTabs('calendar')}
+  return `${studentHeader()}${studentTabs('calendar')}${checkinWindowNote()}
     <div class="student-layout"><section class="card calendar">${calendarHtml()}</section>
     <div class="deadline-column">
       ${overdue.length ? `<aside class="card overdue-card">
@@ -4904,7 +4929,7 @@ function studentTrackerView() {
   const maps = studentMaps();
   const weeks = [...state.studentData.weeks].reverse();
   if (!weeks.length) {
-    return `${studentHero()}${studentTabs('tracker')}<div class="empty-state"><h3>Your tracker is empty</h3><p>Weeks appear here once your class has started. Check back after your first session.</p></div>`;
+    return `${studentHeader()}${studentTabs('tracker')}<div class="empty-state"><h3>Your tracker is empty</h3><p>Weeks appear here once your class has started. Check back after your first session.</p></div>`;
   }
   const currentWeekId = state.studentData.weeks.at(-1)?.id;
   const cards = weeks.map((week) => {
@@ -4949,11 +4974,19 @@ function studentTrackerView() {
       ${week.checkin_available ? '' : `<p class="week-card-note">Your check-in opens ${escapeHtml(fmtDate(week.checkin_release_at, { time: true, weekday: true, dateStyle: 'short' }))}.</p>`}
     </article>`;
   }).join('');
-  return `${studentHero()}${studentTabs('tracker')}
+  return `${studentHeader()}${studentTabs('tracker')}
     <section class="card student-tracker">
       <div class="week-card-grid">${cards}</div>
       ${trackerLegend('student')}
     </section>`;
+}
+
+/* When check-ins open and close. Small, and on the screen where somebody is
+   already looking at deadlines, because "why can I not do last week's" is the
+   question it exists to answer. */
+function checkinWindowNote() {
+  const zone = timezoneAbbreviation(classTimezone());
+  return `<p class="win-note">Check-ins open <strong>Friday at 2pm</strong> and close <strong>Sunday at 8pm</strong> (${escapeHtml(zone)}). They cannot be completed after that, so a week that closes stays closed.</p>`;
 }
 
 function studentTabs(active) {
@@ -5176,9 +5209,34 @@ async function submitCheckin() {
 async function openHomeworkForm(assignment, submission) {
   try {
     const data = await api(`/api/student/assignments/${assignment.id}`);
+    /* A hard deadline that has passed closes the assignment outright. The
+       questions do not come back from the server, and offering an empty form
+       behind a refusal would be worse than saying so. */
+    if (!data.assignment.open) return closedAssignmentNotice(data.assignment, data.submission);
     state.homeworkForm = { assignment: data.assignment, submission: data.submission, step: data.submission?.current_question || 0, answers: Array.isArray(data.submission?.answers) ? [...data.submission.answers] : data.assignment.questions.map(() => ''), files: data.submission?.files || [] };
     renderHomeworkStep();
   } catch (error) { showToast(error.message, 'error'); }
+}
+
+/* What a student sees when a hard deadline has gone. Their own work, if they
+   submitted, and otherwise the plain fact of it. */
+function closedAssignmentNotice(assignment, submission) {
+  const submitted = submission && submission.status !== 'draft';
+  modal({
+    title: assignment.title,
+    subtitle: `Closed ${fmtDate(assignment.deadline_at, { weekday: true, time: true, dateStyle: 'medium' })}`,
+    body: submitted
+      ? `<div class="closed-note is-in">
+           <strong>You handed this in.</strong>
+           <span>The deadline has since passed, so it can no longer be changed.</span>
+         </div>
+         ${submittedHomeworkBlock(assignment, submission)}`
+      : `<div class="closed-note">
+           <strong>This deadline has passed.</strong>
+           <span>It was a hard deadline, so the assignment is closed and cannot be submitted now. If you need it reopened, ask in the community or reply to your feedback email.</span>
+         </div>`,
+    footer: '<button class="btn primary" data-close-modal>Close</button>',
+  });
 }
 
 function loomEmbed(url) {

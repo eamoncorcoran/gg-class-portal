@@ -322,7 +322,22 @@ router.get('/assignments/:id', asyncRoute(async (req, res) => {
      FROM homework_submissions hs WHERE hs.assignment_id=$1 AND hs.student_id=$2`,
     [assignment.id, req.user.id],
   );
-  res.json({ assignment: { ...assignment, open: assignmentOpen(assignment) }, submission: submission ? forStudent(withVoiceNote(submission, 'homework')) : null });
+  const open = assignmentOpen(assignment);
+  /* A hard deadline that has passed closes the assignment outright. The
+     questions are withheld rather than shown behind a refusal: offering
+     somebody a form that cannot be submitted is worse than telling them
+     plainly, and the answers are of no use to them now. */
+  const payload = open ? assignment : { ...assignment, questions: [], instructions: '' };
+  res.json({
+    assignment: {
+      ...payload,
+      open,
+      hardDeadline: assignment.hard_deadline !== false,
+      // A soft deadline that has passed still accepts work, marked late.
+      acceptsLate: assignment.hard_deadline === false && Date.now() > new Date(assignment.deadline_at).getTime(),
+    },
+    submission: submission ? forStudent(withVoiceNote(submission, 'homework')) : null,
+  });
 }));
 
 router.put('/assignments/:id/draft', asyncRoute(async (req, res) => {
@@ -369,17 +384,23 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
   if (assignment.uploads_required && !uploaded.length) {
     return res.status(400).json({ error: 'Upload your work before submitting this assignment.' });
   }
+  /* A soft deadline keeps accepting work; whether this particular submission
+     arrived after the deadline is recorded now rather than inferred later, so
+     reopening the assignment cannot rewrite somebody's history. */
+  const late = Date.now() > new Date(assignment.deadline_at).getTime();
+
   const row = await one(
     `INSERT INTO homework_submissions(
-       assignment_id,student_id,status,answers,current_question,submitted_at,feedback_state,updated_at
-     ) VALUES ($1,$2,'submitted',$3::jsonb,$4,now(),'generating',now())
+       assignment_id,student_id,status,answers,current_question,submitted_at,submitted_late,feedback_state,updated_at
+     ) VALUES ($1,$2,'submitted',$3::jsonb,$4,now(),$5,'generating',now())
      ON CONFLICT (assignment_id,student_id) DO UPDATE
        SET answers=EXCLUDED.answers,current_question=EXCLUDED.current_question,status='submitted',
-           submitted_at=now(),ai_corrections=NULL,ai_general_feedback=NULL,
+           submitted_at=now(),submitted_late=EXCLUDED.submitted_late,
+           ai_corrections=NULL,ai_general_feedback=NULL,
            teacher_corrections=NULL,teacher_general_feedback=NULL,feedback_state='generating',
            feedback_returned_at=NULL,feedback_read_at=NULL,updated_at=now()
      RETURNING *`,
-    [assignment.id, req.user.id, JSON.stringify(parsed.data.answers), Math.max(0, questions.length - 1)],
+    [assignment.id, req.user.id, JSON.stringify(parsed.data.answers), Math.max(0, questions.length - 1), late],
   );
   let feedbackState = 'generating';
   try {

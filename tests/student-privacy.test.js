@@ -84,10 +84,10 @@ function functionBody(name) {
 test('no student-facing copy mentions AI or drafting', () => {
   // Every function that renders something only a student sees.
   const names = [
-    'studentCommunityView', 'feedEmpty', 'studentHero', 'studentGoals',
+    'studentCommunityView', 'feedEmpty', 'studentHeader', 'studentGoals',
     'openWithdrawalForm', 'studentCalendarView', 'studentTrackerView',
     'showCheckinFeedback', 'showHomeworkFeedback', 'celebrationScreen',
-    'avatarForm', 'feedPost', 'feedComment',
+    'avatarForm', 'feedPost', 'feedComment', 'checkinWindowNote', 'closedAssignmentNotice',
   ];
   const missing = names.filter((name) => !functionBody(name));
   assert.deepEqual(missing, [], `these student views were renamed or removed: ${missing.join(', ')}`);
@@ -97,9 +97,9 @@ test('no student-facing copy mentions AI or drafting', () => {
   }
 });
 
-test('the student hero copy is present and says nothing about drafting', () => {
-  const start = app.indexOf('const STUDENT_HERO_COPY');
-  assert.ok(start !== -1, 'STUDENT_HERO_COPY is gone');
+test('the student page copy is present and says nothing about drafting', () => {
+  const start = app.indexOf('const STUDENT_PAGE');
+  assert.ok(start !== -1, 'STUDENT_PAGE is gone');
   const block = app.slice(start, app.indexOf('};', start));
   assert.doesNotMatch(block, /\bAI\b|draft/i);
 });
