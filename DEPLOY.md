@@ -136,7 +136,29 @@ Watch it in **Render → Logs**, or roll back from **Deploys → Rollback**.
 | Zoom recording sweep | `ZOOM_SWEEP_CRON` | In-process, only with Zoom keys set |
 | Database + upload backup | 03:15 daily | `/var/data/backups`, 14 days kept |
 
-### Off-site copies
+### Getting it off the machine
+
+Three layers, and the first two need no account that does not already exist.
+
+**Render backs up the database itself.** Managed Postgres on a paid plan takes
+its own daily backups, held by Render rather than on this server's disk. That
+covers every student, grade, submission and piece of feedback — everything
+except uploaded files. Confirm it under **the database → Backups** in the
+dashboard; that is the single most valuable protection here and it was already
+switched on.
+
+**The nightly backup is emailed.** Set `BACKUP_EMAIL_TO` and both files arrive
+in an inbox each morning, sent through the mail already configured. An inbox on
+somebody else's servers is off the machine, which is the entire property that
+matters. Keep one of those emails and the portal can be rebuilt from it.
+
+This works because the files are small — tens of kilobytes for the database, a
+few hundred for the coursework. It stops working the day they are not, so rather
+than truncating silently, the message says so in its subject line and keeps
+sending the database on its own for as long as that still fits. The database is
+the last thing to be dropped, because it holds the grades.
+
+### Off-site copies, once email is outgrown
 
 The nightly backup also goes to object storage somewhere else, because a backup
 living on the disk it is backing up is one failure away from being no backup.

@@ -11,6 +11,10 @@ import { pool } from '../src/db.js';
 
 const line = (label, value) => console.log(`  ${label.padEnd(22)} ${value}`);
 
+console.log('\nWhere backups go');
+line('On the server', config.backupDir);
+line('Emailed to', config.backupEmailTo || 'nobody — set BACKUP_EMAIL_TO');
+
 console.log('\nOff-site storage');
 if (!offsiteConfigured()) {
   line('Status', 'NOT CONFIGURED — backups are on the server disk only.');
@@ -27,6 +31,9 @@ console.log('\nTaking a backup now');
 const summary = await runBackup();
 line('Database', summary.database ? `${(summary.database.bytes / 1024 / 1024).toFixed(1)}MB${summary.database.offsite ? ' (off-site OK)' : ''}` : 'FAILED');
 line('Files', summary.files ? `${(summary.files.bytes / 1024 / 1024).toFixed(1)}MB${summary.files.offsite ? ' (off-site OK)' : ''}` : 'none');
+if (summary.emailed) {
+  line('Emailed', `${summary.emailed.attached.length} attached${summary.emailed.dropped.length ? `, ${summary.emailed.dropped.join(', ')} TOO LARGE` : ''}`);
+}
 if (summary.errors.length) {
   console.log('\n  Problems:');
   summary.errors.forEach((problem) => console.log(`    - ${problem}`));

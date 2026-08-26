@@ -17,7 +17,7 @@ function layout({ title, body, buttonText, buttonUrl }) {
   </table></td></tr></table></body></html>`;
 }
 
-export async function sendEmail({ to, subject, text, html, metadata = {} }) {
+export async function sendEmail({ to, subject, text, html, attachments = [], metadata = {} }) {
   const email = await getEmailConfig();
   const message = {
     to,
@@ -26,9 +26,13 @@ export async function sendEmail({ to, subject, text, html, metadata = {} }) {
     html,
     from: `${email.fromName} <${email.fromAddress}>`,
     replyTo: email.replyTo,
+    ...(attachments.length ? { attachments } : {}),
   };
   if (email.provider === 'ghl_webhook') {
     if (!email.webhookUrl) throw new Error('GHL email webhook is not configured.');
+    /* A webhook forwards a message; it has nowhere to put a file. Saying so is
+       better than posting the JSON and letting the attachment vanish. */
+    if (attachments.length) throw new Error('The GHL webhook cannot carry attachments. Use SMTP for backup emails.');
     const response = await fetch(email.webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

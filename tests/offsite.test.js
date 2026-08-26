@@ -87,3 +87,37 @@ test('a storage failure cannot take the local backup with it', () => {
   assert.ok(backup.indexOf('await uploadBackup') < backup.indexOf('expiredBackups(await fs.readdir'),
     'the copy must be made before the local files are pruned');
 });
+
+/* Email as the off-machine copy, for a deployment with no object storage. */
+
+test('a backup too large for email drops the biggest file, never the database', () => {
+  const source = fs.readFileSync(new URL('../src/backup.js', import.meta.url), 'utf8');
+  const start = source.indexOf('async function emailBackup');
+  assert.ok(start !== -1, 'emailBackup is no longer where this test expects it');
+  const body = source.slice(start, source.indexOf('\nexport', start));
+
+  /* Smallest first is the whole point: the database holds the grades, the
+     feedback and every student record, and is a fraction of the size of the
+     file archive. Sorting the other way would drop it first. */
+  assert.match(body, /sort\(\(a, b\) => a\.mb - b\.mb\)/,
+    'files must be considered smallest first so the database survives');
+  assert.match(body, /NOT ATTACHED/, 'a dropped file must be named in the message');
+  assert.match(body, /Action needed/, 'outgrowing email must be visible in the subject line');
+});
+
+test('the backup email is never allowed to abort the backup', () => {
+  const source = fs.readFileSync(new URL('../src/backup.js', import.meta.url), 'utf8');
+  const start = source.indexOf('if (config.backupEmailTo');
+  assert.ok(start !== -1);
+  const section = source.slice(start, source.indexOf('Only prune once', start));
+  assert.match(section, /try \{[\s\S]*emailBackup[\s\S]*\} catch/,
+    'a mail failure must not take the backup with it');
+  assert.match(section, /summary\.errors\.push\(`backup email/,
+    'a failed backup email must be reported, not swallowed');
+});
+
+test('a webhook cannot silently swallow an attachment', () => {
+  const email = fs.readFileSync(new URL('../src/email.js', import.meta.url), 'utf8');
+  assert.match(email, /cannot carry attachments/,
+    'the GHL webhook path must refuse attachments rather than dropping them');
+});

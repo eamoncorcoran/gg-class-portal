@@ -72,6 +72,13 @@ services:
       - key: BACKUP_KEEP_DAYS
         value: "14"
 
+      # The nightly backup, emailed. Uses the mail that is already configured
+      # above, so it needs no account that does not already exist. Small files
+      # for now; if they outgrow email the message says so rather than quietly
+      # truncating.
+      - key: BACKUP_EMAIL_TO
+        value: eamon@gaeilgeoirguides.com
+
       # Off-site copies of the nightly backup. A backup that lives on the disk
       # it is backing up is one failure away from being no backup. Any
       # S3-compatible storage; leave blank and backups stay local-only.

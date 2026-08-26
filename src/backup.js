@@ -7,6 +7,60 @@ import { pipeline } from 'node:stream/promises';
 import cron from 'node-cron';
 import { config } from './config.js';
 import { offsiteConfigured, uploadBackup, listBackups, deleteBackup } from './offsite.js';
+import { sendEmail } from './email.js';
+
+/* Email is not a backup system, and this does not pretend otherwise. But a copy
+   in an inbox on someone else's servers is off the machine, which is the entire
+   property that matters — and it needs no account that does not already exist.
+
+   It works because these files are small: a gzipped dump of a text database and
+   an archive of coursework, tens of kilobytes to a few megabytes. It stops
+   working the day they are not, so rather than silently truncating or failing,
+   it says so and keeps sending the database on its own for as long as that
+   still fits. Nothing quietly stops. */
+const EMAIL_ATTACHMENT_LIMIT_MB = 20;
+
+async function emailBackup(directory, summary, sendTo) {
+  const candidates = [summary.database, summary.files].filter(Boolean);
+  if (!candidates.length) return;
+
+  const withSizes = candidates.map((written) => ({ ...written, mb: written.bytes / 1024 / 1024 }));
+  const total = withSizes.reduce((sum, file) => sum + file.mb, 0);
+
+  /* Too big as a set: send what still fits, smallest first, so the database —
+     which holds the grades, the feedback and every student record — is the last
+     thing to be dropped. */
+  const attachments = [];
+  let running = 0;
+  const dropped = [];
+  for (const file of [...withSizes].sort((a, b) => a.mb - b.mb)) {
+    if (running + file.mb > EMAIL_ATTACHMENT_LIMIT_MB) { dropped.push(file); continue; }
+    running += file.mb;
+    attachments.push({ filename: file.name, path: path.join(directory, file.name) });
+  }
+
+  const size = (mb) => `${mb.toFixed(1)}MB`;
+  const outgrown = dropped.length > 0;
+  const lines = [
+    `Backup ${summary.stamp}`,
+    '',
+    ...withSizes.map((file) => `  ${file.name} — ${size(file.mb)}${dropped.includes(file) ? '  NOT ATTACHED, too large for email' : ''}`),
+    '',
+    outgrown
+      ? `This backup has outgrown email (${size(total)} against a ${EMAIL_ATTACHMENT_LIMIT_MB}MB limit). What is attached is still a real backup, but the files above marked NOT ATTACHED exist only on the server. Move to object storage before that matters.`
+      : 'Both files are attached. Keep this email and you can rebuild the portal from it.',
+    '',
+    'To restore, see DEPLOY.md.',
+  ];
+
+  await sendEmail({
+    to: sendTo,
+    subject: `${outgrown ? '[Action needed] ' : ''}Class Portal backup — ${summary.stamp}`,
+    text: lines.join('\n'),
+    attachments,
+  });
+  return { attached: attachments.map((file) => file.filename), dropped: dropped.map((file) => file.name) };
+}
 
 /* A backup that only lives on the machine it protects is not a backup. This
    writes one locally every night; copying it off the server is step one of the
@@ -157,6 +211,16 @@ export async function runBackup({
       }
     } catch (error) {
       summary.errors.push(`off-site pruning: ${error.message}`);
+    }
+  }
+
+  /* A copy in an inbox, for anybody who would rather not keep another account
+     open. Same rule as the upload: its failure is recorded, never thrown. */
+  if (config.backupEmailTo && (summary.database || summary.files)) {
+    try {
+      summary.emailed = await emailBackup(directory, summary, config.backupEmailTo);
+    } catch (error) {
+      summary.errors.push(`backup email: ${error.message}`);
     }
   }
 

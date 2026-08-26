@@ -66,6 +66,9 @@ export const config = Object.freeze({
   backupDir: path.resolve(process.env.BACKUP_DIR || './backups'),
   /* Where the nightly backup is copied to, off the machine it came from. Any
      S3-compatible storage; empty means local-only, which is the old behaviour. */
+  /* Where the nightly backup is emailed, for a deployment with no object
+     storage. Off the machine, using an inbox that already exists. */
+  backupEmailTo: process.env.BACKUP_EMAIL_TO || '',
   offsite: {
     endpoint: process.env.BACKUP_S3_ENDPOINT || '',
     bucket: process.env.BACKUP_S3_BUCKET || '',
