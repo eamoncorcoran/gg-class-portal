@@ -67,8 +67,8 @@ cannot disturb mail that already works.
    | `APP_ENCRYPTION_KEY` | Run `npm run generate-key` locally and paste the result |
    | `SMTP_PASSWORD` | The Resend API key from step 2 |
 
-   The rest — `OPENAI_API_KEY`, `GIPHY_API_KEY`, the Bunny keys, the Zoom keys —
-   are optional. Each is a feature that hides itself when its key is absent, so
+   The rest — `OPENAI_API_KEY`, the Bunny keys, the Zoom keys, the backup
+   storage keys — are optional. Each is a feature that hides itself when its key is absent, so
    leave any of them blank and add it later.
 
 4. Apply. The first deploy takes about five minutes: it builds the image, runs
@@ -100,14 +100,15 @@ Nothing here touches the root domain, so existing mail is unaffected.
 
 ### 5. The first administrator
 
-The database starts empty. From **Render → Shell** on the running service:
+There is nothing to do. A portal with no active administrator creates one at
+boot from `ADMIN_NAME` and `ADMIN_EMAIL`, generates a password on the server,
+and prints it once to the deploy log. Sign in with it and you are asked to
+change it immediately, which is what makes the copy left in the log harmless.
 
-```
-npm run create-admin
-```
+Once anybody can sign in this never runs again, so it is safe to leave in place.
 
-It asks for a name, an email and a password, and nothing is echoed. That account
-can then create every other administrator from the Administrators screen.
+To add an administrator by hand later, `npm run create-admin` from the Render
+shell still works.
 
 ---
 
@@ -135,10 +136,48 @@ Watch it in **Render → Logs**, or roll back from **Deploys → Rollback**.
 | Zoom recording sweep | `ZOOM_SWEEP_CRON` | In-process, only with Zoom keys set |
 | Database + upload backup | 03:15 daily | `/var/data/backups`, 14 days kept |
 
-The backup writes to the same disk as the thing it is backing up, which protects
-against a mistake but not against losing the disk. If that matters, download one
-periodically from the Render shell, or say the word and I will push them to
-off-site storage.
+### Off-site copies
+
+The nightly backup also goes to object storage somewhere else, because a backup
+living on the disk it is backing up is one failure away from being no backup.
+
+Any S3-compatible provider works — the same code runs against Backblaze B2,
+Cloudflare R2 or AWS. Set five variables in Render:
+
+| Key | Example |
+| --- | --- |
+| `BACKUP_S3_ENDPOINT` | `https://s3.eu-central-003.backblazeb2.com` |
+| `BACKUP_S3_BUCKET` | `gg-class-portal-backups` |
+| `BACKUP_S3_KEY_ID` | from the provider |
+| `BACKUP_S3_SECRET` | from the provider |
+| `BACKUP_S3_REGION` | `auto`, or the provider's region |
+
+Leave them blank and the backup stays local-only, exactly as before — off-site
+is an addition, never a dependency. A storage outage cannot stop the backup that
+would otherwise have been taken; it is recorded as a problem and the local copy
+is still written.
+
+### Proving it works
+
+A backup nobody has ever restored is a hope. From the Render shell:
+
+```
+npm run check-backup
+```
+
+It writes a test object, reads it back and compares it, takes a real backup,
+pushes it, and lists what is up there. The read-back matters: a key with write
+but not read permission looks perfectly healthy every night and fails on the one
+morning it is needed.
+
+### Restoring
+
+```
+gunzip -c gg-2026-03-19T0315-database.sql.gz | psql "$DATABASE_URL"
+tar -xzf gg-2026-03-19T0315-files.tar.gz -C /var/data
+```
+
+Restore into an empty database rather than over a live one.
 
 ---
 
@@ -146,11 +185,12 @@ off-site storage.
 
 | | |
 | --- | --- |
-| Web service, Starter | $7/mo |
-| Postgres, Basic 256MB | $7/mo |
-| Disk, 5GB | ~$1.25/mo |
+| Web service, Starter | $7.00/mo |
+| Postgres, Basic 256MB | $10.50/mo |
+| Disk, 5GB | $1.25/mo |
 | Resend | Free below 3,000 emails/mo |
-| **Total** | **~$15/mo** |
+| Backup storage | Under $1/mo, often free |
+| **Total** | **~$19/mo** |
 
 The database plan is the one to watch. 256MB is generous for text but recordings
 are not in it — they are on Bunny or YouTube — so it should last a long time.

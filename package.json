@@ -19,9 +19,11 @@
     "smoke": "node scripts/smoke.js",
     "build:preview": "node scripts/build-preview.js",
     "backup": "node scripts/backup.js",
-    "secure-attachments": "node scripts/secure-attachments.js"
+    "secure-attachments": "node scripts/secure-attachments.js",
+    "check-backup": "node scripts/check-backup.js"
   },
   "dependencies": {
+    "aws4fetch": "^1.0.20",
     "cookie-parser": "^1.4.7",
     "csv-parse": "^6.1.0",
     "dotenv": "^16.6.1",

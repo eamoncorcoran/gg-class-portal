@@ -72,6 +72,20 @@ services:
       - key: BACKUP_KEEP_DAYS
         value: "14"
 
+      # Off-site copies of the nightly backup. A backup that lives on the disk
+      # it is backing up is one failure away from being no backup. Any
+      # S3-compatible storage; leave blank and backups stay local-only.
+      - key: BACKUP_S3_ENDPOINT
+        sync: false
+      - key: BACKUP_S3_BUCKET
+        sync: false
+      - key: BACKUP_S3_KEY_ID
+        sync: false
+      - key: BACKUP_S3_SECRET
+        sync: false
+      - key: BACKUP_S3_REGION
+        sync: false
+
       # Email through Resend on its own subdomain.
       #
       # Two reasons it is send. rather than hub. — one of them a hard DNS rule.

@@ -64,6 +64,16 @@ export const config = Object.freeze({
   backupEnabled: bool(process.env.BACKUP_ENABLED, (process.env.NODE_ENV || 'development') === 'production'),
   backupCron: process.env.BACKUP_CRON || '15 3 * * *',
   backupDir: path.resolve(process.env.BACKUP_DIR || './backups'),
+  /* Where the nightly backup is copied to, off the machine it came from. Any
+     S3-compatible storage; empty means local-only, which is the old behaviour. */
+  offsite: {
+    endpoint: process.env.BACKUP_S3_ENDPOINT || '',
+    bucket: process.env.BACKUP_S3_BUCKET || '',
+    keyId: process.env.BACKUP_S3_KEY_ID || '',
+    secret: process.env.BACKUP_S3_SECRET || '',
+    region: process.env.BACKUP_S3_REGION || 'auto',
+    prefix: process.env.BACKUP_S3_PREFIX || '',
+  },
   backupKeepDays: integer(process.env.BACKUP_KEEP_DAYS, 14),
   defaultTimezone: process.env.DEFAULT_TIMEZONE || 'Europe/Dublin',
   isProduction: (process.env.NODE_ENV || 'development') === 'production',

@@ -6,6 +6,7 @@ import zlib from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import cron from 'node-cron';
 import { config } from './config.js';
+import { offsiteConfigured, uploadBackup, listBackups, deleteBackup } from './offsite.js';
 
 /* A backup that only lives on the machine it protects is not a backup. This
    writes one locally every night; copying it off the server is step one of the
@@ -100,7 +101,7 @@ export async function runBackup({
 } = {}) {
   await fs.mkdir(directory, { recursive: true });
   const names = backupNames(now);
-  const summary = { stamp: names.stamp, database: null, files: null, removed: [], errors: [] };
+  const summary = { stamp: names.stamp, database: null, files: null, removed: [], offsite: [], errors: [] };
 
   /* A half-written file left behind by a failed run looks exactly like a backup
      in an ls, which is the worst possible thing for it to look like. */
@@ -125,6 +126,38 @@ export async function runBackup({
     } catch (error) { await discard(target); throw error; }
   } catch (error) {
     summary.errors.push(`files: ${error.message}`);
+  }
+
+  /* Off-site, before pruning: a copy that exists in two places is the whole
+     point, and it must be made while the local file is certainly still there.
+
+     Wrapped so that a storage outage cannot take the local backup down with it.
+     A night with a local copy and no off-site one is a worse night than usual;
+     a night with neither because the upload threw is a disaster. */
+  if (offsiteConfigured()) {
+    for (const written of [summary.database, summary.files].filter(Boolean)) {
+      try {
+        const sent = await uploadBackup(path.join(directory, written.name));
+        written.offsite = true;
+        summary.offsite.push(sent.name);
+      } catch (error) {
+        written.offsite = false;
+        summary.errors.push(`off-site ${written.name}: ${error.message}`);
+      }
+    }
+
+    /* Prune the far copies against the same window. Done separately from the
+       local prune because the two can disagree — an upload that failed three
+       nights ago leaves a gap here that is not there locally. */
+    try {
+      const remote = await listBackups();
+      for (const name of expiredBackups(remote, keepDays, now)) {
+        await deleteBackup(name);
+        summary.removed.push(`offsite:${name}`);
+      }
+    } catch (error) {
+      summary.errors.push(`off-site pruning: ${error.message}`);
+    }
   }
 
   /* Only prune once something was written. Otherwise a run that fails every
