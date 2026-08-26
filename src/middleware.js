@@ -1,11 +1,38 @@
 import { config } from './config.js';
 
+/* Which addresses this portal answers writes on.
+   ------------------------------------------------------------------
+   APP_URL is the address students are given, and for most of the life of a
+   deployment it is the only one. But a hosted portal always has a second, real
+   address of its own — the one the platform assigns — and it stays reachable
+   whether or not the custom domain is working. It is the address you use before
+   DNS has been set up, and the one you fall back to the day a DNS change goes
+   wrong.
+
+   Both are supplied by the server: APP_URL from configuration, and
+   RENDER_EXTERNAL_URL by the platform itself. Neither can be influenced by
+   whoever is making the request, which is what keeps this a real check rather
+   than a formality. */
+function allowedOrigins() {
+  const candidates = [
+    config.appUrl,
+    process.env.RENDER_EXTERNAL_URL,
+    ...String(process.env.ALT_ORIGINS || '').split(',').map((entry) => entry.trim()),
+  ];
+  const origins = new Set();
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try { origins.add(new URL(candidate).origin); } catch { /* ignore an unusable entry */ }
+  }
+  return origins;
+}
+
 export function sameOrigin(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   const origin = req.get('origin');
   if (!origin) return next();
   try {
-    if (new URL(origin).origin !== new URL(config.appUrl).origin) {
+    if (!allowedOrigins().has(new URL(origin).origin)) {
       return res.status(403).json({ error: 'Cross-origin request blocked.' });
     }
   } catch {
