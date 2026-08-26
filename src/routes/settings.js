@@ -29,9 +29,29 @@ router.get('/', asyncRoute(async (_req, res) => {
 
 /* Drafting runs on Claude. Dictation still runs on OpenAI, so both keys are
    saved from the same screen and neither route touches the other's row. */
+/* Anthropic issues more than one kind of key and they are not interchangeable.
+   An Admin key administers the organisation — members, workspaces, other keys —
+   and cannot call the Messages API at all, so pasting one produces an
+   authentication failure that reads exactly like a typo. That sends somebody
+   checking a key that was never wrong, only the wrong sort. Recognised here,
+   before it is stored, because the prefix says which is which. */
+function apiKeyProblem(key) {
+  const value = String(key || '').trim();
+  if (!value) return null; // Blank means "keep the existing key".
+  if (value.startsWith('sk-ant-admin')) {
+    return 'That is an Anthropic Admin key. Admin keys manage your organisation — members, workspaces and other keys — and cannot write drafts. You need a standard API key, which begins sk-ant-api. Create one at console.anthropic.com under API Keys.';
+  }
+  if (!value.startsWith('sk-ant-')) {
+    return 'That does not look like an Anthropic API key. They begin sk-ant-api and are created at console.anthropic.com under API Keys.';
+  }
+  return null;
+}
+
 router.put('/anthropic', asyncRoute(async (req, res) => {
   const parsed = z.object({ apiKey: z.string().optional(), model: z.string().min(1).max(100) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Enter a valid model and optional API key.' });
+  const problem = apiKeyProblem(parsed.data.apiKey);
+  if (problem) return res.status(400).json({ error: problem });
   const saved = await saveAnthropicConfig(parsed.data, req.user.id);
   await audit({ actorId: req.user.id, action: 'settings.anthropic_updated', entityType: 'settings', entityId: 'anthropic', ip: req.ip });
   res.json(saved);
@@ -61,8 +81,8 @@ router.post('/anthropic/test', asyncRoute(async (_req, res) => {
        which key is wrong. */
     const detail = String(error?.message || error);
     res.status(error?.status === 409 ? 409 : 502).json({
-      error: /authentication|api key|401/i.test(detail)
-        ? 'Claude rejected that API key. Check it and save again.'
+      error: /authentication|api key|401|invalid x-api-key/i.test(detail)
+        ? 'Claude rejected that API key. The usual cause is an Admin key rather than a standard one: a standard key begins sk-ant-api and is created at console.anthropic.com under API Keys. A revoked key gives the same error.'
         : detail.slice(0, 400),
     });
   }
