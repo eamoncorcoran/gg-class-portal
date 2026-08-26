@@ -63,9 +63,17 @@ services:
       - key: BACKUP_KEEP_DAYS
         value: "14"
 
-      # Email through Resend, sending from the hub subdomain so the DNS records
-      # sit beside the existing Gmail and GoHighLevel ones instead of on top of
-      # them.
+      # Email through Resend on its own subdomain.
+      #
+      # Two reasons it is send. rather than hub. — one of them a hard DNS rule.
+      # hub.gaeilgeoirguides.com is a CNAME pointing at Render, and a CNAME
+      # cannot share its name with any other record, so the mail records simply
+      # could not live there. And keeping sending on a separate subdomain leaves
+      # the root domain's existing Gmail and GoHighLevel SPF untouched, which is
+      # what stops this from disturbing mail that already works.
+      #
+      # Replies go to the real inbox, not to the sending address, which nobody
+      # reads.
       - key: EMAIL_PROVIDER
         value: smtp
       - key: SMTP_HOST
@@ -81,7 +89,7 @@ services:
       - key: EMAIL_FROM_NAME
         value: Gaeilgeoir Guides
       - key: EMAIL_FROM_ADDRESS
-        value: hub@hub.gaeilgeoirguides.com
+        value: no-reply@send.gaeilgeoirguides.com
       - key: EMAIL_REPLY_TO
         value: info@gaeilgeoirguides.com
 
