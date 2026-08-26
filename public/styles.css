@@ -1257,6 +1257,30 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .rr{display:inline-flex;align-items:center;gap:9px}
 .rr-status{color:var(--text-tertiary);font-size:11.5px}
 .cmt-voice{margin-top:9px}
+/* The chosen photograph, before and after it is sent.
+   ------------------------------------------------------------------
+   This had a size but nothing to keep a picture inside it, so the img rendered
+   at its natural dimensions — and a photograph off a phone is around 3000px
+   across. It escaped the box, the dialog and the page, which read as the
+   settings screen being drawn over.
+
+   A fixed circle that crops rather than scales: a portrait and a landscape
+   snapshot both need to end up as the same round thumbnail, and object-fit is
+   what makes a face fill it instead of sitting in a letterboxed strip. */
+.avatar-preview{position:relative;width:88px;height:88px;flex:0 0 auto;
+  display:grid;place-items:center;overflow:hidden;border-radius:999px;
+  background:var(--gray-100);border:1px solid var(--border);color:var(--text-quaternary)}
+/* Taken out of the grid rather than sized inside it. As a grid item under
+   place-items:center the image does not stretch, so height:100% had nothing to
+   resolve against and it fell back to its own 3:4 aspect — filling the width
+   and overshooting the height. Absolute against the circle removes the
+   question. */
+.avatar-preview img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.avatar-preview svg{width:28px;height:28px}
+
+.avatar-pick{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.avatar-pick p{margin:7px 0 0}
+
 .acct-photo{display:flex;align-items:center;gap:16px;margin-bottom:22px;padding-bottom:20px;border-bottom:1px solid var(--border)}
 .acct-photo .avatar-preview{width:64px;height:64px}
 .acct-photo .avatar-preview svg{width:22px;height:22px}
