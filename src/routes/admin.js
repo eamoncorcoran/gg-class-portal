@@ -1769,6 +1769,29 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
 
 /* Rescheduling, or releasing something early. Setting it to now is how a
    scheduled post gets published on the spot. */
+/* The suggested reply to a board post.
+   ------------------------------------------------------------------
+   The drawer asks for this the moment an administrator opens a thread, and the
+   answer is cached on the thread, so opening the same post twice does not draft
+   twice. `regenerate` is the "draft again" button: it ignores the cache.
+
+   Nothing here ever reaches a student — the draft lives in columns that
+   forStudentView strips, and no student route reads them. */
+router.post('/community/thread/:id/draft', asyncRoute(async (req, res) => {
+  const parsed = z.object({ regenerate: z.boolean().optional().default(false) }).safeParse(req.body || {});
+  const result = await draftReplyFor({
+    threadId: req.params.id,
+    force: parsed.success ? parsed.data.regenerate : false,
+  });
+  if (!result) return res.status(404).json({ error: 'Post not found.' });
+  /* A missing key is the one failure worth naming outright, because it is
+     configuration rather than a bad day for the model. */
+  if (result.state === 'failed' && /Claude key/i.test(result.error || '')) {
+    return res.status(409).json({ error: result.error });
+  }
+  res.json(result);
+}));
+
 router.patch('/community/thread/:id/schedule', asyncRoute(async (req, res) => {
   const parsed = z.object({ publishedAt: z.string().datetime() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Choose when this should go out.' });

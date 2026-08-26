@@ -13,7 +13,7 @@ import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
 import { nextClassAt, nextClassWithSessions, joinLinkFor } from '../classtime.js';
 import { listThreads, getThread, createThread, createPost, unreadCount, markRead,
-  listCategories, toggleReaction, topContributors, REACTIONS, forStudentView } from '../community.js';
+  listCategories, toggleReaction, topContributors, REACTIONS, forStudentView, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForStudent, getCourse, studentCanSeeLesson, setLessonProgress } from '../courses.js';
 import multer from 'multer';
@@ -764,6 +764,18 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
   });
   await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
   res.status(201).json(row);
+
+  /* Draft a suggested reply now, so one is waiting rather than being written
+     while an administrator watches a spinner.
+
+     Deliberately after the response and deliberately not awaited: the student's
+     post is already saved and acknowledged, and nothing about drafting should be
+     able to slow that down or fail it. A missing key, a rate limit or a bad
+     minute for the model all end the same way — no draft, and the teacher writes
+     their own reply, which is what they were going to do anyway. */
+  draftReplyFor({ threadId: row.id }).catch((error) => {
+    console.error(`Could not draft a reply for ${row.id}: ${error.message}`);
+  });
 }));
 
 /* Reacting. Scoped to this student's own class the same way everything else is:
@@ -799,6 +811,14 @@ router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
   if (thread.locked) return res.status(409).json({ error: 'This conversation has been closed to new replies.' });
   const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body });
   res.status(201).json(row);
+
+  /* The draft was written against the post and the comments that existed at the
+     time. A new comment can make it wrong — the commonest way being that it now
+     says something another student has just said. So it is drafted again,
+     forced past the cache, rather than left to look current while being stale. */
+  draftReplyFor({ threadId: thread.id, force: true }).catch((error) => {
+    console.error(`Could not redraft a reply for ${thread.id}: ${error.message}`);
+  });
 }));
 
 export default router;

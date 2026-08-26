@@ -149,3 +149,50 @@ test('the reply recorder and the draft never render for a student', () => {
   assert.match(drawer, /if \(admin\) loadReplyDraft\(thread\.id\)/,
     'drafting must only be requested for an administrator');
 });
+
+/* The suggested board reply is generated for the administrator and cached on the
+   thread. It is written the moment a student posts, which means the row a
+   student reads from is the same row it lives in — so the stripping matters more
+   here than anywhere else. */
+test('the draft endpoint is an admin route and has no student equivalent', () => {
+  const adminRoutes = fs.readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
+  assert.match(adminRoutes, /router\.post\('\/community\/thread\/:id\/draft'/,
+    'the administrator must have a way to ask for a draft');
+  /* Students do have draft routes — /checkins/:weekId/draft and
+     /assignments/:id/draft save their own half-finished answers. That is a
+     different sense of the word entirely. What must not exist is a student route
+     that serves the *suggested reply*, or that touches the columns it lives in. */
+  assert.doesNotMatch(studentRoutes, /community\/thread\/[^']*\/draft/,
+    'no student route may serve the suggested board reply');
+  /* ai_drafted is a different thing again: it is the feedback state a student's
+     own submission moves into, and forStudent turns it back into "pending"
+     before the student ever sees it. What is forbidden here is the board's
+     ai_draft column itself. */
+  assert.doesNotMatch(studentRoutes, /ai_draft(?![a-z])/,
+    'no student route may read the board drafting columns');
+  /* Student routes deliberately *generate* drafts — submitting a check-in or a
+     piece of homework is what triggers one, so the teacher has it waiting rather
+     than having to ask. The rule is not that a student route may not draft; it
+     is that a student route may never hand one back. That is what forStudent and
+     forStudentView are for, and what the tests above cover. */
+  assert.match(studentRoutes, /draftCheckinFeedback/,
+    'submitting a check-in should still start a draft');
+  assert.match(studentRoutes, /forStudent\(/,
+    'and everything returned to a student must go through the stripper');
+});
+
+test('drafting never blocks or fails a student posting', () => {
+  /* The post is saved and answered first, and the draft is fired afterwards
+     without being awaited. A missing key or a bad minute for the model must not
+     be able to fail a student's post. */
+  for (const marker of ['draftReplyFor({ threadId: row.id })', 'draftReplyFor({ threadId: thread.id, force: true })']) {
+    const at = studentRoutes.indexOf(marker);
+    assert.ok(at !== -1, `${marker} is no longer where this test expects it`);
+    const after = studentRoutes.slice(at, at + 220);
+    assert.match(after, /\.catch\(/, 'a drafting failure must be caught, not thrown');
+  }
+  // Fired after the response has already gone out.
+  assert.ok(studentRoutes.indexOf('res.status(201).json(row);\n\n  /* Draft a suggested reply now')
+    < studentRoutes.indexOf('draftReplyFor({ threadId: row.id })'),
+    'the student must be answered before any drafting begins');
+});

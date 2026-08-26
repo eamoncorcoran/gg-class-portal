@@ -98,3 +98,15 @@ test('the board is closed on the server for a class without one', () => {
   const body = routes.slice(start, routes.indexOf("router.get('/community'", start));
   assert.match(body, /!klass\.has_community/, 'boardClass must refuse a class that has no board');
 });
+
+/* Icons are looked up by name at render time, so a name that no longer exists
+   does not fail — it interpolates the word "undefined" into the page, which is
+   what happened when the GIF picker was removed and one reference to its icon
+   was left behind on the composer bar. */
+test('every icon referenced actually exists', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const defined = new Set([...app.matchAll(/^ {2}([a-zA-Z0-9_]+):\s*`<svg/gm)].map((match) => match[1]));
+  const used = new Set([...app.matchAll(/svg\.([a-zA-Z0-9_]+)/g)].map((match) => match[1]));
+  const missing = [...used].filter((name) => !defined.has(name));
+  assert.deepEqual(missing, [], `these icons are referenced but not defined: ${missing.join(', ')}`);
+});
