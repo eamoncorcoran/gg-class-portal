@@ -5064,11 +5064,11 @@ function openCheckinScheduleModal() {
       </div>
       <div class="schedule-grid">
         <div class="form-field"><label for="sched-release-day">Opens to students</label>
-          <div class="inline-fields"><select id="sched-release-day">${dayOptions(5)}</select><input id="sched-release-time" type="time" value="14:00"></div>
+          <div class="inline-fields"><select id="sched-release-day">${dayOptions(5)}</select><input id="sched-release-time" type="time" value="10:00"></div>
           <div class="muted small">Students cannot see a check-in before this.</div>
         </div>
         <div class="form-field"><label for="sched-due-day">Closes</label>
-          <div class="inline-fields"><select id="sched-due-day">${dayOptions(7)}</select><input id="sched-due-time" type="time" value="20:00"></div>
+          <div class="inline-fields"><select id="sched-due-day">${dayOptions(7)}</select><input id="sched-due-time" type="time" value="23:45"></div>
           <div class="muted small">Times are ${escapeHtml(classTimezone())}.</div>
         </div>
       </div>
@@ -5111,9 +5111,9 @@ function renderSchedulePreview() {
   const target = document.getElementById('sched-preview');
   const weeks = scheduleWeeks();
   const releaseDay = Number(document.getElementById('sched-release-day').value);
-  const releaseTime = document.getElementById('sched-release-time').value || '14:00';
+  const releaseTime = document.getElementById('sched-release-time').value || '10:00';
   const dueDay = Number(document.getElementById('sched-due-day').value);
-  const dueTime = document.getElementById('sched-due-time').value || '20:00';
+  const dueTime = document.getElementById('sched-due-time').value || '23:45';
 
   if (!weeks.length) {
     target.innerHTML = '<div class="empty-state"><h3>No weeks in that range</h3><p>Check the first and last week.</p></div>';
@@ -5192,8 +5192,8 @@ async function confirmDeleteWeek(weekId) {
 async function applyCheckinSchedule() {
   const weeks = scheduleWeeks();
   if (!weeks.length) return showToast('Choose a first and last week', 'error');
-  const [releaseHour, releaseMinute] = (document.getElementById('sched-release-time').value || '14:00').split(':').map(Number);
-  const [dueHour, dueMinute] = (document.getElementById('sched-due-time').value || '20:00').split(':').map(Number);
+  const [releaseHour, releaseMinute] = (document.getElementById('sched-release-time').value || '10:00').split(':').map(Number);
+  const [dueHour, dueMinute] = (document.getElementById('sched-due-time').value || '23:45').split(':').map(Number);
   const button = document.getElementById('sched-apply');
   button.disabled = true; button.textContent = 'Creating…';
   try {
@@ -7529,6 +7529,15 @@ async function openClassSetupModal(classId) {
       </section>
 
       <section class="setup-block">
+        <h4>When the course runs</h4>
+        <div class="inline-fields">
+          <div class="form-field"><label>First day</label><input type="date" name="startsOn" value="${String(klass.starts_on || '').slice(0, 10)}"></div>
+          <div class="form-field"><label>Last day</label><input type="date" name="endsOn" value="${String(klass.ends_on || '').slice(0, 10)}"></div>
+        </div>
+        <p class="muted small">Weekly check-ins are only created inside these dates. Without them the portal makes weeks around today, which is how a course set up in August ends up showing students weeks in August.</p>
+      </section>
+
+      <section class="setup-block">
         <h4>Community</h4>
         <label class="check-row"><input type="checkbox" name="hasCommunity" ${klass.has_community ? 'checked' : ''}> This class has a board</label>
         <p class="muted small">Turned off, Community disappears from these students’ menu entirely. Anything already posted is kept and comes back if it is turned on again.</p>
@@ -7580,6 +7589,8 @@ async function openClassSetupModal(classId) {
               joinUrl: String(data.get('joinUrl') || '').trim(),
               joinNote: String(data.get('joinNote') || '').trim(),
               hasCommunity: form.hasCommunity.checked,
+              startsOn: String(data.get('startsOn') || '') || null,
+              endsOn: String(data.get('endsOn') || '') || null,
               // Courses open to every class are ticked and disabled, so they
               // never appear here — which is right, they are not enrolments.
               courseIds: data.getAll('courseIds'),
@@ -7955,6 +7966,11 @@ function openClassModal() {
   modal({
     title: 'Add class', subtitle: 'Creates a separate weekly tracker and assignment stream.',
     body: `<form id="class-form"><div class="form-field"><label>Programme name</label><input name="programmeName" value="Irish for Primary Teaching" required></div><div class="form-field"><label>Day</label><select name="dayOfWeek">${DAY_NAMES.slice(1).map((day, index) => `<option value="${index + 1}">${day}</option>`).join('')}</select></div><div class="form-field"><label>Start time</label><input name="startTime" type="time" value="19:00" required></div><div class="form-field"><label>Timezone</label><input name="timezone" value="Europe/Dublin" required></div>
+      <div class="inline-fields">
+        <div class="form-field"><label>First day of the course</label><input type="date" name="startsOn"></div>
+        <div class="form-field"><label>Last day</label><input type="date" name="endsOn"></div>
+      </div>
+      <p class="muted small">Weekly check-ins are only created between these dates.</p>
       <label class="check-row"><input type="checkbox" name="hasCommunity" checked> Give this class a community board</label>
       <p class="muted small">Without one, Community never appears in these students’ menu. It can be turned on later.</p>
       ${state.courses?.length ? `<div class="form-field"><label>Courses</label><div class="class-picker">${state.courses.map((course) => `
@@ -7974,6 +7990,8 @@ function openClassModal() {
               startTime: form.get('startTime'),
               timezone: form.get('timezone'),
               hasCommunity: element.hasCommunity.checked,
+              startsOn: String(form.get('startsOn') || '') || null,
+              endsOn: String(form.get('endsOn') || '') || null,
               courseIds: form.getAll('courseIds'),
             },
           });
@@ -9299,7 +9317,7 @@ function studentTrackerView() {
    question it exists to answer. */
 function checkinWindowNote() {
   const zone = timezoneAbbreviation(classTimezone());
-  return `<p class="win-note">Check-ins open <strong>Friday at 2pm</strong> and close <strong>Sunday at 8pm</strong> (${escapeHtml(zone)}). They cannot be completed after that, so a week that closes stays closed.</p>`;
+  return `<p class="win-note">Check-ins open <strong>Friday at 10am</strong> and close <strong>Sunday at 11:45pm</strong> Irish time (${escapeHtml(zone)}). They cannot be completed after that, so a week that closes stays closed.</p>`;
 }
 
 function studentTabs(active) {

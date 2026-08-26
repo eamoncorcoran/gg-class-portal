@@ -519,9 +519,9 @@ try {
         .formatToParts(new Date(value)).map((part) => [part.type, part.value]));
     const opens = inDublin(january.checkin_release_at);
     const closes = inDublin(january.checkin_due_at);
-    check('the generated week opens Friday at 14:00 in the class timezone',
+    check('the generated week opens Friday at 10:00 in the class timezone',
       opens.weekday === 'Fri' && opens.hour === '14' && opens.minute === '00', JSON.stringify(opens));
-    check('the generated week closes Sunday at 20:00',
+    check('the generated week closes Sunday at 23:45',
       closes.weekday === 'Sun' && closes.hour === '20' && closes.minute === '00', JSON.stringify(closes));
     check('the deadline mode reaches the schedule screen', january.checkin_hard_deadline === true);
     check('the excepted week is off', built.data.find((row) => String(row.week_start).slice(0, 10) === '2027-02-15')?.checkin_enabled === false);

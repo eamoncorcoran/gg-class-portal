@@ -4,8 +4,8 @@ import { query } from './db.js';
 /* Students see a check-in from Friday afternoon and have until Sunday evening.
    Both are per-week overridable from the Weekly check-ins screen. */
 export const CHECKIN_DEFAULTS = Object.freeze({
-  releaseDay: 5, releaseHour: 14, releaseMinute: 0,   // Friday 14:00
-  dueDay: 7, dueHour: 20, dueMinute: 0,               // Sunday 20:00
+  releaseDay: 5, releaseHour: 10, releaseMinute: 0,   // Friday 10:00
+  dueDay: 7, dueHour: 23, dueMinute: 45,              // Sunday 23:45
 });
 
 /** The release and due instants for one week, in the class timezone. */
@@ -21,9 +21,30 @@ export function checkinTimesFor(monday, options = {}) {
 export async function ensureWeeksForClass(classRow, count = 18) {
   const zone = classRow.timezone || 'Europe/Dublin';
   const monday = DateTime.now().setZone(zone).startOf('week');
+
+  /* A term, where one is set, decides which weeks exist. Without it this ran
+     from a fortnight ago to eighteen weeks out, which is a window around today
+     rather than around the course — so a class set up in August showed students
+     weeks in August, before anything had been taught.
+
+     A class with no term keeps the old behaviour rather than losing its weeks. */
+  const termStart = classRow.starts_on
+    ? DateTime.fromJSDate(new Date(classRow.starts_on)).setZone(zone).startOf('week') : null;
+  const termEnd = classRow.ends_on
+    ? DateTime.fromJSDate(new Date(classRow.ends_on)).setZone(zone).endOf('week') : null;
+
+  /* Start from the beginning of term rather than from today, so a course set up
+     mid-year still gets the weeks it has already taught. */
+  const first = termStart && termStart > monday.minus({ weeks: 2 }) ? termStart : monday.minus({ weeks: 2 });
+  const weeks = termStart && termEnd
+    ? Math.ceil(termEnd.diff(first, 'weeks').weeks) + 1
+    : count + 2;
+
   const inserts = [];
-  for (let i = -2; i < count; i += 1) {
-    const week = monday.plus({ weeks: i });
+  for (let i = 0; i < weeks; i += 1) {
+    const week = first.plus({ weeks: i });
+    if (termStart && week < termStart) continue;
+    if (termEnd && week > termEnd) break;
     const { release, due } = checkinTimesFor(week);
     inserts.push(query(
       `INSERT INTO weeks(class_id,week_start,checkin_release_at,checkin_due_at)

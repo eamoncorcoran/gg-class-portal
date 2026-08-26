@@ -154,13 +154,16 @@ router.post('/classes', asyncRoute(async (req, res) => {
     // Community at all, rather than showing an empty one.
     hasCommunity: z.boolean().optional().default(true),
     courseIds: z.array(z.string().uuid()).optional().default([]),
+    // When the course runs. Weeks are only generated inside it.
+    startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Enter a programme name, day, time and timezone.' });
   const row = await one(
-    `INSERT INTO classes(programme_name,day_of_week,start_time,timezone,has_community)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    `INSERT INTO classes(programme_name,day_of_week,start_time,timezone,has_community,starts_on,ends_on)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
     [parsed.data.programmeName, parsed.data.dayOfWeek, parsed.data.startTime, parsed.data.timezone,
-     parsed.data.hasCommunity],
+     parsed.data.hasCommunity, parsed.data.startsOn || null, parsed.data.endsOn || null],
   );
   for (const courseId of parsed.data.courseIds) {
     await query('INSERT INTO course_classes(course_id,class_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
@@ -185,6 +188,8 @@ router.patch('/classes/:id', asyncRoute(async (req, res) => {
     hasCommunity: z.boolean().optional(),
     // Present means "these are the courses now", absent means leave them alone.
     courseIds: z.array(z.string().uuid()).optional(),
+    startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid class settings. A class link must be a full https:// address.' });
   const current = await one('SELECT * FROM classes WHERE id=$1', [req.params.id]);
@@ -193,10 +198,13 @@ router.patch('/classes/:id', asyncRoute(async (req, res) => {
   const joinUrl = data.joinUrl === undefined ? current.join_url : (data.joinUrl || null);
   const row = await one(
     `UPDATE classes SET programme_name=$1,day_of_week=$2,start_time=$3,timezone=$4,active=$5,
-       join_url=$6,join_note=$7,has_community=$8,updated_at=now()
-     WHERE id=$9 RETURNING *`,
+       join_url=$6,join_note=$7,has_community=$8,starts_on=$9,ends_on=$10,updated_at=now()
+     WHERE id=$11 RETURNING *`,
     [data.programmeName ?? current.programme_name, data.dayOfWeek ?? current.day_of_week, data.startTime ?? String(current.start_time).slice(0,5), data.timezone ?? current.timezone, data.active ?? current.active,
-     joinUrl, data.joinNote ?? current.join_note, data.hasCommunity ?? current.has_community, current.id],
+     joinUrl, data.joinNote ?? current.join_note, data.hasCommunity ?? current.has_community,
+     data.startsOn === undefined ? current.starts_on : (data.startsOn || null),
+     data.endsOn === undefined ? current.ends_on : (data.endsOn || null),
+     current.id],
   );
   if (data.courseIds) {
     await query('DELETE FROM course_classes WHERE class_id=$1', [current.id]);
@@ -1769,6 +1777,60 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
 
 /* Rescheduling, or releasing something early. Setting it to now is how a
    scheduled post gets published on the spot. */
+/* Categories on the board.
+   ------------------------------------------------------------------
+   The screen to manage these has always been there; the routes behind it were
+   not, so the button did nothing and said nothing. Deleting one does not delete
+   what was filed under it — the posts keep their place on the board and simply
+   stop being filed, which is why the column is ON DELETE SET NULL. */
+router.post('/community/:classId/categories', asyncRoute(async (req, res) => {
+  const parsed = z.object({ name: z.string().trim().min(1).max(60) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the category a name.' });
+  const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.classId]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+
+  const clash = await one(
+    'SELECT id FROM discussion_categories WHERE class_id=$1 AND lower(name)=lower($2)',
+    [klass.id, parsed.data.name],
+  );
+  if (clash) return res.status(409).json({ error: `There is already a category called “${parsed.data.name}”.` });
+
+  const next = await one(
+    'SELECT COALESCE(max(position),-1)+1 position FROM discussion_categories WHERE class_id=$1', [klass.id]);
+  const row = await one(
+    'INSERT INTO discussion_categories(class_id,name,position) VALUES ($1,$2,$3) RETURNING *',
+    [klass.id, parsed.data.name, next.position],
+  );
+  await audit({ actorId: req.user.id, action: 'community.category_created', entityType: 'category', entityId: row.id, metadata: { name: row.name }, ip: req.ip });
+  res.status(201).json(row);
+}));
+
+router.patch('/community/categories/:id', asyncRoute(async (req, res) => {
+  const parsed = z.object({ name: z.string().trim().min(1).max(60) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Give the category a name.' });
+  const row = await one('UPDATE discussion_categories SET name=$1 WHERE id=$2 RETURNING *',
+    [parsed.data.name, req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Category not found.' });
+  res.json(row);
+}));
+
+router.delete('/community/categories/:id', asyncRoute(async (req, res) => {
+  const row = await one('SELECT id, name, class_id FROM discussion_categories WHERE id=$1', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Category not found.' });
+  await query('DELETE FROM discussion_categories WHERE id=$1', [req.params.id]);
+  await audit({ actorId: req.user.id, action: 'community.category_deleted', entityType: 'category', entityId: req.params.id, metadata: { name: row.name }, ip: req.ip });
+  res.status(204).end();
+}));
+
+/* Send the reminders that are due, now, rather than waiting for tonight. The
+   same cycle the schedule runs, so what happens here is what happens then. */
+router.post('/reminders/run', asyncRoute(async (req, res) => {
+  const { runReminderCycle } = await import('../reminders.js');
+  const summary = await runReminderCycle();
+  await audit({ actorId: req.user.id, action: 'reminders.run_manually', entityType: 'settings', entityId: 'reminders', metadata: summary, ip: req.ip });
+  res.json(summary || { ok: true });
+}));
+
 /* The suggested reply to a board post.
    ------------------------------------------------------------------
    The drawer asks for this the moment an administrator opens a thread, and the
