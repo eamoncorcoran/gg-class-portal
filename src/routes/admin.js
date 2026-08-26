@@ -922,6 +922,65 @@ router.put('/weeks/:id/checkin', asyncRoute(async (req, res) => {
   res.json(row);
 }));
 
+/* Removing a check-in rather than switching it off.
+   ------------------------------------------------------------------
+   Switching one off leaves the week in the tracker as a deliberate gap, which
+   is the right answer for a bank holiday. Deleting is for a week that should
+   never have been created — a term scheduled two weeks too long, or a run built
+   against the wrong dates.
+
+   A week can hold submitted work, so the count comes first and the delete
+   refuses unless it has been acknowledged. Attendance and homework hang off the
+   same week; the impact says so rather than discovering it afterwards. */
+router.get('/weeks/:id/impact', asyncRoute(async (req, res) => {
+  const week = await one('SELECT id, week_start, label, checkin_enabled FROM weeks WHERE id=$1', [req.params.id]);
+  if (!week) return res.status(404).json({ error: 'Week not found.' });
+  const counts = await one(
+    `SELECT
+       (SELECT count(*)::int FROM checkins WHERE week_id=$1 AND status<>'draft') checkins,
+       (SELECT count(*)::int FROM attendance WHERE week_id=$1) attendance,
+       (SELECT count(*)::int FROM assignments WHERE week_id=$1) assignments`,
+    [req.params.id],
+  );
+  res.json({ ...week, ...counts, work: counts.checkins + counts.attendance });
+}));
+
+router.delete('/weeks/:id', asyncRoute(async (req, res) => {
+  const week = await one('SELECT * FROM weeks WHERE id=$1', [req.params.id]);
+  if (!week) return res.status(404).json({ error: 'Week not found.' });
+  const counts = await one(
+    `SELECT
+       (SELECT count(*)::int FROM checkins WHERE week_id=$1 AND status<>'draft') checkins,
+       (SELECT count(*)::int FROM attendance WHERE week_id=$1) attendance,
+       (SELECT count(*)::int FROM assignments WHERE week_id=$1) assignments`,
+    [req.params.id],
+  );
+
+  /* Homework is planned against a week and outlives it in a way a check-in does
+     not, so a week still carrying an assignment is refused outright rather than
+     taking it down as well. Move or delete the homework first. */
+  if (counts.assignments > 0) {
+    return res.status(409).json({
+      error: `This week still carries ${counts.assignments} assignment${counts.assignments === 1 ? '' : 's'}. Delete or move ${counts.assignments === 1 ? 'it' : 'them'} first.`,
+      assignments: counts.assignments,
+    });
+  }
+
+  const work = counts.checkins + counts.attendance;
+  const acknowledged = Number(req.query.confirmWork ?? -1);
+  if (work > 0 && acknowledged !== work) {
+    return res.status(409).json({
+      error: `This week holds ${counts.checkins} submitted check-in${counts.checkins === 1 ? '' : 's'} and ${counts.attendance} attendance record${counts.attendance === 1 ? '' : 's'}. Deleting removes ${work === 1 ? 'it' : 'them'} permanently. Switch the check-in off instead to keep everything.`,
+      work,
+    });
+  }
+
+  await query('DELETE FROM weeks WHERE id=$1', [req.params.id]);
+  await audit({ actorId: req.user.id, action: 'week.deleted', entityType: 'week', entityId: req.params.id,
+    metadata: { weekStart: week.week_start, ...counts }, ip: req.ip });
+  res.status(204).end();
+}));
+
 /* Build a run of check-ins across a term, with exceptions switched off. */
 router.post('/classes/:id/checkin-schedule', asyncRoute(async (req, res) => {
   const parsed = z.object({

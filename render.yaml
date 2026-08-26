@@ -106,8 +106,6 @@ services:
       # absent, so the portal runs without any of them.
       - key: OPENAI_API_KEY
         sync: false
-      - key: GIPHY_API_KEY
-        sync: false
       - key: BUNNY_LIBRARY_ID
         sync: false
       - key: BUNNY_API_KEY

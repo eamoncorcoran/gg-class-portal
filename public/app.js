@@ -83,7 +83,6 @@ const svg = {
      both states keeps the button from changing size as it is clicked. */
   heart: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 7.694c-1.4-1.6-3.2-2.2-4.9-1.7-2.4.7-3.6 3.3-2.8 5.7.9 2.9 4.4 5.6 7.7 7.6 3.3-2 6.8-4.7 7.7-7.6.8-2.4-.4-5-2.8-5.7-1.7-.5-3.5.1-4.9 1.7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   comment: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 10.5h8M8 14h5m-6.2 6L9.3 22.5c.25.25.38.38.52.43a.7.7 0 0 0 .43 0c.15-.05.27-.18.52-.43L13 20h2.2c1.68 0 2.52 0 3.16-.33a3 3 0 0 0 1.31-1.31C20 17.72 20 16.88 20 15.2V6.8c0-1.68 0-2.52-.33-3.16a3 3 0 0 0-1.31-1.31C17.72 2 16.88 2 15.2 2H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 0 0-1.31 1.31C2 4.28 2 5.12 2 6.8v8.4c0 1.68 0 2.52.33 3.16a3 3 0 0 0 1.31 1.31C4.28 20 5.12 20 6.8 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  gif: `<svg viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10.2 10.2a2.4 2.4 0 1 0 .3 3.4v-1.2H9.3M13.9 9.6v4.8M20 9.6h-2.9v4.8m0-2.7h2.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   chevronLeft: `<svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   cap: `<svg viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5 12 4l9.5 4.5L12 13 2.5 8.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M6.5 10.7v4.6c0 .6.3 1.1.8 1.4 1.2.7 2.9 1.3 4.7 1.3s3.5-.6 4.7-1.3c.5-.3.8-.8.8-1.4v-4.6M21 9v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   cloudUp: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 16V9m0 0-3 3m3-3 3 3M6.5 19a4.5 4.5 0 0 1-.42-8.98 6 6 0 0 1 11.65-1.9A4.75 4.75 0 0 1 17.5 19H6.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -1753,6 +1752,133 @@ function assignmentListView(assignments) {
 /* Weekly check-ins are not automatic in the sense of unstoppable: every week has
    its own switch, its own opening and closing time, and its own choice of hard or
    soft deadline. Christmas week just gets turned off. */
+/* Dates a class is unlikely to happen on.
+   ------------------------------------------------------------------
+   The check-in calendar draws these behind the weeks so that a run of check-ins
+   is not scheduled across a fortnight when nobody is teaching. They are marks on
+   a calendar and nothing more: nothing is switched off automatically, because a
+   course that deliberately runs through a bank holiday is a normal thing and the
+   portal should not overrule it.
+
+   Two kinds, and the difference matters.
+
+   PUBLIC HOLIDAYS are fixed in law and are stated here with confidence. Where
+   one falls at a weekend the substitute day is the one that is actually taken
+   off, so both are listed.
+
+   SCHOOL HOLIDAYS are indicative. The Department publishes standardised breaks
+   but individual schools vary within them, and the further out the year the more
+   they move. Treat them as a prompt to check rather than as fact — they are
+   plain data here precisely so they can be corrected in one place. */
+
+const PUBLIC_HOLIDAYS = [
+  // 2026
+  { date: '2026-01-01', name: "New Year's Day" },
+  { date: '2026-02-02', name: "St Brigid's Day" },
+  { date: '2026-03-17', name: "St Patrick's Day" },
+  { date: '2026-04-06', name: 'Easter Monday' },
+  { date: '2026-05-04', name: 'May Bank Holiday' },
+  { date: '2026-06-01', name: 'June Bank Holiday' },
+  { date: '2026-08-03', name: 'August Bank Holiday' },
+  { date: '2026-10-26', name: 'October Bank Holiday' },
+  { date: '2026-12-25', name: 'Christmas Day' },
+  { date: '2026-12-26', name: "St Stephen's Day" },
+  // St Stephen's Day falls on a Saturday in 2026, so the Monday is the day off.
+  { date: '2026-12-28', name: "St Stephen's Day (substitute)" },
+
+  // 2027
+  { date: '2027-01-01', name: "New Year's Day" },
+  { date: '2027-02-01', name: "St Brigid's Day" },
+  { date: '2027-03-17', name: "St Patrick's Day" },
+  { date: '2027-03-29', name: 'Easter Monday' },
+  { date: '2027-05-03', name: 'May Bank Holiday' },
+  { date: '2027-06-07', name: 'June Bank Holiday' },
+  { date: '2027-08-02', name: 'August Bank Holiday' },
+  { date: '2027-10-25', name: 'October Bank Holiday' },
+  { date: '2027-12-25', name: 'Christmas Day' },
+  { date: '2027-12-26', name: "St Stephen's Day" },
+  // Both fall at the weekend in 2027, so both are moved.
+  { date: '2027-12-27', name: 'Christmas Day (substitute)' },
+  { date: '2027-12-28', name: "St Stephen's Day (substitute)" },
+];
+
+/* Ranges are inclusive at both ends. Indicative, per the note above. */
+const SCHOOL_HOLIDAYS = [
+  { from: '2026-10-26', to: '2026-10-30', name: 'October mid-term' },
+  { from: '2026-12-23', to: '2027-01-05', name: 'Christmas holidays' },
+  { from: '2027-02-15', to: '2027-02-19', name: 'February mid-term' },
+  { from: '2027-03-26', to: '2027-04-05', name: 'Easter holidays' },
+  { from: '2027-06-01', to: '2027-06-11', name: 'State examinations' },
+];
+
+/** Every date in a range, as YYYY-MM-DD. */
+function datesBetween(from, to) {
+  const days = [];
+  // Stepped in UTC so a summer-time boundary cannot skip or repeat a day.
+  const cursor = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  while (cursor <= end) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}
+
+/**
+ * One lookup from date to whatever is on it.
+ *
+ * A date can carry both — the October mid-term contains the October bank
+ * holiday — so the value is a list, and the public holiday is put first because
+ * it is the one that is certain.
+ */
+function holidayIndex() {
+  const index = new Map();
+  const add = (date, entry) => {
+    if (!index.has(date)) index.set(date, []);
+    index.get(date).push(entry);
+  };
+  for (const holiday of PUBLIC_HOLIDAYS) {
+    add(holiday.date, { kind: 'public', name: holiday.name });
+  }
+  for (const holiday of SCHOOL_HOLIDAYS) {
+    for (const date of datesBetween(holiday.from, holiday.to)) {
+      add(date, { kind: 'school', name: holiday.name });
+    }
+  }
+  for (const entries of index.values()) {
+    entries.sort((a, b) => (a.kind === 'public' ? -1 : 1) - (b.kind === 'public' ? -1 : 1));
+  }
+  return index;
+}
+
+/**
+ * What falls in the week beginning on a given Monday.
+ *
+ * The check-in list is organised by week rather than by day, so this is what
+ * lets a row say "October bank holiday" without the reader working out which
+ * dates the week covers.
+ */
+function holidaysInWeek(weekStart) {
+  const index = holidayIndex();
+  const found = [];
+  const seen = new Set();
+  for (const date of datesBetween(weekStart, addDays(weekStart, 6))) {
+    for (const entry of index.get(date) || []) {
+      const key = `${entry.kind}:${entry.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push({ ...entry, date });
+    }
+  }
+  return found;
+}
+
+function addDays(date, days) {
+  const cursor = new Date(`${String(date).slice(0, 10)}T00:00:00Z`);
+  cursor.setUTCDate(cursor.getUTCDate() + days);
+  return cursor.toISOString().slice(0, 10);
+}
+
 function checkinsView() {
   const klass = state.classes.find((row) => row.id === state.checkinClassId);
   const weeks = state.teachingWeeks || [];
@@ -1767,9 +1893,15 @@ function checkinsView() {
         <select class="select" id="checkin-class">${state.classes.map((row) => `<option value="${row.id}" ${row.id === state.checkinClassId ? 'selected' : ''}>${escapeHtml(classLabel(row))}</option>`).join('')}</select>
         <span class="muted small">${weeks.length} weeks · ${upcoming} still to come · ${off} switched off</span>
       </div>
-      <div class="toolbar-group"><button class="btn small" id="checkin-select-none">Clear selection</button></div>
+      <div class="toolbar-group">
+        <div class="seg">
+          <button class="seg-btn ${state.checkinView === 'calendar' ? '' : 'on'}" data-checkin-view="list">List</button>
+          <button class="seg-btn ${state.checkinView === 'calendar' ? 'on' : ''}" data-checkin-view="calendar">Calendar</button>
+        </div>
+        <button class="btn small" id="checkin-select-none">Clear selection</button>
+      </div>
     </div>
-    <section class="card table-wrap">
+    ${state.checkinView === 'calendar' ? checkinCalendar(weeks, today) : `<section class="card table-wrap">
       <table class="data-table checkin-table">
         <thead><tr>
           <th class="pick"><input type="checkbox" id="checkin-select-all" aria-label="Select every week"></th>
@@ -1777,13 +1909,92 @@ function checkinsView() {
         </tr></thead>
         <tbody>${weeks.map((week) => checkinRow(week, today)).join('') || '<tr><td colspan="8"><div class="empty-state"><h3>No weeks yet</h3><p>Weeks are generated automatically once a class exists.</p></div></td></tr>'}</tbody>
       </table>
-    </section>
+    </section>`}
     <p class="muted small stack-top">A <strong>soft</strong> deadline keeps accepting check-ins after it closes, and the tracker shows them as “Open, late” rather than missed. A <strong>hard</strong> deadline closes the form. Switching a week off means no check-in is expected at all, and the tracker shows “Off”.</p>`;
+}
+
+/* The term as a calendar.
+   ------------------------------------------------------------------
+   The list is where a check-in is edited, but it cannot answer the question
+   this screen is really for: which weeks should be switched off. That is a
+   question about the shape of a term — where the mid-terms fall, which Monday
+   is a bank holiday — and a list of dates is the wrong shape to see it in.
+
+   So the same weeks are drawn as months, with the bank holidays and the school
+   breaks behind them. Nothing is switched off automatically; a course that
+   deliberately runs through a bank holiday is a normal thing. */
+function checkinCalendar(weeks, today) {
+  if (!weeks.length) {
+    return `<section class="card"><div class="empty-state"><h3>No weeks yet</h3>
+      <p>Weeks are generated automatically once a class exists.</p></div></section>`;
+  }
+
+  const byWeekStart = new Map(weeks.map((week) => [String(week.week_start).slice(0, 10), week]));
+  const marks = holidayIndex();
+
+  // Every month the term touches, from its first week to its last.
+  const first = String(weeks[0].week_start).slice(0, 10);
+  const last = String(weeks[weeks.length - 1].week_start).slice(0, 10);
+  const months = [];
+  const cursor = new Date(`${first.slice(0, 7)}-01T00:00:00Z`);
+  const end = new Date(`${last.slice(0, 7)}-01T00:00:00Z`);
+  while (cursor <= end) {
+    months.push({ year: cursor.getUTCFullYear(), month: cursor.getUTCMonth() + 1 });
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+
+  return `<section class="cal-wrap">
+    <div class="cal-key">
+      <span><i class="k-on"></i> Check-in on</span>
+      <span><i class="k-off"></i> Switched off</span>
+      <span><i class="k-bank"></i> Bank holiday</span>
+      <span><i class="k-school"></i> Likely school break</span>
+    </div>
+    <div class="cal-months">${months.map(({ year, month }) => {
+      const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      const lead = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7; // Monday first.
+      const cells = [
+        ...Array.from({ length: lead }, () => '<div class="cal-cell is-blank"></div>'),
+        ...Array.from({ length: days }, (_, index) => {
+          const date = `${year}-${String(month).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
+          const onDay = marks.get(date) || [];
+          const bank = onDay.find((entry) => entry.kind === 'public');
+          const school = onDay.find((entry) => entry.kind === 'school');
+
+          /* A week is owned by its Monday, so every day looks back to the
+             Monday it belongs to for the check-in state. */
+          const monday = addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
+          const week = byWeekStart.get(monday);
+          const state_ = week ? (week.checkin_enabled === false ? 'off' : 'on') : null;
+
+          return `<div class="cal-cell ${bank ? 'is-bank' : ''} ${school ? 'is-school' : ''}
+              ${date === today ? 'is-today' : ''}"
+              ${week ? `data-cal-week="${week.id}" role="button" tabindex="0"` : ''}
+              title="${escapeHtml([bank?.name, school?.name].filter(Boolean).join(' · '))}">
+            <span class="cal-date">${index + 1}</span>
+            ${state_ ? `<span class="cal-dot k-${state_}"></span>` : ''}
+            ${bank ? `<span class="cal-tag">${escapeHtml(bank.name.replace(' Bank Holiday', '').replace(' (substitute)', '*'))}</span>` : ''}
+          </div>`;
+        }),
+      ];
+      return `<section class="cal-month">
+        <h4>${escapeHtml(new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-IE', { month: 'long', year: 'numeric', timeZone: 'UTC' }))}</h4>
+        <div class="cal-grid">
+          ${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => `<div class="cal-head">${day}</div>`).join('')}
+          ${cells.join('')}
+        </div>
+      </section>`;
+    }).join('')}</div>
+    <p class="muted small">Bank holidays are exact. School breaks are the usual pattern rather than any one school's calendar — worth checking against the Department's dates before a term is built on them. Click any day to jump to its week.</p>
+  </section>`;
 }
 
 function checkinRow(week, today) {
   const past = String(week.week_start).slice(0, 10) < today;
   const disabled = week.checkin_enabled === false;
+  // Named on the row as well as drawn on the calendar: most of this screen's
+  // work happens in the list, and that is where the clash needs to be visible.
+  const marks = holidaysInWeek(String(week.week_start).slice(0, 10));
   return `<tr class="${disabled ? 'is-off' : ''} ${past ? 'is-past' : ''}" data-week-row="${week.id}">
     <td class="pick"><input type="checkbox" class="week-pick" value="${week.id}" aria-label="Select week of ${escapeHtml(fmtWeek(week.week_start))}"></td>
     <td><strong>${escapeHtml(fmtWeek(week.week_start))}</strong>${past ? '<span class="muted small"> · past</span>' : ''}</td>
@@ -1794,8 +2005,10 @@ function checkinRow(week, today) {
       <option value="hard" ${week.checkin_hard_deadline === false ? '' : 'selected'}>Hard</option>
       <option value="soft" ${week.checkin_hard_deadline === false ? 'selected' : ''}>Soft</option>
     </select></td>
-    <td><input class="compact" data-week-label="${week.id}" value="${escapeHtml(week.label || '')}" placeholder="e.g. Christmas week" ${disabled ? '' : ''}></td>
-    <td><button class="btn small" data-week-save="${week.id}">Save</button></td>
+    <td><input class="compact" data-week-label="${week.id}" value="${escapeHtml(week.label || '')}" placeholder="e.g. Christmas week" ${disabled ? '' : ''}>
+      ${marks.length ? `<span class="wk-holiday">${marks.map((mark) => escapeHtml(mark.name)).join(' · ')}</span>` : ''}</td>
+    <td class="row-actions"><button class="btn small" data-week-save="${week.id}">Save</button>
+      <button class="btn small danger" data-week-delete="${week.id}" title="Delete this week">${svg.trash}</button></td>
   </tr>`;
 }
 
@@ -1908,6 +2121,46 @@ function renderSchedulePreview() {
   }));
 }
 
+/* Deleting a week, as opposed to switching its check-in off.
+   ------------------------------------------------------------------
+   Off is the right answer for a bank holiday: the week stays in the tracker as
+   a deliberate gap, and everything already in it is kept. Delete is for a week
+   that should never have existed — a term built two weeks too long, or a run
+   created against the wrong dates.
+
+   Because the two are one click apart and only one of them is reversible, the
+   confirmation says what is in the week and points back at the other option. */
+async function confirmDeleteWeek(weekId) {
+  let impact;
+  try { impact = await api(`/api/admin/weeks/${weekId}/impact`); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  if (impact.assignments > 0) {
+    return showToast(
+      `This week still carries ${impact.assignments} assignment${impact.assignments === 1 ? '' : 's'}. Delete or move ${impact.assignments === 1 ? 'it' : 'them'} first.`,
+      'error',
+    );
+  }
+
+  const ok = await askConfirm({
+    title: `Delete the week of ${fmtWeek(impact.week_start)}?`,
+    message: impact.work
+      ? `It holds ${impact.checkins} submitted check-in${impact.checkins === 1 ? '' : 's'} and ${impact.attendance} attendance record${impact.attendance === 1 ? '' : 's'}, and they go with it. This cannot be undone — switching the check-in off instead keeps the week and everything in it.`
+      : 'Nothing has been submitted for this week, so nothing else goes with it.',
+    confirmLabel: 'Delete week', danger: true,
+  });
+  if (!ok) return;
+
+  try {
+    // The count is sent back so the server can refuse a stale confirmation —
+    // work submitted between the warning and the click must not be lost.
+    await api(`/api/admin/weeks/${weekId}?confirmWork=${impact.work}`, { method: 'DELETE' });
+    state.teachingWeeks = await api(`/api/admin/teaching-weeks?classId=${state.checkinClassId}`);
+    renderAdmin();
+    showToast('Week deleted');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
 async function applyCheckinSchedule() {
   const weeks = scheduleWeeks();
   if (!weeks.length) return showToast('Choose a first and last week', 'error');
@@ -1961,6 +2214,33 @@ function bindCheckins() {
     } catch (error) { showToast(error.message, 'error'); }
   };
   document.getElementById('checkin-schedule')?.addEventListener('click', openCheckinScheduleModal);
+
+  document.querySelectorAll('[data-checkin-view]').forEach((button) =>
+    button.addEventListener('click', () => {
+      state.checkinView = button.dataset.checkinView;
+      renderAdmin();
+    }));
+
+  /* A day on the calendar is a way into its week, so clicking one goes back to
+     the list with that row highlighted — the calendar answers "which weeks",
+     the list is where they are changed. */
+  document.querySelectorAll('[data-cal-week]').forEach((cell) => {
+    const open = () => {
+      state.checkinView = 'list';
+      state.highlightWeek = cell.dataset.calWeek;
+      renderAdmin();
+      const row = document.querySelector(`[data-week-row="${cell.dataset.calWeek}"]`);
+      row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row?.classList.add('is-found');
+    };
+    cell.addEventListener('click', open);
+    cell.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+    });
+  });
+
+  document.querySelectorAll('[data-week-delete]').forEach((button) =>
+    button.addEventListener('click', () => confirmDeleteWeek(button.dataset.weekDelete)));
   document.getElementById('checkin-bulk-off')?.addEventListener('click', () => bulk(false));
   document.getElementById('checkin-bulk-on')?.addEventListener('click', () => bulk(true));
 
@@ -3271,7 +3551,6 @@ function openComposer({ restore = false } = {}) {
       <footer class="cw-foot">
         <div class="composer-tools">
           ${admin ? tool('attach-file', svg.paperclip || svg.cloudUp, 'Attach a file') : ''}
-          ${tool('attach-gif', svg.gif, 'Add a GIF')}
           ${admin ? tool('attach-dictate', svg.mic, 'Dictate') : ''}
           ${admin ? tool('attach-schedule', svg.calendar, 'Schedule for later') : ''}
         </div>
@@ -3352,7 +3631,6 @@ function openComposer({ restore = false } = {}) {
       bodyField.addEventListener('input', debounce(showVideoPreview, 250));
       bodyField.addEventListener('paste', () => setTimeout(showVideoPreview, 30));
       showVideoPreview();
-      document.getElementById('attach-gif')?.addEventListener('click', () => { captureComposer(); openGifPicker(); });
       document.getElementById('save-thread').addEventListener('click', submitComposer);
     },
   });
@@ -3410,48 +3688,6 @@ async function submitComposer() {
     await reloadBoard();
     showToast(body.publishedAt ? 'Scheduled' : 'Posted');
   } catch (error) { showToast(error.message, 'error'); }
-}
-
-/* The GIF picker. Search runs through the server because the content security
-   policy will not let the browser talk to Giphy directly. */
-function openGifPicker() {
-  modal({
-    title: 'Add a GIF',
-    subtitle: 'Searches Giphy.',
-    wide: true,
-    body: `<div class="gif-search">${svg.search || ''}<input id="gif-q" placeholder="Search — try “maith thú”, “well done”, “tired”" autocomplete="off"></div>
-      <div id="gif-results" class="gif-grid"><p class="gif-state">Loading…</p></div>`,
-    footer: `<button class="btn" id="gif-back">Back to the post</button>`,
-    onOpen() {
-      document.getElementById('gif-back').addEventListener('click', () => openComposer({ restore: true }));
-      const results = document.getElementById('gif-results');
-      const load = async (query) => {
-        results.innerHTML = '<p class="gif-state">Searching…</p>';
-        let payload;
-        try { payload = await api(`/api/gifs${query ? `?q=${encodeURIComponent(query)}` : ''}`); }
-        catch { results.innerHTML = '<p class="gif-state">GIF search is unavailable right now.</p>'; return; }
-        if (!payload.configured) {
-          results.innerHTML = `<p class="gif-state"><strong>GIF search is not set up.</strong>
-            Add a GIPHY_API_KEY to the environment file and restart. A Giphy developer key is free.</p>`;
-          return;
-        }
-        if (!payload.results.length) { results.innerHTML = '<p class="gif-state">Nothing found. Try a different word.</p>'; return; }
-        results.innerHTML = payload.results.map((gif) =>
-          `<button type="button" class="gif-pick" data-gif="${escapeHtml(gif.url)}" data-preview="${escapeHtml(gif.preview)}">
-            <img src="${escapeHtml(gif.preview)}" alt="${escapeHtml(gif.title)}" loading="lazy">
-          </button>`).join('');
-        results.querySelectorAll('[data-gif]').forEach((button) => button.addEventListener('click', () => {
-          draftAttachments.push({ kind: 'gif', url: button.dataset.gif, preview: button.dataset.preview });
-          // Back to the post, with every word of it still there.
-          openComposer({ restore: true });
-        }));
-      };
-      const search = document.getElementById('gif-q');
-      search.addEventListener('input', debounce(() => load(search.value.trim()), 400));
-      search.focus();
-      load('');
-    },
-  });
 }
 
 /* ------------------------------------------------------------------

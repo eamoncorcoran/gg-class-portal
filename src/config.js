@@ -22,11 +22,6 @@ export const config = Object.freeze({
   encryptionKey: process.env.APP_ENCRYPTION_KEY || '',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-5.6',
-  /* GIF search. Without a key the picker hides itself rather than offering a
-     button that returns nothing. A free Giphy key covers a class of this size
-     many times over. */
-  giphyApiKey: process.env.GIPHY_API_KEY || '',
-  giphyRating: process.env.GIPHY_RATING || 'pg',
   /* Bunny Stream holds the class recordings. The library key uploads; the token
      key signs playback URLs so a forwarded embed link is useless. */
   bunny: {

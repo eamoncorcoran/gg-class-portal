@@ -1244,15 +1244,6 @@
       save();return json({},204);
     }
 
-    if(path==='/api/gifs'&&method==='GET'){
-      /* The preview has no Giphy key and no network, so it answers with a small
-         fixed set. Enough to see the picker and the way a chosen GIF lands in a
-         post; a real deployment searches Giphy through the server. */
-      const swatch=(hue)=>`data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="hsl(${hue} 70% 62%)"/><text x="100" y="112" font-family="system-ui" font-size="30" font-weight="700" fill="white" text-anchor="middle">GIF</text></svg>`)}`;
-      const results=[0,40,90,140,190,240,290,330].map((hue,index)=>({
-        id:`gif${index}`,title:'Preview GIF',preview:swatch(hue),url:swatch(hue),width:200,height:200}));
-      return json({configured:true,results});
-    }
     if(path==='/api/auth/avatar'&&method==='POST'){
       const user=currentUser();if(user){user.avatar=true;user.mustSetAvatar=false;save();}
       return json({ok:true},201);
