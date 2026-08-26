@@ -29,4 +29,4 @@ USER app
 EXPOSE 3000
 # Preflight first: a wrong APP_URL or a missing key should stop the container
 # with one clear line, not start an app that half works.
-CMD ["sh", "-c", "node scripts/preflight.js && node scripts/migrate.js && node server.js"]
+CMD ["sh", "-c", "node scripts/preflight.js && node scripts/migrate.js && node scripts/bootstrap-admin.js && node server.js"]

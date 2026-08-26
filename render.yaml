@@ -44,6 +44,15 @@ services:
       - key: DEFAULT_TIMEZONE
         value: Europe/Dublin
 
+      # The first administrator, created at boot only while the portal has none.
+      # Neither of these is secret; the password is generated on the server and
+      # printed once to the deploy log, so it is never typed into a dashboard or
+      # committed anywhere.
+      - key: ADMIN_NAME
+        value: Eamon Corcoran
+      - key: ADMIN_EMAIL
+        value: eamon@gaeilgeoirguides.com
+
       # 64 hex characters. Render's own generator produces base64, which the
       # preflight refuses, so this is set by hand: npm run generate-key
       - key: APP_ENCRYPTION_KEY
