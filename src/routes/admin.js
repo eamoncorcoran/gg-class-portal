@@ -785,6 +785,171 @@ router.post('/assignments', asyncRoute(async (req, res) => {
   res.status(201).json(assignment);
 }));
 
+/* A term of homework in one spreadsheet.
+   ------------------------------------------------------------------
+   Building twelve assignments through the form, each with five questions, is
+   the job this replaces. The planning already exists as a document, so the
+   document is what it takes.
+
+   One row per assignment, with the questions in numbered columns — Q1, Q2, Q3 —
+   because that is how somebody lays out a term when they are writing it, and it
+   keeps one assignment on one line where it can be read.
+
+   As with the scheduled posts, the file is read and shown back before anything
+   is written: a wrong date in row nine should not leave eight assignments
+   created and a half-finished import. */
+const ASSIGNMENT_COLUMNS = {
+  title: ['title', 'assignment', 'name'],
+  instructions: ['instructions', 'brief', 'description', 'notes'],
+  deadline: ['deadline', 'due', 'due date', 'closes', 'deadline at'],
+  visible: ['opens', 'visible', 'visible from', 'release', 'opens at'],
+  hard: ['deadline type', 'hard', 'hard deadline', 'type'],
+};
+
+/** Q1, Q2, Q3… in order, however they are capitalised or spaced. */
+function questionsFrom(row) {
+  return Object.keys(row)
+    .map((key) => ({ key, match: /^q\s*(\d+)$|^question\s*(\d+)$/i.exec(key.trim()) }))
+    .filter((entry) => entry.match)
+    .map((entry) => ({ key: entry.key, index: Number(entry.match[1] || entry.match[2]) }))
+    .sort((a, b) => a.index - b.index)
+    .map((entry) => String(row[entry.key] ?? '').trim())
+    .filter(Boolean);
+}
+
+function readAssignmentCsv(content, { weeks, timezone }) {
+  const rows = parse(content, { columns: true, skip_empty_lines: true, trim: true, bom: true });
+  return rows.map((row, index) => {
+    const line = index + 2; // The header is line 1, so a spreadsheet agrees.
+    const title = columnFrom(row, ASSIGNMENT_COLUMNS.title);
+    const instructions = columnFrom(row, ASSIGNMENT_COLUMNS.instructions);
+    const deadlineText = columnFrom(row, ASSIGNMENT_COLUMNS.deadline);
+    const visibleText = columnFrom(row, ASSIGNMENT_COLUMNS.visible);
+    const hardText = columnFrom(row, ASSIGNMENT_COLUMNS.hard).toLowerCase();
+    const questions = questionsFrom(row);
+
+    const deadline = parseScheduleDate(deadlineText, timezone);
+    const visible = visibleText ? parseScheduleDate(visibleText, timezone) : null;
+
+    /* Homework belongs to the teaching week its deadline falls in, which is what
+       puts it in the right column of the tracker. Working it out from the date
+       means one less column to fill in and one less thing to get wrong. */
+    const week = deadline
+      ? weeks.find((candidate) => {
+          const start = DateTime.fromJSDate(new Date(candidate.week_start)).setZone(timezone).startOf('day');
+          return deadline >= start && deadline < start.plus({ days: 7 });
+        })
+      : null;
+
+    const problems = [];
+    if (!title) problems.push('no title');
+    if (!deadlineText) problems.push('no deadline');
+    else if (!deadline) problems.push(`the deadline “${deadlineText}” could not be read`);
+    if (visibleText && !visible) problems.push(`the opening date “${visibleText}” could not be read`);
+    if (visible && deadline && visible >= deadline) problems.push('it opens after it closes');
+    if (!questions.length) problems.push('no questions — add a Q1 column');
+
+    return {
+      line, title, instructions, questions,
+      deadlineAt: deadline ? deadline.toUTC().toISO() : null,
+      visibleAt: visible ? visible.toUTC().toISO() : null,
+      localDeadline: deadline ? deadline.toFormat('ccc d LLL yyyy, HH:mm') : deadlineText,
+      localVisible: visible ? visible.toFormat('ccc d LLL yyyy, HH:mm') : (visibleText || null),
+      hardDeadline: !['soft', 'late', 'no'].includes(hardText),
+      weekId: week?.id || null,
+      weekLabel: week ? String(week.week_start).slice(0, 10) : null,
+      past: Boolean(deadline && deadline < DateTime.now().setZone(timezone)),
+      problems,
+    };
+  });
+}
+
+router.get('/classes/:id/assignment-template', asyncRoute(async (req, res) => {
+  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.id]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+  const zone = klass.timezone || config.defaultTimezone;
+  const first = DateTime.now().setZone(zone).plus({ days: 7 }).set({ hour: 20, minute: 0 });
+  const row = (offset, title) => [
+    `${first.plus({ weeks: offset }).toFormat('dd/MM/yyyy HH:mm')}`,
+    title,
+    '"Work through the handout before you start. Answer in Irish where you can."',
+    `${first.plus({ weeks: offset }).minus({ days: 6 }).toFormat('dd/MM/yyyy HH:mm')}`,
+    'hard',
+  ];
+  const lines = [
+    'Deadline,Title,Instructions,Opens,Deadline type,Q1,Q2,Q3',
+    [...row(0, 'Week 1: An aimsir chaite'), '"Write five sentences in the past tense."', '"Which verbs are irregular?"', '"Translate: I went to the shop."'].join(','),
+    [...row(1, 'Week 2: An aimsir láithreach'), '"Write five sentences in the present tense."', '"When do you use tá and when is?"', ''].join(','),
+    [...row(2, 'Week 3: Classroom phrases'), '"List ten phrases you used this week."', '', ''].join(','),
+  ];
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="assignments-template.csv"');
+  res.send(`${lines.join('\n')}\n`);
+}));
+
+async function assignmentCsvRows(req) {
+  const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.id]);
+  if (!klass) return { error: 'Class not found.', status: 404 };
+  const content = await fs.readFile(req.file.path, 'utf8');
+  await fs.unlink(req.file.path).catch(() => {});
+  const weeks = (await query('SELECT id, week_start FROM weeks WHERE class_id=$1 ORDER BY week_start', [klass.id])).rows;
+  try {
+    return {
+      klass,
+      timezone: klass.timezone || config.defaultTimezone,
+      rows: readAssignmentCsv(content, { weeks, timezone: klass.timezone || config.defaultTimezone }),
+    };
+  } catch (error) {
+    return { error: `That file could not be read as a CSV. ${error.message}`, status: 400 };
+  }
+}
+
+router.post('/classes/:id/assignment-preview', diskUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a CSV file.' });
+  const result = await assignmentCsvRows(req);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  if (!result.rows.length) return res.status(400).json({ error: 'That file has a header but no rows.' });
+  res.json({
+    timezone: result.timezone,
+    rows: result.rows,
+    ready: result.rows.filter((row) => !row.problems.length).length,
+    problems: result.rows.filter((row) => row.problems.length).length,
+  });
+}));
+
+router.post('/classes/:id/assignment-import', diskUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a CSV file.' });
+  const result = await assignmentCsvRows(req);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+
+  const usable = result.rows.filter((row) => !row.problems.length);
+  if (!usable.length) return res.status(400).json({ error: 'No row in that file could be used. Fix the problems listed and try again.' });
+
+  const created = [];
+  await transaction(async (client) => {
+    for (const row of usable) {
+      const inserted = await client.query(
+        `INSERT INTO assignments(class_id,week_id,title,instructions,visible_at,deadline_at,
+           hard_deadline,reminders_enabled,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8) RETURNING id,title`,
+        [result.klass.id, row.weekId, row.title, row.instructions,
+         row.visibleAt || new Date().toISOString(), row.deadlineAt, row.hardDeadline, req.user.id],
+      );
+      for (const [position, prompt] of row.questions.entries()) {
+        await client.query(
+          'INSERT INTO assignment_questions(assignment_id,position,prompt,required) VALUES ($1,$2,$3,true)',
+          [inserted.rows[0].id, position, prompt],
+        );
+      }
+      created.push(inserted.rows[0]);
+    }
+  });
+
+  await audit({ actorId: req.user.id, action: 'assignment.bulk_imported', entityType: 'class',
+    entityId: result.klass.id, metadata: { created: created.length, skipped: result.rows.length - usable.length }, ip: req.ip });
+  res.status(201).json({ created: created.length, skipped: result.rows.filter((row) => row.problems.length) });
+}));
+
 router.put('/assignments/:id', asyncRoute(async (req, res) => {
   const assignment = await one('SELECT * FROM assignments WHERE id=$1', [req.params.id]);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });

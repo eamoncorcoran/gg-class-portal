@@ -4605,6 +4605,7 @@ function assignmentsView() {
 
   const actions = `
     <button class="btn" id="calendar-subscribe">${svg.calendar} Add to calendar</button>
+    <button class="btn" id="import-assignments">Import a spreadsheet</button>
     <button class="btn primary" id="create-assignment">Create assignment</button>`;
 
   return `
@@ -7812,6 +7813,7 @@ function aiSettingsView() {
 function bindAdminView() {
   document.getElementById('open-attendance')?.addEventListener('click', () => { state.view = 'attendance'; renderAdmin(); });
   document.getElementById('new-assignment')?.addEventListener('click', () => openAssignmentModal(null, state.activeClassId));
+  document.getElementById('import-assignments')?.addEventListener('click', openAssignmentImport);
   document.getElementById('create-assignment')?.addEventListener('click', () => openAssignmentModal());
   document.getElementById('tracker-search')?.addEventListener('input', filterTracker);
   document.querySelectorAll('[data-filter]').forEach((button) => button.addEventListener('click', () => {
@@ -8045,6 +8047,121 @@ async function loadAssignmentWeeks(classId, selected = '') {
   const tracker = await api(`/api/admin/tracker/${classId}`);
   const select = document.getElementById('assignment-week');
   select.innerHTML = `<option value="">No weekly tracker column</option>${tracker.weeks.map((week) => `<option value="${week.id}" ${selected === week.id ? 'selected' : ''}>Week of ${fmtWeek(week.week_start)}</option>`).join('')}`;
+}
+
+/* A term of homework from a spreadsheet.
+   ------------------------------------------------------------------
+   The same shape as the scheduled posts import, for the same reason: the
+   planning already exists as a document, and building twelve assignments
+   through the form is the work this removes. One row per assignment, questions
+   in numbered columns, and nothing written until the file has been read back.
+*/
+function openAssignmentImport() {
+  const classes = state.classes || [];
+  const chosen = () => document.getElementById('import-class')?.value || classes[0]?.id;
+
+  modal({
+    title: 'Import homework',
+    subtitle: 'One row per assignment. Nothing is written until you have seen what it read.',
+    wide: true,
+    body: `<div class="form-field"><label>Which class</label>
+        <select class="select" id="import-class">${classes.map((row) => `<option value="${row.id}">${escapeHtml(classLabel(row))}</option>`).join('')}</select>
+      </div>
+      <label class="fu-zone" id="hw-zone">
+        <input class="fu-input" type="file" id="hw-input" accept=".csv,text/csv">
+        <span class="fu-icon">${svg.cloudUp}</span>
+        <span class="fu-lead"><b>Click to upload</b> or drag a CSV here</span>
+        <span class="fu-hint">Deadline, Title, Instructions, Opens, Deadline type, Q1, Q2, Q3…</span>
+      </label>
+      <p class="muted small">Put each question in its own column — <b>Q1</b>, <b>Q2</b>, <b>Q3</b>, as many as you need.
+        Dates read as ${escapeHtml(classTimezone())} and can be written 25/12/2026 20:00 or 2026-12-25T20:00.
+        Each assignment is filed against the teaching week its deadline falls in.
+        <button type="button" class="text-link" id="hw-template">Download the template</button>.</p>
+      <div id="hw-preview"></div>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="hw-import" disabled>Import</button>`,
+    onOpen() {
+      const input = document.getElementById('hw-input');
+      const zone = document.getElementById('hw-zone');
+      const preview = document.getElementById('hw-preview');
+      const importButton = document.getElementById('hw-import');
+      let chosenFile = null;
+
+      document.getElementById('hw-template').addEventListener('click', async () => {
+        try {
+          const response = await fetch(`/api/admin/classes/${chosen()}/assignment-template`, { credentials: 'same-origin' });
+          if (!response.ok) throw new Error('The template could not be prepared.');
+          const url = URL.createObjectURL(new Blob([await response.text()], { type: 'text/csv;charset=utf-8' }));
+          const link = document.createElement('a');
+          link.href = url; link.download = 'assignments-template.csv';
+          document.body.append(link); link.click(); link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 0);
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+
+      const read = async (file) => {
+        if (!file) return;
+        chosenFile = file;
+        preview.innerHTML = '<p class="muted small">Reading…</p>';
+        importButton.disabled = true;
+        const form = new FormData();
+        form.append('file', file);
+        let result;
+        try { result = await api(`/api/admin/classes/${chosen()}/assignment-preview`, { method: 'POST', body: form }); }
+        catch (error) { preview.innerHTML = `<p class="csv-bad">${escapeHtml(error.message)}</p>`; return; }
+        preview.innerHTML = assignmentPreview(result);
+        importButton.disabled = result.ready === 0;
+        importButton.textContent = result.ready
+          ? `Create ${result.ready} assignment${result.ready === 1 ? '' : 's'}`
+          : 'Nothing to import';
+      };
+
+      input.addEventListener('change', () => read(input.files?.[0]));
+      // Changing the class re-reads the file: the weeks it is filed against differ.
+      document.getElementById('import-class').addEventListener('change', () => read(chosenFile));
+      ['dragenter', 'dragover'].forEach((type) => zone.addEventListener(type, (event) => {
+        event.preventDefault(); zone.classList.add('is-over');
+      }));
+      ['dragleave', 'drop'].forEach((type) => zone.addEventListener(type, () => zone.classList.remove('is-over')));
+      zone.addEventListener('drop', (event) => { event.preventDefault(); read(event.dataTransfer?.files?.[0]); });
+
+      importButton.addEventListener('click', async () => {
+        if (!chosenFile) return;
+        const form = new FormData();
+        form.append('file', chosenFile);
+        importButton.disabled = true;
+        try {
+          const result = await api(`/api/admin/classes/${chosen()}/assignment-import`, { method: 'POST', body: form });
+          closeModal();
+          state.assignments = await api('/api/admin/assignments');
+          renderAdmin();
+          showToast(`${result.created} assignment${result.created === 1 ? '' : 's'} created${result.skipped.length ? `, ${result.skipped.length} skipped` : ''}`);
+        } catch (error) { importButton.disabled = false; showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* Every row, in file order, with its problems named — a count alone leaves
+   somebody guessing which nine of their twelve made it. */
+function assignmentPreview(result) {
+  return `<div class="csv-summary">
+      <span class="csv-ok">${result.ready} ready</span>
+      ${result.problems ? `<span class="csv-bad">${result.problems} with problems</span>` : ''}
+      <span class="muted small">Times read as ${escapeHtml(result.timezone)}</span>
+    </div>
+    <div class="table-wrap"><table class="data-table compact">
+      <thead><tr><th>Row</th><th>Title</th><th>Deadline</th><th>Questions</th><th>Week</th><th></th></tr></thead>
+      <tbody>${result.rows.map((row) => `<tr class="${row.problems.length ? 'is-bad' : ''}">
+        <td>${row.line}</td>
+        <td>${escapeHtml(row.title || '—')}${row.hardDeadline ? '' : ' <span class="pill">Soft</span>'}</td>
+        <td>${escapeHtml(row.localDeadline || '—')}${row.past && !row.problems.length ? '<b class="csv-note">already passed</b>' : ''}</td>
+        <td>${row.questions.length}</td>
+        <td>${row.weekLabel ? escapeHtml(fmtWeek(row.weekLabel)) : '<span class="muted small">no matching week</span>'}</td>
+        <td>${row.problems.length
+          ? `<span class="csv-bad">${escapeHtml(row.problems.join('; '))}</span>`
+          : '<span class="csv-ok">will be created</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
 }
 
 function openAssignmentModal(assignment = null, defaultClassId = null, prefillDeadline = null) {
