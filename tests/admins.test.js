@@ -32,31 +32,51 @@ test('the gate itself checks the role as well as the flag', async () => {
 
 test('a super administrator cannot strand the portal without one', dbTest, async () => {
   const { one, query } = await import('../src/db.js');
-  const solo = await one(
-    `INSERT INTO users(role,name,email,password_hash,is_super_admin)
-     VALUES ('admin','Only Super',$1,'x',true) RETURNING *`,
-    [`solo-${Date.now()}@test.local`],
-  );
-  try {
-    /* The rule the route enforces, asserted against the same query it uses:
-       with the founding super administrator still in place there is one other,
-       so this one may be demoted. */
-    const remaining = await one(
-      `SELECT count(*)::int count FROM users
-       WHERE role='admin' AND is_super_admin=true AND active=true AND id<>$1`,
-      [solo.id],
-    );
-    assert.ok(remaining.count >= 1, 'the founding super administrator should still exist');
 
-    // And with nobody else, the same count is what refuses the demotion.
-    const ifAlone = await one(
-      `SELECT count(*)::int count FROM users
-       WHERE role='admin' AND is_super_admin=true AND active=true AND id<>$1 AND id<>$2`,
-      [solo.id, (await one(`SELECT id FROM users WHERE role='admin' AND is_super_admin=true AND id<>$1 ORDER BY created_at LIMIT 1`, [solo.id])).id],
-    );
-    assert.equal(ifAlone.count, 0, 'with everybody else excluded there is nobody left, which is what triggers the refusal');
+  /* Both super administrators are made here rather than leaning on whoever
+     happens to be in the database. This used to assume a founding super
+     administrator was already present, which is true of a portal that has been
+     running and false of an empty one — so it passed on a developer's machine
+     and failed the first time it met a fresh database. */
+  const stamp = `${Date.now()}-${Math.round(process.hrtime()[1] / 1000)}`;
+  const founder = await one(
+    `INSERT INTO users(role,name,email,password_hash,is_super_admin,active)
+     VALUES ('admin','Founding Super',$1,'x',true,true) RETURNING *`,
+    [`founder-${stamp}@test.local`],
+  );
+  const solo = await one(
+    `INSERT INTO users(role,name,email,password_hash,is_super_admin,active)
+     VALUES ('admin','Only Super',$1,'x',true,true) RETURNING *`,
+    [`solo-${stamp}@test.local`],
+  );
+
+  /* The rule the route enforces, asserted against the same query it uses: a
+     demotion is allowed only while somebody else would still be able to
+     administer the portal afterwards. */
+  const othersBesides = (...excluded) => one(
+    `SELECT count(*)::int count FROM users
+     WHERE role='admin' AND is_super_admin=true AND active=true
+       AND id <> ALL($1::uuid[])`,
+    [excluded],
+  );
+
+  try {
+    // With the founder in place, demoting this one leaves somebody behind.
+    assert.ok((await othersBesides(solo.id)).count >= 1,
+      'demotion should be allowed while another super administrator remains');
+
+    // Take the founder out of the reckoning and there is nobody left, which is
+    // exactly the count that refuses it.
+    assert.equal((await othersBesides(solo.id, founder.id)).count, 0,
+      'with everybody else excluded there is nobody left, which is what triggers the refusal');
+
+    // Suspending counts as gone: an inactive super administrator cannot act, so
+    // they must not be what keeps a demotion looking safe.
+    await query('UPDATE users SET active=false WHERE id=$1', [founder.id]);
+    assert.equal((await othersBesides(solo.id)).count, 0,
+      'a suspended super administrator must not count towards the one who has to remain');
   } finally {
-    await query('DELETE FROM users WHERE id=$1', [solo.id]);
+    await query('DELETE FROM users WHERE id=ANY($1::uuid[])', [[solo.id, founder.id]]);
   }
 });
 
