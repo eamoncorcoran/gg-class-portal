@@ -1487,3 +1487,33 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   .cal-months{grid-template-columns:minmax(0,1fr)}
   .cal-key{gap:10px}
 }
+
+/* ---- Emoji picker ------------------------------------------------ */
+/* Characters rather than images: every device the portal runs on already draws
+   these, so there is nothing to load and nothing to go missing offline. */
+.emoji-btn{display:grid;place-items:center;width:34px;height:34px;flex:0 0 auto;border:0;
+  border-radius:var(--radius-sm);background:transparent;color:var(--text-tertiary);cursor:pointer}
+.emoji-btn:hover{background:var(--gray-100);color:var(--text-secondary)}
+.emoji-btn svg{width:19px;height:19px}
+
+.emoji-pop{position:fixed;z-index:90;width:300px;padding:8px;
+  border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);
+  box-shadow:var(--shadow-lg);display:grid;gap:8px}
+.emoji-search input{padding:7px 10px;font-size:13px}
+.emoji-scroll{max-height:248px;overflow-y:auto;padding-right:2px}
+.emoji-pop h5{margin:8px 0 5px;color:var(--text-quaternary);font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em}
+.emoji-pop h5:first-child{margin-top:0}
+.emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:2px}
+.emoji-pick{padding:5px 0;border:0;border-radius:var(--radius-xs);background:transparent;
+  font-size:19px;line-height:1.25;cursor:pointer}
+.emoji-pick:hover{background:var(--gray-100)}
+.emoji-none{margin:0;padding:14px 6px;color:var(--text-tertiary);font-size:12.5px;text-align:center}
+
+/* The comment box puts its actions in a row; the picker sits with them. */
+.reply-actions{display:flex;align-items:center;gap:8px}
+
+@media (max-width:700px){
+  .emoji-pop{width:min(300px,calc(100vw - 24px))}
+  .emoji-grid{grid-template-columns:repeat(7,1fr)}
+}

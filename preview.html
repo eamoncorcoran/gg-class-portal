@@ -1496,6 +1496,36 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   .cal-months{grid-template-columns:minmax(0,1fr)}
   .cal-key{gap:10px}
 }
+
+/* ---- Emoji picker ------------------------------------------------ */
+/* Characters rather than images: every device the portal runs on already draws
+   these, so there is nothing to load and nothing to go missing offline. */
+.emoji-btn{display:grid;place-items:center;width:34px;height:34px;flex:0 0 auto;border:0;
+  border-radius:var(--radius-sm);background:transparent;color:var(--text-tertiary);cursor:pointer}
+.emoji-btn:hover{background:var(--gray-100);color:var(--text-secondary)}
+.emoji-btn svg{width:19px;height:19px}
+
+.emoji-pop{position:fixed;z-index:90;width:300px;padding:8px;
+  border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);
+  box-shadow:var(--shadow-lg);display:grid;gap:8px}
+.emoji-search input{padding:7px 10px;font-size:13px}
+.emoji-scroll{max-height:248px;overflow-y:auto;padding-right:2px}
+.emoji-pop h5{margin:8px 0 5px;color:var(--text-quaternary);font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em}
+.emoji-pop h5:first-child{margin-top:0}
+.emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:2px}
+.emoji-pick{padding:5px 0;border:0;border-radius:var(--radius-xs);background:transparent;
+  font-size:19px;line-height:1.25;cursor:pointer}
+.emoji-pick:hover{background:var(--gray-100)}
+.emoji-none{margin:0;padding:14px 6px;color:var(--text-tertiary);font-size:12.5px;text-align:center}
+
+/* The comment box puts its actions in a row; the picker sits with them. */
+.reply-actions{display:flex;align-items:center;gap:8px}
+
+@media (max-width:700px){
+  .emoji-pop{width:min(300px,calc(100vw - 24px))}
+  .emoji-grid{grid-template-columns:repeat(7,1fr)}
+}
 </style>
 </head>
 <body>
@@ -3088,6 +3118,7 @@ const svg = {
   pencil: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 20h4L20 8a2.8 2.8 0 0 0-4-4L4 16v4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
   trash: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   search: `<svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  smiley: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="10" r="1.1" fill="currentColor"/><circle cx="15" cy="10" r="1.1" fill="currentColor"/></svg>`,
   paperclip: `<svg viewBox="0 0 24 24" fill="none"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   check: `<svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   chevronDown: `<svg viewBox="0 0 24 24" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -6537,6 +6568,176 @@ function bindCategoryPicker() {
   button.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
 }
 
+/* Emoji, for anybody writing anything.
+   ------------------------------------------------------------------
+   The board already had reactions, but those are a fixed set of eight and they
+   sit on a post rather than in it. This is for writing: a student answering a
+   comment wants a 😅 in the sentence, not stuck to the end of somebody else's.
+
+   No library and no image set — these are characters, and every device the
+   portal runs on already draws them. Grouped the way people look for them
+   rather than by Unicode block, and searchable by the words somebody would
+   actually type. */
+const EMOJI_GROUPS = [
+  {
+    name: 'Smileys',
+    items: [
+      ['😀', 'grin happy smile'], ['😄', 'happy smile laugh'], ['😅', 'sweat relief phew nervous'],
+      ['😂', 'laugh crying funny'], ['🙂', 'smile slight'], ['😉', 'wink'],
+      ['😊', 'blush happy warm'], ['🥰', 'love hearts adore'], ['😍', 'love heart eyes'],
+      ['🤔', 'thinking wonder hmm'], ['😬', 'grimace awkward yikes'], ['😴', 'sleep tired'],
+      ['😭', 'crying sob'], ['😱', 'shock scream'], ['🥳', 'party celebrate'],
+      ['😇', 'angel innocent'], ['🙃', 'upside down'], ['😌', 'relieved calm'],
+    ],
+  },
+  {
+    name: 'Gestures',
+    items: [
+      ['👍', 'thumbs up yes good'], ['👏', 'clap well done applause'], ['🙏', 'thanks please pray'],
+      ['💪', 'strong muscle effort'], ['🤝', 'handshake agree'], ['👋', 'wave hello hi'],
+      ['✌️', 'peace victory'], ['🤞', 'fingers crossed luck'], ['👌', 'ok perfect'],
+      ['🫶', 'heart hands love'],
+    ],
+  },
+  {
+    name: 'Hearts and marks',
+    items: [
+      ['❤️', 'heart love red'], ['💚', 'green heart'], ['✨', 'sparkles nice'],
+      ['🎉', 'party celebrate congratulations'], ['⭐', 'star'], ['🔥', 'fire great'],
+      ['✅', 'tick done correct'], ['❌', 'cross wrong no'], ['❓', 'question'],
+      ['❗', 'exclamation important'],
+    ],
+  },
+  {
+    name: 'Course',
+    items: [
+      ['📚', 'books study reading'], ['✏️', 'pencil write homework'], ['📝', 'note writing exam'],
+      ['🎧', 'headphones listening audio'], ['🗣️', 'speaking oral talk'], ['📖', 'book reading'],
+      ['🍀', 'clover luck irish'], ['☘️', 'shamrock irish ireland'], ['🇮🇪', 'ireland flag irish'],
+      ['⏰', 'clock time deadline'], ['📅', 'calendar date'], ['🎓', 'graduate exam course'],
+    ],
+  },
+];
+
+/* The most recently used, kept on this device. A picker that always opens on the
+   same grid makes somebody hunt for the four they actually use. */
+function recentEmoji() {
+  try { return JSON.parse(localStorage.getItem('gg-recent-emoji') || '[]').slice(0, 12); }
+  catch { return []; }
+}
+
+function rememberEmoji(emoji) {
+  try {
+    const next = [emoji, ...recentEmoji().filter((item) => item !== emoji)].slice(0, 12);
+    localStorage.setItem('gg-recent-emoji', JSON.stringify(next));
+  } catch { /* private browsing; the picker still works, it just forgets. */ }
+}
+
+/**
+ * Attach a picker to a text box.
+ *
+ * The emoji goes in at the cursor rather than at the end, because somebody
+ * adding one to a sentence they have already written is the normal case.
+ */
+function emojiButton(targetId) {
+  return `<button type="button" class="emoji-btn" data-emoji-for="${targetId}"
+    aria-label="Add an emoji" title="Add an emoji">${svg.smiley}</button>`;
+}
+
+function bindEmojiButtons(root = document) {
+  root.querySelectorAll('[data-emoji-for]').forEach((button) => {
+    if (button.dataset.bound) return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openEmojiPicker(button, button.dataset.emojiFor);
+    });
+  });
+}
+
+function openEmojiPicker(anchorElement, targetId) {
+  document.querySelectorAll('.emoji-pop').forEach((open) => open.remove());
+  const recent = recentEmoji();
+
+  const grid = (items) => `<div class="emoji-grid">${items.map(([emoji, words]) =>
+    `<button type="button" class="emoji-pick" data-emoji="${emoji}" data-words="${escapeHtml(words || '')}"
+      title="${escapeHtml((words || '').split(' ')[0])}">${emoji}</button>`).join('')}</div>`;
+
+  const pop = document.createElement('div');
+  pop.className = 'emoji-pop';
+  pop.innerHTML = `
+    <div class="emoji-search"><input type="search" placeholder="Search" aria-label="Search emoji"></div>
+    <div class="emoji-scroll">
+      ${recent.length ? `<h5>Recent</h5>${grid(recent.map((emoji) => [emoji, '']))}` : ''}
+      ${EMOJI_GROUPS.map((group) => `<h5>${escapeHtml(group.name)}</h5>${grid(group.items)}`).join('')}
+    </div>
+    <p class="emoji-none hidden">Nothing matching that.</p>`;
+  document.body.append(pop);
+
+  // Against the button, nudged back on screen if it would hang off an edge.
+  const box = anchorElement.getBoundingClientRect();
+  const width = pop.offsetWidth;
+  const height = pop.offsetHeight;
+  pop.style.left = `${Math.max(12, Math.min(box.left, window.innerWidth - width - 12))}px`;
+  pop.style.top = box.top - height - 8 > 8 ? `${box.top - height - 8}px` : `${box.bottom + 8}px`;
+
+  const search = pop.querySelector('input');
+  const none = pop.querySelector('.emoji-none');
+  search.addEventListener('input', () => {
+    const term = search.value.trim().toLowerCase();
+    let showing = 0;
+    pop.querySelectorAll('.emoji-pick').forEach((pick) => {
+      const hit = !term || (pick.dataset.words || '').includes(term);
+      pick.classList.toggle('hidden', !hit);
+      if (hit) showing += 1;
+    });
+    // A heading with nothing under it reads as a bug.
+    pop.querySelectorAll('.emoji-grid').forEach((section) => {
+      const empty = !section.querySelector('.emoji-pick:not(.hidden)');
+      section.classList.toggle('hidden', empty);
+      section.previousElementSibling?.classList.toggle('hidden', empty);
+    });
+    none.classList.toggle('hidden', showing > 0);
+  });
+
+  pop.querySelectorAll('.emoji-pick').forEach((pick) => pick.addEventListener('click', () => {
+    insertEmoji(targetId, pick.dataset.emoji);
+    rememberEmoji(pick.dataset.emoji);
+    pop.remove();
+  }));
+
+  const close = (event) => {
+    if (pop.contains(event.target) || anchorElement.contains(event.target)) return;
+    pop.remove();
+    document.removeEventListener('click', close);
+  };
+  setTimeout(() => document.addEventListener('click', close), 0);
+  document.addEventListener('keydown', function escape(event) {
+    if (event.key !== 'Escape') return;
+    pop.remove();
+    document.removeEventListener('keydown', escape);
+  });
+  search.focus();
+}
+
+/* At the cursor, not at the end — somebody adding one to a sentence they have
+   already written is the normal case, and the cursor is left after it so they
+   can keep typing. */
+function insertEmoji(targetId, emoji) {
+  const field = document.getElementById(targetId);
+  if (!field) return;
+  const start = field.selectionStart ?? field.value.length;
+  const end = field.selectionEnd ?? field.value.length;
+  field.value = field.value.slice(0, start) + emoji + field.value.slice(end);
+  const at = start + emoji.length;
+  field.setSelectionRange(at, at);
+  field.focus();
+  // Anything watching the field — the video preview, a draft capture — should
+  // see this the same way it sees typing.
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function openComposer({ restore = false } = {}) {
   const categories = state.community?.categories || [];
   const admin = isAdmin();
@@ -6578,6 +6779,7 @@ function openComposer({ restore = false } = {}) {
 
       <footer class="cw-foot">
         <div class="composer-tools">
+          <button type="button" class="tool" data-emoji-for="composer-body" aria-label="Add an emoji">${svg.smiley}</button>
           ${admin ? tool('attach-file', svg.paperclip || svg.cloudUp, 'Attach a file') : ''}
           ${admin ? tool('attach-dictate', svg.mic, 'Dictate') : ''}
           ${admin ? tool('attach-schedule', svg.calendar, 'Schedule for later') : ''}
@@ -6592,6 +6794,7 @@ function openComposer({ restore = false } = {}) {
     </form>`,
     onOpen() {
       bindDictation();
+      bindEmojiButtons(modalRoot);
       bindCategoryPicker();
       renderDraftAttachments();
       if (!draft) document.getElementById('composer-title')?.focus();
@@ -6998,6 +7201,7 @@ function renderThreadDrawer() {
           ${dictateButton('reply-body')}
           <textarea id="reply-body" rows="3" placeholder="Write a comment"></textarea>
           <div class="reply-actions">
+            ${emojiButton('reply-body')}
             <button class="btn primary" id="send-reply">Comment</button>
             ${admin ? replyRecorder() : ''}
           </div>
@@ -7006,6 +7210,7 @@ function renderThreadDrawer() {
     onOpen() {
       bindDictation();
       bindReactions(modalRoot);
+      bindEmojiButtons(modalRoot);
       if (admin) loadReplyDraft(thread.id);
       if (admin) bindReplyRecorder();
       document.getElementById('send-reply')?.addEventListener('click', async () => {
