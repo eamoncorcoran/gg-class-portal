@@ -16,6 +16,31 @@ export async function setSetting(key, value, userId = null) {
   );
 }
 
+/* The drafting key. Same shape as the OpenAI one below, and deliberately
+   separate from it: drafting and dictation are on different providers now, and
+   revoking one should not silently take the other down with it. */
+export async function getAnthropicConfig() {
+  const stored = await getSetting('anthropic', {});
+  let storedKey = '';
+  try { storedKey = decryptSecret(stored.apiKeyEncrypted || ''); } catch (error) { console.error(error); }
+  return {
+    apiKey: storedKey || config.anthropicApiKey,
+    model: stored.model || config.anthropicModel,
+    configured: Boolean(storedKey || config.anthropicApiKey),
+  };
+}
+
+export async function saveAnthropicConfig({ apiKey, model }, userId) {
+  const current = await getSetting('anthropic', {});
+  const next = {
+    ...current,
+    model: model || current.model || config.anthropicModel,
+    apiKeyEncrypted: apiKey ? encryptSecret(apiKey) : current.apiKeyEncrypted || null,
+  };
+  await setSetting('anthropic', next, userId);
+  return { configured: Boolean(next.apiKeyEncrypted || config.anthropicApiKey), model: next.model };
+}
+
 export async function getOpenAIConfig() {
   const stored = await getSetting('openai', {});
   let storedKey = '';

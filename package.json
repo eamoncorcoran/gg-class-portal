@@ -23,6 +23,7 @@
     "check-backup": "node scripts/check-backup.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
     "aws4fetch": "^1.0.20",
     "cookie-parser": "^1.4.7",
     "csv-parse": "^6.1.0",

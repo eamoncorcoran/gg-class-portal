@@ -1192,7 +1192,7 @@ function adminNav() {
       ${adminNavButton('community', svg.board, 'Community')}
       ${adminNavButton('attendance', svg.upload, 'Attendance upload')}
       ${adminNavButton('reminders', svg.mail, 'Email reminders')}
-      ${adminNavButton('ai', svg.spark, 'OpenAI & prompts')}
+      ${adminNavButton('ai', svg.spark, 'Feedback drafting')}
       ${state.user.isSuperAdmin ? adminNavButton('admins', svg.lock, 'Administrators') : ''}
     </nav>`;
 }
@@ -1290,7 +1290,7 @@ async function renderAdmin() {
       title = 'Attendance upload'; content = attendanceView();
     } else if (state.view === 'reminders' || state.view === 'ai') {
       state.settings = await api('/api/settings');
-      title = state.view === 'reminders' ? 'Email reminders' : 'OpenAI & prompts';
+      title = state.view === 'reminders' ? 'Email reminders' : 'Feedback drafting';
       content = state.view === 'reminders' ? remindersView() : aiSettingsView();
     }
     shell({ nav: adminNav(), content, title, roleLabel: 'Administrator' });
@@ -4785,22 +4785,34 @@ function dictationSettingsCard() {
 
 function aiSettingsView() {
   const prompts = state.settings.prompts || {};
+  const anthropic = state.settings.anthropic || {};
   const openai = state.settings.openai || {};
-  return `${pageHeader('Feedback drafting', 'OpenAI and correction prompts', 'AI drafting starts only after a student submits actual work.', `<button class="btn" id="test-openai">Test connection</button><button class="btn primary" id="save-ai">Save configuration</button>`)}
+  return `${pageHeader('Feedback drafting', 'Claude keys and correction prompts', 'AI drafting starts only after a student submits actual work.', `<button class="btn" id="test-anthropic">Test connection</button><button class="btn primary" id="save-ai">Save configuration</button>`)}
     <div class="settings-grid"><div class="settings-stack">
-      <section class="card"><div class="card-header"><div><h2>OpenAI connection</h2><p>The API key is encrypted server-side and never returned to the browser.</p></div></div><div class="card-body">
-        <div class="connection"><span class="connection-dot ${openai.configured ? 'ok' : ''}"></span><div><strong>${openai.configured ? 'Connected' : 'Not configured'}</strong><span>${openai.configured ? `Using ${escapeHtml(openai.model)}` : 'Add a server-side API key.'}</span></div></div>
-        <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="openai-key" type="password" placeholder="sk-..."></div></div>
-        <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used for check-in and homework feedback.</span></div><div><input id="openai-model" value="${escapeHtml(openai.model || 'gpt-5.6')}"></div></div>
+      <section class="card"><div class="card-header"><div><h2>Claude connection</h2><p>Writes the check-in, homework and board drafts. The API key is encrypted server-side and never returned to the browser.</p></div></div><div class="card-body">
+        <div class="connection"><span class="connection-dot ${anthropic.configured ? 'ok' : ''}"></span><div><strong>${anthropic.configured ? 'Connected' : 'Not configured'}</strong><span>${anthropic.configured ? `Using ${escapeHtml(anthropic.model)}` : 'Add a server-side API key.'}</span></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="anthropic-key" type="password" placeholder="sk-ant-..."></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used for check-in, homework and board drafts.</span></div><div><input id="anthropic-model" value="${escapeHtml(anthropic.model || 'claude-opus-5')}"></div></div>
       </div></section>
-      <section class="card"><div class="card-header"><div><h2>Teacher prompts</h2><p>These instructions are combined with the student's actual answers.</p></div></div><div class="card-body">
-        <div class="form-field"><label>Weekly check-in response</label><textarea id="checkin-prompt">${escapeHtml(prompts.checkinPrompt || '')}</textarea></div>
+      <section class="card"><div class="card-header"><div><h2>Your voice</h2><p>Built into the app, not editable here.</p></div></div><div class="card-body">
+        <p class="muted small">The check-in and board drafts are written to a voice measured from 362 replies you sent students on WhatsApp between January and August 2026: how you open, that you never sign off, the length you actually write, no em dashes, and the advice you give over and over. It is held in the code so an edit here cannot undo it.</p>
+        <div class="form-field"><label>Notes for this term, weekly check-in</label>
+          <textarea id="checkin-notes" placeholder="Optional. Anything true this term, for example how far out the next oral is.">${escapeHtml(prompts.checkinNotes || '')}</textarea>
+          <p class="muted small">Added after your voice, not instead of it. Leave empty if there is nothing.</p>
+        </div>
+        <div class="form-field"><label>Notes for this term, community board</label>
+          <textarea id="community-notes" placeholder="Optional.">${escapeHtml(prompts.communityNotes || '')}</textarea>
+          <p class="muted small">The draft offered above the reply box when you open a post on the board. It is a starting point you edit, nothing is ever sent without you pressing Comment, and students never see the draft or know one existed.</p>
+        </div>
+      </div></section>
+      <section class="card"><div class="card-header"><div><h2>Homework prompts</h2><p>Corrections are a marking standard, so they stay editable here.</p></div></div><div class="card-body">
         <div class="form-field"><label>Irish corrections, An Caighdeán Oifigiúil</label><textarea id="correction-prompt" class="tall">${escapeHtml(prompts.correctionPrompt || '')}</textarea></div>
         <div class="form-field"><label>General teacher feedback</label><textarea id="general-prompt">${escapeHtml(prompts.generalFeedbackPrompt || '')}</textarea></div>
-        <div class="form-field"><label>Community reply</label>
-          <textarea id="community-prompt">${escapeHtml(prompts.communityReplyPrompt || '')}</textarea>
-          <p class="muted small">The draft offered above the reply box when you open a post on the board. It is a starting point you edit — nothing is ever sent without you pressing Comment, and students never see the draft or know one existed.</p>
-        </div>
+      </div></section>
+      <section class="card"><div class="card-header"><div><h2>OpenAI connection</h2><p>Dictation and transcription only. Claude has no equivalent, so this key stays.</p></div></div><div class="card-body">
+        <div class="connection"><span class="connection-dot ${openai.configured ? 'ok' : ''}"></span><div><strong>${openai.configured ? 'Connected' : 'Not configured'}</strong><span>${openai.configured ? `Using ${escapeHtml(openai.model)}` : 'Add a server-side API key.'}</span></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="openai-key" type="password" placeholder="sk-..."></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used to tidy up dictated voice notes.</span></div><div><input id="openai-model" value="${escapeHtml(openai.model || 'gpt-5.6')}"></div></div>
       </div></section>
       ${dictationSettingsCard()}
     </div><aside class="settings-stack"><section class="card"><div class="card-header"><div><h3>Draft lifecycle</h3><p>Clear states on the teacher side.</p></div></div><div class="card-body">
@@ -5449,8 +5461,9 @@ function testEmail() {
 function bindAISettings() {
   document.getElementById('save-ai')?.addEventListener('click', async () => {
     try {
+      await api('/api/settings/anthropic', { method: 'PUT', body: { apiKey: document.getElementById('anthropic-key').value || undefined, model: document.getElementById('anthropic-model').value } });
       await api('/api/settings/openai', { method: 'PUT', body: { apiKey: document.getElementById('openai-key').value || undefined, model: document.getElementById('openai-model').value } });
-      await api('/api/settings/prompts', { method: 'PUT', body: { checkinPrompt: document.getElementById('checkin-prompt').value, correctionPrompt: document.getElementById('correction-prompt').value, generalFeedbackPrompt: document.getElementById('general-prompt').value, communityReplyPrompt: document.getElementById('community-prompt').value } });
+      await api('/api/settings/prompts', { method: 'PUT', body: { correctionPrompt: document.getElementById('correction-prompt').value, generalFeedbackPrompt: document.getElementById('general-prompt').value, checkinNotes: document.getElementById('checkin-notes').value, communityNotes: document.getElementById('community-notes').value } });
       await api('/api/settings/dictation', { method: 'PUT', body: {
         transcribeModel: document.getElementById('dictation-transcribe-model').value,
         cleanupModel: document.getElementById('dictation-cleanup-model').value,
@@ -5459,11 +5472,13 @@ function bindAISettings() {
         cleanupPrompt: document.getElementById('voice-cleanup-prompt').value,
         lightPrompt: document.getElementById('voice-light-prompt').value,
       } });
-      showToast('OpenAI configuration saved'); await renderAdmin();
+      showToast('Drafting configuration saved'); await renderAdmin();
     } catch (error) { showToast(error.message, 'error'); }
   });
-  document.getElementById('test-openai')?.addEventListener('click', async () => {
-    try { const result = await api('/api/settings/openai/test', { method: 'POST' }); modal({ title: 'OpenAI connection successful', body: `<div class="feedback-box"><h3>Draft preview</h3><p>${escapeHtml(result.preview)}</p></div>`, footer: `<button class="btn primary" data-close-modal>Done</button>` }); }
+  /* Drafts a real check-in from an invented student rather than pinging the API,
+     because the thing worth testing is whether it sounds like you. */
+  document.getElementById('test-anthropic')?.addEventListener('click', async () => {
+    try { const result = await api('/api/settings/anthropic/test', { method: 'POST' }); modal({ title: 'Claude connection successful', body: `<div class="feedback-box"><h3>Draft preview</h3><p>${escapeHtml(result.preview).replace(/\n/g, '<br>')}</p></div>`, footer: `<button class="btn primary" data-close-modal>Done</button>` }); }
     catch (error) { showToast(error.message, 'error'); }
   });
 }

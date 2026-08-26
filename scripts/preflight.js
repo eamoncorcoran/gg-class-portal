@@ -16,7 +16,8 @@ if (backupTool?.error) {
 if (!config.databaseUrl) errors.push('DATABASE_URL is missing.');
 if (config.isProduction && !config.appUrl.startsWith('https://')) errors.push('APP_URL must use HTTPS in production.');
 if (config.isProduction && !config.encryptionKey) errors.push('APP_ENCRYPTION_KEY is required in production.');
-if (!config.openaiApiKey) warnings.push('OPENAI_API_KEY is not set. It can be configured later in the administrator screen.');
+if (!config.anthropicApiKey) warnings.push('ANTHROPIC_API_KEY is not set. Feedback drafting needs it. It can be configured later in the administrator screen.');
+if (!config.openaiApiKey) warnings.push('OPENAI_API_KEY is not set. Dictation needs it. It can be configured later in the administrator screen.');
 if (config.emailProvider === 'smtp' && (!config.smtp.host || !config.smtp.user || !config.smtp.password)) warnings.push('SMTP is selected but is not fully configured.');
 if (config.emailProvider === 'ghl_webhook' && !config.ghlEmailWebhookUrl) warnings.push('GHL webhook delivery is selected but no webhook URL is configured.');
 

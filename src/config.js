@@ -20,6 +20,11 @@ export const config = Object.freeze({
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'gg_session',
   sessionDays: integer(process.env.SESSION_DAYS, 90),
   encryptionKey: process.env.APP_ENCRYPTION_KEY || '',
+  /* Two providers, two jobs. Claude writes the feedback drafts because the voice
+     they are written in was measured and is held in draftprompts.js; OpenAI stays
+     for dictation and transcription, which has no Anthropic equivalent. */
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-opus-5',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-5.6',
   /* Bunny Stream holds the class recordings. The library key uploads; the token

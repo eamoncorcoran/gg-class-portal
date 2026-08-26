@@ -226,7 +226,7 @@ try {
         'redrafting either works or names what is missing',
         redraft.status === 200
           ? typeof redraft.data?.teacher_feedback === 'string'
-          : redraft.status < 500 && /openai/i.test(redraft.data?.error || ''),
+          : redraft.status < 500 && /claude|anthropic/i.test(redraft.data?.error || ''),
         `${redraft.status} ${redraft.data?.error || ''}`,
       );
 
@@ -298,7 +298,7 @@ try {
       'redrafting either works or names what is missing',
       redraft.status === 200
         ? typeof redraft.data?.teacher_general_feedback === 'string'
-        : redraft.status < 500 && /openai/i.test(redraft.data?.error || ''),
+        : redraft.status < 500 && /claude|anthropic/i.test(redraft.data?.error || ''),
       `${redraft.status} ${redraft.data?.error || ''}`,
     );
 

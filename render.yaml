@@ -123,8 +123,16 @@ services:
       - key: EMAIL_REPLY_TO
         value: info@gaeilgeoirguides.com
 
+      # Feedback drafting. Claude writes the check-in, homework and board
+      # drafts; without this key the portal runs but every draft fails and the
+      # teacher writes the reply themselves, which is what they were going to
+      # do anyway.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
       # Optional. Each one is a feature that hides itself when its key is
       # absent, so the portal runs without any of them.
+      # OpenAI is dictation and transcription only, since drafting moved to Claude.
       - key: OPENAI_API_KEY
         sync: false
       - key: BUNNY_LIBRARY_ID

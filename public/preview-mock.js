@@ -168,6 +168,7 @@
           twoHours:{enabled:true,subject:'{{assignment_title}} is due in 2 hours',body:'Hi {{first_name}},\n\nYour homework is due in 2 hours.\n\n{{assignment_link}}'},
           thirtyMinutes:{enabled:true,subject:'30 minutes left for {{assignment_title}}',body:'Hi {{first_name}},\n\nThere are 30 minutes left.\n\n{{assignment_link}}'}
         },
+        anthropic:{configured:true,model:'claude-opus-5'},
         openai:{configured:true,model:'gpt-5.6'},
         nudge:{
           checkinSubject:'Your weekly check-in, {{first_name}}',
@@ -181,9 +182,10 @@
           lightPrompt:'Add punctuation and casing to this raw speech transcript and remove fillers. Never change, translate or correct any Irish wording. Output ONLY the corrected text.'
         },
         prompts:{
-          checkinPrompt:'You are a warm and experienced Irish-language teacher. Reply directly to the student’s actual check-in.',
           correctionPrompt:'Correct genuine errors using An Caighdeán Oifigiúil. If there are no corrections, say: No Irish corrections needed.',
-          generalFeedbackPrompt:'Give friendly, concise teacher feedback in 2 to 3 lines.'
+          generalFeedbackPrompt:'Give friendly, concise teacher feedback in 2 to 3 lines.',
+          checkinNotes:'Three weeks to the next oral.',
+          communityNotes:''
         }
       },
       counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,thread:10,post:10,category:10,attachment:20}
@@ -1258,6 +1260,8 @@
       db.settings.dictation=dictation; db.settings.voicePrompts={cleanupPrompt,lightPrompt}; save();
       return json({...dictation,cleanupPrompt,lightPrompt});
     }
+    if(path==='/api/settings/anthropic'&&method==='PUT'){db.settings.anthropic={...db.settings.anthropic,...body,configured:true};save();return json(db.settings.anthropic);}
+    if(path==='/api/settings/anthropic/test'&&method==='POST') return json({ok:true,preview:'Hey Niamh, one Sraith learned off and said out loud is a proper week\'s work, fair play.\n\nThe overwhelmed feeling is the Sraith doing what it does to everyone, so you are in good company there. Do not learn it as a block of text. Break each box into three or four short sentences in your own Irish, the ones you would actually say.\n\nJust the one Sraith again this week. Send it on if you want a look over it 🙂'});
     if(path==='/api/settings/openai'&&method==='PUT'){db.settings.openai={...db.settings.openai,...body,configured:true};save();return json(db.settings.openai);}
     if(path==='/api/settings/prompts'&&method==='PUT'){db.settings.prompts={...db.settings.prompts,...body};save();return json(db.settings.prompts);}
     if(path==='/api/settings/openai/test'&&method==='POST') return json({ok:true,preview:'Great work this week. Your confidence is improving, and your weekly win shows genuine progress. Keep using one short Irish phrase aloud each day.'});

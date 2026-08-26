@@ -1673,6 +1673,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
           twoHours:{enabled:true,subject:'{{assignment_title}} is due in 2 hours',body:'Hi {{first_name}},\n\nYour homework is due in 2 hours.\n\n{{assignment_link}}'},
           thirtyMinutes:{enabled:true,subject:'30 minutes left for {{assignment_title}}',body:'Hi {{first_name}},\n\nThere are 30 minutes left.\n\n{{assignment_link}}'}
         },
+        anthropic:{configured:true,model:'claude-opus-5'},
         openai:{configured:true,model:'gpt-5.6'},
         nudge:{
           checkinSubject:'Your weekly check-in, {{first_name}}',
@@ -1686,9 +1687,10 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
           lightPrompt:'Add punctuation and casing to this raw speech transcript and remove fillers. Never change, translate or correct any Irish wording. Output ONLY the corrected text.'
         },
         prompts:{
-          checkinPrompt:'You are a warm and experienced Irish-language teacher. Reply directly to the student’s actual check-in.',
           correctionPrompt:'Correct genuine errors using An Caighdeán Oifigiúil. If there are no corrections, say: No Irish corrections needed.',
-          generalFeedbackPrompt:'Give friendly, concise teacher feedback in 2 to 3 lines.'
+          generalFeedbackPrompt:'Give friendly, concise teacher feedback in 2 to 3 lines.',
+          checkinNotes:'Three weeks to the next oral.',
+          communityNotes:''
         }
       },
       counters:{class:3,student:8,assignment:6,checkin:20,homework:20,attendance:50,thread:10,post:10,category:10,attachment:20}
@@ -2763,6 +2765,8 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
       db.settings.dictation=dictation; db.settings.voicePrompts={cleanupPrompt,lightPrompt}; save();
       return json({...dictation,cleanupPrompt,lightPrompt});
     }
+    if(path==='/api/settings/anthropic'&&method==='PUT'){db.settings.anthropic={...db.settings.anthropic,...body,configured:true};save();return json(db.settings.anthropic);}
+    if(path==='/api/settings/anthropic/test'&&method==='POST') return json({ok:true,preview:'Hey Niamh, one Sraith learned off and said out loud is a proper week\'s work, fair play.\n\nThe overwhelmed feeling is the Sraith doing what it does to everyone, so you are in good company there. Do not learn it as a block of text. Break each box into three or four short sentences in your own Irish, the ones you would actually say.\n\nJust the one Sraith again this week. Send it on if you want a look over it 🙂'});
     if(path==='/api/settings/openai'&&method==='PUT'){db.settings.openai={...db.settings.openai,...body,configured:true};save();return json(db.settings.openai);}
     if(path==='/api/settings/prompts'&&method==='PUT'){db.settings.prompts={...db.settings.prompts,...body};save();return json(db.settings.prompts);}
     if(path==='/api/settings/openai/test'&&method==='POST') return json({ok:true,preview:'Great work this week. Your confidence is improving, and your weekly win shows genuine progress. Keep using one short Irish phrase aloud each day.'});
@@ -4215,7 +4219,7 @@ function adminNav() {
       ${adminNavButton('community', svg.board, 'Community')}
       ${adminNavButton('attendance', svg.upload, 'Attendance upload')}
       ${adminNavButton('reminders', svg.mail, 'Email reminders')}
-      ${adminNavButton('ai', svg.spark, 'OpenAI & prompts')}
+      ${adminNavButton('ai', svg.spark, 'Feedback drafting')}
       ${state.user.isSuperAdmin ? adminNavButton('admins', svg.lock, 'Administrators') : ''}
     </nav>`;
 }
@@ -4313,7 +4317,7 @@ async function renderAdmin() {
       title = 'Attendance upload'; content = attendanceView();
     } else if (state.view === 'reminders' || state.view === 'ai') {
       state.settings = await api('/api/settings');
-      title = state.view === 'reminders' ? 'Email reminders' : 'OpenAI & prompts';
+      title = state.view === 'reminders' ? 'Email reminders' : 'Feedback drafting';
       content = state.view === 'reminders' ? remindersView() : aiSettingsView();
     }
     shell({ nav: adminNav(), content, title, roleLabel: 'Administrator' });
@@ -7808,22 +7812,34 @@ function dictationSettingsCard() {
 
 function aiSettingsView() {
   const prompts = state.settings.prompts || {};
+  const anthropic = state.settings.anthropic || {};
   const openai = state.settings.openai || {};
-  return `${pageHeader('Feedback drafting', 'OpenAI and correction prompts', 'AI drafting starts only after a student submits actual work.', `<button class="btn" id="test-openai">Test connection</button><button class="btn primary" id="save-ai">Save configuration</button>`)}
+  return `${pageHeader('Feedback drafting', 'Claude keys and correction prompts', 'AI drafting starts only after a student submits actual work.', `<button class="btn" id="test-anthropic">Test connection</button><button class="btn primary" id="save-ai">Save configuration</button>`)}
     <div class="settings-grid"><div class="settings-stack">
-      <section class="card"><div class="card-header"><div><h2>OpenAI connection</h2><p>The API key is encrypted server-side and never returned to the browser.</p></div></div><div class="card-body">
-        <div class="connection"><span class="connection-dot ${openai.configured ? 'ok' : ''}"></span><div><strong>${openai.configured ? 'Connected' : 'Not configured'}</strong><span>${openai.configured ? `Using ${escapeHtml(openai.model)}` : 'Add a server-side API key.'}</span></div></div>
-        <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="openai-key" type="password" placeholder="sk-..."></div></div>
-        <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used for check-in and homework feedback.</span></div><div><input id="openai-model" value="${escapeHtml(openai.model || 'gpt-5.6')}"></div></div>
+      <section class="card"><div class="card-header"><div><h2>Claude connection</h2><p>Writes the check-in, homework and board drafts. The API key is encrypted server-side and never returned to the browser.</p></div></div><div class="card-body">
+        <div class="connection"><span class="connection-dot ${anthropic.configured ? 'ok' : ''}"></span><div><strong>${anthropic.configured ? 'Connected' : 'Not configured'}</strong><span>${anthropic.configured ? `Using ${escapeHtml(anthropic.model)}` : 'Add a server-side API key.'}</span></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="anthropic-key" type="password" placeholder="sk-ant-..."></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used for check-in, homework and board drafts.</span></div><div><input id="anthropic-model" value="${escapeHtml(anthropic.model || 'claude-opus-5')}"></div></div>
       </div></section>
-      <section class="card"><div class="card-header"><div><h2>Teacher prompts</h2><p>These instructions are combined with the student's actual answers.</p></div></div><div class="card-body">
-        <div class="form-field"><label>Weekly check-in response</label><textarea id="checkin-prompt">${escapeHtml(prompts.checkinPrompt || '')}</textarea></div>
+      <section class="card"><div class="card-header"><div><h2>Your voice</h2><p>Built into the app, not editable here.</p></div></div><div class="card-body">
+        <p class="muted small">The check-in and board drafts are written to a voice measured from 362 replies you sent students on WhatsApp between January and August 2026: how you open, that you never sign off, the length you actually write, no em dashes, and the advice you give over and over. It is held in the code so an edit here cannot undo it.</p>
+        <div class="form-field"><label>Notes for this term, weekly check-in</label>
+          <textarea id="checkin-notes" placeholder="Optional. Anything true this term, for example how far out the next oral is.">${escapeHtml(prompts.checkinNotes || '')}</textarea>
+          <p class="muted small">Added after your voice, not instead of it. Leave empty if there is nothing.</p>
+        </div>
+        <div class="form-field"><label>Notes for this term, community board</label>
+          <textarea id="community-notes" placeholder="Optional.">${escapeHtml(prompts.communityNotes || '')}</textarea>
+          <p class="muted small">The draft offered above the reply box when you open a post on the board. It is a starting point you edit, nothing is ever sent without you pressing Comment, and students never see the draft or know one existed.</p>
+        </div>
+      </div></section>
+      <section class="card"><div class="card-header"><div><h2>Homework prompts</h2><p>Corrections are a marking standard, so they stay editable here.</p></div></div><div class="card-body">
         <div class="form-field"><label>Irish corrections, An Caighdeán Oifigiúil</label><textarea id="correction-prompt" class="tall">${escapeHtml(prompts.correctionPrompt || '')}</textarea></div>
         <div class="form-field"><label>General teacher feedback</label><textarea id="general-prompt">${escapeHtml(prompts.generalFeedbackPrompt || '')}</textarea></div>
-        <div class="form-field"><label>Community reply</label>
-          <textarea id="community-prompt">${escapeHtml(prompts.communityReplyPrompt || '')}</textarea>
-          <p class="muted small">The draft offered above the reply box when you open a post on the board. It is a starting point you edit — nothing is ever sent without you pressing Comment, and students never see the draft or know one existed.</p>
-        </div>
+      </div></section>
+      <section class="card"><div class="card-header"><div><h2>OpenAI connection</h2><p>Dictation and transcription only. Claude has no equivalent, so this key stays.</p></div></div><div class="card-body">
+        <div class="connection"><span class="connection-dot ${openai.configured ? 'ok' : ''}"></span><div><strong>${openai.configured ? 'Connected' : 'Not configured'}</strong><span>${openai.configured ? `Using ${escapeHtml(openai.model)}` : 'Add a server-side API key.'}</span></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="openai-key" type="password" placeholder="sk-..."></div></div>
+        <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used to tidy up dictated voice notes.</span></div><div><input id="openai-model" value="${escapeHtml(openai.model || 'gpt-5.6')}"></div></div>
       </div></section>
       ${dictationSettingsCard()}
     </div><aside class="settings-stack"><section class="card"><div class="card-header"><div><h3>Draft lifecycle</h3><p>Clear states on the teacher side.</p></div></div><div class="card-body">
@@ -8472,8 +8488,9 @@ function testEmail() {
 function bindAISettings() {
   document.getElementById('save-ai')?.addEventListener('click', async () => {
     try {
+      await api('/api/settings/anthropic', { method: 'PUT', body: { apiKey: document.getElementById('anthropic-key').value || undefined, model: document.getElementById('anthropic-model').value } });
       await api('/api/settings/openai', { method: 'PUT', body: { apiKey: document.getElementById('openai-key').value || undefined, model: document.getElementById('openai-model').value } });
-      await api('/api/settings/prompts', { method: 'PUT', body: { checkinPrompt: document.getElementById('checkin-prompt').value, correctionPrompt: document.getElementById('correction-prompt').value, generalFeedbackPrompt: document.getElementById('general-prompt').value, communityReplyPrompt: document.getElementById('community-prompt').value } });
+      await api('/api/settings/prompts', { method: 'PUT', body: { correctionPrompt: document.getElementById('correction-prompt').value, generalFeedbackPrompt: document.getElementById('general-prompt').value, checkinNotes: document.getElementById('checkin-notes').value, communityNotes: document.getElementById('community-notes').value } });
       await api('/api/settings/dictation', { method: 'PUT', body: {
         transcribeModel: document.getElementById('dictation-transcribe-model').value,
         cleanupModel: document.getElementById('dictation-cleanup-model').value,
@@ -8482,11 +8499,13 @@ function bindAISettings() {
         cleanupPrompt: document.getElementById('voice-cleanup-prompt').value,
         lightPrompt: document.getElementById('voice-light-prompt').value,
       } });
-      showToast('OpenAI configuration saved'); await renderAdmin();
+      showToast('Drafting configuration saved'); await renderAdmin();
     } catch (error) { showToast(error.message, 'error'); }
   });
-  document.getElementById('test-openai')?.addEventListener('click', async () => {
-    try { const result = await api('/api/settings/openai/test', { method: 'POST' }); modal({ title: 'OpenAI connection successful', body: `<div class="feedback-box"><h3>Draft preview</h3><p>${escapeHtml(result.preview)}</p></div>`, footer: `<button class="btn primary" data-close-modal>Done</button>` }); }
+  /* Drafts a real check-in from an invented student rather than pinging the API,
+     because the thing worth testing is whether it sounds like you. */
+  document.getElementById('test-anthropic')?.addEventListener('click', async () => {
+    try { const result = await api('/api/settings/anthropic/test', { method: 'POST' }); modal({ title: 'Claude connection successful', body: `<div class="feedback-box"><h3>Draft preview</h3><p>${escapeHtml(result.preview).replace(/\n/g, '<br>')}</p></div>`, footer: `<button class="btn primary" data-close-modal>Done</button>` }); }
     catch (error) { showToast(error.message, 'error'); }
   });
 }

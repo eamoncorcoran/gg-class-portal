@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncRoute } from '../middleware.js';
 import { requireAdmin } from '../session.js';
-import { getEmailConfig, getOpenAIConfig, getSetting, saveEmailConfig, saveOpenAIConfig, setSetting } from '../settings.js';
+import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting } from '../settings.js';
 import { draftCheckinFeedback } from '../ai.js';
 import { sendEmail } from '../email.js';
 import { audit } from '../audit.js';
@@ -11,11 +11,12 @@ const router = Router();
 router.use(requireAdmin);
 
 router.get('/', asyncRoute(async (_req, res) => {
-  const [openai, email, prompts, reminders, dictation, voicePrompts, nudge] = await Promise.all([
-    getOpenAIConfig(), getEmailConfig(), getSetting('prompts', {}), getSetting('reminders', {}),
+  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge] = await Promise.all([
+    getAnthropicConfig(), getOpenAIConfig(), getEmailConfig(), getSetting('prompts', {}), getSetting('reminders', {}),
     getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}),
   ]);
   res.json({
+    anthropic: { configured: anthropic.configured, model: anthropic.model },
     openai: { configured: openai.configured, model: openai.model },
     email: { ...email, smtpPassword: undefined },
     prompts,
@@ -26,17 +27,53 @@ router.get('/', asyncRoute(async (_req, res) => {
   });
 }));
 
+/* Drafting runs on Claude. Dictation still runs on OpenAI, so both keys are
+   saved from the same screen and neither route touches the other's row. */
+router.put('/anthropic', asyncRoute(async (req, res) => {
+  const parsed = z.object({ apiKey: z.string().optional(), model: z.string().min(1).max(100) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Enter a valid model and optional API key.' });
+  const saved = await saveAnthropicConfig(parsed.data, req.user.id);
+  await audit({ actorId: req.user.id, action: 'settings.anthropic_updated', entityType: 'settings', entityId: 'anthropic', ip: req.ip });
+  res.json(saved);
+}));
+
+/* The one route whose whole purpose is to show what a draft sounds like, so it
+   drafts a real check-in rather than reporting that the key parses. The student
+   is invented and nothing is written to the database. */
+router.post('/anthropic/test', asyncRoute(async (_req, res) => {
+  try {
+    const reply = await draftCheckinFeedback({
+      student: { name: 'Niamh' },
+      class: { programmeName: 'Irish for Primary Teaching' },
+      checkin: {
+        attendance: 'I watched the recording',
+        reviewed: 'Yes',
+        understanding: 5,
+        confidence: 4,
+        weeklyWin: 'I got one Sraith learned off and said it out loud a few times.',
+        support: "I'm finding the Sraith overwhelming, there's so much in learning it.",
+      },
+    });
+    res.json({ ok: true, preview: reply });
+  } catch (error) {
+    /* Same reasoning as the email test below: a generic "Something went wrong"
+       is the least useful sentence available to somebody trying to work out
+       which key is wrong. */
+    const detail = String(error?.message || error);
+    res.status(error?.status === 409 ? 409 : 502).json({
+      error: /authentication|api key|401/i.test(detail)
+        ? 'Claude rejected that API key. Check it and save again.'
+        : detail.slice(0, 400),
+    });
+  }
+}));
+
 router.put('/openai', asyncRoute(async (req, res) => {
   const parsed = z.object({ apiKey: z.string().optional(), model: z.string().min(1).max(100) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Enter a valid model and optional API key.' });
   const saved = await saveOpenAIConfig(parsed.data, req.user.id);
   await audit({ actorId: req.user.id, action: 'settings.openai_updated', entityType: 'settings', entityId: 'openai', ip: req.ip });
   res.json(saved);
-}));
-
-router.post('/openai/test', asyncRoute(async (_req, res) => {
-  const reply = await draftCheckinFeedback({ student: { name: 'Test Student' }, checkin: { weeklyWin: 'I used Irish this week.', understanding: 8, confidence: 7, support: 'No help needed.' } });
-  res.json({ ok: true, preview: reply });
 }));
 
 router.put('/email', asyncRoute(async (req, res) => {
@@ -85,15 +122,21 @@ router.post('/email/test', asyncRoute(async (req, res) => {
 }));
 
 router.put('/prompts', asyncRoute(async (req, res) => {
+  /* The check-in and board voice lives in src/draftprompts.js and is not
+     editable here. What is left is notes for this term, appended to that voice
+     rather than replacing it, so they are allowed to be empty. The homework
+     prompts are still real prompts and still have to say something. */
   const parsed = z.object({
-    checkinPrompt: z.string().min(20),
     correctionPrompt: z.string().min(20),
     generalFeedbackPrompt: z.string().min(20),
-    // The drafted reply on the class board.
-    communityReplyPrompt: z.string().min(20),
+    checkinNotes: z.string().max(4000).optional().default(''),
+    communityNotes: z.string().max(4000).optional().default(''),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Each prompt must contain clear instructions.' });
-  await setSetting('prompts', parsed.data, req.user.id);
+  if (!parsed.success) return res.status(400).json({ error: 'Both homework prompts must contain clear instructions.' });
+  /* Merge rather than replace, so the retired wording the migration set aside is
+     not wiped by the next save from a screen that never knew about it. */
+  const current = await getSetting('prompts', {});
+  await setSetting('prompts', { ...current, ...parsed.data }, req.user.id);
   await audit({ actorId: req.user.id, action: 'settings.prompts_updated', entityType: 'settings', entityId: 'prompts', ip: req.ip });
   res.json(parsed.data);
 }));

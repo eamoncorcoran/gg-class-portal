@@ -90,7 +90,7 @@ reading them happens to be in.
   - Weekly win
 - Optional support request
 - Drafts save during completion
-- OpenAI drafts a teacher response only after submission
+- Claude drafts a teacher response only after submission, in Éamon's own voice
 - Missing check-ins never receive an AI draft
 
 ### Homework
@@ -105,7 +105,7 @@ reading them happens to be in.
 - Students can leave and continue later
 - Hard deadlines
 - Administrator reopening controls
-- OpenAI feedback is created only after final submission
+- Claude feedback is created only after final submission
 - Missing homework keeps both feedback fields blank
 
 Homework feedback contains:
@@ -158,7 +158,7 @@ The cleanup model is explicitly forbidden from changing, translating or
 
 A personal dictionary of course terms — TEG B2, An Caighdeán Oifigiúil, an tuiseal
 ginideach and so on — is sent to both models, which is what stops "teg be two"
-coming back as anything else. Edit it under **OpenAI & prompts**.
+coming back as anything else. Edit it under **Feedback drafting**.
 
 **Voice notes.** A recording attached to returned feedback. Record it in the review
 drawer, play it back, re-record or remove it. The student hears it above the
@@ -673,7 +673,7 @@ reply, and that is how it is presented — with no seam showing.
   stripped from every student-facing response, and `feedback_state` collapses to
   `pending` or `returned`. The interface hiding them would not be enough — the
   network tab is one keystroke away
-- No student-facing copy mentions drafting, models or OpenAI
+- No student-facing copy mentions drafting, models, Claude or OpenAI
 
 `tests/student-privacy.test.js` holds all three in place and fails if a student
 route starts returning a raw row.
@@ -755,32 +755,67 @@ After deploying:
 
 1. Set `APP_URL` to the public HTTPS URL.
 2. Set `APP_ENCRYPTION_KEY`.
-3. Add an OpenAI key either as `OPENAI_API_KEY` or in the administrator settings screen.
+3. Add a Claude key as `ANTHROPIC_API_KEY` or in the administrator settings screen, and an OpenAI key for dictation.
 4. Configure SMTP or the GoHighLevel email webhook.
 5. Run the create-admin command from the Render shell.
 6. Send a test invitation and password-reset email.
 7. Upload one test attendance CSV.
 8. Submit and return one test check-in and homework assignment.
 
-## OpenAI
+## Drafting, and the voice it is written in
 
-The application uses the Responses API with structured JSON output.
+Two providers, two jobs. **Claude writes every draft**: the weekly check-in reply,
+the homework feedback, and the suggested reply on the class board. **OpenAI stays
+for dictation and transcription only**, because there is no Anthropic equivalent
+of Whisper and the pipeline in `src/voice.js` is already matched to it. Revoking
+one key does not take the other down.
 
-The OpenAI key is used only by the server. It is never returned to the browser. A key saved through the administrator screen is encrypted using AES-256-GCM and `APP_ENCRYPTION_KEY`.
+### The voice is code, not configuration
 
-The default model is configurable with:
+The check-in and board prompts used to be three sentences of generic instruction
+typed into a textarea, which is why every draft read like a support desk. They now
+live in `src/draftprompts.js`, and they are not editable from the browser.
+
+They were measured, from 362 replies Éamon hand-typed to students on the class
+WhatsApp number between January and August 2026: how he opens, that he effectively
+never signs off, the length he actually writes, the advice he gives over and over,
+and the things he never does. The one rule worth naming here is that he does not
+type em dashes, two in 362 messages, so the drafts do not either. Anything Claude
+returns is passed through `inEamonsVoice()`, which strips em dashes and turns a
+typed `:)` into `🙂` after the fact as well.
+
+What is still editable on the **Feedback drafting** screen is a notes field for
+each, appended after the voice rather than replacing it, for the things that
+change between terms. The homework correction prompts stay fully editable, because
+corrections are a marking standard rather than a voice.
+
+The upgrade that introduced this moved the two old prompts to `prompts.retired` in
+`app_settings` rather than deleting them, so the original wording can still be
+read back.
+
+### Keys and models
+
+Both keys are used only by the server and are never returned to the browser. A key
+saved through the administrator screen is encrypted using AES-256-GCM and
+`APP_ENCRYPTION_KEY`.
 
 ```text
+ANTHROPIC_MODEL=claude-opus-5
 OPENAI_MODEL=gpt-5.6
 ```
 
-It can also be changed from the administrator settings.
+Both can also be changed from the administrator settings. Drafting uses the
+Messages API with adaptive thinking and a JSON schema on the response; effort is
+medium for the two reply drafts, where the work is matching a register, and high
+for homework corrections, where a wrong séimhiú reaches a student.
 
-Set this to a model your OpenAI account actually has access to, then press **Test
-connection** on the OpenAI & prompts screen before inviting students. A model name
-the account cannot use fails at the first real submission, not at save time, and
-the check-in or homework is then marked `Draft failed`. The submission itself is
-never lost, and the draft can be retried from the review drawer.
+Set the Claude model to one the account actually has access to, then press **Test
+connection** on the Feedback drafting screen before inviting students. That button
+drafts a real check-in from an invented student rather than pinging the API, so
+what you are checking is whether it sounds like you. A model the account cannot
+use fails at the first real submission, not at save time, and the check-in or
+homework is then marked `Draft failed`. The submission itself is never lost, and
+the draft can be retried from the review drawer.
 
 ## Email configuration
 
