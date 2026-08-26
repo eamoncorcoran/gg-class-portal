@@ -1,34 +1,114 @@
+# Render blueprint for the Class Portal.
+#
+# Two things about this app decide the shape of everything here. It keeps files
+# on disk — student work, teacher voice notes, post attachments, nightly
+# database dumps — so it needs a real disk rather than a container filesystem
+# that is thrown away on every deploy. And it runs its own scheduled work
+# in-process: deadline reminders, the Zoom sweep, the backup. That rules out
+# anything serverless and means exactly one instance, always on.
+#
+# Secrets are marked `sync: false`, which means Render asks for them in the
+# dashboard rather than reading them from this file. Nothing secret is committed.
+
 services:
   - type: web
-    name: gaeilgeoir-guides-student-support
+    name: gg-class-portal
     runtime: docker
+    # Frankfurt is Render's closest region to Ireland.
+    region: frankfurt
     plan: starter
     healthCheckPath: /api/health
+    # A service with a disk runs as a single instance, which is what the cron
+    # jobs need anyway — two instances would send every reminder twice.
+    numInstances: 1
+    disk:
+      name: portal-data
+      mountPath: /var/data
+      sizeGB: 5
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: gaeilgeoir-guides-db
+          name: gg-class-portal-db
           property: connectionString
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 3000
+
+      # Students receive this address in their invitation email, and the
+      # certificate is issued for it, so the two must name the same host.
       - key: APP_URL
-        sync: false
+        value: https://hub.gaeilgeoirguides.com
+      - key: APP_DOMAIN
+        value: hub.gaeilgeoirguides.com
+      - key: DEFAULT_TIMEZONE
+        value: Europe/Dublin
+
+      # 64 hex characters. Render's own generator produces base64, which the
+      # preflight refuses, so this is set by hand: npm run generate-key
       - key: APP_ENCRYPTION_KEY
-        generateValue: true
-      - key: OPENAI_API_KEY
         sync: false
+
+      # Everything written by the app lives on the disk above. Student work is
+      # deliberately kept out of the public uploads directory — the preflight
+      # refuses to start if these two ever name the same place.
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: PRIVATE_UPLOAD_DIR
+        value: /var/data/uploads-private
+      - key: BACKUP_DIR
+        value: /var/data/backups
+      - key: BACKUP_ENABLED
+        value: "true"
+      - key: BACKUP_KEEP_DAYS
+        value: "14"
+
+      # Email through Resend, sending from the hub subdomain so the DNS records
+      # sit beside the existing Gmail and GoHighLevel ones instead of on top of
+      # them.
       - key: EMAIL_PROVIDER
         value: smtp
       - key: SMTP_HOST
-        sync: false
+        value: smtp.resend.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
       - key: SMTP_USER
-        sync: false
+        value: resend
       - key: SMTP_PASSWORD
         sync: false
+      - key: EMAIL_FROM_NAME
+        value: Gaeilgeoir Guides
       - key: EMAIL_FROM_ADDRESS
+        value: hub@hub.gaeilgeoirguides.com
+      - key: EMAIL_REPLY_TO
+        value: info@gaeilgeoirguides.com
+
+      # Optional. Each one is a feature that hides itself when its key is
+      # absent, so the portal runs without any of them.
+      - key: OPENAI_API_KEY
         sync: false
+      - key: GIPHY_API_KEY
+        sync: false
+      - key: BUNNY_LIBRARY_ID
+        sync: false
+      - key: BUNNY_API_KEY
+        sync: false
+      - key: BUNNY_TOKEN_KEY
+        sync: false
+      - key: ZOOM_ACCOUNT_ID
+        sync: false
+      - key: ZOOM_CLIENT_ID
+        sync: false
+      - key: ZOOM_CLIENT_SECRET
+        sync: false
+      - key: ZOOM_WEBHOOK_SECRET
+        sync: false
+
 databases:
-  - name: gaeilgeoir-guides-db
-    plan: starter
-    databaseName: gaeilgeoir_support
-    user: gaeilgeoir_support
+  - name: gg-class-portal-db
+    region: frankfurt
+    plan: basic-256mb
+    databaseName: gg_class_portal
+    user: gg_class_portal
