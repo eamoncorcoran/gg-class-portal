@@ -3460,56 +3460,6 @@ async function acceptDocuments(files) {
   }
 }
 
-/* Where the post is going.
-   ------------------------------------------------------------------
-   A native <select> inside a dialog looks like a form control that escaped from
-   somewhere else — it takes the operating system's styling, not the
-   application's, and on a Mac it is grey and cramped. This is a button and a
-   menu, which can be given the same weight as everything else around it. The
-   real value rides along in a hidden input so the form still reads normally. */
-function categoryPicker(categories, selectedId) {
-  const current = categories.find((row) => row.id === selectedId) || categories[0];
-  return `<div class="cat-picker" id="cat-picker">
-    <input type="hidden" name="categoryId" id="cat-value" value="${escapeHtml(current?.id || '')}">
-    <button type="button" class="cat-button" id="cat-button" aria-haspopup="listbox" aria-expanded="false">
-      <span>posting in</span><b id="cat-label">${escapeHtml(current?.name || 'General')}</b>${svg.chevronDown}
-    </button>
-    <div class="cat-menu hidden" id="cat-menu" role="listbox">
-      ${categories.map((row) => `<button type="button" class="cat-option ${row.id === current?.id ? 'is-on' : ''}"
-        role="option" aria-selected="${row.id === current?.id}" data-cat="${row.id}" data-name="${escapeHtml(row.name)}">
-        <span>${escapeHtml(row.name)}</span>${svg.check}
-      </button>`).join('')}
-    </div>
-  </div>`;
-}
-
-function bindCategoryPicker() {
-  const picker = document.getElementById('cat-picker');
-  if (!picker) return;
-  const button = document.getElementById('cat-button');
-  const menu = document.getElementById('cat-menu');
-  const close = () => { menu.classList.add('hidden'); button.setAttribute('aria-expanded', 'false'); };
-
-  button.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const opening = menu.classList.contains('hidden');
-    menu.classList.toggle('hidden', !opening);
-    button.setAttribute('aria-expanded', String(opening));
-  });
-  menu.querySelectorAll('.cat-option').forEach((option) => option.addEventListener('click', () => {
-    document.getElementById('cat-value').value = option.dataset.cat;
-    document.getElementById('cat-label').textContent = option.dataset.name;
-    menu.querySelectorAll('.cat-option').forEach((other) => {
-      other.classList.toggle('is-on', other === option);
-      other.setAttribute('aria-selected', String(other === option));
-    });
-    close();
-  }));
-  // Clicking anywhere else closes it, as a native select would.
-  document.addEventListener('click', close);
-  picker.addEventListener('click', (event) => event.stopPropagation());
-  button.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
-}
 
 /* Emoji, for anybody writing anything.
    ------------------------------------------------------------------
@@ -3681,6 +3631,56 @@ function insertEmoji(targetId, emoji) {
   field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+/* Where the post is going.
+   ------------------------------------------------------------------
+   This was a menu, and before that a native select. Both hid the choice behind
+   a click, and something hidden behind a click gets whatever it was already
+   showing — which is how everything ends up in General.
+
+   The categories are laid out as the same chips the board itself filters by, so
+   picking one is a decision somebody makes rather than a default they accept,
+   and the thing they are choosing looks like the thing they will see it under
+   afterwards.
+
+   Nothing is preselected, and posting without one is refused. That is the point:
+   a required choice with a default is not a choice. */
+function categoryPicker(categories, selectedId) {
+  return `<div class="cw-cats" id="cat-picker">
+    <input type="hidden" name="categoryId" id="cat-value" value="${escapeHtml(selectedId || '')}">
+    <span class="cw-cats-label">Post in</span>
+    <span class="cw-cats-row" role="radiogroup" aria-label="Choose a category">
+      ${categories.map((row) => `<button type="button" class="cat ${row.id === selectedId ? 'on' : ''}"
+        role="radio" aria-checked="${row.id === selectedId}" data-cat="${row.id}">${escapeHtml(row.name)}</button>`).join('')}
+    </span>
+  </div>`;
+}
+
+function bindCategoryPicker() {
+  const picker = document.getElementById('cat-picker');
+  if (!picker) return;
+  picker.querySelectorAll('[data-cat]').forEach((chip) => chip.addEventListener('click', () => {
+    document.getElementById('cat-value').value = chip.dataset.cat;
+    picker.querySelectorAll('[data-cat]').forEach((other) => {
+      other.classList.toggle('on', other === chip);
+      other.setAttribute('aria-checked', String(other === chip));
+    });
+    // Clears the "pick one" state the moment one is picked.
+    picker.classList.remove('is-missing');
+  }));
+}
+
+/** Nothing chosen is a reason not to post, and the reason is shown where the choice is. */
+function categoryChosen() {
+  const picker = document.getElementById('cat-picker');
+  // A board with no categories at all cannot require one.
+  if (!picker || !picker.querySelector('[data-cat]')) return true;
+  if (document.getElementById('cat-value')?.value) return true;
+  picker.classList.add('is-missing');
+  picker.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  return false;
+}
+
+
 function openComposer({ restore = false } = {}) {
   const categories = state.community?.categories || [];
   const admin = isAdmin();
@@ -3696,10 +3696,15 @@ function openComposer({ restore = false } = {}) {
         ${boardAvatar(me(), 'sm')}
         <div class="cw-who">
           <strong>${escapeHtml(state.user.name)}</strong>
-          ${categories.length ? categoryPicker(categories, draft?.categoryId || state.boardCategoryId) : ''}
         </div>
         <button type="button" class="cw-x" data-close-modal aria-label="Close">${svg.x}</button>
       </header>
+
+      ${/* Nothing preselected. The board's current filter is where somebody was
+           reading, not where they mean to post, and carrying it over would make
+           this a default wearing the clothes of a choice. Only a restored draft
+           brings a category back with it. */
+        categories.length ? categoryPicker(categories, draft?.categoryId || '') : ''}
 
       <input name="title" id="composer-title" placeholder="Title" autocomplete="off" required value="${escapeHtml(draft?.title || '')}">
       <textarea id="composer-body" name="body" rows="6" placeholder="Write something… paste a YouTube or Loom link and it will play here" required>${escapeHtml(draft?.body || '')}</textarea>
@@ -3844,6 +3849,10 @@ async function submitComposer() {
         (kind === 'file' ? { kind, url, storedName, fileName, mimeType, sizeBytes } : { kind, url })),
   };
   if (!body.title || !body.body) return showToast('Give your post a line and a message.', 'error');
+  /* Checked after the writing, so somebody who has typed a post is not stopped
+     before they have said anything — and the picker marks itself rather than
+     leaving a toast to explain a control further up the screen. */
+  if (!categoryChosen()) return showToast('Choose where this post belongs.', 'error');
   if (isAdmin()) {
     body.pinned = form.pinned.checked;
     const when = document.getElementById('composer-when')?.value;

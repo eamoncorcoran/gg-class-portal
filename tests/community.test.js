@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 /* The board is all SQL, so these run against a real database the same way the
    other database tests do:
@@ -311,4 +312,44 @@ test('hot ranks a busy recent post above a busier old one', dbTest, async () => 
     const latest = await listThreads({ classId: klass.id, viewerId: student.id });
     assert.equal(latest[0].title, 'New and busy');
   } finally { await cleanup(); }
+});
+
+/* Choosing where a post belongs.
+   ------------------------------------------------------------------
+   It was a dropdown, and a dropdown answers with whatever it was already
+   showing, so everything landed in General. It is the same chips the board
+   filters by now, nothing is preselected, and posting without one is refused —
+   a required choice with a default is not a choice. */
+test('the composer offers categories as chips and preselects none', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+
+  const start = app.indexOf('function categoryPicker(');
+  assert.ok(start !== -1, 'categoryPicker is no longer where this test expects it');
+  const picker = app.slice(start, app.indexOf('\nfunction bindCategoryPicker', start));
+
+  assert.match(picker, /class="cat /, 'the chips must be the same ones the board filters by');
+  assert.doesNotMatch(picker, /<select/, 'a dropdown answers with whatever it was already showing');
+  assert.match(picker, /role="radiogroup"/, 'it is a single choice and should say so');
+
+  /* The board filter is where somebody was reading, not where they mean to
+     post. Carrying it in would make this a default wearing the clothes of a
+     choice. */
+  const opener = app.slice(app.indexOf('categories.length ? categoryPicker('), app.indexOf('categories.length ? categoryPicker(') + 120);
+  assert.doesNotMatch(opener, /state\.boardCategoryId/,
+    'the composer must not inherit the board filter as its category');
+});
+
+test('a post with no category chosen is refused before it is sent', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const start = app.indexOf('async function submitComposer()');
+  const submit = app.slice(start, app.indexOf('\n}', app.indexOf('categoryChosen', start)));
+  assert.match(submit, /if \(!categoryChosen\(\)\) return/,
+    'submitComposer must refuse a post with no category');
+
+  // And the refusal marks the picker, rather than leaving a toast to explain a
+  // control further up the screen.
+  const chosen = app.slice(app.indexOf('function categoryChosen('), app.indexOf('function categoryChosen(') + 700);
+  assert.match(chosen, /is-missing/, 'the picker should mark itself');
+  assert.match(chosen, /if \(!picker \|\| !picker\.querySelector/,
+    'a board with no categories at all cannot require one');
 });

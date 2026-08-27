@@ -1536,3 +1536,26 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
    a student meets it once, where the comment box would have been. */
 .board-state{margin-right:auto}
 .board-state .seg-btn{padding:4px 10px;font-size:12px}
+
+/* Choosing a category when writing a post.
+   ------------------------------------------------------------------
+   The same chips the board filters by, so what is being chosen looks like what
+   it will be seen under. It was a dropdown, and a dropdown answers with whatever
+   it was already showing — which is how everything ends up in General. */
+.cw-cats{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin:0 0 16px;padding:10px 12px;border:1px solid transparent;border-radius:var(--radius-md)}
+.cw-cats-label{flex:0 0 auto;color:var(--text-quaternary);font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em}
+.cw-cats-row{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
+.cw-cats .cat{padding:6px 13px;font-size:12.5px}
+
+/* Only after somebody tries to post without one. Saying it up front would
+   scold a person who has not done anything yet. */
+.cw-cats.is-missing{border-color:var(--error-300,#fda29b);background:var(--error-50)}
+.cw-cats.is-missing .cw-cats-label{color:var(--error-600)}
+.cw-cats.is-missing .cw-cats-label::after{content:' — pick one'}
+
+@media (max-width:700px){
+  .cw-cats{margin-bottom:12px;padding:8px 10px}
+  .cw-cats-label{width:100%}
+}
