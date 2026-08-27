@@ -11,7 +11,7 @@ import { checkinOpen, checkinOpenSql, ensureWeeksForClass } from '../weeks.js';
 import { withVoiceNote, withVoiceNotes } from '../voice.js';
 import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
-import { nextClassAt, nextClassWithSessions, joinLinkFor } from '../classtime.js';
+import { nextClassAt, nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
 import { listThreads, getThread, createThread, createPost, unreadCount, markRead,
   listCategories, toggleReaction, topContributors, REACTIONS, forStudentView, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
@@ -220,6 +220,9 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
           note: next.sessionLabel || klass.join_note || null,
         }
       : null,
+    /* Every sitting, for the calendar. Built from the same rule the banner
+       uses, so the two cannot disagree about which Monday is on. */
+    classDates: classSittings(klass, { changes: dateChanges, sessions }),
     // What is happening to this week, when it is not the usual thing.
     thisWeek: thisWeek
       ? { kind: thisWeek.kind, reason: thisWeek.reason || '',

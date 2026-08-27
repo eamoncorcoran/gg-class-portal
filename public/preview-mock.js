@@ -537,6 +537,33 @@
     return null;
   }
 
+  /* Every sitting, mirroring classSittings on the server so the preview's
+     calendar agrees with the real one. */
+  function previewClassDates(klass){
+    if(!klass?.day_of_week||!klass?.start_time) return [];
+    const [hour,minute]=String(klass.start_time).split(':').map(Number);
+    const changes=new Map((db.classDateChanges||[]).filter((c)=>c.class_id===klass.id)
+      .map((c)=>[String(c.onDate||c.on_date).slice(0,10),c]));
+    const out=[];
+    // Two months either side of the preview clock is enough to page around.
+    const cursor=new RealDate(PREVIEW_NOW-60*86400000);
+    while(((cursor.getUTCDay()+6)%7)+1!==Number(klass.day_of_week)) cursor.setUTCDate(cursor.getUTCDate()+1);
+    for(let i=0;i<26;i+=1){
+      const date=cursor.toISOString().slice(0,10);
+      const change=changes.get(date);
+      const kind=change?.kind||'running';
+      const at=new RealDate(RealDate.UTC(cursor.getUTCFullYear(),cursor.getUTCMonth(),cursor.getUTCDate(),hour-1,minute));
+      out.push({onDate:date,kind,at:(kind==='moved'&&(change.movedTo||change.moved_to))
+        ?new RealDate(change.movedTo||change.moved_to).toISOString():at.toISOString(),reason:change?.reason||''});
+      cursor.setUTCDate(cursor.getUTCDate()+7);
+    }
+    for(const s of (db.classSessions||[]).filter((x)=>x.class_id===klass.id&&!x.cancelled)){
+      out.push({onDate:String(s.starts_at).slice(0,10),kind:'extra',at:new RealDate(s.starts_at).toISOString(),
+        minutes:s.duration_minutes||120,label:s.label||'',joinUrl:s.join_url||null});
+    }
+    return out.sort((a,b)=>new RealDate(a.at)-new RealDate(b.at));
+  }
+
   function previewNextClass(klass,sessions,skips){
     if(!klass?.day_of_week||!klass?.start_time)return null;
     const [hour,minute]=String(klass.start_time).split(':').map(Number);
@@ -1290,7 +1317,7 @@
       const checkins=db.checkins.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id));
       const homework=db.homework.filter((item)=>item.student_id===student.id&&assignmentIds.has(item.assignment_id));
       const notifications=checkins.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length+homework.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length;
-      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
+      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,classDates:previewClassDates(klass),nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
     }
     if(path==='/api/student/dismissals'&&method==='POST'){
       const student=user.role==='student'?user:db.users.find((u)=>u.id==='s1');

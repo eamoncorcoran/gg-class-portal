@@ -180,3 +180,69 @@ export function nextClassWithSessions(classRow, sessions = [], now = DateTime.ut
     isExtra: true,
   };
 }
+
+/**
+ * Every sitting of a class, for putting on a calendar.
+ *
+ * The banner only ever needs the next one; a calendar needs all of them, with
+ * what happened to each. Built from the same three inputs — the weekly slot, the
+ * term, and the changes — so the calendar and the banner cannot disagree about
+ * which Monday is on.
+ *
+ * Extra sessions come in as they are: they are already instants rather than
+ * rules, and a cancelled one is dropped rather than drawn as a class.
+ */
+export function classSittings(classRow, { changes = [], sessions = [], from, to } = {}) {
+  if (!classRow?.day_of_week || !classRow?.start_time) return [];
+  const zone = classRow.timezone || 'Europe/Dublin';
+  const [hour, minute] = String(classRow.start_time).split(':').map(Number);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return [];
+
+  const start = classRow.starts_on
+    ? DateTime.fromJSDate(new Date(classRow.starts_on)).setZone(zone).startOf('day')
+    : (from ? DateTime.fromJSDate(new Date(from)).setZone(zone) : DateTime.now().setZone(zone).minus({ months: 2 }));
+  const end = classRow.ends_on
+    ? DateTime.fromJSDate(new Date(classRow.ends_on)).setZone(zone).endOf('day')
+    : (to ? DateTime.fromJSDate(new Date(to)).setZone(zone) : DateTime.now().setZone(zone).plus({ months: 6 }));
+
+  const byDate = new Map((changes || []).map((change) => [String(change.on_date ?? change.onDate).slice(0, 10), change]));
+
+  // The first sitting on or after the first day of term.
+  let cursor = start.set({ hour, minute, second: 0, millisecond: 0 });
+  while (cursor.weekday !== Number(classRow.day_of_week)) cursor = cursor.plus({ days: 1 });
+
+  const out = [];
+  for (let guard = 0; cursor <= end && guard < 400; guard += 1) {
+    const date = cursor.toISODate();
+    const change = byDate.get(date);
+    const kind = change?.kind || 'running';
+    const movedTo = change?.moved_to ?? change?.movedTo ?? null;
+    const at = kind === 'moved' && movedTo
+      ? DateTime.fromJSDate(new Date(movedTo)).setZone(zone)
+      : cursor;
+    out.push({
+      onDate: date,
+      kind,
+      // What a calendar actually plots: where the class is, not where it would
+      // have been. A week that is off keeps its original slot so it can be
+      // drawn struck through rather than vanishing.
+      at: at.isValid ? at.toUTC().toISO() : cursor.toUTC().toISO(),
+      reason: change?.reason || '',
+    });
+    cursor = cursor.plus({ weeks: 1 });
+  }
+
+  for (const session of sessions || []) {
+    if (session.cancelled) continue;
+    out.push({
+      onDate: DateTime.fromJSDate(new Date(session.starts_at)).setZone(zone).toISODate(),
+      kind: 'extra',
+      at: new Date(session.starts_at).toISOString(),
+      minutes: session.duration_minutes || CLASS_RUNS_FOR_MINUTES,
+      label: session.label || '',
+      joinUrl: session.join_url || null,
+    });
+  }
+
+  return out.sort((a, b) => new Date(a.at) - new Date(b.at));
+}

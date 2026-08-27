@@ -173,3 +173,59 @@ test('a move with nowhere to move to does not put a class back on that day', () 
   const changes = [{ on_date: '2026-09-14', kind: 'moved', moved_to: null }];
   assert.equal(dublin(nextClassAt(TERM, on('2026-09-08T10:00'), changes)), '2026-09-21 19:00');
 });
+
+/* Every sitting, for the calendar.
+   ------------------------------------------------------------------
+   Built from the same three inputs as the banner — the weekly slot, the term
+   and the changes — so the two cannot disagree about which Monday is on. */
+
+test('the calendar lists every sitting, with what happened to each', async () => {
+  const { classSittings } = await import('../src/classtime.js');
+  const klass = { ...TERM, ends_on: '2026-10-12' };
+  const sittings = classSittings(klass, {
+    changes: [
+      { on_date: '2026-09-14', kind: 'recorded' },
+      { on_date: '2026-09-21', kind: 'moved', moved_to: '2026-09-24T19:00:00Z' },
+      { on_date: '2026-10-05', kind: 'skipped' },
+    ],
+    sessions: [
+      { starts_at: '2026-09-30T18:00:00Z', duration_minutes: 60, label: 'Catch-up', cancelled: false },
+      { starts_at: '2026-10-07T18:00:00Z', cancelled: true },
+    ],
+  });
+
+  assert.deepEqual(sittings.map((row) => `${row.onDate} ${row.kind}`), [
+    '2026-09-07 running',
+    '2026-09-14 recorded',
+    '2026-09-21 moved',
+    '2026-09-28 running',
+    '2026-09-30 extra',
+    '2026-10-05 skipped',
+    '2026-10-12 running',
+  ]);
+
+  // A moved sitting is plotted where it happens, not where it would have been.
+  const moved = sittings.find((row) => row.kind === 'moved');
+  assert.equal(DateTime.fromISO(moved.at).setZone('Europe/Dublin').toFormat('ccc d LLL HH:mm'), 'Thu 24 Sep 20:00');
+
+  // A week that is off keeps its slot so it can be drawn struck through rather
+  // than silently missing from the month.
+  const off = sittings.find((row) => row.kind === 'skipped');
+  assert.equal(DateTime.fromISO(off.at).setZone('Europe/Dublin').toFormat('ccc d LLL HH:mm'), 'Mon 5 Oct 19:00');
+
+  // A cancelled extra session is not a class.
+  assert.equal(sittings.filter((row) => row.kind === 'extra').length, 1);
+});
+
+test('the calendar stays inside the term', async () => {
+  const { classSittings } = await import('../src/classtime.js');
+  const sittings = classSittings(TERM);
+  assert.equal(sittings.at(0).onDate, '2026-09-07', 'nothing before the first day');
+  assert.ok(sittings.at(-1).onDate <= '2027-06-01', 'nothing after the last');
+});
+
+test('a class with no day or time has no sittings rather than throwing', async () => {
+  const { classSittings } = await import('../src/classtime.js');
+  assert.deepEqual(classSittings({ timezone: 'Europe/Dublin' }), []);
+  assert.deepEqual(classSittings(null), []);
+});

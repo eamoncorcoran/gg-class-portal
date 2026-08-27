@@ -996,7 +996,7 @@ function mobileNav() {
         ['community', svg.board, 'Board'],
       ]
     : [
-        ['calendar', svg.calendar, 'Deadlines'],
+        ['calendar', svg.calendar, 'Calendar'],
         ['tracker', svg.grid, 'Tracker'],
         ['courses', svg.cap, 'Courses'],
         ['community', svg.board, 'Board'],
@@ -6483,7 +6483,7 @@ async function submitReview(type) {
 function studentNav() {
   const notifications = state.studentData?.notifications || 0;
   return `<div class="nav-label">My course</div><nav class="nav">
-    ${studentNavButton('calendar', svg.calendar, 'Deadlines')}
+    ${studentNavButton('calendar', svg.calendar, 'Calendar')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
     ${/* A class set up without a board never shows Community at all. */
@@ -6503,7 +6503,7 @@ async function loadStudent() {
   renderStudent();
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Deadlines' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar' };
 
 function renderStudent() {
   let content = '';
@@ -6517,7 +6517,7 @@ function renderStudent() {
     else { state.view = 'calendar'; content = studentCalendarView(); }
   }
   else content = studentCalendarView();
-  shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Deadlines', roleLabel: 'Student', notificationCount: state.studentData.notifications });
+  shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Calendar', roleLabel: 'Student', notificationCount: state.studentData.notifications });
   bindStudentView();
   if (state.view === 'courses') bindCourse();
 }
@@ -6569,7 +6569,7 @@ function nextClassBanner() {
 }
 
 const STUDENT_PAGE = {
-  calendar: { title: 'Deadlines', line: 'Check-ins and homework, and the feedback that comes back.' },
+  calendar: { title: 'Calendar', line: 'Your classes, your deadlines, and the feedback that comes back.' },
   tracker: { title: 'Weekly tracker', line: 'Every week of the course at a glance.' },
   courses: { title: 'Courses', line: 'Class recordings, with the notes that go with them.' },
   community: { title: 'Community', line: 'Ask a question, or answer somebody else.' },
@@ -6760,6 +6760,26 @@ function calendarHtml() {
     const status = homeworkState(submission, assignment);
     add(assignment.reopened_until || assignment.deadline_at, `<button class="calendar-event ${status.tone}" title="${escapeHtml(status.hint)}" data-open-student-item="homework" data-assignment-id="${assignment.id}">${escapeHtml(submission?.status === 'returned' ? 'Homework feedback' : assignment.title)}</button>`);
   });
+
+  /* The classes themselves. A calendar that shows only what is due leaves out
+     the thing the week is actually built around, and a student checking when
+     they next have class had to look somewhere else for it. */
+  (state.studentData.classDates || []).forEach((sitting) => {
+    const label = {
+      running: 'Class',
+      recorded: 'Pre-recorded',
+      moved: 'Class (moved)',
+      skipped: 'No class',
+      extra: sitting.label || 'Extra class',
+    }[sitting.kind] || 'Class';
+    const time = new Date(sitting.at).toLocaleTimeString('en-IE', {
+      hour: '2-digit', minute: '2-digit', timeZone: classTimezone(),
+    });
+    add(sitting.at, `<button class="calendar-event is-class is-${escapeHtml(sitting.kind)}"
+      title="${escapeHtml(`${label} · ${time}`)}"
+      data-open-class="${escapeHtml(sitting.onDate)}" data-class-kind="${escapeHtml(sitting.kind)}"
+      data-class-at="${escapeHtml(sitting.at)}">${escapeHtml(label)}</button>`);
+  });
   const cells = [];
   for (let i = 0; i < offset; i += 1) cells.push('<div class="calendar-day is-empty"></div>');
   for (let day = 1; day <= days; day += 1) {
@@ -6839,9 +6859,75 @@ function checkinWindowNote() {
   return `<p class="win-note">Check-ins open <strong>Friday at 10am</strong> and close <strong>Sunday at 11:45pm</strong> Irish time (${escapeHtml(zone)}). They cannot be completed after that, so a week that closes stays closed.</p>`;
 }
 
+/* What is happening on one class date.
+   ------------------------------------------------------------------
+   Clicking a class on the calendar should answer the question that made
+   somebody click it: is it on, when, and how do I get in. All of that is
+   already in hand from the bootstrap, so this opens instantly rather than
+   asking the server for something it has already sent. */
+function openClassInfo(date, kind) {
+  const sittings = (state.studentData?.classDates || []).filter((row) => row.onDate === date);
+  const sitting = sittings.find((row) => row.kind === kind) || sittings[0];
+  if (!sitting) return;
+
+  const klass = state.studentData?.class;
+  const zone = classTimezone();
+  const at = new Date(sitting.at);
+  const when = at.toLocaleString('en-IE', {
+    weekday: 'long', day: 'numeric', month: 'long',
+    hour: '2-digit', minute: '2-digit', timeZone: zone,
+  });
+  const usual = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IE', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+  });
+
+  /* The link is only offered where there is a class to join. Showing one beside
+     "no class this week" is an invitation to sit in an empty room. */
+  const next = state.studentData?.nextClass;
+  const sameSitting = next && Math.abs(new Date(next.startsAt) - at) < 60000;
+  const joinUrl = sitting.kind === 'extra'
+    ? (sitting.joinUrl || next?.joinUrl || null)
+    : (['running', 'moved'].includes(sitting.kind) ? (sameSitting ? next?.joinUrl : klass?.join_url) : null);
+
+  const said = {
+    running: ['Class as usual', `Your weekly class, at the time it always runs. Times shown in ${zone}.`],
+    moved: ['This class has moved', `It was due on ${usual} and is running at the time above instead.`],
+    recorded: ['Pre-recorded this week', 'There is no live class. The recording is in Courses whenever it suits you.'],
+    skipped: ['No class this week', 'The class is not meeting. Your check-in and homework are unaffected.'],
+    extra: [sitting.label || 'Extra class', 'An additional session on top of the weekly class.'],
+  }[sitting.kind] || ['Class', ''];
+
+  modal({
+    title: said[0],
+    subtitle: sitting.kind === 'skipped' ? usual : when,
+    body: `<div class="class-info">
+      <p>${escapeHtml(sitting.reason || said[1])}</p>
+      ${sitting.kind === 'skipped' ? '' : `<dl class="class-info-rows">
+        <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
+        <div><dt>Timezone</dt><dd>${escapeHtml(zone)}</dd></div>
+        ${sitting.minutes ? `<div><dt>Length</dt><dd>${sitting.minutes} minutes</dd></div>` : ''}
+        ${klass?.join_note && joinUrl ? `<div><dt>Note</dt><dd>${escapeHtml(klass.join_note)}</dd></div>` : ''}
+      </dl>`}
+    </div>`,
+    footer: `<button class="btn" data-close-modal>Close</button>
+      ${sitting.kind === 'recorded'
+        ? '<button class="btn primary" id="class-info-courses">Go to Courses</button>'
+        : joinUrl
+          ? `<a class="btn primary" href="${escapeHtml(joinUrl)}" target="_blank" rel="noopener noreferrer">Join class</a>`
+          : ''}`,
+    onOpen() {
+      document.getElementById('class-info-courses')?.addEventListener('click', () => {
+        closeModal();
+        state.view = 'courses';
+        renderStudent();
+      });
+    },
+  });
+}
+
 function studentTabs(active) {
   return `<div class="tabs">
-    <div class="tab-group"><button class="tab ${active === 'calendar' ? 'active' : ''}" data-student-view="calendar">Deadline calendar</button><button class="tab ${active === 'tracker' ? 'active' : ''}" data-student-view="tracker">My weekly tracker</button></div>
+    <div class="tab-group"><button class="tab ${active === 'calendar' ? 'active' : ''}" data-student-view="calendar">Calendar</button><button class="tab ${active === 'tracker' ? 'active' : ''}" data-student-view="tracker">My weekly tracker</button></div>
   </div>`;
 }
 
@@ -6934,6 +7020,8 @@ function openWithdrawalForm() {
 
 function bindStudentView() {
   document.querySelectorAll('[data-open-student-item]').forEach((button) => button.addEventListener('click', () => openStudentItem(button.dataset)));
+  document.querySelectorAll('[data-open-class]').forEach((button) =>
+    button.addEventListener('click', () => openClassInfo(button.dataset.openClass, button.dataset.classKind)));
   document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', (event) => {
     event.stopPropagation();
     const title = button.closest('.deadline-card')?.querySelector('strong')?.textContent || 'It';

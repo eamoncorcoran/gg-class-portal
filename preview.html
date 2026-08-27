@@ -1641,6 +1641,28 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .week-notice.is-recorded strong{color:var(--blue-800,#1849a9)}
 .week-notice.is-skipped{border-color:var(--gray-200);background:var(--gray-50)}
 .week-notice.is-skipped .week-notice-icon{background:var(--gray-200);color:var(--text-secondary)}
+
+/* Classes on the student calendar. Deliberately a different weight from the
+   deadline events beside them: one is where you have to be, the other is what
+   you have to hand in. */
+.calendar-event.is-class{background:var(--brand-600);border-color:var(--brand-600);color:#fff;font-weight:640}
+.calendar-event.is-class:hover{background:var(--brand-700)}
+.calendar-event.is-recorded{background:var(--blue-600,#1570ef);border-color:var(--blue-600,#1570ef)}
+.calendar-event.is-recorded:hover{background:var(--blue-700,#175cd3)}
+.calendar-event.is-moved{background:var(--warning-500,#f79009);border-color:var(--warning-500,#f79009)}
+.calendar-event.is-moved:hover{background:var(--warning-600,#dc6803)}
+.calendar-event.is-extra{background:var(--brand-700);border-color:var(--brand-700)}
+.calendar-event.is-skipped{background:var(--gray-100);border-color:var(--gray-200);
+  color:var(--text-quaternary);text-decoration:line-through;font-weight:600}
+.calendar-event.is-skipped:hover{background:var(--gray-200)}
+
+.class-info p{margin:0 0 16px;color:var(--text-tertiary);font-size:13.5px;line-height:1.6}
+.class-info-rows{display:grid;gap:1px;margin:0;padding:0;
+  border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;background:var(--border)}
+.class-info-rows>div{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;
+  padding:11px 13px;background:var(--surface)}
+.class-info-rows dt{color:var(--text-quaternary);font-size:11.5px;font-weight:650}
+.class-info-rows dd{margin:0;font-size:13px;font-weight:560}
 </style>
 </head>
 <body>
@@ -2185,6 +2207,33 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     match=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
     if(match) return new RealDate(RealDate.UTC(+match[1],+match[2]-1,+match[3],+(match[4]||0),+(match[5]||0)));
     return null;
+  }
+
+  /* Every sitting, mirroring classSittings on the server so the preview's
+     calendar agrees with the real one. */
+  function previewClassDates(klass){
+    if(!klass?.day_of_week||!klass?.start_time) return [];
+    const [hour,minute]=String(klass.start_time).split(':').map(Number);
+    const changes=new Map((db.classDateChanges||[]).filter((c)=>c.class_id===klass.id)
+      .map((c)=>[String(c.onDate||c.on_date).slice(0,10),c]));
+    const out=[];
+    // Two months either side of the preview clock is enough to page around.
+    const cursor=new RealDate(PREVIEW_NOW-60*86400000);
+    while(((cursor.getUTCDay()+6)%7)+1!==Number(klass.day_of_week)) cursor.setUTCDate(cursor.getUTCDate()+1);
+    for(let i=0;i<26;i+=1){
+      const date=cursor.toISOString().slice(0,10);
+      const change=changes.get(date);
+      const kind=change?.kind||'running';
+      const at=new RealDate(RealDate.UTC(cursor.getUTCFullYear(),cursor.getUTCMonth(),cursor.getUTCDate(),hour-1,minute));
+      out.push({onDate:date,kind,at:(kind==='moved'&&(change.movedTo||change.moved_to))
+        ?new RealDate(change.movedTo||change.moved_to).toISOString():at.toISOString(),reason:change?.reason||''});
+      cursor.setUTCDate(cursor.getUTCDate()+7);
+    }
+    for(const s of (db.classSessions||[]).filter((x)=>x.class_id===klass.id&&!x.cancelled)){
+      out.push({onDate:String(s.starts_at).slice(0,10),kind:'extra',at:new RealDate(s.starts_at).toISOString(),
+        minutes:s.duration_minutes||120,label:s.label||'',joinUrl:s.join_url||null});
+    }
+    return out.sort((a,b)=>new RealDate(a.at)-new RealDate(b.at));
   }
 
   function previewNextClass(klass,sessions,skips){
@@ -2940,7 +2989,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
       const checkins=db.checkins.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id));
       const homework=db.homework.filter((item)=>item.student_id===student.id&&assignmentIds.has(item.assignment_id));
       const notifications=checkins.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length+homework.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length;
-      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
+      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,classDates:previewClassDates(klass),nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
     }
     if(path==='/api/student/dismissals'&&method==='POST'){
       const student=user.role==='student'?user:db.users.find((u)=>u.id==='s1');
@@ -4182,7 +4231,7 @@ function mobileNav() {
         ['community', svg.board, 'Board'],
       ]
     : [
-        ['calendar', svg.calendar, 'Deadlines'],
+        ['calendar', svg.calendar, 'Calendar'],
         ['tracker', svg.grid, 'Tracker'],
         ['courses', svg.cap, 'Courses'],
         ['community', svg.board, 'Board'],
@@ -9669,7 +9718,7 @@ async function submitReview(type) {
 function studentNav() {
   const notifications = state.studentData?.notifications || 0;
   return `<div class="nav-label">My course</div><nav class="nav">
-    ${studentNavButton('calendar', svg.calendar, 'Deadlines')}
+    ${studentNavButton('calendar', svg.calendar, 'Calendar')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
     ${/* A class set up without a board never shows Community at all. */
@@ -9689,7 +9738,7 @@ async function loadStudent() {
   renderStudent();
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Deadlines' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar' };
 
 function renderStudent() {
   let content = '';
@@ -9703,7 +9752,7 @@ function renderStudent() {
     else { state.view = 'calendar'; content = studentCalendarView(); }
   }
   else content = studentCalendarView();
-  shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Deadlines', roleLabel: 'Student', notificationCount: state.studentData.notifications });
+  shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Calendar', roleLabel: 'Student', notificationCount: state.studentData.notifications });
   bindStudentView();
   if (state.view === 'courses') bindCourse();
 }
@@ -9755,7 +9804,7 @@ function nextClassBanner() {
 }
 
 const STUDENT_PAGE = {
-  calendar: { title: 'Deadlines', line: 'Check-ins and homework, and the feedback that comes back.' },
+  calendar: { title: 'Calendar', line: 'Your classes, your deadlines, and the feedback that comes back.' },
   tracker: { title: 'Weekly tracker', line: 'Every week of the course at a glance.' },
   courses: { title: 'Courses', line: 'Class recordings, with the notes that go with them.' },
   community: { title: 'Community', line: 'Ask a question, or answer somebody else.' },
@@ -9946,6 +9995,26 @@ function calendarHtml() {
     const status = homeworkState(submission, assignment);
     add(assignment.reopened_until || assignment.deadline_at, `<button class="calendar-event ${status.tone}" title="${escapeHtml(status.hint)}" data-open-student-item="homework" data-assignment-id="${assignment.id}">${escapeHtml(submission?.status === 'returned' ? 'Homework feedback' : assignment.title)}</button>`);
   });
+
+  /* The classes themselves. A calendar that shows only what is due leaves out
+     the thing the week is actually built around, and a student checking when
+     they next have class had to look somewhere else for it. */
+  (state.studentData.classDates || []).forEach((sitting) => {
+    const label = {
+      running: 'Class',
+      recorded: 'Pre-recorded',
+      moved: 'Class (moved)',
+      skipped: 'No class',
+      extra: sitting.label || 'Extra class',
+    }[sitting.kind] || 'Class';
+    const time = new Date(sitting.at).toLocaleTimeString('en-IE', {
+      hour: '2-digit', minute: '2-digit', timeZone: classTimezone(),
+    });
+    add(sitting.at, `<button class="calendar-event is-class is-${escapeHtml(sitting.kind)}"
+      title="${escapeHtml(`${label} · ${time}`)}"
+      data-open-class="${escapeHtml(sitting.onDate)}" data-class-kind="${escapeHtml(sitting.kind)}"
+      data-class-at="${escapeHtml(sitting.at)}">${escapeHtml(label)}</button>`);
+  });
   const cells = [];
   for (let i = 0; i < offset; i += 1) cells.push('<div class="calendar-day is-empty"></div>');
   for (let day = 1; day <= days; day += 1) {
@@ -10025,9 +10094,75 @@ function checkinWindowNote() {
   return `<p class="win-note">Check-ins open <strong>Friday at 10am</strong> and close <strong>Sunday at 11:45pm</strong> Irish time (${escapeHtml(zone)}). They cannot be completed after that, so a week that closes stays closed.</p>`;
 }
 
+/* What is happening on one class date.
+   ------------------------------------------------------------------
+   Clicking a class on the calendar should answer the question that made
+   somebody click it: is it on, when, and how do I get in. All of that is
+   already in hand from the bootstrap, so this opens instantly rather than
+   asking the server for something it has already sent. */
+function openClassInfo(date, kind) {
+  const sittings = (state.studentData?.classDates || []).filter((row) => row.onDate === date);
+  const sitting = sittings.find((row) => row.kind === kind) || sittings[0];
+  if (!sitting) return;
+
+  const klass = state.studentData?.class;
+  const zone = classTimezone();
+  const at = new Date(sitting.at);
+  const when = at.toLocaleString('en-IE', {
+    weekday: 'long', day: 'numeric', month: 'long',
+    hour: '2-digit', minute: '2-digit', timeZone: zone,
+  });
+  const usual = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IE', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+  });
+
+  /* The link is only offered where there is a class to join. Showing one beside
+     "no class this week" is an invitation to sit in an empty room. */
+  const next = state.studentData?.nextClass;
+  const sameSitting = next && Math.abs(new Date(next.startsAt) - at) < 60000;
+  const joinUrl = sitting.kind === 'extra'
+    ? (sitting.joinUrl || next?.joinUrl || null)
+    : (['running', 'moved'].includes(sitting.kind) ? (sameSitting ? next?.joinUrl : klass?.join_url) : null);
+
+  const said = {
+    running: ['Class as usual', `Your weekly class, at the time it always runs. Times shown in ${zone}.`],
+    moved: ['This class has moved', `It was due on ${usual} and is running at the time above instead.`],
+    recorded: ['Pre-recorded this week', 'There is no live class. The recording is in Courses whenever it suits you.'],
+    skipped: ['No class this week', 'The class is not meeting. Your check-in and homework are unaffected.'],
+    extra: [sitting.label || 'Extra class', 'An additional session on top of the weekly class.'],
+  }[sitting.kind] || ['Class', ''];
+
+  modal({
+    title: said[0],
+    subtitle: sitting.kind === 'skipped' ? usual : when,
+    body: `<div class="class-info">
+      <p>${escapeHtml(sitting.reason || said[1])}</p>
+      ${sitting.kind === 'skipped' ? '' : `<dl class="class-info-rows">
+        <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
+        <div><dt>Timezone</dt><dd>${escapeHtml(zone)}</dd></div>
+        ${sitting.minutes ? `<div><dt>Length</dt><dd>${sitting.minutes} minutes</dd></div>` : ''}
+        ${klass?.join_note && joinUrl ? `<div><dt>Note</dt><dd>${escapeHtml(klass.join_note)}</dd></div>` : ''}
+      </dl>`}
+    </div>`,
+    footer: `<button class="btn" data-close-modal>Close</button>
+      ${sitting.kind === 'recorded'
+        ? '<button class="btn primary" id="class-info-courses">Go to Courses</button>'
+        : joinUrl
+          ? `<a class="btn primary" href="${escapeHtml(joinUrl)}" target="_blank" rel="noopener noreferrer">Join class</a>`
+          : ''}`,
+    onOpen() {
+      document.getElementById('class-info-courses')?.addEventListener('click', () => {
+        closeModal();
+        state.view = 'courses';
+        renderStudent();
+      });
+    },
+  });
+}
+
 function studentTabs(active) {
   return `<div class="tabs">
-    <div class="tab-group"><button class="tab ${active === 'calendar' ? 'active' : ''}" data-student-view="calendar">Deadline calendar</button><button class="tab ${active === 'tracker' ? 'active' : ''}" data-student-view="tracker">My weekly tracker</button></div>
+    <div class="tab-group"><button class="tab ${active === 'calendar' ? 'active' : ''}" data-student-view="calendar">Calendar</button><button class="tab ${active === 'tracker' ? 'active' : ''}" data-student-view="tracker">My weekly tracker</button></div>
   </div>`;
 }
 
@@ -10120,6 +10255,8 @@ function openWithdrawalForm() {
 
 function bindStudentView() {
   document.querySelectorAll('[data-open-student-item]').forEach((button) => button.addEventListener('click', () => openStudentItem(button.dataset)));
+  document.querySelectorAll('[data-open-class]').forEach((button) =>
+    button.addEventListener('click', () => openClassInfo(button.dataset.openClass, button.dataset.classKind)));
   document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', (event) => {
     event.stopPropagation();
     const title = button.closest('.deadline-card')?.querySelector('strong')?.textContent || 'It';
