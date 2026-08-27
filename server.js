@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -114,8 +115,40 @@ app.use('/calendar', calendarRoutes);
 app.use('/api/{*splat}', (_req, res) => res.status(404).json({ error: 'Not found.' }));
 
 const publicDir = path.join(__dirname, 'public');
-app.use(express.static(publicDir, { maxAge: config.isProduction ? '1h' : 0 }));
-app.get('/{*splat}', (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
+/* Assets are cached hard, and the page that names them is not.
+   ------------------------------------------------------------------
+   These were both cached for an hour, and index.html asked for a bare /app.js.
+   So for an hour after every deploy people kept running the previous
+   JavaScript: a fix would go out, the person who asked for it would look, and
+   nothing would have changed. Worse, a browser could hold new HTML against old
+   JavaScript, which is a combination nobody has ever tested.
+
+   The version goes in the query string, so a deploy changes the address and the
+   browser has no cached copy to reach for. That makes the long cache on the
+   assets safe rather than dangerous — the only thing that must always be fresh
+   is the small page that names them. */
+const ASSET_VERSION = process.env.npm_package_version || String(Date.now());
+
+app.use(express.static(publicDir, {
+  maxAge: config.isProduction ? '1h' : 0,
+  // The page itself is served below, not from here.
+  index: false,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
+
+const indexHtml = () => fsSync.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
+  .replace(/(["'])(\/(?:app\.js|styles\.css))\1/g, `$1$2?v=${ASSET_VERSION}$1`);
+
+/* Read once in production, where the file cannot change under a running
+   container, and every time in development so an edit shows up on reload. */
+let cachedIndex = null;
+app.get('/{*splat}', (_req, res) => {
+  if (!cachedIndex || !config.isProduction) cachedIndex = indexHtml();
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(cachedIndex);
+});
 
 app.use(errorHandler);
 

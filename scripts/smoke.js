@@ -15,7 +15,14 @@ import 'dotenv/config';
 import { pool, query } from '../src/db.js';
 import { hashPassword } from '../src/security.js';
 
-const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+/* This app, unless told otherwise. It used to default to port 3000 regardless
+   of what this deployment actually runs on, which meant `npm run smoke` happily
+   tested whatever else happened to be listening there — on this machine, an old
+   copy of the same portal, several versions behind. Eight failures that meant
+   nothing, and the far worse possibility of passes that meant nothing either. */
+const BASE = (process.env.BASE_URL
+  || process.env.APP_URL
+  || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 const ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL || process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD;
 
@@ -49,11 +56,15 @@ function actor() {
     async call(path, { method = 'GET', body, raw = false } = {}) {
       const headers = {};
       if (jar.size) headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
-      if (body !== undefined) headers['content-type'] = 'application/json';
+      /* FormData carries its own content type, including the boundary. Setting
+         one here, or stringifying it, sends something the server cannot read —
+         which is what stopped this from being able to test an upload at all. */
+      const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+      if (body !== undefined && !isForm) headers['content-type'] = 'application/json';
       const response = await fetch(`${BASE}${path}`, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : (isForm ? body : JSON.stringify(body)),
         redirect: 'manual',
       });
       for (const cookie of response.headers.getSetCookie?.() || []) {
@@ -86,7 +97,18 @@ try {
   {
     const health = await admin.call('/api/health');
     check('health endpoint reports a live database', health.data?.ok === true && health.data?.database === true);
-    check('health endpoint reports the running version', health.data?.version === process.env.npm_package_version, `got ${health.data?.version}`);
+    /* A version that does not match is not one failure among many: it means
+       every check after it is being run against something else. Say so plainly
+       and stop, rather than producing a page of results about the wrong app. */
+    const expected = process.env.npm_package_version;
+    const running = health.data?.version;
+    check('health endpoint reports the running version', !expected || running === expected,
+      `expected ${expected}, got ${running} — ${BASE} is serving a different build`);
+    if (expected && running && running !== expected) {
+      console.error(`\nStopping: ${BASE} is running ${running}, this checkout is ${expected}.`);
+      console.error('Set BASE_URL to the address of the app you meant to test.\n');
+      process.exit(1);
+    }
 
     const headers = (await admin.call('/api/health', { raw: true })).headers;
     const csp = headers.get('content-security-policy') || '';
@@ -184,13 +206,60 @@ try {
 
   section('Weekly check-in');
   {
+    /* A new student meets the photograph gate before anything else, which is
+       deliberate — they cannot use the portal until they have one. This walked
+       straight past it and then reported that the student could not see their
+       class, which was true and not the point: everything after it was going
+       untested, including the check-in and homework journey.
+
+       So the gate is checked, satisfied the way a student satisfies it, and the
+       real journey carries on. */
+    const gated = await student.call('/api/student/bootstrap');
+    check('a student without a photograph is stopped', gated.status === 428 && gated.data?.code === 'avatar_required',
+      `got ${gated.status}`);
+
+    // A one-pixel PNG is a photograph as far as the upload is concerned.
+    const pixel = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64');
+    const form = new FormData();
+    form.append('avatar', new Blob([pixel], { type: 'image/png' }), 'me.png');
+    const photo = await student.call('/api/auth/avatar', { method: 'POST', body: form });
+    check('the student can add their photograph', photo.status === 201 || photo.status === 200,
+      photo.data?.error || `got ${photo.status}`);
+
     const bootstrap = await student.call('/api/student/bootstrap');
-    check('the student sees their own class', bootstrap.data?.class?.id === classId);
+    check('the student sees their own class', bootstrap.data?.class?.id === classId,
+      bootstrap.data?.error || `got ${bootstrap.status}`);
     check('future weeks are hidden from the student', bootstrap.data?.weeks?.every((week) => new Date(week.week_start) <= new Date()));
 
-    const openWeek = bootstrap.data.weeks.filter((week) => week.checkin_available && new Date(week.checkin_due_at) > new Date()).at(0)
-      || bootstrap.data.weeks.filter((week) => week.checkin_available).at(-1);
-    check('a released check-in is available', Boolean(openWeek));
+    /* Opened deliberately rather than hoped for.
+       ------------------------------------------------------------------
+       Check-ins run Friday morning to Sunday night, so a run on a Wednesday
+       found none open and everything below it went untested — the draft, the
+       submission, and whether the teacher can see it. A check that only works at
+       weekends is a check nobody can trust on a Tuesday.
+
+       The administrator opens one first, which is a thing administrators
+       genuinely do, and the student journey then runs against a known window. */
+    const target = bootstrap.data.weeks.at(-1);
+    check('the student has a week to check in on', Boolean(target));
+    const opened = await admin.call(`/api/admin/weeks/${target.id}/checkin`, {
+      method: 'PATCH',
+      body: {
+        enabled: true,
+        releaseAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+        dueAt: new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString(),
+      },
+    });
+
+    check('the administrator can open a check-in window', opened.status === 200,
+      opened.data?.error || `got ${opened.status}`);
+
+    const reopened = await student.call('/api/student/bootstrap');
+    const openWeek = (reopened.data?.weeks || []).find((week) => week.id === target.id);
+    check('a released check-in is available', Boolean(openWeek?.checkin_available),
+      'the window the administrator just opened is not being offered to the student');
 
     const draft = await student.call(`/api/student/checkins/${openWeek.id}/draft`, {
       method: 'PUT',
