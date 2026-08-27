@@ -53,11 +53,20 @@ test('a super administrator cannot strand the portal without one', dbTest, async
   /* The rule the route enforces, asserted against the same query it uses: a
      demotion is allowed only while somebody else would still be able to
      administer the portal afterwards. */
+  /* Anybody who was already a super administrator before this test ran is
+     excluded from every count. A portal that has been running has one, and the
+     rule being checked is about the two created here — not about how many the
+     database happened to start with. */
+  const preExisting = (await query(
+    `SELECT id FROM users WHERE role='admin' AND is_super_admin=true AND active=true
+       AND id <> ALL($1::uuid[])`, [[founder.id, solo.id]],
+  )).rows.map((row) => row.id);
+
   const othersBesides = (...excluded) => one(
     `SELECT count(*)::int count FROM users
      WHERE role='admin' AND is_super_admin=true AND active=true
        AND id <> ALL($1::uuid[])`,
-    [excluded],
+    [[...excluded, ...preExisting]],
   );
 
   try {

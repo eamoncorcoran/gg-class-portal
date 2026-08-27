@@ -7,7 +7,7 @@ import { studentProgress } from '../status.js';
 import { one, query, transaction } from '../db.js';
 import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
 import { audit } from '../audit.js';
-import { ensureWeeksForClass } from '../weeks.js';
+import { checkinOpen, checkinOpenSql, ensureWeeksForClass } from '../weeks.js';
 import { withVoiceNote, withVoiceNotes } from '../voice.js';
 import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS, mimeTypesFor, extractText } from '../documents.js';
@@ -131,7 +131,7 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
   const currentMonday = now.setZone(klass.timezone).startOf('week').toISODate();
   const [weeksResult, attendanceResult, checkinsResult, assignmentsResult, dismissalsResult, homeworkResult] = await Promise.all([
     query(
-      `SELECT *, checkin_release_at<=now() checkin_available
+      `SELECT *, ${checkinOpenSql()} checkin_available
        FROM weeks
        WHERE class_id=$1 AND week_start<=$2
        ORDER BY week_start`,
@@ -281,8 +281,9 @@ router.post('/checkins/:weekId/submit', asyncRoute(async (req, res) => {
     [req.params.weekId, req.user.id],
   );
   if (!week) return res.status(404).json({ error: 'This check-in is not available.' });
-  // A soft deadline keeps accepting late check-ins; only a hard one closes.
-  if (week.checkin_hard_deadline !== false && new Date(week.checkin_due_at).getTime() < Date.now()) {
+  /* The same predicate the student's screen was given, so a check-in that was
+     offered is a check-in that will be accepted. */
+  if (!checkinOpen(week)) {
     return res.status(409).json({ error: 'This check-in deadline has passed.' });
   }
   const row = await one(

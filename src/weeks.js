@@ -101,3 +101,34 @@ export async function ensureAllWeeks() {
   const result = await query('SELECT * FROM classes WHERE active=true');
   for (const row of result.rows) await ensureWeeksForClass(row);
 }
+
+/* Whether a check-in can be filled in, in one place.
+   ------------------------------------------------------------------
+   This existed twice and the two copies disagreed. What a student was offered
+   asked only whether the check-in had opened; what the server accepted also
+   required that it had not closed. So a week past its deadline still arrived
+   marked available, the student answered six questions, pressed Submit, and the
+   save was refused — the work gone, and nothing on the teacher's screen to say
+   anybody had tried.
+
+   Homework never had the problem because it shares one predicate between the
+   two. Check-ins do now as well.
+
+   Both forms below say the same thing, and the test in checkinwindow.test.js
+   holds them to it. */
+export function checkinOpen(week, now = Date.now()) {
+  if (!week || week.checkin_enabled === false) return false;
+  const at = now instanceof Date ? now.getTime() : now;
+  if (new Date(week.checkin_release_at).getTime() > at) return false;
+  // A soft deadline keeps accepting; only a hard one closes.
+  if (week.checkin_hard_deadline === false) return true;
+  return new Date(week.checkin_due_at).getTime() >= at;
+}
+
+/** The same rule as SQL, for the queries that have to ask it of many rows. */
+export function checkinOpenSql(alias = '') {
+  const column = (name) => (alias ? `${alias}.${name}` : name);
+  return `(${column('checkin_enabled')} = true
+    AND ${column('checkin_release_at')} <= now()
+    AND (${column('checkin_hard_deadline')} = false OR ${column('checkin_due_at')} >= now()))`;
+}
