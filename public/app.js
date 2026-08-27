@@ -4032,7 +4032,7 @@ function sideNextClass(next) {
     <div class="side-next-copy">
       <span>${next.isExtra ? 'Extra session' : 'Next class'}</span>
       <strong>${escapeHtml(label)}</strong>
-      ${next.note ? `<em>${escapeHtml(next.note)}</em>` : ''}
+      ${next.note ? `<em>${escapeHtml(/^pass\s*code/i.test(next.note) || !next.joinUrl ? `Passcode: ${passcodeOnly(next.note)}` : next.note)}</em>` : ''}
     </div>
     ${next.joinUrl && (next.live || next.soon)
       ? `<a class="btn primary small" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener">Join</a>`
@@ -6526,6 +6526,37 @@ function renderStudent() {
    It appears twelve hours out and stays until the session is over, so the button
    is there when it is wanted and gone the rest of the week — a permanent Join
    button is one more thing on the screen that is usually wrong. */
+/**
+ * The hour, as somebody would say it.
+ *
+ * "7pm" rather than "19:00", and "7.30pm" rather than "19:30". A student
+ * checking when class is does not want a timetable, and IST means nothing to
+ * most people reading it — "Irish" is what the abbreviation was standing in for.
+ */
+function plainHour(value, timeZone = classTimezone()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  const hour24 = Number(parts.hour) % 24;
+  const minute = Number(parts.minute);
+  const hour = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  const suffix = hour24 < 12 ? 'am' : 'pm';
+  return minute ? `${hour}.${String(minute).padStart(2, '0')}${suffix}` : `${hour}${suffix}`;
+}
+
+/**
+ * The passcode out of whatever was typed into the note field.
+ *
+ * The field has always been free text and people write "Passcode 4821" into it,
+ * so labelling it would otherwise read "Passcode: Passcode 4821". Anything that
+ * is not a passcode at all is left exactly as written.
+ */
+function passcodeOnly(note) {
+  const text = String(note || '').trim();
+  const match = /^pass\s*code\s*[:\-]?\s*(.+)$/i.exec(text);
+  return match ? match[1].trim() : text;
+}
+
 function nextClassBanner() {
   const next = state.studentData?.nextClass;
   const thisWeek = state.studentData?.thisWeek;
@@ -6560,7 +6591,7 @@ function nextClassBanner() {
     <span class="class-banner-icon">${svg.video}</span>
     <div class="class-banner-copy">
       <strong>${escapeHtml(when)}</strong>
-      <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(timezoneAbbreviation(next.timezone))}${next.note ? ` · ${escapeHtml(next.note)}` : ''}${next.movedFrom ? ' · moved from its usual day' : ''}</span>
+      <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(plainHour(next.startsAt, next.timezone))} Irish${next.note ? ` · Passcode: ${escapeHtml(passcodeOnly(next.note))}` : ''}${next.movedFrom ? ' · moved from its usual day' : ''}</span>
     </div>
     ${next.joinUrl
       ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
@@ -6855,8 +6886,7 @@ function studentTrackerView() {
    already looking at deadlines, because "why can I not do last week's" is the
    question it exists to answer. */
 function checkinWindowNote() {
-  const zone = timezoneAbbreviation(classTimezone());
-  return `<p class="win-note">Check-ins open <strong>Friday at 10am</strong> and close <strong>Sunday at 11:45pm</strong> Irish time (${escapeHtml(zone)}). They cannot be completed after that, so a week that closes stays closed.</p>`;
+  return `<p class="win-note">Check-ins open <strong>Friday at 10am</strong> and close <strong>Sunday at 11:45pm</strong> Irish time. They cannot be completed after that.</p>`;
 }
 
 /* What is happening on one class date.
@@ -6906,7 +6936,7 @@ function openClassInfo(date, kind) {
         <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
         <div><dt>Timezone</dt><dd>${escapeHtml(zone)}</dd></div>
         ${sitting.minutes ? `<div><dt>Length</dt><dd>${sitting.minutes} minutes</dd></div>` : ''}
-        ${klass?.join_note && joinUrl ? `<div><dt>Note</dt><dd>${escapeHtml(klass.join_note)}</dd></div>` : ''}
+        ${klass?.join_note && joinUrl ? `<div><dt>Passcode</dt><dd>${escapeHtml(passcodeOnly(klass.join_note))}</dd></div>` : ''}
       </dl>`}
     </div>`,
     footer: `<button class="btn" data-close-modal>Close</button>

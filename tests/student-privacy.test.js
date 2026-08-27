@@ -218,3 +218,40 @@ test('the functions the student screens depend on are defined', () => {
   assert.deepEqual(missing, [],
     `called by the student screens and never defined: ${missing.join(', ')}`);
 });
+
+/* Wording a student reads about their own class. */
+test('the class banner says the hour in words and labels the passcode', () => {
+  const banner = functionBody('nextClassBanner');
+  assert.ok(banner, 'nextClassBanner is gone');
+  assert.match(banner, /plainHour\(/, 'the hour should read as 7pm, not 19:00');
+  assert.match(banner, /Irish/, '"Irish" rather than an abbreviation nobody reads');
+  assert.doesNotMatch(banner, /timezoneAbbreviation/, 'IST means nothing to most people reading it');
+  assert.match(banner, /Passcode: \$\{escapeHtml\(passcodeOnly/, 'the passcode should be labelled as one');
+});
+
+test('a note already saying "passcode" is not labelled twice', () => {
+  const start = app.indexOf('function passcodeOnly(');
+  assert.ok(start !== -1, 'passcodeOnly is gone');
+  const passcodeOnly = new Function(`${app.slice(start, app.indexOf('\n}', start) + 2)}; return passcodeOnly;`)();
+
+  // The field is free text and people write the word into it.
+  assert.equal(passcodeOnly('Passcode 4821'), '4821');
+  assert.equal(passcodeOnly('passcode: 4821'), '4821');
+  assert.equal(passcodeOnly('Pass code - 4821'), '4821');
+  assert.equal(passcodeOnly('975967'), '975967');
+  // Anything that is not a passcode at all is left exactly as written.
+  assert.equal(passcodeOnly('Bring a copy of the handout'), 'Bring a copy of the handout');
+  assert.equal(passcodeOnly(''), '');
+  assert.equal(passcodeOnly(null), '');
+});
+
+test('the hour reads the way somebody would say it', () => {
+  const start = app.indexOf('function plainHour(');
+  const plainHour = new Function(`${app.slice(start, app.indexOf('\n}', start) + 2)}; return plainHour;`)();
+  assert.equal(plainHour('2026-09-07T18:00:00Z', 'Europe/Dublin'), '7pm');
+  assert.equal(plainHour('2026-09-07T18:30:00Z', 'Europe/Dublin'), '7.30pm');
+  assert.equal(plainHour('2026-09-07T09:00:00Z', 'Europe/Dublin'), '10am');
+  // Noon and midnight are the two the twelve-hour clock gets wrong.
+  assert.equal(plainHour('2026-09-07T11:00:00Z', 'Europe/Dublin'), '12pm');
+  assert.equal(plainHour('2026-09-07T23:00:00Z', 'Europe/Dublin'), '12am');
+});
