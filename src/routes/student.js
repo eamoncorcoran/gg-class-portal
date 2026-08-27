@@ -189,9 +189,17 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
      FROM class_sessions WHERE class_id=$1 AND starts_at > now() - interval '4 hours'
      ORDER BY starts_at`, [klass.id],
   )).rows;
-  const skips = (await query('SELECT skip_on FROM class_skips WHERE class_id=$1', [klass.id])).rows
-    .map((row) => String(row.skip_on).slice(0, 10));
-  const next = nextClassWithSessions(klass, sessions, undefined, skips);
+  const dateChanges = (await query(
+    'SELECT on_date, kind, moved_to, reason FROM class_date_changes WHERE class_id=$1', [klass.id])).rows;
+  const next = nextClassWithSessions(klass, sessions, undefined, dateChanges);
+
+  /* What is happening to this week specifically. The banner names the next live
+     class, which is the right thing to point at — but a week replaced by a
+     recording would otherwise pass in silence, and a student would only know
+     because no class happened. */
+  const thisWeeksClass = DateTime.now().setZone(klass.timezone || config.defaultTimezone)
+    .startOf('week').plus({ days: Number(klass.day_of_week || 1) - 1 }).toISODate();
+  const thisWeek = dateChanges.find((row) => String(row.on_date).slice(0, 10) === thisWeeksClass) || null;
   const overrideWeeks = next
     ? (await query('SELECT week_start, join_url FROM weeks WHERE class_id=$1 AND week_start=$2', [klass.id, next.weekStart])).rows
     : [];
@@ -211,6 +219,11 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
           joinUrl: next.sessionJoinUrl || joinLinkFor(klass, overrideWeeks, next),
           note: next.sessionLabel || klass.join_note || null,
         }
+      : null,
+    // What is happening to this week, when it is not the usual thing.
+    thisWeek: thisWeek
+      ? { kind: thisWeek.kind, reason: thisWeek.reason || '',
+          movedTo: thisWeek.moved_to ? thisWeek.moved_to.toISOString() : null }
       : null,
     // Hidden entirely for a class without one, and for anybody with no class.
     hasCommunity: Boolean(klass.has_community),

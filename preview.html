@@ -1581,23 +1581,66 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   .session-edit{grid-template-columns:minmax(0,1fr)}
 }
 
-/* Every sitting of the weekly class, read down and ticked off. The same shape
-   as the check-in scheduler, because it is the same job: a term is a list, and
-   the exceptions are what somebody is actually looking for. */
-.date-list{display:grid;gap:2px;margin:0 0 10px;padding:0;list-style:none;
-  max-height:320px;overflow-y:auto}
-.date-row{display:flex;align-items:center;gap:12px;padding:7px 9px;border-radius:var(--radius-sm)}
+/* Every sitting of the weekly class, read down and set one at a time.
+   ------------------------------------------------------------------
+   Four states rather than a switch: a week that is off, a week replaced by a
+   recording and a week that has moved are three different messages to a student,
+   not one absence with a note attached. */
+.date-list{display:grid;gap:3px;margin:0 0 10px;padding:0;list-style:none;
+  max-height:340px;overflow-y:auto}
+.date-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;
+  padding:8px 10px;border:1px solid transparent;border-radius:var(--radius-sm)}
 .date-row:hover{background:var(--gray-25)}
-.date-row.is-off .date-copy strong{color:var(--text-quaternary);text-decoration:line-through}
-.date-row.is-past{opacity:.55}
 .date-copy{display:grid;gap:1px;min-width:0}
 .date-copy strong{font-size:13px;font-weight:620}
-.date-copy span{color:var(--text-quaternary);font-size:11.5px}
-.date-mark{margin-left:auto;flex:0 0 auto;padding:3px 9px;border-radius:999px;
+.date-copy span{color:var(--text-quaternary);font-size:11.5px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.date-row.is-past{opacity:.5}
+
+.date-row.is-skipped{background:var(--gray-50)}
+.date-row.is-skipped .date-copy strong{color:var(--text-quaternary);text-decoration:line-through}
+.date-row.is-recorded{background:var(--blue-50,#eff8ff);border-color:var(--blue-200,#b2ddff)}
+.date-row.is-recorded .date-copy span{color:var(--blue-700,#175cd3)}
+.date-row.is-moved{background:var(--warning-50,#fffaeb);border-color:var(--warning-200,#fedf89)}
+.date-row.is-moved .date-copy span{color:var(--warning-700,#b54708)}
+
+.date-kinds{display:flex;gap:2px;flex:0 0 auto;padding:2px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
+.date-kind{padding:4px 9px;border:0;border-radius:var(--radius-xs);background:transparent;
+  color:var(--text-tertiary);font-size:11.5px;font-weight:620;cursor:pointer}
+.date-kind:hover{background:var(--gray-100)}
+.date-kind.on{background:var(--gray-900);color:#fff}
+
+.date-mark{flex:0 0 auto;padding:3px 9px;border-radius:999px;
   background:var(--warning-50,#fffaeb);color:var(--warning-700,#b54708);
   font-size:10.5px;font-weight:700}
+.date-moved{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding-top:6px}
+.date-moved label{color:var(--text-tertiary);font-size:11.5px;font-weight:620}
+.date-moved input{padding:6px 9px;font-size:12.5px;max-width:230px}
 .date-count{margin:0}
-.date-row .toggle-row{flex:1;min-width:0}
+
+@media (max-width:700px){
+  .date-row{grid-template-columns:minmax(0,1fr)}
+  .date-kinds{justify-self:start}
+  .date-moved{flex-wrap:wrap}
+}
+
+/* A week that is not the usual thing, said before the next class is named.
+   Without this a pre-recorded week passes in silence and a student finds out by
+   nobody turning up. */
+.week-notice{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;padding:13px 15px;
+  border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface)}
+.week-notice div{display:grid;gap:2px;min-width:0}
+.week-notice strong{font-size:13.5px;font-weight:660}
+.week-notice span{color:var(--text-tertiary);font-size:12.5px;line-height:1.55}
+.week-notice-icon{display:grid;place-items:center;width:32px;height:32px;flex:0 0 auto;
+  border-radius:var(--radius-md)}
+.week-notice-icon svg{width:17px;height:17px}
+.week-notice.is-recorded{border-color:var(--blue-200,#b2ddff);background:var(--blue-50,#eff8ff)}
+.week-notice.is-recorded .week-notice-icon{background:var(--blue-100,#d1e9ff);color:var(--blue-700,#175cd3)}
+.week-notice.is-recorded strong{color:var(--blue-800,#1849a9)}
+.week-notice.is-skipped{border-color:var(--gray-200);background:var(--gray-50)}
+.week-notice.is-skipped .week-notice-icon{background:var(--gray-200);color:var(--text-secondary)}
 </style>
 </head>
 <body>
@@ -2157,7 +2200,9 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     start.setUTCHours(hour-1,minute,0,0);
     if(start.getTime()+120*60000<now.getTime())start.setUTCDate(start.getUTCDate()+7);
     // Weeks the class does not meet are stepped over, as on the server.
-    const off=new Set((skips||[]).map((x)=>String(x).slice(0,10)));
+    // Off or pre-recorded means no live class; moved means one, elsewhere.
+    const off=new Set((skips||[]).filter((x)=>(x.kind||'skipped')!=='moved')
+      .map((x)=>String(x.onDate||x.on_date||x).slice(0,10)));
     for(let guard=0;guard<60&&off.has(start.toISOString().slice(0,10));guard+=1){
       start.setUTCDate(start.getUTCDate()+7);
     }
@@ -2279,7 +2324,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
         .flatMap((c)=>lessonsOfCourse(c.id,false));
       return json({
         class:{...klass,label:classLabel(klass)},
-        skips:(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on),
+        dateChanges:(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id),
         courses:(db.courses||[]).map((c)=>({id:c.id,title:c.title,open_to_all:c.open_to_all,
           enrolled:(db.courseClasses||[]).some((cc)=>cc.course_id===c.id&&cc.class_id===klass.id)})),
         sessions:(db.classSessions||[]).filter((x)=>x.class_id===klass.id)
@@ -2291,11 +2336,11 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
         }),
       });
     }
-    params=match(path,'/api/admin/classes/:id/skips');
+    params=match(path,'/api/admin/classes/:id/date-changes');
     if(params&&method==='PUT'){
-      db.classSkips=(db.classSkips||[]).filter((x)=>x.class_id!==params.id)
-        .concat((body.skips||[]).map((skip_on)=>({class_id:params.id,skip_on})));
-      save();return json({skips:body.skips||[]});
+      db.classDateChanges=(db.classDateChanges||[]).filter((x)=>x.class_id!==params.id)
+        .concat((body.changes||[]).map((c)=>({class_id:params.id,...c})));
+      save();return json({changes:body.changes||[]});
     }
     params=match(path,'/api/admin/classes/:id/sessions');
     if(params&&method==='POST'){
@@ -2895,7 +2940,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
       const checkins=db.checkins.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id));
       const homework=db.homework.filter((item)=>item.student_id===student.id&&assignmentIds.has(item.assignment_id));
       const notifications=checkins.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length+homework.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length;
-      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
+      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
     }
     if(path==='/api/student/dismissals'&&method==='POST'){
       const student=user.role==='student'?user:db.users.find((u)=>u.id==='s1');
@@ -2963,7 +3008,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
       const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
       return json({class:{...klass,label:classLabel(klass)},
-        nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on)),
+        nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id)),
         ...boardPayload(params.classId,true,user.id,url,true)});
     }
     /* The scheduled queue and the spreadsheet import. The preview has no CSV
@@ -7909,7 +7954,7 @@ async function openClassSetupModal(classId) {
       <section class="setup-block">
         <h4>Class dates</h4>
         <p class="muted small">Every ${escapeHtml(DAY_NAMES[klass.day_of_week] || 'week')} in the term. Switch off the weeks the class does not meet — bank holidays and mid-terms are marked, but the decision is yours.</p>
-        <div id="class-dates">${classDateList(klass, setup.skips || [])}</div>
+        <div id="class-dates">${classDateList(klass, setup.dateChanges || [])}</div>
       </section>
 
       <section class="setup-block">
@@ -7954,19 +7999,48 @@ async function openClassSetupModal(classId) {
     </section>`,
     footer: `<button class="btn" data-close-modal>Close</button><button class="btn primary" id="save-class-setup">Save</button>`,
     onOpen() {
-      /* The count is the only feedback that a tick did anything, so it moves
-         with them rather than waiting for a save. */
+      /* Redrawn a row at a time. The whole list is thirty-nine weeks, and
+         rebuilding it on every click would lose the scroll position and any
+         half-typed date in another row. */
       const dates = document.getElementById('class-dates');
-      dates?.addEventListener('change', (event) => {
-        if (!event.target.matches('[data-class-date]')) return;
-        event.target.closest('.date-row')?.classList.toggle('is-off', !event.target.checked);
-        const running = dates.querySelectorAll('[data-class-date]:checked').length;
+      const changesFor = () => [...dates.querySelectorAll('[data-date-row]')]
+        .map((row) => {
+          const chosen = row.querySelector('.date-kind.on')?.dataset.dateKind || 'running';
+          if (chosen === 'running') return null;
+          const moved = row.querySelector('[data-date-moved]')?.value;
+          return {
+            onDate: row.dataset.dateRow,
+            kind: chosen,
+            movedTo: chosen === 'moved' && moved ? fromZonedInput(moved, klass.timezone) : null,
+          };
+        })
+        .filter(Boolean);
+
+      const recount = () => {
+        const total = dates.querySelectorAll('[data-date-row]').length;
+        const gone = changesFor().filter((change) => change.kind !== 'moved').length;
         const count = document.getElementById('class-date-count');
-        if (count) count.textContent = String(running);
-        const row = event.target.closest('.date-row')?.querySelector('.date-copy span');
-        if (row) row.textContent = event.target.checked
-          ? `${String(klass.start_time).slice(0, 5)} · ${klass.timezone || 'Europe/Dublin'}`
-          : 'No class this week';
+        if (count) count.textContent = String(total - gone);
+      };
+
+      dates?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-date-kind]');
+        if (!button) return;
+        const date = button.dataset.for;
+        const row = dates.querySelector(`[data-date-row="${date}"]`);
+        const existing = changesFor().find((change) => change.onDate === date);
+        const kind = button.dataset.dateKind;
+        row.outerHTML = classDateRow(
+          klass, date,
+          kind === 'running' ? null : { kind, movedTo: existing?.movedTo || null },
+          date < new Date().toISOString().slice(0, 10),
+        );
+        recount();
+        // A week that has just been moved needs a date, so ask for it at once.
+        if (kind === 'moved') dates.querySelector(`[data-date-moved="${date}"]`)?.focus();
+      });
+      dates?.addEventListener('change', (event) => {
+        if (event.target.matches('[data-date-moved]')) recount();
       });
 
       document.getElementById('save-class-setup').addEventListener('click', async () => {
@@ -7990,11 +8064,16 @@ async function openClassSetupModal(classId) {
              which dates exist at all — saving the skips first could file them
              against a term that is about to change. */
           const list = document.getElementById('class-dates');
-          if (list?.querySelector('[data-class-date]')) {
-            const skips = [...list.querySelectorAll('[data-class-date]')]
-              .filter((box) => !box.checked)
-              .map((box) => box.dataset.classDate);
-            await api(`/api/admin/classes/${classId}/skips`, { method: 'PUT', body: { skips } });
+          if (list?.querySelector('[data-date-row]')) {
+            const changes = changesFor();
+            /* A week marked as moved with no date would leave students with a
+               changed week and no answer about when it is. */
+            const homeless = changes.find((change) => change.kind === 'moved' && !change.movedTo);
+            if (homeless) {
+              document.querySelector(`[data-date-moved="${homeless.onDate}"]`)?.focus();
+              return showToast('Give the moved class a new date and time.', 'error');
+            }
+            await api(`/api/admin/classes/${classId}/date-changes`, { method: 'PUT', body: { changes } });
           }
           closeModal(); await renderAdmin(); showToast('Class saved');
         } catch (error) { showToast(error.message, 'error'); }
@@ -8039,31 +8118,60 @@ async function openClassSetupModal(classId) {
    The holidays are marked but nothing is switched off automatically — a course
    that deliberately runs through a bank holiday is a normal thing, and the
    portal has no business overruling it. */
-function classDateList(klass, skips = []) {
+function classDateList(klass, changes = []) {
   if (!klass.starts_on || !klass.ends_on) {
     return `<p class="muted small">Set the first and last day of the course above, and every class date appears here.</p>`;
   }
-  const skipped = new Set(skips.map((date) => String(date).slice(0, 10)));
+  const byDate = new Map(changes.map((change) => [String(change.onDate).slice(0, 10), change]));
   const dates = classDatesFor(klass);
   if (!dates.length) return '<p class="muted small">No class dates fall inside those dates.</p>';
 
   const today = new Date().toISOString().slice(0, 10);
-  return `<ul class="date-list">${dates.map((date) => {
-    const marks = holidaysInWeek(mondayOf(date)).filter((mark) => mark.date === date);
-    const off = skipped.has(date);
-    const past = date < today;
-    return `<li class="date-row ${off ? 'is-off' : ''} ${past ? 'is-past' : ''}">
-      <label class="toggle-row">
-        <span class="toggle"><input type="checkbox" data-class-date="${date}" ${off ? '' : 'checked'}><span></span></span>
-        <span class="date-copy">
-          <strong>${escapeHtml(new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }))}</strong>
-          <span>${off ? 'No class this week' : `${escapeHtml(String(klass.start_time).slice(0, 5))} · ${escapeHtml(klass.timezone || 'Europe/Dublin')}`}</span>
-        </span>
-      </label>
-      ${marks.length ? `<span class="date-mark">${marks.map((mark) => escapeHtml(mark.name)).join(' · ')}</span>` : ''}
-    </li>`;
-  }).join('')}</ul>
-  <p class="muted small date-count"><strong id="class-date-count">${dates.length - skipped.size}</strong> of ${dates.length} weeks running.</p>`;
+  return `<ul class="date-list">${dates.map((date) => classDateRow(klass, date, byDate.get(date), date < today)).join('')}</ul>
+  <p class="muted small date-count"><strong id="class-date-count">${dates.length - [...byDate.values()].filter((c) => c.kind !== 'moved').length}</strong> of ${dates.length} weeks running live.</p>`;
+}
+
+/* One week, and what is happening to it.
+   ------------------------------------------------------------------
+   Four states rather than a switch, because a week that is off, a week replaced
+   by a recording and a week that has moved are three different messages to a
+   student — not one absence with a note attached. */
+function classDateRow(klass, date, change, past) {
+  const kind = change?.kind || 'running';
+  const marks = holidaysInWeek(mondayOf(date)).filter((mark) => mark.date === date);
+  const day = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IE', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+  });
+
+  const said = {
+    running: `${String(klass.start_time).slice(0, 5)} · as usual`,
+    skipped: 'No class this week',
+    recorded: 'Pre-recorded — students watch the recording',
+    moved: change?.movedTo
+      ? `Moved to ${new Date(change.movedTo).toLocaleString('en-IE', {
+          weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+          timeZone: klass.timezone || 'Europe/Dublin',
+        })}`
+      : 'Moved — needs a new date',
+  }[kind];
+
+  return `<li class="date-row is-${kind} ${past ? 'is-past' : ''}" data-date-row="${date}">
+    <div class="date-copy">
+      <strong>${escapeHtml(day)}</strong>
+      <span>${escapeHtml(said)}</span>
+    </div>
+    ${marks.length ? `<span class="date-mark">${marks.map((mark) => escapeHtml(mark.name)).join(' · ')}</span>` : ''}
+    <div class="date-kinds" role="radiogroup" aria-label="What happens on ${escapeHtml(day)}">
+      ${[['running', 'On'], ['recorded', 'Recorded'], ['moved', 'Moved'], ['skipped', 'Off']]
+        .map(([value, label]) => `<button type="button" class="date-kind ${kind === value ? 'on' : ''}"
+          role="radio" aria-checked="${kind === value}" data-date-kind="${value}" data-for="${date}">${label}</button>`).join('')}
+    </div>
+    ${kind === 'moved' ? `<div class="date-moved">
+      <label>New date and time</label>
+      <input type="datetime-local" data-date-moved="${date}"
+        value="${escapeHtml(change?.movedTo ? toZonedInput(change.movedTo, klass.timezone) : '')}">
+    </div>` : ''}
+  </li>`;
 }
 
 /** Every date the weekly class falls on, between the first and last day. */
@@ -9606,7 +9714,25 @@ function renderStudent() {
    button is one more thing on the screen that is usually wrong. */
 function nextClassBanner() {
   const next = state.studentData?.nextClass;
-  if (!next) return '';
+  const thisWeek = state.studentData?.thisWeek;
+
+  /* A week that is not the usual thing says so first. The banner below names the
+     next live class, which is right — but a week replaced by a recording would
+     otherwise pass in silence, and a student would find out only by nobody
+     turning up. */
+  const notice = thisWeek && thisWeek.kind !== 'moved'
+    ? `<section class="week-notice is-${escapeHtml(thisWeek.kind)}">
+        <span class="week-notice-icon">${thisWeek.kind === 'recorded' ? svg.play || svg.video : svg.calendar}</span>
+        <div>
+          <strong>${thisWeek.kind === 'recorded' ? 'This week is pre-recorded' : 'No class this week'}</strong>
+          <span>${escapeHtml(thisWeek.reason || (thisWeek.kind === 'recorded'
+            ? 'Watch the recording in Courses whenever it suits you. There is no live class.'
+            : 'The class is not meeting this week. Your check-in and homework are unaffected.'))}</span>
+        </div>
+      </section>`
+    : '';
+
+  if (!next) return notice;
   const when = next.live
     ? 'Happening now'
     : next.soon
@@ -9615,12 +9741,12 @@ function nextClassBanner() {
   // The button is there whenever there is a link at all — somebody checking on a
   // Sunday to find the room should not be told to come back tomorrow. What the
   // hours change is the urgency of the wording above it.
-  if (!next.joinUrl && !next.live && !next.soon) return '';
-  return `<section class="class-banner ${next.live ? 'is-live' : ''}">
+  if (!next.joinUrl && !next.live && !next.soon) return notice;
+  return `${notice}<section class="class-banner ${next.live ? 'is-live' : ''}">
     <span class="class-banner-icon">${svg.video}</span>
     <div class="class-banner-copy">
       <strong>${escapeHtml(when)}</strong>
-      <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(timezoneAbbreviation(next.timezone))}${next.note ? ` · ${escapeHtml(next.note)}` : ''}</span>
+      <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(timezoneAbbreviation(next.timezone))}${next.note ? ` · ${escapeHtml(next.note)}` : ''}${next.movedFrom ? ' · moved from its usual day' : ''}</span>
     </div>
     ${next.joinUrl
       ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`

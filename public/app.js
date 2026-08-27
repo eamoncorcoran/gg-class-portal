@@ -4768,7 +4768,7 @@ async function openClassSetupModal(classId) {
       <section class="setup-block">
         <h4>Class dates</h4>
         <p class="muted small">Every ${escapeHtml(DAY_NAMES[klass.day_of_week] || 'week')} in the term. Switch off the weeks the class does not meet — bank holidays and mid-terms are marked, but the decision is yours.</p>
-        <div id="class-dates">${classDateList(klass, setup.skips || [])}</div>
+        <div id="class-dates">${classDateList(klass, setup.dateChanges || [])}</div>
       </section>
 
       <section class="setup-block">
@@ -4813,19 +4813,48 @@ async function openClassSetupModal(classId) {
     </section>`,
     footer: `<button class="btn" data-close-modal>Close</button><button class="btn primary" id="save-class-setup">Save</button>`,
     onOpen() {
-      /* The count is the only feedback that a tick did anything, so it moves
-         with them rather than waiting for a save. */
+      /* Redrawn a row at a time. The whole list is thirty-nine weeks, and
+         rebuilding it on every click would lose the scroll position and any
+         half-typed date in another row. */
       const dates = document.getElementById('class-dates');
-      dates?.addEventListener('change', (event) => {
-        if (!event.target.matches('[data-class-date]')) return;
-        event.target.closest('.date-row')?.classList.toggle('is-off', !event.target.checked);
-        const running = dates.querySelectorAll('[data-class-date]:checked').length;
+      const changesFor = () => [...dates.querySelectorAll('[data-date-row]')]
+        .map((row) => {
+          const chosen = row.querySelector('.date-kind.on')?.dataset.dateKind || 'running';
+          if (chosen === 'running') return null;
+          const moved = row.querySelector('[data-date-moved]')?.value;
+          return {
+            onDate: row.dataset.dateRow,
+            kind: chosen,
+            movedTo: chosen === 'moved' && moved ? fromZonedInput(moved, klass.timezone) : null,
+          };
+        })
+        .filter(Boolean);
+
+      const recount = () => {
+        const total = dates.querySelectorAll('[data-date-row]').length;
+        const gone = changesFor().filter((change) => change.kind !== 'moved').length;
         const count = document.getElementById('class-date-count');
-        if (count) count.textContent = String(running);
-        const row = event.target.closest('.date-row')?.querySelector('.date-copy span');
-        if (row) row.textContent = event.target.checked
-          ? `${String(klass.start_time).slice(0, 5)} · ${klass.timezone || 'Europe/Dublin'}`
-          : 'No class this week';
+        if (count) count.textContent = String(total - gone);
+      };
+
+      dates?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-date-kind]');
+        if (!button) return;
+        const date = button.dataset.for;
+        const row = dates.querySelector(`[data-date-row="${date}"]`);
+        const existing = changesFor().find((change) => change.onDate === date);
+        const kind = button.dataset.dateKind;
+        row.outerHTML = classDateRow(
+          klass, date,
+          kind === 'running' ? null : { kind, movedTo: existing?.movedTo || null },
+          date < new Date().toISOString().slice(0, 10),
+        );
+        recount();
+        // A week that has just been moved needs a date, so ask for it at once.
+        if (kind === 'moved') dates.querySelector(`[data-date-moved="${date}"]`)?.focus();
+      });
+      dates?.addEventListener('change', (event) => {
+        if (event.target.matches('[data-date-moved]')) recount();
       });
 
       document.getElementById('save-class-setup').addEventListener('click', async () => {
@@ -4849,11 +4878,16 @@ async function openClassSetupModal(classId) {
              which dates exist at all — saving the skips first could file them
              against a term that is about to change. */
           const list = document.getElementById('class-dates');
-          if (list?.querySelector('[data-class-date]')) {
-            const skips = [...list.querySelectorAll('[data-class-date]')]
-              .filter((box) => !box.checked)
-              .map((box) => box.dataset.classDate);
-            await api(`/api/admin/classes/${classId}/skips`, { method: 'PUT', body: { skips } });
+          if (list?.querySelector('[data-date-row]')) {
+            const changes = changesFor();
+            /* A week marked as moved with no date would leave students with a
+               changed week and no answer about when it is. */
+            const homeless = changes.find((change) => change.kind === 'moved' && !change.movedTo);
+            if (homeless) {
+              document.querySelector(`[data-date-moved="${homeless.onDate}"]`)?.focus();
+              return showToast('Give the moved class a new date and time.', 'error');
+            }
+            await api(`/api/admin/classes/${classId}/date-changes`, { method: 'PUT', body: { changes } });
           }
           closeModal(); await renderAdmin(); showToast('Class saved');
         } catch (error) { showToast(error.message, 'error'); }
@@ -4898,31 +4932,60 @@ async function openClassSetupModal(classId) {
    The holidays are marked but nothing is switched off automatically — a course
    that deliberately runs through a bank holiday is a normal thing, and the
    portal has no business overruling it. */
-function classDateList(klass, skips = []) {
+function classDateList(klass, changes = []) {
   if (!klass.starts_on || !klass.ends_on) {
     return `<p class="muted small">Set the first and last day of the course above, and every class date appears here.</p>`;
   }
-  const skipped = new Set(skips.map((date) => String(date).slice(0, 10)));
+  const byDate = new Map(changes.map((change) => [String(change.onDate).slice(0, 10), change]));
   const dates = classDatesFor(klass);
   if (!dates.length) return '<p class="muted small">No class dates fall inside those dates.</p>';
 
   const today = new Date().toISOString().slice(0, 10);
-  return `<ul class="date-list">${dates.map((date) => {
-    const marks = holidaysInWeek(mondayOf(date)).filter((mark) => mark.date === date);
-    const off = skipped.has(date);
-    const past = date < today;
-    return `<li class="date-row ${off ? 'is-off' : ''} ${past ? 'is-past' : ''}">
-      <label class="toggle-row">
-        <span class="toggle"><input type="checkbox" data-class-date="${date}" ${off ? '' : 'checked'}><span></span></span>
-        <span class="date-copy">
-          <strong>${escapeHtml(new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }))}</strong>
-          <span>${off ? 'No class this week' : `${escapeHtml(String(klass.start_time).slice(0, 5))} · ${escapeHtml(klass.timezone || 'Europe/Dublin')}`}</span>
-        </span>
-      </label>
-      ${marks.length ? `<span class="date-mark">${marks.map((mark) => escapeHtml(mark.name)).join(' · ')}</span>` : ''}
-    </li>`;
-  }).join('')}</ul>
-  <p class="muted small date-count"><strong id="class-date-count">${dates.length - skipped.size}</strong> of ${dates.length} weeks running.</p>`;
+  return `<ul class="date-list">${dates.map((date) => classDateRow(klass, date, byDate.get(date), date < today)).join('')}</ul>
+  <p class="muted small date-count"><strong id="class-date-count">${dates.length - [...byDate.values()].filter((c) => c.kind !== 'moved').length}</strong> of ${dates.length} weeks running live.</p>`;
+}
+
+/* One week, and what is happening to it.
+   ------------------------------------------------------------------
+   Four states rather than a switch, because a week that is off, a week replaced
+   by a recording and a week that has moved are three different messages to a
+   student — not one absence with a note attached. */
+function classDateRow(klass, date, change, past) {
+  const kind = change?.kind || 'running';
+  const marks = holidaysInWeek(mondayOf(date)).filter((mark) => mark.date === date);
+  const day = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IE', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+  });
+
+  const said = {
+    running: `${String(klass.start_time).slice(0, 5)} · as usual`,
+    skipped: 'No class this week',
+    recorded: 'Pre-recorded — students watch the recording',
+    moved: change?.movedTo
+      ? `Moved to ${new Date(change.movedTo).toLocaleString('en-IE', {
+          weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+          timeZone: klass.timezone || 'Europe/Dublin',
+        })}`
+      : 'Moved — needs a new date',
+  }[kind];
+
+  return `<li class="date-row is-${kind} ${past ? 'is-past' : ''}" data-date-row="${date}">
+    <div class="date-copy">
+      <strong>${escapeHtml(day)}</strong>
+      <span>${escapeHtml(said)}</span>
+    </div>
+    ${marks.length ? `<span class="date-mark">${marks.map((mark) => escapeHtml(mark.name)).join(' · ')}</span>` : ''}
+    <div class="date-kinds" role="radiogroup" aria-label="What happens on ${escapeHtml(day)}">
+      ${[['running', 'On'], ['recorded', 'Recorded'], ['moved', 'Moved'], ['skipped', 'Off']]
+        .map(([value, label]) => `<button type="button" class="date-kind ${kind === value ? 'on' : ''}"
+          role="radio" aria-checked="${kind === value}" data-date-kind="${value}" data-for="${date}">${label}</button>`).join('')}
+    </div>
+    ${kind === 'moved' ? `<div class="date-moved">
+      <label>New date and time</label>
+      <input type="datetime-local" data-date-moved="${date}"
+        value="${escapeHtml(change?.movedTo ? toZonedInput(change.movedTo, klass.timezone) : '')}">
+    </div>` : ''}
+  </li>`;
 }
 
 /** Every date the weekly class falls on, between the first and last day. */
@@ -6465,7 +6528,25 @@ function renderStudent() {
    button is one more thing on the screen that is usually wrong. */
 function nextClassBanner() {
   const next = state.studentData?.nextClass;
-  if (!next) return '';
+  const thisWeek = state.studentData?.thisWeek;
+
+  /* A week that is not the usual thing says so first. The banner below names the
+     next live class, which is right — but a week replaced by a recording would
+     otherwise pass in silence, and a student would find out only by nobody
+     turning up. */
+  const notice = thisWeek && thisWeek.kind !== 'moved'
+    ? `<section class="week-notice is-${escapeHtml(thisWeek.kind)}">
+        <span class="week-notice-icon">${thisWeek.kind === 'recorded' ? svg.play || svg.video : svg.calendar}</span>
+        <div>
+          <strong>${thisWeek.kind === 'recorded' ? 'This week is pre-recorded' : 'No class this week'}</strong>
+          <span>${escapeHtml(thisWeek.reason || (thisWeek.kind === 'recorded'
+            ? 'Watch the recording in Courses whenever it suits you. There is no live class.'
+            : 'The class is not meeting this week. Your check-in and homework are unaffected.'))}</span>
+        </div>
+      </section>`
+    : '';
+
+  if (!next) return notice;
   const when = next.live
     ? 'Happening now'
     : next.soon
@@ -6474,12 +6555,12 @@ function nextClassBanner() {
   // The button is there whenever there is a link at all — somebody checking on a
   // Sunday to find the room should not be told to come back tomorrow. What the
   // hours change is the urgency of the wording above it.
-  if (!next.joinUrl && !next.live && !next.soon) return '';
-  return `<section class="class-banner ${next.live ? 'is-live' : ''}">
+  if (!next.joinUrl && !next.live && !next.soon) return notice;
+  return `${notice}<section class="class-banner ${next.live ? 'is-live' : ''}">
     <span class="class-banner-icon">${svg.video}</span>
     <div class="class-banner-copy">
       <strong>${escapeHtml(when)}</strong>
-      <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(timezoneAbbreviation(next.timezone))}${next.note ? ` · ${escapeHtml(next.note)}` : ''}</span>
+      <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(timezoneAbbreviation(next.timezone))}${next.note ? ` · ${escapeHtml(next.note)}` : ''}${next.movedFrom ? ' · moved from its usual day' : ''}</span>
     </div>
     ${next.joinUrl
       ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`

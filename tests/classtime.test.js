@@ -127,3 +127,49 @@ test('a term entirely skipped does not spin', () => {
   nextClassAt(TERM, on('2026-09-01T10:00'), skips);
   assert.ok(Date.now() - started < 500, 'the search must be bounded');
 });
+
+/* Three things happen to a week, and only one is an absence. */
+
+test('a pre-recorded week has no live class, so it is stepped over', () => {
+  const changes = [{ on_date: '2026-09-14', kind: 'recorded' }];
+  assert.equal(dublin(nextClassAt(TERM, on('2026-09-08T10:00'), changes)), '2026-09-21 19:00');
+});
+
+test('a moved week still happens, at the hour it moved to', () => {
+  const changes = [{ on_date: '2026-09-14', kind: 'moved', moved_to: '2026-09-17T18:00:00Z' }];
+  const next = nextClassAt(TERM, on('2026-09-08T10:00'), changes);
+  assert.equal(dublin(next), '2026-09-17 19:00');
+  assert.equal(next.movedFrom, '2026-09-14', 'the banner should be able to say it moved');
+});
+
+test('once a moved class is over, the next one is the following week', () => {
+  const changes = [{ on_date: '2026-09-14', kind: 'moved', moved_to: '2026-09-17T18:00:00Z' }];
+  assert.equal(dublin(nextClassAt(TERM, on('2026-09-18T10:00'), changes)), '2026-09-21 19:00');
+});
+
+test('a move out of a week that is otherwise skipped is followed, not lost', () => {
+  /* The stepping happens first, so a move has to be applied after it or the
+     week it moved out of would be stepped past and the move forgotten. */
+  const changes = [
+    { on_date: '2026-09-14', kind: 'moved', moved_to: '2026-09-16T18:00:00Z' },
+    { on_date: '2026-09-21', kind: 'skipped' },
+  ];
+  assert.equal(dublin(nextClassAt(TERM, on('2026-09-08T10:00'), changes)), '2026-09-16 19:00');
+});
+
+test('a moved class is still on for the two hours after it starts', () => {
+  const changes = [{ on_date: '2026-09-14', kind: 'moved', moved_to: '2026-09-17T18:00:00Z' }];
+  const during = nextClassAt(TERM, on('2026-09-17T19:30'), changes);
+  assert.equal(dublin(during), '2026-09-17 19:00', 'a class half an hour in has not finished');
+  assert.equal(during.live, true);
+});
+
+test('a move with nowhere to move to does not put a class back on that day', () => {
+  /* The database refuses this now, but a row that predates the constraint must
+     not take the banner down — and it must not answer with the original day
+     either. Whatever else the row means, it says the Monday class is not
+     happening as scheduled, and sending students to one that may not run is the
+     worse of the two mistakes. */
+  const changes = [{ on_date: '2026-09-14', kind: 'moved', moved_to: null }];
+  assert.equal(dublin(nextClassAt(TERM, on('2026-09-08T10:00'), changes)), '2026-09-21 19:00');
+});

@@ -231,12 +231,19 @@ router.get('/classes/:id/setup', asyncRoute(async (req, res) => {
   const sessions = await query(
     `SELECT id, starts_at, duration_minutes, join_url, label, cancelled
      FROM class_sessions WHERE class_id=$1 ORDER BY starts_at DESC`, [klass.id]);
-  const skips = await query('SELECT skip_on, reason FROM class_skips WHERE class_id=$1 ORDER BY skip_on', [klass.id]);
+  const changes = await query(
+    'SELECT on_date, kind, moved_to, reason FROM class_date_changes WHERE class_id=$1 ORDER BY on_date',
+    [klass.id]);
   res.json({
     class: { ...klass, label: classLabel(klass) },
     courses: await coursesForClass(klass.id),
     sessions: sessions.rows,
-    skips: skips.rows.map((row) => String(row.skip_on).slice(0, 10)),
+    dateChanges: changes.rows.map((row) => ({
+      onDate: String(row.on_date).slice(0, 10),
+      kind: row.kind,
+      movedTo: row.moved_to ? row.moved_to.toISOString() : null,
+      reason: row.reason || '',
+    })),
     recordings: await classRecordingProgress(klass.id),
   });
 }));
@@ -247,24 +254,41 @@ router.get('/classes/:id/setup', asyncRoute(async (req, res) => {
    administrator ticks their way down it, so what arrives is the finished
    decision about every week rather than a stream of individual ones that could
    half-apply. */
-router.put('/classes/:id/skips', asyncRoute(async (req, res) => {
+router.put('/classes/:id/date-changes', asyncRoute(async (req, res) => {
   const parsed = z.object({
-    skips: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(200),
+    changes: z.array(z.object({
+      onDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      kind: z.enum(['skipped', 'recorded', 'moved']),
+      movedTo: z.string().datetime().nullable().optional(),
+      reason: z.string().max(200).optional().default(''),
+    })).max(200),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid list of dates.' });
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid list of class dates.' });
   const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.id]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
 
+  /* A move with nowhere to move to would leave students with a week marked as
+     changed and no answer about when it is. Refused here as well as in the
+     database, so the message is a sentence rather than a constraint name. */
+  const homeless = parsed.data.changes.find((change) => change.kind === 'moved' && !change.movedTo);
+  if (homeless) {
+    return res.status(400).json({ error: `Give the class moved from ${homeless.onDate} a new date and time.` });
+  }
+
   await transaction(async (client) => {
-    await client.query('DELETE FROM class_skips WHERE class_id=$1', [klass.id]);
-    for (const date of parsed.data.skips) {
-      await client.query('INSERT INTO class_skips(class_id,skip_on) VALUES ($1,$2) ON CONFLICT DO NOTHING',
-        [klass.id, date]);
+    await client.query('DELETE FROM class_date_changes WHERE class_id=$1', [klass.id]);
+    for (const change of parsed.data.changes) {
+      await client.query(
+        `INSERT INTO class_date_changes(class_id,on_date,kind,moved_to,reason)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (class_id,on_date) DO UPDATE
+           SET kind=EXCLUDED.kind, moved_to=EXCLUDED.moved_to, reason=EXCLUDED.reason`,
+        [klass.id, change.onDate, change.kind, change.movedTo || null, change.reason || ''],
+      );
     }
   });
-  await audit({ actorId: req.user.id, action: 'class.skips_updated', entityType: 'class', entityId: klass.id,
-    metadata: { count: parsed.data.skips.length }, ip: req.ip });
-  res.json({ skips: parsed.data.skips });
+  await audit({ actorId: req.user.id, action: 'class.dates_updated', entityType: 'class', entityId: klass.id,
+    metadata: { count: parsed.data.changes.length }, ip: req.ip });
+  res.json({ changes: parsed.data.changes });
 }));
 
 /* An extra sitting: a second evening that week, a catch-up, a moved class. It
@@ -1541,9 +1565,9 @@ router.get('/community/:classId', asyncRoute(async (req, res) => {
      FROM class_sessions WHERE class_id=$1 AND starts_at > now() - interval '4 hours'
      ORDER BY starts_at`, [klass.id],
   )).rows;
-  const boardSkips = (await query('SELECT skip_on FROM class_skips WHERE class_id=$1', [klass.id])).rows
-    .map((row) => String(row.skip_on).slice(0, 10));
-  const next = nextClassWithSessions(klass, sessions, undefined, boardSkips);
+  const boardChanges = (await query(
+    'SELECT on_date, kind, moved_to FROM class_date_changes WHERE class_id=$1', [klass.id])).rows;
+  const next = nextClassWithSessions(klass, sessions, undefined, boardChanges);
   const overrideWeeks = next
     ? (await query('SELECT week_start, join_url FROM weeks WHERE class_id=$1 AND week_start=$2', [klass.id, next.weekStart])).rows
     : [];

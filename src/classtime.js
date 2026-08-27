@@ -48,8 +48,17 @@ export function nextClassAt(classRow, now = DateTime.utc(), skips = []) {
     ? DateTime.fromJSDate(new Date(classRow.starts_on)).setZone(zone).startOf('day') : null;
   const termEnd = classRow.ends_on
     ? DateTime.fromJSDate(new Date(classRow.ends_on)).setZone(zone).endOf('day') : null;
-  const skipped = new Set((skips || []).map((skip) =>
-    String(skip.skip_on ?? skip).slice(0, 10)));
+  /* Three things can happen to a week, and only one of them is an absence.
+     A week that is off or replaced by a recording has no live class and is
+     stepped over; a week that has moved still has one, at a different hour. */
+  const changes = new Map((skips || []).map((change) => {
+    const date = String(change?.on_date ?? change?.skip_on ?? change).slice(0, 10);
+    return [date, typeof change === 'object' ? change : { kind: 'skipped' }];
+  }));
+  const noLiveClass = (date) => {
+    const change = changes.get(date);
+    return Boolean(change) && change.kind !== 'moved';
+  };
 
   if (termStart && starts < termStart) {
     // Before the course begins, the first class is the first sitting in term.
@@ -58,8 +67,41 @@ export function nextClassAt(classRow, now = DateTime.utc(), skips = []) {
     if (starts < termStart) starts = starts.plus({ weeks: 1 });
   }
 
-  for (let guard = 0; guard < 60 && skipped.has(starts.toISODate()); guard += 1) {
+  for (let guard = 0; guard < 60 && noLiveClass(starts.toISODate()); guard += 1) {
     starts = starts.plus({ weeks: 1 });
+  }
+
+  /* A moved week still happens, at the hour it moved to.
+     ------------------------------------------------------------------
+     Treated as a candidate rather than as an adjustment to the recurring slot,
+     because the two can be in either order. A class moved from Monday to
+     Thursday is still running on Thursday evening, but by then the recurring
+     calculation has already stepped past Monday and would answer with next week
+     — telling somebody sitting in the class that it is on in four days.
+
+     So every move that has not finished is a candidate, and the soonest wins. */
+  let movedFrom = null;
+  const moves = [...changes.entries()]
+    .filter(([, change]) => change.kind === 'moved' && change.moved_to)
+    .map(([date, change]) => ({ date, at: DateTime.fromJSDate(new Date(change.moved_to)).setZone(zone) }))
+    .filter((move) => move.at.isValid
+      && reference < move.at.plus({ minutes: CLASS_RUNS_FOR_MINUTES })
+      && (!termEnd || move.at <= termEnd))
+    .sort((a, b) => a.at - b.at);
+
+  /* The recurring answer is only a candidate if its own week has not been moved
+     away — otherwise a class moved to Thursday would also be offered on Monday. */
+  const recurringMoved = changes.get(starts.toISODate())?.kind === 'moved';
+  const soonestMove = moves[0];
+  if (soonestMove && (recurringMoved || soonestMove.at < starts)) {
+    movedFrom = soonestMove.date;
+    starts = soonestMove.at;
+  } else if (recurringMoved) {
+    // Moved, but the move is behind us: the next live class is the week after.
+    starts = starts.plus({ weeks: 1 });
+    for (let guard = 0; guard < 60 && noLiveClass(starts.toISODate()); guard += 1) {
+      starts = starts.plus({ weeks: 1 });
+    }
   }
 
   // Past the end of the course there is no next class, and saying so is right.
@@ -75,6 +117,8 @@ export function nextClassAt(classRow, now = DateTime.utc(), skips = []) {
     // The Monday of the week this sitting belongs to, so a week-specific link can
     // be matched against it.
     weekStart: starts.startOf('week').toISODate(),
+    // Set when this sitting is not on its usual day, so the banner can say so.
+    movedFrom,
   };
 }
 

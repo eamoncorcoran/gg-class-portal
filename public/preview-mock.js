@@ -550,7 +550,9 @@
     start.setUTCHours(hour-1,minute,0,0);
     if(start.getTime()+120*60000<now.getTime())start.setUTCDate(start.getUTCDate()+7);
     // Weeks the class does not meet are stepped over, as on the server.
-    const off=new Set((skips||[]).map((x)=>String(x).slice(0,10)));
+    // Off or pre-recorded means no live class; moved means one, elsewhere.
+    const off=new Set((skips||[]).filter((x)=>(x.kind||'skipped')!=='moved')
+      .map((x)=>String(x.onDate||x.on_date||x).slice(0,10)));
     for(let guard=0;guard<60&&off.has(start.toISOString().slice(0,10));guard+=1){
       start.setUTCDate(start.getUTCDate()+7);
     }
@@ -672,7 +674,7 @@
         .flatMap((c)=>lessonsOfCourse(c.id,false));
       return json({
         class:{...klass,label:classLabel(klass)},
-        skips:(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on),
+        dateChanges:(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id),
         courses:(db.courses||[]).map((c)=>({id:c.id,title:c.title,open_to_all:c.open_to_all,
           enrolled:(db.courseClasses||[]).some((cc)=>cc.course_id===c.id&&cc.class_id===klass.id)})),
         sessions:(db.classSessions||[]).filter((x)=>x.class_id===klass.id)
@@ -684,11 +686,11 @@
         }),
       });
     }
-    params=match(path,'/api/admin/classes/:id/skips');
+    params=match(path,'/api/admin/classes/:id/date-changes');
     if(params&&method==='PUT'){
-      db.classSkips=(db.classSkips||[]).filter((x)=>x.class_id!==params.id)
-        .concat((body.skips||[]).map((skip_on)=>({class_id:params.id,skip_on})));
-      save();return json({skips:body.skips||[]});
+      db.classDateChanges=(db.classDateChanges||[]).filter((x)=>x.class_id!==params.id)
+        .concat((body.changes||[]).map((c)=>({class_id:params.id,...c})));
+      save();return json({changes:body.changes||[]});
     }
     params=match(path,'/api/admin/classes/:id/sessions');
     if(params&&method==='POST'){
@@ -1288,7 +1290,7 @@
       const checkins=db.checkins.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id));
       const homework=db.homework.filter((item)=>item.student_id===student.id&&assignmentIds.has(item.assignment_id));
       const notifications=checkins.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length+homework.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length;
-      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
+      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
     }
     if(path==='/api/student/dismissals'&&method==='POST'){
       const student=user.role==='student'?user:db.users.find((u)=>u.id==='s1');
@@ -1356,7 +1358,7 @@
     if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
       const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
       return json({class:{...klass,label:classLabel(klass)},
-        nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on)),
+        nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classDateChanges||[]).filter((x)=>x.class_id===klass.id)),
         ...boardPayload(params.classId,true,user.id,url,true)});
     }
     /* The scheduled queue and the spreadsheet import. The preview has no CSV
