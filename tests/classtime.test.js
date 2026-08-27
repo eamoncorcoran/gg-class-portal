@@ -62,3 +62,68 @@ test('a week may override the class link, otherwise the class link stands', () =
   assert.equal(joinLinkFor(klass, [{ week_start: '2026-08-10', join_url: null }], next), 'https://zoom.example/term');
   assert.equal(joinLinkFor({ join_url: null }, [], next), null);
 });
+
+/* A term, and the weeks inside it the class does not meet.
+   ------------------------------------------------------------------
+   The next class was worked out from a day and a time alone, which describes
+   most weeks and not the ones that matter. It counted down to a class on the
+   31st of August for a course beginning on the 7th of September, and it would
+   have counted down just as confidently to the October bank holiday. */
+
+const TERM = {
+  day_of_week: 1, start_time: '19:00', timezone: 'Europe/Dublin',
+  starts_on: '2026-09-07', ends_on: '2027-06-01',
+};
+const on = (iso) => DateTime.fromISO(iso, { zone: 'Europe/Dublin' });
+const dublin = (result) => (result
+  ? DateTime.fromISO(result.startsAt).setZone('Europe/Dublin').toFormat('yyyy-LL-dd HH:mm')
+  : null);
+
+test('there is no class before the course begins', () => {
+  // This is the bug as reported: a Monday in August, for a course starting in September.
+  assert.equal(dublin(nextClassAt(TERM, on('2026-08-27T10:00'))), '2026-09-07 19:00');
+  assert.equal(dublin(nextClassAt(TERM, on('2026-06-01T10:00'))), '2026-09-07 19:00');
+});
+
+test('there is no class after the course ends', () => {
+  assert.equal(nextClassAt(TERM, on('2027-07-01T10:00')), null);
+  // The last sitting inside the term is still offered.
+  assert.equal(dublin(nextClassAt(TERM, on('2027-05-30T10:00'))), '2027-05-31 19:00');
+});
+
+test('a skipped week is stepped over, not counted down to', () => {
+  const skips = [{ skip_on: '2026-10-26' }];
+  assert.equal(dublin(nextClassAt(TERM, on('2026-10-20T10:00'), skips)), '2026-11-02 19:00');
+  // And from inside the skipped week itself.
+  assert.equal(dublin(nextClassAt(TERM, on('2026-10-26T10:00'), skips)), '2026-11-02 19:00');
+});
+
+test('consecutive skips are stepped over together', () => {
+  // A fortnight off at Christmas is two rows, not one.
+  const skips = ['2026-12-21', '2026-12-28', '2027-01-04'].map((skip_on) => ({ skip_on }));
+  assert.equal(dublin(nextClassAt(TERM, on('2026-12-15T10:00'), skips)), '2027-01-11 19:00');
+});
+
+test('plain dates work as well as rows, since both reach this', () => {
+  assert.equal(dublin(nextClassAt(TERM, on('2026-10-20T10:00'), ['2026-10-26'])), '2026-11-02 19:00');
+});
+
+test('a class with no term set behaves exactly as it did', () => {
+  const { starts_on: _s, ends_on: _e, ...noTerm } = TERM;
+  const next = nextClassAt(noTerm, on('2026-08-27T10:00'));
+  assert.equal(dublin(next), '2026-08-31 19:00', 'without a term the next Monday is still the answer');
+});
+
+test('a term entirely skipped does not spin', () => {
+  /* Every week off is nonsense, but a search that walks forward one week at a
+     time has to be bounded or a nonsense configuration hangs the request. */
+  const skips = [];
+  const cursor = new Date('2026-09-07T12:00:00Z');
+  while (cursor < new Date('2027-06-01T12:00:00Z')) {
+    skips.push({ skip_on: cursor.toISOString().slice(0, 10) });
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+  const started = Date.now();
+  nextClassAt(TERM, on('2026-09-01T10:00'), skips);
+  assert.ok(Date.now() - started < 500, 'the search must be bounded');
+});

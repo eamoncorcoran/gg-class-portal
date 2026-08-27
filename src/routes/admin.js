@@ -231,12 +231,40 @@ router.get('/classes/:id/setup', asyncRoute(async (req, res) => {
   const sessions = await query(
     `SELECT id, starts_at, duration_minutes, join_url, label, cancelled
      FROM class_sessions WHERE class_id=$1 ORDER BY starts_at DESC`, [klass.id]);
+  const skips = await query('SELECT skip_on, reason FROM class_skips WHERE class_id=$1 ORDER BY skip_on', [klass.id]);
   res.json({
     class: { ...klass, label: classLabel(klass) },
     courses: await coursesForClass(klass.id),
     sessions: sessions.rows,
+    skips: skips.rows.map((row) => String(row.skip_on).slice(0, 10)),
     recordings: await classRecordingProgress(klass.id),
   });
+}));
+
+/* Which weeks the class does not meet.
+   ------------------------------------------------------------------
+   Sent whole rather than one at a time: the screen shows the term and the
+   administrator ticks their way down it, so what arrives is the finished
+   decision about every week rather than a stream of individual ones that could
+   half-apply. */
+router.put('/classes/:id/skips', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    skips: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(200),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid list of dates.' });
+  const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.id]);
+  if (!klass) return res.status(404).json({ error: 'Class not found.' });
+
+  await transaction(async (client) => {
+    await client.query('DELETE FROM class_skips WHERE class_id=$1', [klass.id]);
+    for (const date of parsed.data.skips) {
+      await client.query('INSERT INTO class_skips(class_id,skip_on) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+        [klass.id, date]);
+    }
+  });
+  await audit({ actorId: req.user.id, action: 'class.skips_updated', entityType: 'class', entityId: klass.id,
+    metadata: { count: parsed.data.skips.length }, ip: req.ip });
+  res.json({ skips: parsed.data.skips });
 }));
 
 /* An extra sitting: a second evening that week, a catch-up, a moved class. It
@@ -1513,7 +1541,9 @@ router.get('/community/:classId', asyncRoute(async (req, res) => {
      FROM class_sessions WHERE class_id=$1 AND starts_at > now() - interval '4 hours'
      ORDER BY starts_at`, [klass.id],
   )).rows;
-  const next = nextClassWithSessions(klass, sessions);
+  const boardSkips = (await query('SELECT skip_on FROM class_skips WHERE class_id=$1', [klass.id])).rows
+    .map((row) => String(row.skip_on).slice(0, 10));
+  const next = nextClassWithSessions(klass, sessions, undefined, boardSkips);
   const overrideWeeks = next
     ? (await query('SELECT week_start, join_url FROM weeks WHERE class_id=$1 AND week_start=$2', [klass.id, next.weekStart])).rows
     : [];

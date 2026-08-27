@@ -21,7 +21,7 @@ export const SOON_WITHIN_HOURS = 12;
  *
  * Returns null only if the class is missing a day or a start time.
  */
-export function nextClassAt(classRow, now = DateTime.utc()) {
+export function nextClassAt(classRow, now = DateTime.utc(), skips = []) {
   if (!classRow?.day_of_week || !classRow?.start_time) return null;
   const zone = classRow.timezone || 'Europe/Dublin';
   const [hour, minute] = String(classRow.start_time).split(':').map(Number);
@@ -35,7 +35,35 @@ export function nextClassAt(classRow, now = DateTime.utc()) {
   // A class that started an hour ago has not finished, so it is still the one to
   // point at. Only once it is properly over do we move to next week's.
   const endsAt = thisWeek.plus({ minutes: CLASS_RUNS_FOR_MINUTES });
-  const starts = reference < endsAt ? thisWeek : thisWeek.plus({ weeks: 1 });
+  let starts = reference < endsAt ? thisWeek : thisWeek.plus({ weeks: 1 });
+
+  /* The day and the time describe most weeks and not the ones that matter. A
+     term has a first and last day, and inside it there are weeks the class does
+     not meet — a bank holiday, a mid-term. Without this the banner counted down
+     to a class nobody was holding, which is worse than saying nothing.
+
+     Skipped weeks are stepped over rather than reasoned about, and the search is
+     bounded: a term of skips, or a course that has ended, must not spin. */
+  const termStart = classRow.starts_on
+    ? DateTime.fromJSDate(new Date(classRow.starts_on)).setZone(zone).startOf('day') : null;
+  const termEnd = classRow.ends_on
+    ? DateTime.fromJSDate(new Date(classRow.ends_on)).setZone(zone).endOf('day') : null;
+  const skipped = new Set((skips || []).map((skip) =>
+    String(skip.skip_on ?? skip).slice(0, 10)));
+
+  if (termStart && starts < termStart) {
+    // Before the course begins, the first class is the first sitting in term.
+    const weeksAhead = Math.ceil(termStart.diff(starts, 'weeks').weeks);
+    starts = starts.plus({ weeks: Math.max(weeksAhead, 0) });
+    if (starts < termStart) starts = starts.plus({ weeks: 1 });
+  }
+
+  for (let guard = 0; guard < 60 && skipped.has(starts.toISODate()); guard += 1) {
+    starts = starts.plus({ weeks: 1 });
+  }
+
+  // Past the end of the course there is no next class, and saying so is right.
+  if (termEnd && starts > termEnd) return null;
 
   const minutesAway = Math.round(starts.diff(reference, 'minutes').minutes);
   return {
@@ -74,9 +102,9 @@ export function joinLinkFor(classRow, weeks = [], next = null) {
  * A cancelled session is skipped but not forgotten: it stays on the row so the
  * administrator can see they called it off.
  */
-export function nextClassWithSessions(classRow, sessions = [], now = DateTime.utc()) {
+export function nextClassWithSessions(classRow, sessions = [], now = DateTime.utc(), skips = []) {
   const reference = (now.isLuxonDateTime ? now : DateTime.fromJSDate(new Date(now)));
-  const recurring = nextClassAt(classRow, reference);
+  const recurring = nextClassAt(classRow, reference, skips);
 
   const upcoming = (sessions || [])
     .filter((session) => !session.cancelled)

@@ -4766,6 +4766,12 @@ async function openClassSetupModal(classId) {
       </section>
 
       <section class="setup-block">
+        <h4>Class dates</h4>
+        <p class="muted small">Every ${escapeHtml(DAY_NAMES[klass.day_of_week] || 'week')} in the term. Switch off the weeks the class does not meet — bank holidays and mid-terms are marked, but the decision is yours.</p>
+        <div id="class-dates">${classDateList(klass, setup.skips || [])}</div>
+      </section>
+
+      <section class="setup-block">
         <h4>Community</h4>
         <label class="check-row"><input type="checkbox" name="hasCommunity" ${klass.has_community ? 'checked' : ''}> This class has a board</label>
         <p class="muted small">Turned off, Community disappears from these students’ menu entirely. Anything already posted is kept and comes back if it is turned on again.</p>
@@ -4807,6 +4813,21 @@ async function openClassSetupModal(classId) {
     </section>`,
     footer: `<button class="btn" data-close-modal>Close</button><button class="btn primary" id="save-class-setup">Save</button>`,
     onOpen() {
+      /* The count is the only feedback that a tick did anything, so it moves
+         with them rather than waiting for a save. */
+      const dates = document.getElementById('class-dates');
+      dates?.addEventListener('change', (event) => {
+        if (!event.target.matches('[data-class-date]')) return;
+        event.target.closest('.date-row')?.classList.toggle('is-off', !event.target.checked);
+        const running = dates.querySelectorAll('[data-class-date]:checked').length;
+        const count = document.getElementById('class-date-count');
+        if (count) count.textContent = String(running);
+        const row = event.target.closest('.date-row')?.querySelector('.date-copy span');
+        if (row) row.textContent = event.target.checked
+          ? `${String(klass.start_time).slice(0, 5)} · ${klass.timezone || 'Europe/Dublin'}`
+          : 'No class this week';
+      });
+
       document.getElementById('save-class-setup').addEventListener('click', async () => {
         const form = document.getElementById('class-setup-form');
         const data = new FormData(form);
@@ -4824,6 +4845,16 @@ async function openClassSetupModal(classId) {
               courseIds: data.getAll('courseIds'),
             },
           });
+          /* Sent whole, after the class itself, because the term dates decide
+             which dates exist at all — saving the skips first could file them
+             against a term that is about to change. */
+          const list = document.getElementById('class-dates');
+          if (list?.querySelector('[data-class-date]')) {
+            const skips = [...list.querySelectorAll('[data-class-date]')]
+              .filter((box) => !box.checked)
+              .map((box) => box.dataset.classDate);
+            await api(`/api/admin/classes/${classId}/skips`, { method: 'PUT', body: { skips } });
+          }
           closeModal(); await renderAdmin(); showToast('Class saved');
         } catch (error) { showToast(error.message, 'error'); }
       });
@@ -4856,6 +4887,67 @@ async function openClassSetupModal(classId) {
     },
   });
 }
+
+/* Every sitting of the weekly class, so the exceptions can be picked by eye.
+   ------------------------------------------------------------------
+   Modelled on the check-in scheduler, which had the same problem and solved it
+   the same way: a term is a list somebody reads down, ticking off the weeks that
+   are not happening. Doing it any other way means remembering which Monday is
+   the October bank holiday, which nobody does reliably.
+
+   The holidays are marked but nothing is switched off automatically — a course
+   that deliberately runs through a bank holiday is a normal thing, and the
+   portal has no business overruling it. */
+function classDateList(klass, skips = []) {
+  if (!klass.starts_on || !klass.ends_on) {
+    return `<p class="muted small">Set the first and last day of the course above, and every class date appears here.</p>`;
+  }
+  const skipped = new Set(skips.map((date) => String(date).slice(0, 10)));
+  const dates = classDatesFor(klass);
+  if (!dates.length) return '<p class="muted small">No class dates fall inside those dates.</p>';
+
+  const today = new Date().toISOString().slice(0, 10);
+  return `<ul class="date-list">${dates.map((date) => {
+    const marks = holidaysInWeek(mondayOf(date)).filter((mark) => mark.date === date);
+    const off = skipped.has(date);
+    const past = date < today;
+    return `<li class="date-row ${off ? 'is-off' : ''} ${past ? 'is-past' : ''}">
+      <label class="toggle-row">
+        <span class="toggle"><input type="checkbox" data-class-date="${date}" ${off ? '' : 'checked'}><span></span></span>
+        <span class="date-copy">
+          <strong>${escapeHtml(new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }))}</strong>
+          <span>${off ? 'No class this week' : `${escapeHtml(String(klass.start_time).slice(0, 5))} · ${escapeHtml(klass.timezone || 'Europe/Dublin')}`}</span>
+        </span>
+      </label>
+      ${marks.length ? `<span class="date-mark">${marks.map((mark) => escapeHtml(mark.name)).join(' · ')}</span>` : ''}
+    </li>`;
+  }).join('')}</ul>
+  <p class="muted small date-count"><strong id="class-date-count">${dates.length - skipped.size}</strong> of ${dates.length} weeks running.</p>`;
+}
+
+/** Every date the weekly class falls on, between the first and last day. */
+function classDatesFor(klass) {
+  const dates = [];
+  // Stepped at midday UTC so a summer-time boundary cannot skip or repeat one.
+  const cursor = new Date(`${String(klass.starts_on).slice(0, 10)}T12:00:00Z`);
+  const end = new Date(`${String(klass.ends_on).slice(0, 10)}T12:00:00Z`);
+  // Forward to the first sitting on or after the first day.
+  const wanted = Number(klass.day_of_week);
+  while (((cursor.getUTCDay() + 6) % 7) + 1 !== wanted) cursor.setUTCDate(cursor.getUTCDate() + 1);
+  while (cursor <= end && dates.length < 200) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+  return dates;
+}
+
+/** The Monday of the week a date falls in, for looking up what is on that week. */
+function mondayOf(date) {
+  const at = new Date(`${date}T12:00:00Z`);
+  at.setUTCDate(at.getUTCDate() - ((at.getUTCDay() + 6) % 7));
+  return at.toISOString().slice(0, 10);
+}
+
 
 /* An extra sitting, past or future. A cancelled one stays on the list, struck
    through, so it is clear it was called off rather than never entered. */

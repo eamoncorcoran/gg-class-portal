@@ -1580,6 +1580,24 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 @media (max-width:700px){
   .session-edit{grid-template-columns:minmax(0,1fr)}
 }
+
+/* Every sitting of the weekly class, read down and ticked off. The same shape
+   as the check-in scheduler, because it is the same job: a term is a list, and
+   the exceptions are what somebody is actually looking for. */
+.date-list{display:grid;gap:2px;margin:0 0 10px;padding:0;list-style:none;
+  max-height:320px;overflow-y:auto}
+.date-row{display:flex;align-items:center;gap:12px;padding:7px 9px;border-radius:var(--radius-sm)}
+.date-row:hover{background:var(--gray-25)}
+.date-row.is-off .date-copy strong{color:var(--text-quaternary);text-decoration:line-through}
+.date-row.is-past{opacity:.55}
+.date-copy{display:grid;gap:1px;min-width:0}
+.date-copy strong{font-size:13px;font-weight:620}
+.date-copy span{color:var(--text-quaternary);font-size:11.5px}
+.date-mark{margin-left:auto;flex:0 0 auto;padding:3px 9px;border-radius:999px;
+  background:var(--warning-50,#fffaeb);color:var(--warning-700,#b54708);
+  font-size:10.5px;font-weight:700}
+.date-count{margin:0}
+.date-row .toggle-row{flex:1;min-width:0}
 </style>
 </head>
 <body>
@@ -2126,7 +2144,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     return null;
   }
 
-  function previewNextClass(klass,sessions){
+  function previewNextClass(klass,sessions,skips){
     if(!klass?.day_of_week||!klass?.start_time)return null;
     const [hour,minute]=String(klass.start_time).split(':').map(Number);
     // The preview clock is fixed, so this only has to be right for one instant.
@@ -2138,6 +2156,11 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     // Europe/Dublin is UTC+1 in August, so 19:00 local is 18:00 UTC.
     start.setUTCHours(hour-1,minute,0,0);
     if(start.getTime()+120*60000<now.getTime())start.setUTCDate(start.getUTCDate()+7);
+    // Weeks the class does not meet are stepped over, as on the server.
+    const off=new Set((skips||[]).map((x)=>String(x).slice(0,10)));
+    for(let guard=0;guard<60&&off.has(start.toISOString().slice(0,10));guard+=1){
+      start.setUTCDate(start.getUTCDate()+7);
+    }
     let when=start, extra=null;
     // Mirrors nextClassWithSessions: soonest wins, cancelled ones are skipped.
     for(const session of (sessions||[]).filter((x)=>!x.cancelled)){
@@ -2256,6 +2279,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
         .flatMap((c)=>lessonsOfCourse(c.id,false));
       return json({
         class:{...klass,label:classLabel(klass)},
+        skips:(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on),
         courses:(db.courses||[]).map((c)=>({id:c.id,title:c.title,open_to_all:c.open_to_all,
           enrolled:(db.courseClasses||[]).some((cc)=>cc.course_id===c.id&&cc.class_id===klass.id)})),
         sessions:(db.classSessions||[]).filter((x)=>x.class_id===klass.id)
@@ -2266,6 +2290,12 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
             percent:lessons.length?Math.round((done/lessons.length)*100):0};
         }),
       });
+    }
+    params=match(path,'/api/admin/classes/:id/skips');
+    if(params&&method==='PUT'){
+      db.classSkips=(db.classSkips||[]).filter((x)=>x.class_id!==params.id)
+        .concat((body.skips||[]).map((skip_on)=>({class_id:params.id,skip_on})));
+      save();return json({skips:body.skips||[]});
     }
     params=match(path,'/api/admin/classes/:id/sessions');
     if(params&&method==='POST'){
@@ -2865,7 +2895,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
       const checkins=db.checkins.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id));
       const homework=db.homework.filter((item)=>item.student_id===student.id&&assignmentIds.has(item.assignment_id));
       const notifications=checkins.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length+homework.filter((item)=>item.status==='returned'&&!item.feedback_read_at).length;
-      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
+      return json({student,withdrawnAt:student.withdrawn_at||null,class:{...klass,label:classLabel(klass)},weeks,attendance:db.attendance.filter((item)=>item.student_id===student.id&&weekIds.has(item.week_id)),checkins,assignments,homework:homework.map((h)=>({...h,files:(db.homeworkFiles||[]).filter((f)=>f.assignment_id===h.assignment_id&&f.student_id===student.id)})),notifications,nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on)),hasCommunity:klass.has_community!==false,communityUnread:previewUnread(student),progress:previewProgress(checkins,homework),dismissals:(db.dismissals||[]).filter((d)=>d.student_id===student.id).map((d)=>({kind:d.kind,refId:d.ref_id})),serverNow:new RealDate(PREVIEW_NOW).toISOString()});
     }
     if(path==='/api/student/dismissals'&&method==='POST'){
       const student=user.role==='student'?user:db.users.find((u)=>u.id==='s1');
@@ -2933,7 +2963,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     if(params&&method==='GET'&&params.classId!=='thread'&&params.classId!=='post'){
       const klass=db.classes.find((item)=>item.id===params.classId);if(!klass)return error('Class not found',404);
       return json({class:{...klass,label:classLabel(klass)},
-        nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id)),
+        nextClass:previewNextClass(klass,(db.classSessions||[]).filter((x)=>x.class_id===klass.id),(db.classSkips||[]).filter((x)=>x.class_id===klass.id).map((x)=>x.skip_on)),
         ...boardPayload(params.classId,true,user.id,url,true)});
     }
     /* The scheduled queue and the spreadsheet import. The preview has no CSV
@@ -7877,6 +7907,12 @@ async function openClassSetupModal(classId) {
       </section>
 
       <section class="setup-block">
+        <h4>Class dates</h4>
+        <p class="muted small">Every ${escapeHtml(DAY_NAMES[klass.day_of_week] || 'week')} in the term. Switch off the weeks the class does not meet — bank holidays and mid-terms are marked, but the decision is yours.</p>
+        <div id="class-dates">${classDateList(klass, setup.skips || [])}</div>
+      </section>
+
+      <section class="setup-block">
         <h4>Community</h4>
         <label class="check-row"><input type="checkbox" name="hasCommunity" ${klass.has_community ? 'checked' : ''}> This class has a board</label>
         <p class="muted small">Turned off, Community disappears from these students’ menu entirely. Anything already posted is kept and comes back if it is turned on again.</p>
@@ -7918,6 +7954,21 @@ async function openClassSetupModal(classId) {
     </section>`,
     footer: `<button class="btn" data-close-modal>Close</button><button class="btn primary" id="save-class-setup">Save</button>`,
     onOpen() {
+      /* The count is the only feedback that a tick did anything, so it moves
+         with them rather than waiting for a save. */
+      const dates = document.getElementById('class-dates');
+      dates?.addEventListener('change', (event) => {
+        if (!event.target.matches('[data-class-date]')) return;
+        event.target.closest('.date-row')?.classList.toggle('is-off', !event.target.checked);
+        const running = dates.querySelectorAll('[data-class-date]:checked').length;
+        const count = document.getElementById('class-date-count');
+        if (count) count.textContent = String(running);
+        const row = event.target.closest('.date-row')?.querySelector('.date-copy span');
+        if (row) row.textContent = event.target.checked
+          ? `${String(klass.start_time).slice(0, 5)} · ${klass.timezone || 'Europe/Dublin'}`
+          : 'No class this week';
+      });
+
       document.getElementById('save-class-setup').addEventListener('click', async () => {
         const form = document.getElementById('class-setup-form');
         const data = new FormData(form);
@@ -7935,6 +7986,16 @@ async function openClassSetupModal(classId) {
               courseIds: data.getAll('courseIds'),
             },
           });
+          /* Sent whole, after the class itself, because the term dates decide
+             which dates exist at all — saving the skips first could file them
+             against a term that is about to change. */
+          const list = document.getElementById('class-dates');
+          if (list?.querySelector('[data-class-date]')) {
+            const skips = [...list.querySelectorAll('[data-class-date]')]
+              .filter((box) => !box.checked)
+              .map((box) => box.dataset.classDate);
+            await api(`/api/admin/classes/${classId}/skips`, { method: 'PUT', body: { skips } });
+          }
           closeModal(); await renderAdmin(); showToast('Class saved');
         } catch (error) { showToast(error.message, 'error'); }
       });
@@ -7967,6 +8028,67 @@ async function openClassSetupModal(classId) {
     },
   });
 }
+
+/* Every sitting of the weekly class, so the exceptions can be picked by eye.
+   ------------------------------------------------------------------
+   Modelled on the check-in scheduler, which had the same problem and solved it
+   the same way: a term is a list somebody reads down, ticking off the weeks that
+   are not happening. Doing it any other way means remembering which Monday is
+   the October bank holiday, which nobody does reliably.
+
+   The holidays are marked but nothing is switched off automatically — a course
+   that deliberately runs through a bank holiday is a normal thing, and the
+   portal has no business overruling it. */
+function classDateList(klass, skips = []) {
+  if (!klass.starts_on || !klass.ends_on) {
+    return `<p class="muted small">Set the first and last day of the course above, and every class date appears here.</p>`;
+  }
+  const skipped = new Set(skips.map((date) => String(date).slice(0, 10)));
+  const dates = classDatesFor(klass);
+  if (!dates.length) return '<p class="muted small">No class dates fall inside those dates.</p>';
+
+  const today = new Date().toISOString().slice(0, 10);
+  return `<ul class="date-list">${dates.map((date) => {
+    const marks = holidaysInWeek(mondayOf(date)).filter((mark) => mark.date === date);
+    const off = skipped.has(date);
+    const past = date < today;
+    return `<li class="date-row ${off ? 'is-off' : ''} ${past ? 'is-past' : ''}">
+      <label class="toggle-row">
+        <span class="toggle"><input type="checkbox" data-class-date="${date}" ${off ? '' : 'checked'}><span></span></span>
+        <span class="date-copy">
+          <strong>${escapeHtml(new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }))}</strong>
+          <span>${off ? 'No class this week' : `${escapeHtml(String(klass.start_time).slice(0, 5))} · ${escapeHtml(klass.timezone || 'Europe/Dublin')}`}</span>
+        </span>
+      </label>
+      ${marks.length ? `<span class="date-mark">${marks.map((mark) => escapeHtml(mark.name)).join(' · ')}</span>` : ''}
+    </li>`;
+  }).join('')}</ul>
+  <p class="muted small date-count"><strong id="class-date-count">${dates.length - skipped.size}</strong> of ${dates.length} weeks running.</p>`;
+}
+
+/** Every date the weekly class falls on, between the first and last day. */
+function classDatesFor(klass) {
+  const dates = [];
+  // Stepped at midday UTC so a summer-time boundary cannot skip or repeat one.
+  const cursor = new Date(`${String(klass.starts_on).slice(0, 10)}T12:00:00Z`);
+  const end = new Date(`${String(klass.ends_on).slice(0, 10)}T12:00:00Z`);
+  // Forward to the first sitting on or after the first day.
+  const wanted = Number(klass.day_of_week);
+  while (((cursor.getUTCDay() + 6) % 7) + 1 !== wanted) cursor.setUTCDate(cursor.getUTCDate() + 1);
+  while (cursor <= end && dates.length < 200) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+  return dates;
+}
+
+/** The Monday of the week a date falls in, for looking up what is on that week. */
+function mondayOf(date) {
+  const at = new Date(`${date}T12:00:00Z`);
+  at.setUTCDate(at.getUTCDate() - ((at.getUTCDay() + 6) % 7));
+  return at.toISOString().slice(0, 10);
+}
+
 
 /* An extra sitting, past or future. A cancelled one stays on the list, struck
    through, so it is clear it was called off rather than never entered. */

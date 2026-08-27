@@ -189,7 +189,9 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
      FROM class_sessions WHERE class_id=$1 AND starts_at > now() - interval '4 hours'
      ORDER BY starts_at`, [klass.id],
   )).rows;
-  const next = nextClassWithSessions(klass, sessions);
+  const skips = (await query('SELECT skip_on FROM class_skips WHERE class_id=$1', [klass.id])).rows
+    .map((row) => String(row.skip_on).slice(0, 10));
+  const next = nextClassWithSessions(klass, sessions, undefined, skips);
   const overrideWeeks = next
     ? (await query('SELECT week_start, join_url FROM weeks WHERE class_id=$1 AND week_start=$2', [klass.id, next.weekStart])).rows
     : [];
