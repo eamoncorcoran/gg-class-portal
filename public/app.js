@@ -3909,7 +3909,7 @@ function feedPost(thread, admin) {
         <span class="post-meta">
           ${thread.scheduled ? `<b class="tag-sched">Scheduled ${escapeHtml(scheduledFor(thread.published_at))}</b>` : escapeHtml(timeAgo(thread.published_at || thread.created_at))}
           ${thread.pinned ? ' · <b>Pinned</b>' : ''}
-          ${thread.locked ? ' · Closed' : ''}
+          ${thread.locked && admin ? ' · Closed' : ''}
           ${thread.deleted_at && admin ? ' · <b class="tag-removed">Removed</b>' : ''}
         </span>
       </div>
@@ -3952,6 +3952,11 @@ function feedFilters() {
       ${categories.map((row) => chip(row.id, row.name)).join('')}
     </div>
     <div class="sorts">
+      ${isAdmin() ? `<div class="seg board-state">
+        <button class="seg-btn ${!state.boardState ? 'on' : ''}" data-board-state="">All</button>
+        <button class="seg-btn ${state.boardState === 'open' ? 'on' : ''}" data-board-state="open">Open</button>
+        <button class="seg-btn ${state.boardState === 'closed' ? 'on' : ''}" data-board-state="closed">Closed</button>
+      </div>` : ''}
       <button class="sort ${state.boardSort !== 'hot' ? 'on' : ''}" data-board-sort="new">Latest</button>
       <button class="sort ${state.boardSort === 'hot' ? 'on' : ''}" data-board-sort="hot">Hot</button>
     </div>
@@ -4043,12 +4048,23 @@ function feedEmpty(admin) {
 }
 
 function feedLayout(admin) {
-  const threads = state.community?.threads || [];
+  const all = state.community?.threads || [];
+  /* Filtered here rather than on the server: the board is one class's posts and
+     already all in hand, so a round trip to hide some of them would be slower
+     and no more correct. Students never set this. */
+  const threads = admin && state.boardState
+    ? all.filter((thread) => (state.boardState === 'closed' ? thread.locked : !thread.locked))
+    : all;
   return `<div class="feed">
     <div class="feed-col">
       ${feedComposerBar()}
       ${feedFilters()}
-      ${threads.length ? `<div class="posts">${threads.map((thread) => feedPost(thread, admin)).join('')}</div>` : feedEmpty(admin)}
+      ${threads.length
+        ? `<div class="posts">${threads.map((thread) => feedPost(thread, admin)).join('')}</div>`
+        : (admin && state.boardState
+            ? `<div class="feed-empty"><h3>Nothing ${escapeHtml(state.boardState)}</h3>
+                <p>No posts on this board are ${escapeHtml(state.boardState)} at the moment.</p></div>`
+            : feedEmpty(admin))}
     </div>
     ${feedSide()}
   </div>`;
@@ -4142,7 +4158,7 @@ function renderThreadDrawer() {
         ${boardAvatar(me(), 'sm')}
         <div class="reply-box">
           ${dictateButton('reply-body')}
-          <textarea id="reply-body" rows="3" placeholder="Write a comment"></textarea>
+          <textarea id="reply-body" rows="2" data-grow placeholder="Write a comment"></textarea>
           <div class="reply-actions">
             ${emojiButton('reply-body')}
             <button class="btn primary" id="send-reply">Comment</button>
@@ -4154,6 +4170,7 @@ function renderThreadDrawer() {
       bindDictation();
       bindReactions(modalRoot);
       bindEmojiButtons(modalRoot);
+      bindAutoGrow(modalRoot);
       if (admin) loadReplyDraft(thread.id);
       if (admin) bindReplyRecorder();
       document.getElementById('send-reply')?.addEventListener('click', async () => {
@@ -4502,6 +4519,40 @@ function openReactionPicker(anchor, type, id) {
    Never rendered for a student — this whole function is behind an admin check
    at the one call site, and the field it reads is stripped from every student
    payload on the server as well. */
+/**
+ * Let a text box grow to fit what is in it.
+ *
+ * A fixed row count is right for an empty box and wrong the moment there is
+ * anything in it: a comment of any length gets a scrollbar and a three-line
+ * window onto itself. Capped, so a very long reply does not push the buttons off
+ * the screen — past that it does scroll, which by then is the lesser evil.
+ */
+function autoGrow(field, { min = 2, max = 14 } = {}) {
+  if (!field) return;
+  /* Counted rather than measured. The obvious implementation reads scrollHeight
+     after resetting the height, and in this dialog that reports a figure from
+     the surrounding layout rather than from the text — an empty box claiming to
+     need three hundred pixels. Rows are a native property of a textarea, need no
+     measurement, and cannot be thrown off by whatever the box happens to sit in.
+
+     Wrapping is estimated from the column width, which is what makes a single
+     long paragraph grow rather than sitting on one row with a scrollbar. */
+  const columns = Math.max(20, Math.floor(field.clientWidth / 8) || 60);
+  const lines = String(field.value || '').split('\n')
+    .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / columns)), 0);
+  field.rows = Math.min(Math.max(lines, min), max);
+}
+
+/** Every box that should grow as it is typed into. */
+function bindAutoGrow(root = document) {
+  root.querySelectorAll('textarea[data-grow]').forEach((field) => {
+    if (field.dataset.growBound) return;
+    field.dataset.growBound = '1';
+    field.addEventListener('input', () => autoGrow(field));
+    autoGrow(field);
+  });
+}
+
 async function loadReplyDraft(threadId, { regenerate = false } = {}) {
   const holder = document.getElementById('reply-draft');
   if (!holder) return;
@@ -4519,7 +4570,7 @@ async function loadReplyDraft(threadId, { regenerate = false } = {}) {
     holder.innerHTML = `<div class="rd-head">
         <span>Suggested reply</span>
         <span class="rd-tools">
-          <button class="text-link" data-use-draft="1">Use this</button>
+          <button class="text-link" data-use-draft="1">Edit this</button>
           <button class="text-link" data-redraft="1">Draft again</button>
         </span>
       </div>
@@ -4529,9 +4580,21 @@ async function loadReplyDraft(threadId, { regenerate = false } = {}) {
     const box = document.getElementById('reply-body');
     if (!box) return;
     box.value = result.draft;
+    /* Grown to fit before it is scrolled to, because a five-line draft dropped
+       into a three-line box shows a third of itself and hides the rest behind a
+       scrollbar — which is no way to edit something you are about to send under
+       your own name. */
+    autoGrow(box);
     box.focus();
     // Cursor at the end, because the first thing anybody does is edit it.
     box.setSelectionRange(box.value.length, box.value.length);
+    box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    /* The panel has done its job. Leaving the draft on screen beside a box that
+       now contains the same words invites editing the wrong one. */
+    holder.classList.add('is-used');
+    holder.querySelector('.rd-body')?.classList.add('hidden');
+    const head = holder.querySelector('.rd-head span');
+    if (head) head.textContent = 'Moved into your comment below';
   });
   holder.querySelector('[data-redraft]')?.addEventListener('click', () => loadReplyDraft(threadId, { regenerate: true }));
 }
@@ -4641,6 +4704,11 @@ function bindFeed() {
   document.querySelectorAll('[data-board-sort]').forEach((button) => button.addEventListener('click', () => {
     state.boardSort = button.dataset.boardSort;
     reloadBoard();
+  }));
+  /* Open and closed are already in hand, so this redraws rather than reloading. */
+  document.querySelectorAll('[data-board-state]').forEach((button) => button.addEventListener('click', () => {
+    state.boardState = button.dataset.boardState || null;
+    renderAdmin();
   }));
   document.querySelectorAll('[data-open-thread]').forEach((card) => card.addEventListener('click', (event) => {
     // The like button and any attachment link live inside the card, so neither
@@ -6240,6 +6308,23 @@ function studentHeader() {
   ${nextClassBanner()}`;
 }
 
+/**
+ * How much this student has handed in.
+ *
+ * Worked out on the server and sent with the bootstrap, because the milestone
+ * rule belongs in one place — three screens call this and all three should agree
+ * about whether ten pieces of work have been handed in.
+ *
+ * It was being called as a function that had never been written, so every caller
+ * threw: the goal strip vanished, and the celebration after handing work in
+ * never appeared at all. What looked like a rough transition was the screen
+ * failing silently on its way to being drawn.
+ */
+function studentProgress() {
+  return state.studentData?.progress
+    || { checkins: 0, homework: 0, total: 0, next: null, toNext: 0, towards: 0, justHit: null };
+}
+
 function studentGoals() {
   const progress = studentProgress();
   if (!progress.total) return '';
@@ -6251,8 +6336,10 @@ function studentGoals() {
 }
 
 /* Replaces the flat "thank you" that used to follow a submission. */
-function celebrationScreen({ title, line, progress, milestone }) {
-  celebrate({ big: Boolean(milestone) });
+function celebrationScreen({ title, line, progress, milestone, alreadyCelebrated = false }) {
+  // The confetti may have been fired the instant the work was accepted, rather
+  // than after the page caught up. Firing it twice looks like a glitch.
+  if (!alreadyCelebrated) celebrate({ big: Boolean(milestone) });
   const milestoneLine = milestone
     ? `<div class="celebrate-milestone">That is <strong>${milestone}</strong> pieces of work handed in. Sin obair mhaith.</div>`
     : '';
@@ -6621,7 +6708,7 @@ function openStudentItem(dataset) {
 const checkinQuestions = [
   { key: 'attendance', text: "Did you attend or watch this week's class?", type: 'choice', required: true, options: ['I attended live', 'I watched the recording', 'Not yet'] },
   { key: 'reviewed', text: "Did you review this week's material?", type: 'choice', required: true, options: ['Yes', 'No'] },
-  { key: 'understanding', text: 'How well do you understand the material so far?', type: 'scale', required: true },
+  { key: 'understanding', text: 'How well do you understand this week’s material?', type: 'scale', required: true },
   { key: 'confidence', text: 'How confident are you feeling right now?', type: 'scale', required: true },
   { key: 'weeklyWin', text: "What's your weekly win?", description: 'Anything big or small to do with Irish.', type: 'text', required: true },
   { key: 'support', text: 'Is there anything you are struggling with or need help with?', type: 'text', required: false },
@@ -6673,16 +6760,37 @@ async function saveCheckinDraft() {
 }
 
 async function submitCheckin() {
+  /* Pressing Submit used to do nothing visible for as long as two requests took,
+     then blank the form, then produce a celebration. Three moments where there
+     should be one.
+
+     The button says what is happening straight away, the confetti fires the
+     instant the work is accepted rather than after the page has caught up, and
+     the form is replaced by the celebration rather than closed and followed by
+     it — no gap, no flash of the screen underneath. */
+  const button = document.getElementById('checkin-next');
+  const label = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'Sending…'; }
+
   try {
     await api(`/api/student/checkins/${state.checkinForm.week.id}/submit`, { method: 'POST', body: { answers: state.checkinForm.answers } });
-    closeModal(); state.studentData = await api('/api/student/bootstrap'); renderStudent();
-    const progress = studentProgress();
-    celebrationScreen({
-      title: 'Check-in sent. Maith thú!',
-      line: 'Your teacher will read it and come back to you in your weekly tracker.',
-      progress, milestone: progress.justHit,
-    });
-  } catch (error) { showToast(error.message, 'error'); }
+  } catch (error) {
+    if (button) { button.disabled = false; button.textContent = label; }
+    return showToast(error.message, 'error');
+  }
+
+  // It is in. Say so before anything else is waited on.
+  celebrate();
+  state.studentData = await api('/api/student/bootstrap');
+  renderStudent();
+  const progress = studentProgress();
+  celebrationScreen({
+    title: 'Check-in sent. Maith thú!',
+    line: 'Your teacher will read it and come back to you in your weekly tracker.',
+    progress, milestone: progress.justHit, alreadyCelebrated: true,
+  });
+  /* A milestone earns a second burst, now that we know there was one. */
+  if (progress.justHit) celebrate({ big: true });
 }
 
 async function openHomeworkForm(assignment, submission) {
@@ -6830,17 +6938,30 @@ async function saveHomeworkDraft() {
 }
 
 async function submitHomework() {
+  // Same shape as the check-in, and for the same reason: handing work in should
+  // be one moment, not a silence followed by a blank screen followed by a party.
   const form = state.homeworkForm;
+  const button = document.getElementById('homework-next');
+  const label = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'Sending…'; }
+
   try {
     await api(`/api/student/assignments/${form.assignment.id}/submit`, { method: 'POST', body: { answers: form.answers } });
-    closeModal(); state.studentData = await api('/api/student/bootstrap'); renderStudent();
-    const progress = studentProgress();
-    celebrationScreen({
-      title: 'Homework in. Go hiontach!',
-      line: 'Corrections and feedback will appear in your weekly tracker once your teacher has been through it.',
-      progress, milestone: progress.justHit,
-    });
-  } catch (error) { showToast(error.message, 'error'); }
+  } catch (error) {
+    if (button) { button.disabled = false; button.textContent = label; }
+    return showToast(error.message, 'error');
+  }
+
+  celebrate();
+  state.studentData = await api('/api/student/bootstrap');
+  renderStudent();
+  const progress = studentProgress();
+  celebrationScreen({
+    title: 'Homework in. Go hiontach!',
+    line: 'Corrections and feedback will appear in your weekly tracker once your teacher has been through it.',
+    progress, milestone: progress.justHit, alreadyCelebrated: true,
+  });
+  if (progress.justHit) celebrate({ big: true });
 }
 
 async function showCheckinFeedback(checkin, week) {
@@ -6887,7 +7008,7 @@ async function showHomeworkFeedback(submission, assignment) {
 const CHECKIN_LABELS = {
   attendance: "Did you attend or watch this week's class?",
   reviewed: "Did you review this week's material?",
-  understanding: 'How well do you understand the material so far?',
+  understanding: 'How well do you understand this week’s material?',
   confidence: 'How confident are you feeling?',
   weeklyWin: "What's your weekly win?",
   support: 'Anything you are struggling with?',

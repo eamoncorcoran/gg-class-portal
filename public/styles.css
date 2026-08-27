@@ -939,6 +939,21 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .reply{display:flex;gap:11px;margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
 .reply-box{flex:1;min-width:0}
 .reply-box .btn{margin-top:10px}
+/* Grows with what is typed into it. A fixed height is right for an empty box and
+   wrong the moment there is anything in it — most of all when a suggested reply
+   has just been dropped in to be edited.
+
+   No transition on the height, deliberately: an animating height makes
+   scrollHeight report a value from part-way through the animation, so the box
+   measures itself against a size it is still on its way to and settles at the
+   cap. And the shared min-height has to go, or a two-line box cannot be two
+   lines tall. */
+.reply-box textarea[data-grow]{resize:none;min-height:0;height:auto}
+
+/* Once the draft has been moved into the comment box, the panel steps back:
+   the same words sitting in two places invites editing the wrong one. */
+.rd.is-used{opacity:.7}
+.rd.is-used .rd-head span:first-child{font-style:italic;font-weight:500}
 
 .category-list{display:grid;gap:7px}
 .category-row{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--gray-25)}
@@ -1517,3 +1532,7 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   .emoji-pop{width:min(300px,calc(100vw - 24px))}
   .emoji-grid{grid-template-columns:repeat(7,1fr)}
 }
+/* Open and closed, for the administrator only. Closed is a moderation state and
+   a student meets it once, where the comment box would have been. */
+.board-state{margin-right:auto}
+.board-state .seg-btn{padding:4px 10px;font-size:12px}

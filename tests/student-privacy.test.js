@@ -196,3 +196,25 @@ test('drafting never blocks or fails a student posting', () => {
     < studentRoutes.indexOf('draftReplyFor({ threadId: row.id })'),
     'the student must be answered before any drafting begins');
 });
+
+/* Functions called and never written fail silently inside a template literal:
+   the screen stops being built where the call was, and what is left reads as a
+   rough edge rather than a fault. studentProgress was called from three places
+   and defined in none, so the goal strip vanished and no student ever saw the
+   celebration after handing work in.
+
+   Checked by name rather than by scanning every call: telling a missing function
+   from a closure, a callback parameter or a promise handler needs a real parser,
+   and a test that cries wolf gets ignored. These are the ones whose absence is
+   invisible until a student hits them. */
+test('the functions the student screens depend on are defined', () => {
+  const NEEDED = [
+    'studentProgress', 'studentGoals', 'celebrationScreen', 'celebrate',
+    'studentHeader', 'studentTrackerView', 'studentCalendarView', 'studentCommunityView',
+    'submitCheckin', 'submitHomework', 'autoGrow', 'studentMaps',
+  ];
+  const missing = NEEDED.filter((name) =>
+    !new RegExp(`(?:^|\\n)(?:async )?function ${name}\\s*\\(`).test(app));
+  assert.deepEqual(missing, [],
+    `called by the student screens and never defined: ${missing.join(', ')}`);
+});
