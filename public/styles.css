@@ -1559,3 +1559,15 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   .cw-cats{margin-bottom:12px;padding:8px 10px}
   .cw-cats-label{width:100%}
 }
+
+/* Editing a session in the row it already occupies. Class setup is itself a
+   dialog, so opening another over it would take the whole panel — and the
+   unsaved link and course ticks in it — away to change a time. */
+.session-row.is-editing{display:block;padding:12px 13px;border-color:var(--brand-300);background:var(--brand-25)}
+.session-edit{grid-template-columns:minmax(0,1.3fr) 84px minmax(0,1fr) minmax(0,1.2fr);gap:9px}
+.session-edit .form-field label{font-size:11px}
+.session-edit-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+
+@media (max-width:700px){
+  .session-edit{grid-template-columns:minmax(0,1fr)}
+}

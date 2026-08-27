@@ -4741,6 +4741,9 @@ async function openClassSetupModal(classId) {
   catch (error) { return showToast(error.message, 'error'); }
   const klass = setup.class;
 
+  // Kept so a row can be turned into an editor without asking the server again.
+  state.classSessions = setup.sessions;
+
   modal({
     title: 'Class setup',
     subtitle: classLabel(klass),
@@ -4833,7 +4836,11 @@ async function openClassSetupModal(classId) {
           await api(`/api/admin/classes/${classId}/sessions`, {
             method: 'POST',
             body: {
-              startsAt: new Date(String(data.get('startsAt'))).toISOString(),
+              /* Read as the class's wall clock. This used to be
+                 new Date(...), which reads the typed time as the browser's — so
+                 a session added from anywhere but Ireland landed at the wrong
+                 hour, and nobody would have found out until nobody turned up. */
+              startsAt: fromZonedInput(String(data.get('startsAt')), klass.timezone),
               durationMinutes: Number(data.get('durationMinutes')) || 90,
               label: String(data.get('label') || '').trim(),
               joinUrl: String(data.get('joinUrl') || '').trim(),
@@ -4861,7 +4868,8 @@ function sessionRows(sessions = [], timezone = 'Europe/Dublin') {
     // the hour their students will turn up at.
     const day = when.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: timezone });
     const time = when.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit', timeZone: timezone });
-    return `<li class="session-row ${session.cancelled ? 'is-cancelled' : ''} ${past ? 'is-past' : ''}">
+    return `<li class="session-row ${session.cancelled ? 'is-cancelled' : ''} ${past ? 'is-past' : ''}"
+      data-session-row="${session.id}">
       <div class="session-when">
         <strong>${escapeHtml(day)}</strong>
         <span>${escapeHtml(time)} · ${session.duration_minutes} min</span>
@@ -4872,6 +4880,7 @@ function sessionRows(sessions = [], timezone = 'Europe/Dublin') {
         ${session.cancelled ? '<span class="pill">Cancelled</span>' : ''}
       </div>
       <div class="session-actions">
+        <button type="button" class="btn small" data-session-edit="${session.id}">Edit</button>
         ${session.cancelled
           ? `<button type="button" class="btn small" data-session-restore="${session.id}">Restore</button>`
           : `<button type="button" class="btn small" data-session-cancel="${session.id}">Cancel</button>`}
@@ -4881,13 +4890,50 @@ function sessionRows(sessions = [], timezone = 'Europe/Dublin') {
   }).join('')}</ul>`;
 }
 
+/* Editing one, in the row it is already in.
+   ------------------------------------------------------------------
+   Class setup is itself a dialog, and opening another over it would replace it —
+   the whole panel, with the unsaved link and course ticks in it, gone to change
+   a time. So the row turns into the same four fields the add form uses, and
+   turns back when it is done. */
+function sessionEditRow(session, timezone) {
+  /* datetime-local wants the wall clock at the class, not at whoever is looking.
+     Built from the parts rather than by slicing an ISO string, which would show
+     UTC and quietly move every session by an hour each summer. */
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(session.starts_at))
+    .reduce((all, part) => ({ ...all, [part.type]: part.value }), {});
+  const local = `${parts.year}-${parts.month}-${parts.day}T${parts.hour === '24' ? '00' : parts.hour}:${parts.minute}`;
+
+  return `<li class="session-row is-editing" data-session-row="${session.id}">
+    <form class="session-form session-edit" data-session-save="${session.id}">
+      <div class="form-field"><label>Date and time</label>
+        <input name="startsAt" type="datetime-local" value="${escapeHtml(local)}" required></div>
+      <div class="form-field"><label>Minutes</label>
+        <input name="durationMinutes" type="number" value="${session.duration_minutes}" min="15" max="480"></div>
+      <div class="form-field"><label>Label</label>
+        <input name="label" maxlength="120" value="${escapeHtml(session.label || '')}" placeholder="Catch-up session"></div>
+      <div class="form-field"><label>Link</label>
+        <input name="joinUrl" type="url" value="${escapeHtml(session.join_url || '')}" placeholder="Leave empty to use the class link"></div>
+      <div class="session-edit-actions">
+        <button type="button" class="btn small" data-session-cancel-edit="1">Cancel</button>
+        <button type="submit" class="btn small primary">Save</button>
+      </div>
+    </form>
+  </li>`;
+}
+
+
 async function refreshSessions(classId) {
   const setup = await api(`/api/admin/classes/${classId}/setup`);
+  state.classSessions = setup.sessions;
   document.getElementById('session-list').innerHTML = sessionRows(setup.sessions, setup.class.timezone);
   bindSessionRows(classId, setup.class.timezone);
 }
 
-function bindSessionRows(classId) {
+function bindSessionRows(classId, timezone = 'Europe/Dublin') {
   const list = document.getElementById('session-list');
   if (!list) return;
   const act = async (id, body) => {
@@ -4896,10 +4942,23 @@ function bindSessionRows(classId) {
       await refreshSessions(classId);
     } catch (error) { showToast(error.message, 'error'); }
   };
+
   list.querySelectorAll('[data-session-cancel]').forEach((button) =>
     button.addEventListener('click', () => act(button.dataset.sessionCancel, { cancelled: true })));
   list.querySelectorAll('[data-session-restore]').forEach((button) =>
     button.addEventListener('click', () => act(button.dataset.sessionRestore, { cancelled: false })));
+
+  list.querySelectorAll('[data-session-edit]').forEach((button) => button.addEventListener('click', () => {
+    const session = (state.classSessions || []).find((row) => row.id === button.dataset.sessionEdit);
+    if (!session) return;
+    /* One at a time. Two rows open at once is two sets of unsaved changes and no
+       way to tell which is which. */
+    closeSessionEdits(classId, timezone);
+    const row = list.querySelector(`[data-session-row="${session.id}"]`);
+    row.outerHTML = sessionEditRow(session, timezone);
+    bindSessionEdit(classId, timezone, session.id);
+  }));
+
   list.querySelectorAll('[data-session-delete]').forEach((button) => button.addEventListener('click', async () => {
     const ok = await askConfirm({ title: 'Delete this session?', message: 'Students will no longer see it.', confirmLabel: 'Delete', danger: true });
     if (!ok) return;
@@ -4908,6 +4967,49 @@ function bindSessionRows(classId) {
       await refreshSessions(classId);
     } catch (error) { showToast(error.message, 'error'); }
   }));
+}
+
+/** Put any open editor back to a plain row, discarding what was in it. */
+function closeSessionEdits(classId, timezone) {
+  const list = document.getElementById('session-list');
+  list?.querySelectorAll('.session-row.is-editing').forEach((row) => {
+    const session = (state.classSessions || []).find((item) => item.id === row.dataset.sessionRow);
+    if (!session) return;
+    row.outerHTML = sessionRows([session], timezone)
+      .replace('<ul class="session-list">', '').replace('</ul>', '');
+  });
+  bindSessionRows(classId, timezone);
+}
+
+function bindSessionEdit(classId, timezone, sessionId) {
+  const form = document.querySelector(`[data-session-save="${sessionId}"]`);
+  if (!form) return;
+
+  form.querySelector('[data-session-cancel-edit]').addEventListener('click', () => {
+    closeSessionEdits(classId, timezone);
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const when = String(data.get('startsAt') || '');
+    if (!when) return showToast('Pick a date and time.', 'error');
+    try {
+      await api(`/api/admin/classes/${classId}/sessions/${sessionId}`, {
+        method: 'PATCH',
+        body: {
+          /* Read as the class's wall clock, not the browser's — the same
+             conversion the rest of this screen uses. */
+          startsAt: fromZonedInput(when, timezone),
+          durationMinutes: Number(data.get('durationMinutes')) || 90,
+          label: String(data.get('label') || '').trim(),
+          joinUrl: String(data.get('joinUrl') || '').trim(),
+        },
+      });
+      await refreshSessions(classId);
+      showToast('Session updated');
+    } catch (error) { showToast(error.message, 'error'); }
+  });
 }
 
 /* Who can run this place.
