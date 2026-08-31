@@ -33,15 +33,41 @@ const existing = await one(
 );
 
 if (existing.count > 0) {
+  /* A portal with administrators but no super administrator is locked out of its
+     own Administrators screen: nobody can add another, suspend one, or promote
+     anybody, and the screen is not even in the menu to explain why. It is a
+     state the portal can be left in by any route that creates an administrator
+     without saying they are a super one — which is how the first account here
+     was made — so it is repaired rather than reported.
+
+     The earliest active administrator is promoted, which is the person who set
+     the portal up. */
+  const superAdmins = await one(
+    `SELECT count(*)::int count FROM users WHERE role='admin' AND active=true AND is_super_admin=true`,
+  );
+  if (superAdmins.count === 0) {
+    const promoted = await one(
+      `UPDATE users SET is_super_admin=true, updated_at=now()
+       WHERE id = (SELECT id FROM users WHERE role='admin' AND active=true
+                   ORDER BY created_at LIMIT 1)
+       RETURNING email`,
+    );
+    if (promoted) {
+      console.log(`Promoted ${promoted.email} to super administrator: the portal had none, so nobody could reach the Administrators screen.`);
+    }
+  }
   await pool.end();
   process.exit(0);
 }
 
 const password = generateStrongPassword(20);
+/* A super administrator, because they are the only one. An ordinary
+   administrator cannot create another, so a portal whose first account is not a
+   super one has nobody who can ever add a second. */
 const row = await one(
-  `INSERT INTO users(role,name,email,password_hash,must_change_password,active)
-   VALUES ('admin',$1,$2,$3,true,true)
-   ON CONFLICT (email) DO UPDATE SET role='admin',active=true,updated_at=now()
+  `INSERT INTO users(role,name,email,password_hash,must_change_password,active,is_super_admin)
+   VALUES ('admin',$1,$2,$3,true,true,true)
+   ON CONFLICT (email) DO UPDATE SET role='admin',active=true,is_super_admin=true,updated_at=now()
    RETURNING id,email`,
   [name, email, await hashPassword(password)],
 );

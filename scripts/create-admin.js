@@ -62,13 +62,22 @@ if (problems.length) {
   process.exit(1);
 }
 const hash = await hashPassword(parsed.data.password);
+/* Super only when the portal has none. This is the recovery path as well as the
+   way to add somebody by hand, and a portal with no super administrator cannot
+   be recovered from inside the application at all. Adding a second administrator
+   to a healthy portal gives an ordinary one, which is the safer default. */
+const noSuperAdmins = (await one(
+  `SELECT count(*)::int count FROM users WHERE role='admin' AND active=true AND is_super_admin=true`,
+)).count === 0;
+
 const row = await one(
-  `INSERT INTO users(role,name,email,password_hash,must_change_password,active)
-   VALUES ('admin',$1,$2,$3,false,true)
+  `INSERT INTO users(role,name,email,password_hash,must_change_password,active,is_super_admin)
+   VALUES ('admin',$1,$2,$3,false,true,$4)
    ON CONFLICT (email) DO UPDATE SET role='admin',name=EXCLUDED.name,password_hash=EXCLUDED.password_hash,
-     must_change_password=false,active=true,updated_at=now()
+     must_change_password=false,active=true,updated_at=now(),
+     is_super_admin=users.is_super_admin OR EXCLUDED.is_super_admin
    RETURNING id,name,email`,
-  [parsed.data.name, parsed.data.email, hash],
+  [parsed.data.name, parsed.data.email, hash, noSuperAdmins],
 );
 console.log(`Administrator ready: ${row.email}`);
 await pool.end();

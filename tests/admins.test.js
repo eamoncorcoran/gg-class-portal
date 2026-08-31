@@ -106,3 +106,38 @@ test('suspending an administrator ends their sessions rather than waiting for ex
   const body = adminRoutes.slice(start, start + 2500);
   assert.match(body, /DELETE FROM sessions WHERE user_id=\$1/);
 });
+
+/* A portal with administrators but no super administrator is locked out of its
+   own Administrators screen: nobody can add another, suspend one, or promote
+   anybody — and the screen is not even in the menu to explain why. It is a state
+   that cannot be recovered from inside the application at all. */
+
+test('the first administrator is a super administrator', () => {
+  const boot = fs.readFileSync(new URL('../scripts/bootstrap-admin.js', import.meta.url), 'utf8');
+  const insert = boot.slice(boot.indexOf('INSERT INTO users'), boot.indexOf('RETURNING id,email'));
+  assert.match(insert, /is_super_admin/,
+    'an ordinary administrator cannot create another, so the first one must be super');
+  assert.match(insert, /VALUES \('admin',\$1,\$2,\$3,true,true,true\)/,
+    'the super flag must actually be set, not just named in the column list');
+});
+
+test('a portal that has lost its last super administrator repairs itself at boot', () => {
+  const boot = fs.readFileSync(new URL('../scripts/bootstrap-admin.js', import.meta.url), 'utf8');
+  const branch = boot.slice(boot.indexOf('if (existing.count > 0)'), boot.indexOf('const password ='));
+
+  assert.match(branch, /is_super_admin=true/, 'it has to look for super administrators specifically');
+  assert.match(branch, /UPDATE users SET is_super_admin=true/, 'and promote somebody when there are none');
+  assert.match(branch, /ORDER BY created_at LIMIT 1/,
+    'the earliest administrator is the person who set the portal up');
+  // Only when there are none: a healthy portal must not have its roles rewritten
+  // every time it restarts.
+  assert.match(branch, /if \(superAdmins\.count === 0\)/);
+});
+
+test('adding an administrator by hand does not hand out super access', () => {
+  const create = fs.readFileSync(new URL('../scripts/create-admin.js', import.meta.url), 'utf8');
+  assert.match(create, /noSuperAdmins/,
+    'create-admin is the recovery path, so it grants super only when there is none');
+  assert.match(create, /count === 0/,
+    'a second administrator on a healthy portal should be an ordinary one');
+});
