@@ -2013,6 +2013,49 @@ router.post('/reminders/run', asyncRoute(async (req, res) => {
 
    Nothing here ever reaches a student — the draft lives in columns that
    forStudentView strips, and no student route reads them. */
+/* Replying and reacting, from the teacher's side.
+   ------------------------------------------------------------------
+   The board is one screen serving two kinds of person, and the interface picks
+   which half of the API to call by role — `boardApi()` resolves to /api/student
+   or /api/admin. Both of these were written once, on the student side, so the
+   teacher pressing the same buttons was addressing routes that did not exist and
+   getting the generic Not found back. Commenting on the board was impossible for
+   the only person expected to answer on it.
+
+   The difference from the student versions is scope. A student may act only on
+   their own class's board; a teacher answers on all of them, so there is no
+   class to check against — only that the thread is real and not deleted. */
+
+router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
+  const parsed = z.object({ body: z.string().trim().min(1).max(20000) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Write a reply before sending.' });
+  const thread = await one(
+    'SELECT * FROM discussion_threads WHERE id=$1 AND deleted_at IS NULL', [req.params.id],
+  );
+  if (!thread) return res.status(404).json({ error: 'Post not found.' });
+  /* Deliberately not refused on a locked thread, unlike the student route. The
+     teacher is who closes a conversation, and closing it to students while
+     leaving a last word is the reason to close it. */
+  const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body });
+  await audit({ actorId: req.user.id, action: 'community.replied', entityType: 'thread', entityId: thread.id, ip: req.ip });
+  res.status(201).json(row);
+}));
+
+router.post('/community/react/:type/:id', asyncRoute(async (req, res) => {
+  const parsed = z.object({ emoji: z.enum(REACTIONS) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'That is not one of the reactions.' });
+  const type = req.params.type === 'post' ? 'post' : 'thread';
+  const target = type === 'thread'
+    ? await one('SELECT 1 FROM discussion_threads WHERE id=$1 AND deleted_at IS NULL', [req.params.id])
+    : await one(
+        `SELECT 1 FROM discussion_posts p JOIN discussion_threads t ON t.id=p.thread_id
+         WHERE p.id=$1 AND p.deleted_at IS NULL AND t.deleted_at IS NULL`,
+        [req.params.id],
+      );
+  if (!target) return res.status(404).json({ error: 'Not found.' });
+  res.json(await toggleReaction({ userId: req.user.id, targetType: type, targetId: req.params.id, emoji: parsed.data.emoji }));
+}));
+
 router.post('/community/thread/:id/draft', asyncRoute(async (req, res) => {
   const parsed = z.object({ regenerate: z.boolean().optional().default(false) }).safeParse(req.body || {});
   const result = await draftReplyFor({
