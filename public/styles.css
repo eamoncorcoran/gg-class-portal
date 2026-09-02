@@ -1697,3 +1697,30 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .cmt-editor{display:grid;gap:8px;margin:4px 0 2px}
 .cmt-editor textarea{width:100%;resize:vertical;min-height:64px}
 .cmt-editor-actions{display:flex;gap:8px;justify-content:flex-end}
+
+/* A task waiting to be done, above the page rather than in front of it.
+   Deliberately the one warm-coloured strip in the app: it is asking for
+   something, so it should not look like the many neutral cards that are simply
+   telling you things. */
+.task-bar{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  border:1px solid var(--warning-200);background:var(--warning-25);
+  border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px;cursor:pointer}
+.task-bar:hover{border-color:var(--warning-400)}
+.task-bar-icon{display:flex;flex:0 0 auto;color:var(--warning-700)}
+.task-bar-icon svg{width:18px;height:18px}
+.task-bar-copy{display:grid;gap:2px;flex:1 1 auto;min-width:0}
+.task-bar-copy strong{font-size:13px}
+.task-bar-copy small{font-size:11.5px;color:var(--text-secondary)}
+.task-bar-go{flex:0 0 auto;font-size:12px;font-weight:600;color:var(--warning-800);white-space:nowrap}
+@media (max-width:560px){.task-bar-go{display:none}}
+
+/* An address as it would be written on an envelope, rather than as a row of
+   fields — it is read to be copied onto a label, so it should already look like
+   one. */
+.address-panel{border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:12px 14px;display:grid;gap:6px}
+.address-panel address{font-style:normal;font-size:13px;line-height:1.55}
+
+/* County and Eircode belong together — they are the two halves of "where is
+   that" — so they sit on one row on a wide screen and stack on a narrow one. */
+.address-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:520px){.address-pair{grid-template-columns:1fr}}

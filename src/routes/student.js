@@ -7,6 +7,7 @@ import { studentProgress } from '../status.js';
 import { one, query, transaction } from '../db.js';
 import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
 import { audit } from '../audit.js';
+import { COUNTIES, normaliseCounty, normaliseEircode, hasAddress } from '../address.js';
 import { checkinOpen, checkinOpenSql, ensureWeeksForClass } from '../weeks.js';
 import { withVoiceNote, withVoiceNotes } from '../voice.js';
 import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
@@ -122,10 +123,15 @@ async function refuseIfWithdrawn(req, res) {
 }
 
 router.get('/bootstrap', asyncRoute(async (req, res) => {
-  const me = await one('SELECT withdrawn_at FROM users WHERE id=$1', [req.user.id]);
+  const me = await one(
+    'SELECT withdrawn_at, address_line1, address_county, eircode FROM users WHERE id=$1', [req.user.id]);
+  /* Asked here rather than in a call of its own. The bar that requests an
+     address is on the first screen a student sees, and a second round trip only
+     to decide whether to draw a bar is a second round trip on every load. */
+  const addressNeeded = !hasAddress(me);
   const klass = await studentClass(req.user.id);
   if (!klass) {
-    return res.json({ student: req.user, class: null, weeks: [], attendance: [], checkins: [], assignments: [], homework: [], notifications: 0, withdrawnAt: me?.withdrawn_at || null });
+    return res.json({ student: req.user, class: null, weeks: [], attendance: [], checkins: [], assignments: [], homework: [], notifications: 0, withdrawnAt: me?.withdrawn_at || null, addressNeeded });
   }
   await ensureWeeksForClass(klass);
   const now = DateTime.utc();
@@ -241,6 +247,7 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
     progress: studentProgress({ checkins: checkinsResult.rows, homework: homeworkResult.rows }),
     dismissals: dismissalsResult.rows.map((row) => ({ kind: row.kind, refId: row.ref_id })),
     withdrawnAt: me?.withdrawn_at || null,
+    addressNeeded,
     serverNow: new Date().toISOString(),
   });
 }));
@@ -499,6 +506,72 @@ router.post('/calendar-feed/rotate', asyncRoute(async (req, res) => {
 
 /* The course withdrawal form. Deliberately tucked away under the account screen:
    it should be findable when someone genuinely needs it and invisible otherwise. */
+/* The address, asked for once and then left alone.
+   ------------------------------------------------------------------
+   Needed so that anything on paper — certificates, materials — can actually be
+   posted. It is a request rather than a requirement: the portal works perfectly
+   well for somebody who never fills it in, and the bar that asks for it goes
+   away for good once they have.
+
+   The county and the Eircode are put into their one proper form before they are
+   stored. Somebody typing "co. galway" and "h91abc1" means the same place as
+   somebody typing "Galway" and "H91 ABC1", and a spreadsheet of these has to be
+   sortable and postable, which it is not if both forms are in it. */
+router.get('/address', asyncRoute(async (req, res) => {
+  const row = await one(
+    `SELECT address_line1, address_line2, address_county, eircode, address_updated_at
+     FROM users WHERE id=$1`, [req.user.id]);
+  /* Named one by one rather than spread. Spreading a database row into a student
+     response is how the drafting columns nearly reached a student once, and the
+     habit is worth keeping even where this particular row is harmless — a
+     `SELECT` that grows later should not widen what is sent without anybody
+     deciding it should. */
+  res.json({
+    address_line1: row?.address_line1 || '',
+    address_line2: row?.address_line2 || '',
+    address_county: row?.address_county || '',
+    eircode: row?.eircode || '',
+    address_updated_at: row?.address_updated_at || null,
+    counties: COUNTIES,
+    complete: hasAddress(row),
+  });
+}));
+
+router.put('/address', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    line1: z.string().trim().min(2).max(200),
+    line2: z.string().trim().max(200).optional().default(''),
+    county: z.string().trim().min(2).max(60),
+    eircode: z.string().trim().min(6).max(10),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Fill in the first line of your address, your county and your Eircode.' });
+  }
+  const county = normaliseCounty(parsed.data.county);
+  if (!county) return res.status(400).json({ error: 'Choose your county from the list.' });
+  const eircode = normaliseEircode(parsed.data.eircode);
+  if (!eircode) {
+    return res.status(400).json({
+      error: 'That does not look like an Eircode. They are seven characters, like A65 F4E2. You can look yours up at finder.eircode.ie.',
+    });
+  }
+  const row = await one(
+    `UPDATE users SET address_line1=$1, address_line2=$2, address_county=$3, eircode=$4,
+       address_updated_at=now(), updated_at=now()
+     WHERE id=$5
+     RETURNING address_line1, address_line2, address_county, eircode, address_updated_at`,
+    [parsed.data.line1, parsed.data.line2 || null, county, eircode, req.user.id],
+  );
+  res.json({
+    address_line1: row.address_line1,
+    address_line2: row.address_line2 || '',
+    address_county: row.address_county,
+    eircode: row.eircode,
+    address_updated_at: row.address_updated_at,
+    complete: hasAddress(row),
+  });
+}));
+
 router.get('/withdrawal', asyncRoute(async (req, res) => {
   const row = await one('SELECT * FROM course_withdrawals WHERE student_id=$1', [req.user.id]);
   const me = await one('SELECT withdrawn_at FROM users WHERE id=$1', [req.user.id]);

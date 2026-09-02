@@ -89,7 +89,7 @@ function actor(label) {
       }
       const text = await response.text();
       let data = null;
-      try { data = text ? JSON.parse(text) : null; } catch { data = { nonJson: text.slice(0, 200) }; }
+      try { data = text ? JSON.parse(text) : null; } catch { data = { nonJson: text.slice(0, 4000) }; }
       return { status: response.status, data };
     },
   };
@@ -343,6 +343,23 @@ try {
   }
   expectOk('the student’s courses load', await student.call('/api/student/courses'));
 
+  /* The address the portal asks for at the top of the screen. */
+  expect('a new student is asked for their address', home?.addressNeeded === true,
+    `addressNeeded was ${JSON.stringify(home?.addressNeeded)}`);
+  expectOk('the address form loads', await student.call('/api/student/address'),
+    (d) => Array.isArray(d?.counties) && d.counties.length === 32);
+  expectStatus('a county that is not a county is refused', await student.call('/api/student/address',
+    { method: 'PUT', body: { line1: '12 Ard na Gréine', county: 'Nowhere', eircode: 'H91 ABC1' } }), 400);
+  expectStatus('something that is not an Eircode is refused', await student.call('/api/student/address',
+    { method: 'PUT', body: { line1: '12 Ard na Gréine', county: 'Galway', eircode: 'NOPE' } }), 400);
+  const saved = expectOk('the student saves their address', await student.call('/api/student/address',
+    { method: 'PUT', body: { line1: '12 Ard na Gréine', line2: 'Ballinfoyle', county: 'co. galway', eircode: 'h91abc1' } }));
+  expect('the county is stored in its proper form', saved?.address_county === 'Galway', JSON.stringify(saved));
+  expect('and the Eircode in its proper form', saved?.eircode === 'H91 ABC1', JSON.stringify(saved));
+  const after = await student.call('/api/student/bootstrap');
+  expect('the bar stops asking once it is answered', after.data?.addressNeeded === false,
+    `addressNeeded was ${JSON.stringify(after.data?.addressNeeded)}`);
+
   /* --------------------------------------------------------- the feedback */
   section('Returning feedback');
   const tracker = expectOk('the tracker loads', await admin.call(`/api/admin/tracker/${made.classId}`));
@@ -369,6 +386,28 @@ try {
   } else fail('found the submitted homework to give feedback on', 'no submission id');
 
   /* -------------------------------------------------------- attendance */
+  section('The address sheet');
+  {
+    const sheet = await admin.call('/api/admin/students/addresses.csv');
+    const text = sheet.data?.nonJson ?? '';
+    expect('the address sheet downloads', sheet.status === 200, `status ${sheet.status}`);
+    /* Read as bytes, because decoding to text strips a leading byte order mark —
+       so the one way of checking it is there is the one way that cannot see it. */
+    const raw = new Uint8Array(await (await fetch(`${BASE}/api/admin/students/addresses.csv`, {
+      headers: { cookie: [...admin.jar].map(([k, v]) => `${k}=${v}`).join('; ') },
+    })).arrayBuffer());
+    expect('it carries the byte order mark a spreadsheet needs',
+      raw[0] === 0xEF && raw[1] === 0xBB && raw[2] === 0xBF,
+      `starts with ${[...raw.slice(0, 3)].map((b) => b.toString(16)).join(' ')}`);
+    expect('it has a name against each address', text.includes('"Name"') && text.includes('Audit Student'),
+      text.slice(0, 200));
+    expect('and the address that was just given', text.includes('H91 ABC1') && text.includes('Galway'),
+      text.slice(0, 400));
+    const profile = await admin.call(`/api/admin/students/${made.studentId}/profile`);
+    expect('the teacher sees the address on the profile', profile.data?.student?.eircode === 'H91 ABC1',
+      JSON.stringify(profile.data?.student).slice(0, 200));
+  }
+
   section('Attendance');
   if (made.weekId && made.studentId) {
     expectOk('mark attendance by hand', await admin.call(`/api/admin/attendance/${made.weekId}/${made.studentId}`,

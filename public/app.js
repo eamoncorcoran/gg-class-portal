@@ -1031,11 +1031,12 @@ function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
             <button class="user-chip" id="account-menu-top">${boardAvatar(me(), 'sm')}<span class="user-chip-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(roleLabel)}</span></span></button>
           </div>
         </header>
-        <div class="content">${content}</div>
+        <div class="content">${taskBar()}${content}</div>
       </main>
       ${mobileNav()}
     </div>`;
   document.getElementById('account-menu-top')?.addEventListener('click', openAccountModal);
+  document.getElementById('address-task')?.addEventListener('click', openAddressModal);
   bindShellNavigation();
 }
 
@@ -1537,7 +1538,7 @@ function adminStudentRow(student, weeks, maps, currentWeekId) {
 
 function peopleView() {
   return `
-    ${pageHeader('Administration', 'Classes and students', 'Create class groups, invite students and manage access.', `<button class="btn" id="add-class">Add class</button><button class="btn" id="add-student">Add student</button><button class="btn primary" id="import-students">Upload students</button>`)}
+    ${pageHeader('Administration', 'Classes and students', 'Create class groups, invite students and manage access.', `<button class="btn" id="add-class">Add class</button><button class="btn" id="add-student">Add student</button><button class="btn" id="export-addresses">Export addresses</button><button class="btn primary" id="import-students">Upload students</button>`)}
     ${emailModeBanner()}
     <div class="tabs"><button class="tab active" data-people-tab="classes">Classes</button><button class="tab" data-people-tab="students">Students</button></div>
     <section id="classes-tab"><div class="class-grid">${state.classes.map((klass) => `
@@ -5556,6 +5557,12 @@ function bindAdminView() {
   }));
   document.getElementById('add-student')?.addEventListener('click', openStudentModal);
   document.getElementById('import-students')?.addEventListener('click', openStudentImportModal);
+  /* Straight to the file. The browser downloads it because the route says
+     attachment, and the session cookie goes with the navigation, so there is no
+     need to fetch it and rebuild a file out of the bytes. */
+  document.getElementById('export-addresses')?.addEventListener('click', () => {
+    window.location.href = '/api/admin/students/addresses.csv';
+  });
   document.querySelectorAll('[data-open-class]').forEach((button) => button.addEventListener('click', () => { state.activeClassId = button.dataset.openClass; state.view = 'tracker'; renderAdmin(); }));
   document.querySelectorAll('[data-delete-class]').forEach((button) => button.addEventListener('click', () => confirmDeleteClass(button.dataset.deleteClass)));
   document.querySelectorAll('[data-class-link]').forEach((button) => button.addEventListener('click', () => openClassSetupModal(button.dataset.classLink)));
@@ -6200,6 +6207,23 @@ async function openStudentProfile(studentId) {
   } catch (error) { showToast(error.message, 'error'); }
 }
 
+/* The postal address on the teacher's side of the same record.
+   Shown whether or not it has been given, because "not given yet" is the thing
+   worth knowing when the envelopes are being written. */
+function addressPanel(student) {
+  const given = Boolean(student.address_line1 && student.address_county && student.eircode);
+  const lines = [student.address_line1, student.address_line2,
+    student.address_county ? `Co. ${student.address_county}` : '', student.eircode].filter(Boolean);
+  return `
+    <div class="section-title">Postal address</div>
+    ${given
+      ? `<div class="address-panel">
+           <address>${lines.map((line) => escapeHtml(line)).join('<br>')}</address>
+           <small class="muted">Given ${escapeHtml(fmtDate(student.address_updated_at))}</small>
+         </div>`
+      : '<p class="muted small">Not given yet. The student is asked for it at the top of their screen each time they sign in.</p>'}`;
+}
+
 function renderStudentProfile() {
   const { student, notes, stats } = state.profile;
   const attendanceRate = stats?.recorded_weeks ? Math.round((stats.live_weeks / stats.recorded_weeks) * 100) : null;
@@ -6215,6 +6239,8 @@ function renderStudentProfile() {
         <div class="detail"><small>Average confidence</small><strong>${stats?.avg_confidence ? `${stats.avg_confidence}/10` : '—'}</strong></div>
         <div class="detail"><small>Last login</small><strong>${student.last_login_at ? escapeHtml(fmtDate(student.last_login_at, { time: true })) : 'Never signed in'}</strong></div>
       </div>
+
+      ${addressPanel(student)}
 
       ${state.profile.withdrawal ? withdrawalSummary(state.profile.withdrawal) : ''}
 
@@ -6683,6 +6709,105 @@ async function loadStudent() {
 }
 
 const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message' };
+
+/* The one thing we need from a student that the course itself does not produce.
+   ------------------------------------------------------------------
+   A bar rather than a dialog on arrival. Something has to be posted to these
+   students, so the address has to be asked for, but it is not what they came to
+   the portal to do — putting it in front of the screen they wanted would be
+   holding the course hostage to an admin task. It sits above the page, it is
+   obvious, and it goes for good the moment it is answered.
+
+   Only for students, and only when it has not been given. Anything else is a
+   permanent strip of clutter at the top of every screen. */
+function taskBar() {
+  if (isAdmin() || !state.studentData?.addressNeeded) return '';
+  return `<button class="task-bar" id="address-task">
+    <span class="task-bar-icon">${svg.note || ''}</span>
+    <span class="task-bar-copy">
+      <strong>Enter your address &amp; Eircode</strong>
+      <small>So we can post things out to you. It takes a moment.</small>
+    </span>
+    <span class="task-bar-go">Click here</span>
+  </button>`;
+}
+
+/* The counties, so the list is the same one the server will accept. A free text
+   box here would produce "Co Galway", "galway" and "Gaillimh" in the same
+   column of the same spreadsheet. */
+const COUNTIES = ['Antrim', 'Armagh', 'Carlow', 'Cavan', 'Clare', 'Cork', 'Derry', 'Donegal',
+  'Down', 'Dublin', 'Fermanagh', 'Galway', 'Kerry', 'Kildare', 'Kilkenny', 'Laois', 'Leitrim',
+  'Limerick', 'Longford', 'Louth', 'Mayo', 'Meath', 'Monaghan', 'Offaly', 'Roscommon', 'Sligo',
+  'Tipperary', 'Tyrone', 'Waterford', 'Westmeath', 'Wexford', 'Wicklow'];
+
+async function openAddressModal() {
+  let current = {};
+  try { current = await api('/api/student/address'); } catch { current = {}; }
+
+  modal({
+    title: 'Your address',
+    subtitle: 'So we can post things out to you.',
+    body: `
+      <form id="address-form">
+        <div class="form-field">
+          <label for="address-line1">Address line 1</label>
+          <input id="address-line1" name="line1" required maxlength="200" autocomplete="address-line1"
+                 value="${escapeHtml(current.address_line1 || '')}" placeholder="12 Ard na Gréine">
+        </div>
+        <div class="form-field">
+          <label for="address-line2">Address line 2 <span class="muted">(optional)</span></label>
+          <input id="address-line2" name="line2" maxlength="200" autocomplete="address-line2"
+                 value="${escapeHtml(current.address_line2 || '')}" placeholder="Ballinfoyle">
+        </div>
+        <div class="address-pair">
+          <div class="form-field">
+            <label for="address-county">County</label>
+            <select id="address-county" name="county" required>
+              <option value="">Choose your county</option>
+              ${COUNTIES.map((county) => `<option value="${county}" ${current.address_county === county ? 'selected' : ''}>${county}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="address-eircode">Eircode</label>
+            <input id="address-eircode" name="eircode" required maxlength="10" autocomplete="postal-code"
+                   value="${escapeHtml(current.eircode || '')}" placeholder="A65 F4E2">
+          </div>
+        </div>
+        <p class="muted small">You can look your Eircode up at <a href="https://finder.eircode.ie" target="_blank" rel="noopener">finder.eircode.ie</a>.</p>
+      </form>`,
+    footer: '<button class="btn" data-close-modal>Not now</button><button class="btn primary" id="save-address">Save address</button>',
+    onOpen() {
+      const form = document.getElementById('address-form');
+      const button = document.getElementById('save-address');
+      const save = async () => {
+        const body = {
+          line1: form.line1.value.trim(),
+          line2: form.line2.value.trim(),
+          county: form.county.value,
+          eircode: form.eircode.value.trim(),
+        };
+        if (!body.line1 || !body.county || !body.eircode) {
+          return showToast('Fill in your address, county and Eircode.', 'error');
+        }
+        button.disabled = true;
+        try {
+          await api('/api/student/address', { method: 'PUT', body });
+          closeModal();
+          /* The bar is drawn from this, so it has to be true before the screen is
+             drawn again, or the bar comes back for somebody who just answered it. */
+          if (state.studentData) state.studentData.addressNeeded = false;
+          renderStudent();
+          showToast('Thank you, that is saved');
+        } catch (error) {
+          button.disabled = false;
+          showToast(error.message, 'error');
+        }
+      };
+      button.addEventListener('click', save);
+      form.addEventListener('submit', (event) => { event.preventDefault(); save(); });
+    },
+  });
+}
 
 function renderStudent() {
   let content = '';

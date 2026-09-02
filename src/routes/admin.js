@@ -19,6 +19,7 @@ import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
 import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
+import { formatAddress, hasAddress } from '../address.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
@@ -491,6 +492,51 @@ router.post('/students/:id/resend-invite', asyncRoute(async (req, res) => {
    is about to destroy before it will do it. */
 
 /** What deleting this student would take with them. */
+/* Every student's address, in one sheet.
+   ------------------------------------------------------------------
+   The reason the addresses are collected at all: something has to be posted,
+   and posting it means one list with a name against each address. Everybody is
+   included, with or without an address, because a list of who has not answered
+   is exactly as useful as the list of who has when the envelopes are being
+   written.
+
+   Excel decides a file's encoding by looking at the first bytes, and without a
+   byte order mark it reads UTF-8 as Latin-1 — which turns every fada in a name
+   into mojibake. Ó Súilleabháin becomes Ã“ SÃºilleabhÃ¡in in a spreadsheet of
+   Irish names, which is most of them. */
+router.get('/students/addresses.csv', asyncRoute(async (req, res) => {
+  const params = [];
+  let where = '';
+  if (req.query.classId) { params.push(req.query.classId); where = `AND cs.class_id=$${params.length}`; }
+  const result = await query(
+    `SELECT u.name, u.email, u.address_line1, u.address_line2, u.address_county, u.eircode,
+            u.address_updated_at, c.programme_name, c.day_of_week, c.start_time
+     FROM users u
+     LEFT JOIN class_students cs ON cs.student_id=u.id AND cs.active=true
+     LEFT JOIN classes c ON c.id=cs.class_id
+     WHERE u.role='student' AND u.active=true ${where}
+     ORDER BY u.name`, params,
+  );
+
+  /* Quoted every time, and doubled quotes inside. An address line is exactly the
+     kind of field that contains a comma, and one unquoted comma moves every
+     column after it into the wrong place for that row alone — the sort of error
+     that is only noticed when an envelope comes back. */
+  const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const lines = [
+    ['Name', 'Email', 'Class', 'Address line 1', 'Address line 2', 'County', 'Eircode', 'Full address', 'Given on'].map(cell).join(','),
+    ...result.rows.map((row) => [
+      row.name, row.email, row.programme_name ? classLabel(row) : '',
+      row.address_line1 || '', row.address_line2 || '', row.address_county || '', row.eircode || '',
+      hasAddress(row) ? formatAddress(row) : 'Not given yet',
+      row.address_updated_at ? new Date(row.address_updated_at).toISOString().slice(0, 10) : '',
+    ].map(cell).join(',')),
+  ];
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="student-addresses-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(`\uFEFF${lines.join('\n')}\n`);
+}));
+
 router.get('/students/:id/impact', asyncRoute(async (req, res) => {
   const student = await one(
     `SELECT u.id,u.name,u.email,u.withdrawn_at,
@@ -1513,6 +1559,7 @@ router.patch('/homework/:id/feedback-draft', asyncRoute(async (req, res) => {
 router.get('/students/:id/profile', asyncRoute(async (req, res) => {
   const student = await one(
     `SELECT u.id,u.name,u.email,u.active,u.must_change_password,u.last_login_at,u.created_at,u.withdrawn_at,
+            u.address_line1,u.address_line2,u.address_county,u.eircode,u.address_updated_at,
             c.id class_id,c.programme_name,c.day_of_week,c.start_time,c.timezone
      FROM users u
      LEFT JOIN class_students cs ON cs.student_id=u.id AND cs.active=true
