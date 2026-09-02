@@ -135,7 +135,7 @@ export async function getThread({ threadId, viewerId, includeDeleted = false, in
   );
   if (!thread) return null;
   const comments = await query(
-    `SELECT p.id, p.body, p.created_at, p.deleted_at, ${AUTHOR} author,
+    `SELECT p.id, p.body, p.created_at, p.deleted_at, p.edited_at, ${AUTHOR} author,
             p.teacher_audio_path, p.teacher_audio_mime, p.teacher_audio_seconds, p.teacher_audio_recorded_at,
             ${reactionsFor('post', 'p.id')} reactions
      FROM discussion_posts p

@@ -1691,3 +1691,9 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
    washing the banner out against a matching background. */
 .remove-option.danger{border-color:var(--error-100)}
 .remove-option.danger h4{color:var(--error-700)}
+
+/* Editing a comment happens where the comment is, so the text area takes the
+   place of the text rather than opening a dialog over it. */
+.cmt-editor{display:grid;gap:8px;margin:4px 0 2px}
+.cmt-editor textarea{width:100%;resize:vertical;min-height:64px}
+.cmt-editor-actions{display:flex;gap:8px;justify-content:flex-end}

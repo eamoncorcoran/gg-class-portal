@@ -2171,6 +2171,33 @@ router.post('/community/thread/:id/removal', asyncRoute(async (req, res) => {
   res.json(row);
 }));
 
+/* Editing a comment on the board.
+   ------------------------------------------------------------------
+   Removing was the only thing that could be done to a comment, which makes a
+   typo and a problem the same category of event. This is the ordinary repair.
+
+   Who did it is recorded, because a teacher may edit a comment they did not
+   write and the reader has no other way of knowing. The board shows that a
+   comment was edited; it does not keep the earlier text, which would be a
+   record of what somebody said before they were helped to say it better. */
+router.patch('/community/post/:id', asyncRoute(async (req, res) => {
+  const parsed = z.object({ body: z.string().trim().min(1).max(20000) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'A comment cannot be empty.' });
+  const current = await one('SELECT * FROM discussion_posts WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Comment not found.' });
+  if (current.body === parsed.data.body) return res.json(current);
+  const row = await one(
+    `UPDATE discussion_posts SET body=$1, edited_at=now(), edited_by=$2, updated_at=now()
+     WHERE id=$3 RETURNING *`,
+    [parsed.data.body, req.user.id, current.id],
+  );
+  await audit({
+    actorId: req.user.id, action: 'community.comment_edited', entityType: 'post', entityId: current.id,
+    metadata: { threadId: current.thread_id, wasAuthor: current.author_id === req.user.id }, ip: req.ip,
+  });
+  res.json(row);
+}));
+
 router.post('/community/post/:id/removal', asyncRoute(async (req, res) => {
   const parsed = z.object({ removed: z.boolean() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Say whether to remove or restore.' });

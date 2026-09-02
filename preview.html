@@ -1700,6 +1700,12 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
    washing the banner out against a matching background. */
 .remove-option.danger{border-color:var(--error-100)}
 .remove-option.danger h4{color:var(--error-700)}
+
+/* Editing a comment happens where the comment is, so the text area takes the
+   place of the text rather than opening a dialog over it. */
+.cmt-editor{display:grid;gap:8px;margin:4px 0 2px}
+.cmt-editor textarea{width:100%;resize:vertical;min-height:64px}
+.cmt-editor-actions{display:flex;gap:8px;justify-content:flex-end}
 </style>
 </head>
 <body>
@@ -7487,6 +7493,64 @@ async function openThread(threadId) {
   renderThreadDrawer();
 }
 
+/* Editing a comment in place.
+   ------------------------------------------------------------------
+   A small box rather than a dialog, because it is a repair rather than a
+   decision: the comment is replaced by a text area holding what it says, and
+   saving puts it back. Escape leaves it as it was.
+
+   The board marks an edited comment as edited. That matters most for the case
+   this makes possible — a teacher correcting a comment somebody else wrote —
+   where nothing else on the screen would say the words had changed. */
+function openCommentEditor(id) {
+  const article = document.querySelector(`[data-edit-comment="${id}"]`)?.closest('.cmt');
+  const text = article?.querySelector('.cmt-text');
+  if (!article || !text || article.querySelector('.cmt-editor')) return;
+
+  const comment = (state.communityThread?.comments || []).find((row) => row.id === id);
+  const original = comment?.body ?? text.innerText;
+
+  const editor = document.createElement('div');
+  editor.className = 'cmt-editor';
+  editor.innerHTML = `
+    <textarea class="input" rows="3"></textarea>
+    <div class="cmt-editor-actions">
+      <button class="btn small" data-cancel-edit>Cancel</button>
+      <button class="btn small primary" data-save-edit>Save</button>
+    </div>`;
+  const box = editor.querySelector('textarea');
+  box.value = original;
+  text.hidden = true;
+  text.after(editor);
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
+
+  const close = () => { editor.remove(); text.hidden = false; };
+  const save = async () => {
+    const body = box.value.trim();
+    if (!body) return showToast('A comment cannot be empty.', 'error');
+    if (body === original) return close();
+    const button = editor.querySelector('[data-save-edit]');
+    button.disabled = true;
+    try {
+      await api(`/api/admin/community/post/${id}`, { method: 'PATCH', body: { body } });
+      await openThread(state.communityThread.id);
+      showToast('Comment updated');
+    } catch (error) {
+      button.disabled = false;
+      showToast(error.message, 'error');
+    }
+  };
+
+  editor.querySelector('[data-cancel-edit]').addEventListener('click', close);
+  editor.querySelector('[data-save-edit]').addEventListener('click', save);
+  box.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); close(); }
+    // The same shortcut that sends a comment, so editing one feels like writing one.
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); save(); }
+  });
+}
+
 function feedComment(comment, admin) {
   const removed = Boolean(comment.deleted_at);
   return `<article class="cmt ${removed ? 'is-removed' : ''}">
@@ -7494,7 +7558,8 @@ function feedComment(comment, admin) {
     <div class="cmt-body">
       <div class="cmt-head">
         <span class="post-name">${escapeHtml(comment.author?.name || 'Removed account')}${comment.author?.role === 'admin' ? '<i class="tag-teacher">Teacher</i>' : ''}</span>
-        <span class="post-meta">${escapeHtml(timeAgo(comment.created_at))}</span>
+        <span class="post-meta">${escapeHtml(timeAgo(comment.created_at))}${comment.edited_at ? ' · edited' : ''}</span>
+        ${admin && !removed ? `<button class="cmt-remove" data-edit-comment="${comment.id}">Edit</button>` : ''}
         ${admin ? `<button class="cmt-remove" data-post-removal="${comment.id}" data-removed="${removed}">${removed ? 'Restore' : 'Remove'}</button>` : ''}
       </div>
       ${removed
@@ -7602,6 +7667,8 @@ function renderThreadDrawer() {
           await openThread(thread.id); await reloadBoard();
         } catch (error) { showToast(error.message, 'error'); }
       }));
+      modalRoot.querySelectorAll('[data-edit-comment]').forEach((button) => button.addEventListener('click',
+        () => openCommentEditor(button.dataset.editComment)));
     },
   });
 }
