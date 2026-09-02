@@ -35,20 +35,36 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'"],
+      /* The chat widget on the Private message screen, and nothing else from
+         outside. A third-party script can read whatever is on the page it runs
+         on, which is why it is loaded on that one screen — the only screen in
+         the portal that shows no student work, no feedback and no names but the
+         reader's own. The session cookie is httpOnly, so it is out of reach of
+         any script regardless. */
+      /* The widget pulls in more than its own domain: Cloudflare Turnstile,
+         which is the check the contact form renders behind, and GoHighLevel's
+         session service. Without Turnstile the panel opens empty, which looks
+         like the widget being broken rather than being blocked. */
+      scriptSrc: ["'self'", 'https://*.leadconnectorhq.com', 'https://challenges.cloudflare.com'],
+      /* The chat widget writes its own styles inline and pulls a font from
+         bunny.net. Allowing inline styles is a genuine loosening — it is the one
+         directive this widget costs us — but script injection, which is the
+         attack that matters, stays blocked by scriptSrc above. */
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://*.leadconnectorhq.com', 'https://fonts.bunny.net'],
       // The interface sets a handful of computed style attributes (progress bar
       // widths, embed sizing). Without this they are silently dropped and the
       // affected controls render collapsed or uncoloured. Stylesheets and
       // <style> blocks stay restricted to same-origin by styleSrc above.
       styleSrcAttr: ["'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      fontSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'"],
+      fontSrc: ["'self'", 'data:', 'https://fonts.bunny.net', 'https://*.leadconnectorhq.com'],
+      connectSrc: ["'self'", 'https://*.leadconnectorhq.com', 'wss://*.leadconnectorhq.com',
+        'https://*.msgsndr.com'],
       // Video players only. nocookie for YouTube so a class board is not
       // setting advertising cookies on students.
       frameSrc: ["'self'", 'https://www.loom.com', 'https://loom.com',
-        'https://www.youtube-nocookie.com', 'https://www.youtube.com'],
+        'https://www.youtube-nocookie.com', 'https://www.youtube.com',
+        'https://*.leadconnectorhq.com', 'https://challenges.cloudflare.com'],
       mediaSrc: ["'self'", 'blob:', 'https:'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],

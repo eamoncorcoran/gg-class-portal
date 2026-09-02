@@ -53,3 +53,43 @@ test('the page still references the assets it is meant to version', () => {
   assert.match(html, /"\/app\.js"/, 'index.html no longer asks for /app.js by that name');
   assert.match(html, /"\/styles\.css"/, 'index.html no longer asks for /styles.css by that name');
 });
+
+/* The chat widget, and the price of it.
+   ------------------------------------------------------------------
+   A third-party script can read whatever is on the page it runs on, so this one
+   is loaded on the single screen that shows nothing — no submissions, no
+   feedback, no name but the reader's own — and taken away again when that screen
+   closes. These hold that arrangement in place. */
+test('the chat widget is loaded on one screen and removed from the rest', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+
+  assert.match(app, /function mountChatWidget\(/);
+  assert.match(app, /function unmountChatWidget\(/);
+  assert.match(app, /if \(state\.view === 'private'\) \{\s*\n\s*mountChatWidget\(\);/,
+    'it must mount only on the private message screen');
+  assert.match(app, /\} else \{\s*\n\s*unmountChatWidget\(\);/,
+    'and be removed on every other screen');
+
+  /* The loader draws its bubble outside our markup, so removing the script
+     alone would leave it floating over the rest of the portal. */
+  const unmount = app.slice(app.indexOf('function unmountChatWidget('),
+    app.indexOf('function unmountChatWidget(') + 600);
+  assert.match(unmount, /chat-widget/, 'the bubble it draws has to go too');
+});
+
+test('the policy allows the widget exactly what it needs and no more', () => {
+  const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  const csp = server.slice(server.indexOf('directives: {'), server.indexOf('frameAncestors') + 60);
+
+  // What the widget actually pulls in, discovered by watching it fail.
+  for (const origin of ['leadconnectorhq.com', 'challenges.cloudflare.com', 'msgsndr.com']) {
+    assert.ok(csp.includes(origin), `${origin} is missing and the widget will not work`);
+  }
+
+  /* The line that must not move. Inline styles are the one loosening this
+     widget cost; inline script is the attack that matters and stays blocked. */
+  const scriptSrc = csp.slice(csp.indexOf('scriptSrc:'), csp.indexOf('\n', csp.indexOf('scriptSrc:') + 40));
+  assert.doesNotMatch(scriptSrc, /unsafe-inline|unsafe-eval/,
+    'no widget is worth allowing inline script');
+  assert.match(csp, /frameAncestors|frame-ancestors/, 'framing must still be refused');
+});

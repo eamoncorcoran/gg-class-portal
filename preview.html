@@ -1663,6 +1663,29 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   padding:11px 13px;background:var(--surface)}
 .class-info-rows dt{color:var(--text-quaternary);font-size:11.5px;font-weight:650}
 .class-info-rows dd{margin:0;font-size:13px;font-weight:560}
+
+/* The private line, and the case for not using it.
+   The community card comes first and carries the weight, because sending people
+   back to the board is most of what this screen is for. */
+.private-page{display:grid;gap:16px;max-width:680px}
+.private-page .card{padding:22px 24px}
+.private-page h2{margin:0 0 10px;font-size:17px;font-weight:680;letter-spacing:-.02em}
+.private-page p{margin:0 0 12px;color:var(--text-secondary);font-size:14px;line-height:1.65}
+.private-page p:last-of-type{margin-bottom:0}
+.private-first{border-color:var(--brand-200);background:var(--brand-25)}
+.private-first h2{color:var(--brand-800)}
+.private-nudge{padding:11px 13px;border-radius:var(--radius-md);background:var(--surface);
+  border:1px solid var(--brand-200);font-weight:600;color:var(--text-primary)}
+.private-first .btn{margin-top:14px}
+.private-wait{padding:11px 13px;border-radius:var(--radius-md);
+  background:var(--warning-50,#fffaeb);border:1px solid var(--warning-200,#fedf89);
+  color:var(--warning-800,#93370d)}
+.private-wait strong{color:var(--warning-900,#7a2e0e)}
+
+/* The widget draws itself bottom-right; keep it clear of the mobile nav bar. */
+@media (max-width:900px){
+  .private-page{max-width:none}
+}
 </style>
 </head>
 <body>
@@ -9725,6 +9748,7 @@ function studentNav() {
       state.studentData?.hasCommunity
         ? studentNavButton('community', svg.board, 'Community', state.studentData?.communityUnread || 0)
         : ''}
+    ${studentNavButton('private', svg.lock, 'Private message')}
   </nav>`;
 }
 
@@ -9738,7 +9762,7 @@ async function loadStudent() {
   renderStudent();
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message' };
 
 function renderStudent() {
   let content = '';
@@ -9746,6 +9770,7 @@ function renderStudent() {
     content = `${studentHeader()}<div class="empty-state"><h3>You are not in a class yet</h3><p>Your account is active but has not been added to a class group. Contact Gaeilgeoir Guides and they will add you.</p></div>`;
   } else if (state.view === 'tracker') content = studentTrackerView();
   else if (state.view === 'courses') content = state.course ? coursePage() : coursesView();
+  else if (state.view === 'private') content = privateMessageView();
   else if (state.view === 'community') {
     // Reachable by a stale hash after a class loses its board.
     if (state.studentData?.hasCommunity) content = studentCommunityView();
@@ -9755,6 +9780,15 @@ function renderStudent() {
   shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Calendar', roleLabel: 'Student', notificationCount: state.studentData.notifications });
   bindStudentView();
   if (state.view === 'courses') bindCourse();
+  if (state.view === 'private') {
+    mountChatWidget();
+    document.getElementById('private-to-board')?.addEventListener('click', () => {
+      state.view = 'community';
+      renderStudent();
+    });
+  } else {
+    unmountChatWidget();
+  }
 }
 
 /* The class link, shown where a student already goes on the evening of a class.
@@ -9839,6 +9873,7 @@ const STUDENT_PAGE = {
   tracker: { title: 'Weekly tracker', line: 'Every week of the course at a glance.' },
   courses: { title: 'Courses', line: 'Class recordings, with the notes that go with them.' },
   community: { title: 'Community', line: 'Ask a question, or answer somebody else.' },
+  private: { title: 'Private message', line: 'For anything you would rather not put on the board.' },
 };
 
 /* A page title, not a greeting.
@@ -10188,6 +10223,71 @@ function openClassInfo(date, kind) {
       });
     },
   });
+}
+
+/* The private line, and an argument for not using it.
+   ------------------------------------------------------------------
+   The point of this screen is mostly to send people back to the board. A
+   question asked privately is answered once; the same question on the board is
+   answered once and read by twenty people, several of whom were about to ask it.
+   So the case for the community is made first and made honestly — it is faster
+   for the student too, because other students answer — and the private line is
+   offered underneath for the things that genuinely are private. */
+function privateMessageView() {
+  const hasBoard = state.studentData?.hasCommunity;
+  return `${studentHeader()}
+    <div class="private-page">
+      ${hasBoard ? `<section class="card private-first">
+        <h2>Try the community first</h2>
+        <p>Nearly every question about the course is one somebody else in the class
+          is also sitting with. Posting it on the board means it gets answered once
+          and read by everyone — and you will usually hear back faster, because your
+          classmates answer too, not just us.</p>
+        <p class="private-nudge">If you are about to ask something another student
+          could learn from, please put it on the board.</p>
+        <button class="btn primary" id="private-to-board">Go to the community</button>
+      </section>` : ''}
+
+      <section class="card private-chat">
+        <h2>Something private?</h2>
+        <p>If it is personal — your own circumstances, something you would rather
+          not put in front of the class, or anything to do with your account or
+          payment — use the chat at the bottom of this page. It comes straight to
+          us and nobody else sees it.</p>
+        <p class="private-wait"><strong>Please allow up to 48 hours for a reply.</strong>
+          We read everything, but we are teaching for a good part of the week.</p>
+        <p class="muted small">Anything about a deadline you have already missed is
+          worth sending here rather than waiting — say what happened and we will sort
+          it out with you.</p>
+      </section>
+    </div>`;
+}
+
+/* The widget belongs to this screen and nowhere else.
+   ------------------------------------------------------------------
+   It is a third-party script, and a third-party script can read whatever is on
+   the page it is running on. This is the one screen with nothing on it — no
+   submissions, no feedback, no other student's name — so it is loaded when the
+   screen opens and taken away again when it closes, rather than sitting on every
+   page of the portal for the whole session. */
+const CHAT_WIDGET_ID = '6a97b99f783fa37794030a49';
+
+function mountChatWidget() {
+  if (document.getElementById('gg-chat-widget')) return;
+  const script = document.createElement('script');
+  script.id = 'gg-chat-widget';
+  script.src = 'https://widgets.leadconnectorhq.com/loader.js';
+  script.dataset.resourcesUrl = 'https://widgets.leadconnectorhq.com/chat-widget/loader.js';
+  script.dataset.widgetId = CHAT_WIDGET_ID;
+  document.body.append(script);
+}
+
+function unmountChatWidget() {
+  document.getElementById('gg-chat-widget')?.remove();
+  /* The loader draws its own furniture outside our markup, so removing the
+     script alone leaves the bubble floating over every other screen. */
+  document.querySelectorAll('[id^="lc_text-widget"], [class*="lc_text-widget"], chat-widget')
+    .forEach((node) => node.remove());
 }
 
 function studentTabs(active) {
