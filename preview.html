@@ -1686,6 +1686,20 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 @media (max-width:900px){
   .private-page{max-width:none}
 }
+
+/* Removing a student is two choices, not one. Each is a card of its own so the
+   reversible one cannot be mistaken for the destructive one at a glance. */
+.remove-options{display:grid;gap:12px}
+.remove-option{border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:14px;background:#fff}
+.remove-option h4{margin:0 0 6px;font-size:13px}
+.remove-option p{margin:0 0 12px}
+.remove-option .detail-grid{margin-bottom:12px}
+.remove-option>.btn{width:100%;justify-content:center}
+/* The banner inside this card is already error-tinted, so the card itself
+   stays white and carries the warning in its border and heading instead of
+   washing the banner out against a matching background. */
+.remove-option.danger{border-color:var(--error-100)}
+.remove-option.danger h4{color:var(--error-700)}
 </style>
 </head>
 <body>
@@ -4803,7 +4817,7 @@ function peopleView() {
       <div class="mini-stats"><span class="mini-stat">${klass.student_count || 0} students</span><span class="mini-stat">${escapeHtml(klass.timezone)}</span><span class="mini-stat ${klass.join_url ? 'good' : ''}">${klass.join_url ? 'Class link set' : 'No class link'}</span><span class="mini-stat">${klass.has_community === false ? 'No board' : 'Has a board'}</span></div>
       <div class="actions stack-top"><button class="btn small" data-class-link="${klass.id}">${svg.settings || svg.video} Class setup</button><button class="btn small danger" data-delete-class="${klass.id}">Delete class</button></div></article>`).join('') || '<div class="empty-state"><h3>No classes yet</h3><p>Add your first class to begin.</p></div>'}</div></section>
     <section id="students-tab" class="hidden"><div class="card table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Email</th><th>Current class</th><th>Login</th><th></th></tr></thead><tbody>
-      ${state.students.map((student) => `<tr><td><button class="text-link strong-link" data-open-student="${student.id}">${escapeHtml(student.name)}</button></td><td>${escapeHtml(student.email)}</td><td><select class="select" data-student-class="${student.id}">${state.classes.map((klass) => `<option value="${klass.id}" ${student.class_id === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}</select></td><td>${student.last_login_at ? `<span class="pill green">Last login ${fmtDate(student.last_login_at)}</span>` : '<span class="pill orange">Invite pending</span>'}</td><td><div class="row-actions"><button class="btn small" data-open-student="${student.id}">${svg.note} Notes</button><button class="btn small" data-resend="${student.id}">Resend invite</button><button class="btn small" data-reset-student="${student.id}">Reset password</button></div></td></tr>`).join('')}
+      ${state.students.map((student) => `<tr><td><button class="text-link strong-link" data-open-student="${student.id}">${escapeHtml(student.name)}</button></td><td>${escapeHtml(student.email)}</td><td><select class="select" data-student-class="${student.id}"><option value="" ${student.class_id ? '' : 'selected'}>Not in a class</option>${state.classes.map((klass) => `<option value="${klass.id}" ${student.class_id === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}</select></td><td>${student.last_login_at ? `<span class="pill green">Last login ${fmtDate(student.last_login_at)}</span>` : '<span class="pill orange">Invite pending</span>'}</td><td><div class="row-actions"><button class="btn small" data-open-student="${student.id}">${svg.note} Notes</button><button class="btn small" data-resend="${student.id}">Resend invite</button><button class="btn small" data-reset-student="${student.id}">Reset password</button><button class="btn small danger" data-remove-student="${student.id}">Remove</button></div></td></tr>`).join('')}
     </tbody></table></div></section>`;
 }
 
@@ -4852,6 +4866,110 @@ async function confirmDeleteClass(id) {
           await loadAdmin();
           showToast('Class deleted');
         } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+/* Two different things, asked as one question.
+   ------------------------------------------------------------------
+   "Remove this student" means one of two things and they are not close: taking
+   somebody off a register, and erasing them. Offering a single Delete button
+   would make the second one the answer to both, which is how a person who simply
+   changed class ends up with their year's work gone.
+
+   So both are laid out side by side with what each one costs, and the reversible
+   one is written first. The destructive one has to name the number of pieces of
+   work it is about to destroy, and the server refuses it unless that number
+   comes back matching — a count that has to be repeated cannot be clicked past.*/
+/* "Nothing will be lost" has to be true when it is said.
+   The count that gates the delete is submitted work — check-ins and homework —
+   because that is what the account exists to collect. But a student can have
+   written nothing in and still leave six posts on the board and a page of the
+   teacher's own notes, and calling that a clean deletion would be a plain
+   falsehood on the screen at the moment it matters most. So when there is no
+   work but there is something else, it says what the something else is. */
+function deleteWarning(work, impact, piece) {
+  if (work) return `<div class="error-banner stack-top"><strong>${piece(work)} of student work will be deleted permanently.</strong></div>`;
+  const alsoLost = impact.posts + impact.comments + impact.notes + impact.attendance;
+  if (!alsoLost) return '<p class="muted small stack-top">Nothing has been handed in and nothing else is recorded, so this account can be deleted cleanly.</p>';
+  const parts = [];
+  const board = impact.posts + impact.comments;
+  if (board) parts.push(`${board} board post${board === 1 ? '' : 's'}`);
+  if (impact.notes) parts.push(`${impact.notes} note${impact.notes === 1 ? '' : 's'} you wrote`);
+  if (impact.attendance) parts.push(`${impact.attendance} attendance record${impact.attendance === 1 ? '' : 's'}`);
+  const listed = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0];
+  return `<p class="muted small stack-top">No homework or check-ins were handed in, but ${listed} will be deleted too.</p>`;
+}
+
+async function confirmRemoveStudent(id) {
+  let impact;
+  try { impact = await api(`/api/admin/students/${id}/impact`); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  const student = impact.student;
+  const work = impact.work;
+  const piece = (count) => `${count} piece${count === 1 ? '' : 's'}`;
+
+  modal({
+    title: `Remove ${escapeHtml(student.name)}?`,
+    subtitle: student.classLabel ? `Currently in ${escapeHtml(student.classLabel)}` : 'Not in a class at the moment',
+    body: `
+      <div class="remove-options">
+        <div class="remove-option">
+          <h4>Take them off the class</h4>
+          <p class="muted small">Their account stays and everything they handed in is kept, so the tracker still shows the work they did. Use this when somebody has left the course or was put in the wrong group — you can put them in another class afterwards.</p>
+          <button class="btn" id="remove-from-class" ${student.classId ? '' : 'disabled'}>
+            ${student.classId ? `Take off ${escapeHtml(student.classLabel)}` : 'Not in a class'}
+          </button>
+        </div>
+        <div class="remove-option danger">
+          <h4>Delete the account</h4>
+          <p class="muted small">Removes ${escapeHtml(student.name)} and everything belonging to them. They can no longer sign in, and nothing they submitted is recoverable.</p>
+          <div class="detail-grid">
+            <div class="detail"><small>Check-ins</small><strong>${impact.checkins}</strong></div>
+            <div class="detail"><small>Homework</small><strong>${impact.submissions}</strong></div>
+            <div class="detail"><small>Files uploaded</small><strong>${impact.files}</strong></div>
+            <div class="detail"><small>Attendance</small><strong>${impact.attendance}</strong></div>
+            <div class="detail"><small>Board posts</small><strong>${impact.posts + impact.comments}</strong></div>
+            <div class="detail"><small>Your notes</small><strong>${impact.notes}</strong></div>
+          </div>
+          ${deleteWarning(work, impact, piece)}
+          <button class="btn danger" id="delete-student">Delete permanently${work ? ` and lose ${piece(work)} of work` : ''}</button>
+        </div>
+      </div>`,
+    footer: '<button class="btn" data-close-modal>Cancel</button>',
+    onOpen() {
+      const offClass = document.getElementById('remove-from-class');
+      if (offClass && student.classId) {
+        offClass.addEventListener('click', async () => {
+          offClass.disabled = true;
+          try {
+            const result = await api(`/api/admin/students/${id}/remove-from-class`, {
+              method: 'POST', body: { classId: student.classId },
+            });
+            closeModal();
+            await loadAdmin();
+            showToast(result.message || 'Taken off the class');
+          } catch (error) {
+            offClass.disabled = false;
+            showToast(error.message, 'error');
+          }
+        });
+      }
+
+      const remove = document.getElementById('delete-student');
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try {
+          await api(`/api/admin/students/${id}?confirmWork=${work}`, { method: 'DELETE' });
+          closeModal();
+          await loadAdmin();
+          showToast(`${student.name} was deleted`);
+        } catch (error) {
+          remove.disabled = false;
+          showToast(error.message, 'error');
+        }
       });
     },
   });
@@ -8661,11 +8779,24 @@ function bindAdminView() {
   });
   bindFeed();
   document.querySelectorAll('[data-student-class]').forEach((select) => select.addEventListener('change', async () => {
-    try { await api(`/api/admin/students/${select.dataset.studentClass}`, { method: 'PATCH', body: { classId: select.value } }); showToast('Student moved'); }
-    catch (error) { showToast(error.message, 'error'); }
+    const id = select.dataset.studentClass;
+    try {
+      /* "Not in a class" is a move to nowhere, which is a different request:
+         the update route takes a class to move to and would reject an empty
+         one. */
+      if (!select.value) {
+        const result = await api(`/api/admin/students/${id}/remove-from-class`, { method: 'POST', body: {} });
+        showToast(result.message || 'Taken off the class');
+      } else {
+        await api(`/api/admin/students/${id}`, { method: 'PATCH', body: { classId: select.value } });
+        showToast('Student moved');
+      }
+      await loadAdmin();
+    } catch (error) { showToast(error.message, 'error'); await loadAdmin(); }
   }));
   document.querySelectorAll('[data-resend]').forEach((button) => button.addEventListener('click', () => studentAccessAction(button.dataset.resend, 'resend-invite')));
   document.querySelectorAll('[data-reset-student]').forEach((button) => button.addEventListener('click', () => studentAccessAction(button.dataset.resetStudent, 'reset-password')));
+  document.querySelectorAll('[data-remove-student]').forEach((button) => button.addEventListener('click', () => confirmRemoveStudent(button.dataset.removeStudent)));
   document.querySelectorAll('[data-edit-assignment]').forEach((button) => button.addEventListener('click', () => openAssignmentModal(state.assignments.find((item) => item.id === button.dataset.editAssignment))));
   document.querySelectorAll('[data-reopen-assignment]').forEach((button) => button.addEventListener('click', () => openReopenModal(button.dataset.reopenAssignment)));
   bindAssignmentCalendar();

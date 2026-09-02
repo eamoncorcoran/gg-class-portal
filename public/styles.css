@@ -1677,3 +1677,17 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 @media (max-width:900px){
   .private-page{max-width:none}
 }
+
+/* Removing a student is two choices, not one. Each is a card of its own so the
+   reversible one cannot be mistaken for the destructive one at a glance. */
+.remove-options{display:grid;gap:12px}
+.remove-option{border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:14px;background:#fff}
+.remove-option h4{margin:0 0 6px;font-size:13px}
+.remove-option p{margin:0 0 12px}
+.remove-option .detail-grid{margin-bottom:12px}
+.remove-option>.btn{width:100%;justify-content:center}
+/* The banner inside this card is already error-tinted, so the card itself
+   stays white and carries the warning in its border and heading instead of
+   washing the banner out against a matching background. */
+.remove-option.danger{border-color:var(--error-100)}
+.remove-option.danger h4{color:var(--error-700)}

@@ -477,6 +477,126 @@ router.post('/students/:id/resend-invite', asyncRoute(async (req, res) => {
   res.json({ ok: true, message: 'A fresh invitation was emailed to the student.' });
 }));
 
+/* Taking a student off a class, and removing them altogether.
+   ------------------------------------------------------------------
+   These are two different intentions and they were being served by one
+   half-measure: the class dropdown, which could only ever move somebody from one
+   class to another. There was no way to say "this person is not in this class"
+   and no way to say "this person should not be here at all", so the wrong entry
+   and the duplicate account stayed on the register forever.
+
+   They are kept separate because they lose different amounts. Removing from a
+   class keeps the account and every piece of work; deleting keeps nothing. The
+   safe one is the one offered first, and the destructive one has to say what it
+   is about to destroy before it will do it. */
+
+/** What deleting this student would take with them. */
+router.get('/students/:id/impact', asyncRoute(async (req, res) => {
+  const student = await one(
+    `SELECT u.id,u.name,u.email,u.withdrawn_at,
+            c.id class_id,c.programme_name,c.day_of_week,c.start_time
+     FROM users u
+     LEFT JOIN class_students cs ON cs.student_id=u.id AND cs.active=true
+     LEFT JOIN classes c ON c.id=cs.class_id
+     WHERE u.id=$1 AND u.role='student'`,
+    [req.params.id],
+  );
+  if (!student) return res.status(404).json({ error: 'Student not found.' });
+  const counts = await one(
+    `SELECT
+       (SELECT count(*)::int FROM checkins WHERE student_id=$1 AND status<>'draft') checkins,
+       (SELECT count(*)::int FROM homework_submissions WHERE student_id=$1 AND status<>'draft') submissions,
+       (SELECT count(*)::int FROM homework_files WHERE student_id=$1) files,
+       (SELECT count(*)::int FROM attendance WHERE student_id=$1 AND status<>'unknown') attendance,
+       (SELECT count(*)::int FROM discussion_threads WHERE author_id=$1 AND deleted_at IS NULL) posts,
+       (SELECT count(*)::int FROM discussion_posts WHERE author_id=$1 AND deleted_at IS NULL) comments,
+       (SELECT count(*)::int FROM student_notes WHERE student_id=$1) notes`,
+    [student.id],
+  );
+  res.json({
+    student: {
+      id: student.id, name: student.name, email: student.email,
+      withdrawn: Boolean(student.withdrawn_at),
+      classId: student.class_id,
+      classLabel: student.class_id ? classLabel(student) : null,
+    },
+    ...counts,
+    work: counts.checkins + counts.submissions,
+  });
+}));
+
+/* Off the register, but still a person. Their work stays exactly where it is —
+   a check-in they submitted in March was really submitted, and a class list is
+   not the right place to decide otherwise. */
+router.post('/students/:id/remove-from-class', asyncRoute(async (req, res) => {
+  const student = await one(`SELECT id,name FROM users WHERE id=$1 AND role='student'`, [req.params.id]);
+  if (!student) return res.status(404).json({ error: 'Student not found.' });
+  const parsed = z.object({ classId: z.string().uuid().optional() }).safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid request.' });
+
+  const enrolment = parsed.data.classId
+    ? await one('SELECT class_id FROM class_students WHERE student_id=$1 AND class_id=$2 AND active=true', [student.id, parsed.data.classId])
+    : await one('SELECT class_id FROM class_students WHERE student_id=$1 AND active=true', [student.id]);
+  if (!enrolment) return res.status(404).json({ error: `${student.name} is not in that class.` });
+
+  await query('UPDATE class_students SET active=false WHERE student_id=$1 AND class_id=$2', [student.id, enrolment.class_id]);
+  await audit({ actorId: req.user.id, action: 'student.removed_from_class', entityType: 'user', entityId: student.id, metadata: { classId: enrolment.class_id }, ip: req.ip });
+  res.json({ ok: true, message: `${student.name} was taken off the class. Their account and their work are kept.` });
+}));
+
+/* Gone. Everything referencing the student cascades on delete, so the database
+   half of this is one statement; the files are not in the database and have to
+   be removed by hand, or they sit on the disk forever with nothing left pointing
+   at them.
+ 
+   Refuses until the caller has said how many pieces of work it is destroying,
+   the same bargain the class delete makes. A number that has to be repeated back
+   cannot be clicked past by accident. */
+router.delete('/students/:id', asyncRoute(async (req, res) => {
+  const student = await one(`SELECT id,name,email,avatar_path FROM users WHERE id=$1 AND role='student'`, [req.params.id]);
+  if (!student) return res.status(404).json({ error: 'Student not found.' });
+
+  const counts = await one(
+    `SELECT (SELECT count(*)::int FROM checkins WHERE student_id=$1 AND status<>'draft')
+          + (SELECT count(*)::int FROM homework_submissions WHERE student_id=$1 AND status<>'draft') work`,
+    [student.id],
+  );
+  const confirmed = Number(req.query.confirmWork ?? req.body?.confirmWork ?? -1);
+  if (counts.work > 0 && confirmed !== counts.work) {
+    return res.status(409).json({
+      error: `${student.name} has handed in ${counts.work} piece${counts.work === 1 ? '' : 's'} of work. Deleting removes ${counts.work === 1 ? 'it' : 'them'} permanently. Take them off the class instead to keep everything.`,
+      work: counts.work,
+    });
+  }
+
+  /* Read the filenames before the rows go, since the cascade takes them with it. */
+  const files = await query('SELECT stored_name FROM homework_files WHERE student_id=$1', [student.id]);
+  const storedNames = files.rows.map((row) => row.stored_name);
+  if (student.avatar_path) storedNames.push(path.basename(student.avatar_path));
+
+  await query('DELETE FROM users WHERE id=$1', [student.id]);
+
+  /* After the delete, deliberately. A file that will not unlink must not stop
+     the account from going — the record is the thing that matters, and a stray
+     file is a housekeeping problem rather than a reason to keep somebody on the
+     system after being asked twice to remove them. */
+  let filesRemoved = 0;
+  for (const name of storedNames) {
+    try {
+      await fs.unlink(path.join(config.privateUploadDir, name));
+      filesRemoved += 1;
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.error(`Could not remove ${name} for the deleted student: ${error.message}`);
+    }
+  }
+
+  await audit({
+    actorId: req.user.id, action: 'student.deleted', entityType: 'user', entityId: student.id,
+    metadata: { name: student.name, email: student.email, work: counts.work, filesRemoved }, ip: req.ip,
+  });
+  res.json({ ok: true, deletedWork: counts.work, filesRemoved });
+}));
+
 router.get('/tracker/:classId', asyncRoute(async (req, res) => {
   const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.classId]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
