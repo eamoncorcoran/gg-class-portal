@@ -255,3 +255,53 @@ test('the hour reads the way somebody would say it', () => {
   assert.equal(plainHour('2026-09-07T11:00:00Z', 'Europe/Dublin'), '12pm');
   assert.equal(plainHour('2026-09-07T23:00:00Z', 'Europe/Dublin'), '12am');
 });
+
+/* Withdrawing.
+   ------------------------------------------------------------------
+   The button did nothing at all. currentTarget is nulled once an event has
+   finished dispatching, and the handler awaited a confirmation before reading
+   it, so setting `disabled` on null threw before the form was ever sent. The
+   button went back to its old label and the screen sat there. */
+test('the withdrawal button is held before the confirmation, not after', () => {
+  const start = app.indexOf("document.getElementById('wd-submit')");
+  assert.ok(start !== -1, 'the withdrawal button is gone');
+  const handler = app.slice(start, start + 900);
+
+  const captured = handler.indexOf('const button = event.currentTarget');
+  const confirmed = handler.indexOf('await askConfirm');
+  assert.ok(captured !== -1 && confirmed !== -1, 'both steps should still be there');
+  assert.ok(captured < confirmed,
+    'currentTarget must be read before the await, or it is null by the time it is used');
+});
+
+test('no handler reads currentTarget after awaiting', () => {
+  /* The same mistake anywhere else would fail the same silent way, so it is
+     worth catching as a shape rather than one instance. */
+  const offenders = [];
+  for (const match of app.matchAll(/addEventListener\([^,]+,\s*async \(event\)[^{]*\{/g)) {
+    const rest = app.slice(match.index, match.index + 1600);
+    const awaitAt = rest.indexOf('await ');
+    const useAt = rest.indexOf('event.currentTarget');
+    // An argument evaluated before the call is fine: it runs before suspending.
+    const insideCall = useAt !== -1 && /\([^()]*event\.currentTarget/.test(rest.slice(Math.max(0, useAt - 60), useAt + 20));
+    if (awaitAt !== -1 && useAt > awaitAt && !insideCall) {
+      offenders.push(rest.slice(useAt - 60, useAt + 30).replace(/\s+/g, ' '));
+    }
+  }
+  assert.deepEqual(offenders, [], `these read currentTarget after an await:\n  ${offenders.join('\n  ')}`);
+});
+
+test('a withdrawal is emailed to somebody rather than only recorded', () => {
+  const routes = fs.readFileSync(new URL('../src/routes/student.js', import.meta.url), 'utf8');
+  assert.match(routes, /notifyWithdrawal\(/, 'somebody has to be told');
+  assert.match(routes, /withdrawalNoticeTo \|\| config\.emailReplyTo/,
+    'it should fall back to the reply-to inbox rather than going nowhere');
+
+  // After the response and never awaited: the withdrawal is saved and the
+  // student has been answered before any mail is attempted.
+  const at = routes.indexOf('notifyWithdrawal({');
+  assert.ok(routes.lastIndexOf('res.status(201)', at) !== -1 && routes.lastIndexOf('res.status(201)', at) < at,
+    'the student must be answered before the notice is sent');
+  assert.match(routes.slice(at, at + 220), /\.catch\(/,
+    'a mail failure must not turn a saved withdrawal into an error');
+});

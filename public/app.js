@@ -7088,8 +7088,14 @@ function openWithdrawalForm() {
         });
       }));
       document.getElementById('wd-submit').addEventListener('click', async (event) => {
-        if (!await askConfirm({ title: 'Submit the withdrawal form?', message: 'This ends your place on the course. Reminders and new homework stop. Everything you have already done stays in your account.', confirmLabel: 'Submit and withdraw', danger: true })) return;
+        /* Held before the confirmation, not after it. currentTarget is nulled
+           once the event has finished dispatching, and awaiting the confirm lets
+           that happen — so reading it afterwards gave null, and setting
+           `disabled` on null threw before the form was ever sent. The button
+           went back to its old label and nothing else happened at all, which is
+           exactly what a student pressing it would have seen. */
         const button = event.currentTarget;
+        if (!await askConfirm({ title: 'Submit the withdrawal form?', message: 'This ends your place on the course. Reminders and new homework stop. Everything you have already done stays in your account.', confirmLabel: 'Submit and withdraw', danger: true })) return;
         button.disabled = true; button.textContent = 'Submitting…';
         try {
           await api('/api/student/withdrawal', { method: 'POST', body: {

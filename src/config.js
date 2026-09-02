@@ -74,6 +74,10 @@ export const config = Object.freeze({
   /* Where the nightly backup is emailed, for a deployment with no object
      storage. Off the machine, using an inbox that already exists. */
   backupEmailTo: process.env.BACKUP_EMAIL_TO || '',
+  /* Where a withdrawal notice goes. Falls back to the reply-to address, which is
+     already the inbox students' replies land in, so this works without being
+     set at all. */
+  withdrawalNoticeTo: process.env.WITHDRAWAL_NOTICE_TO || '',
   offsite: {
     endpoint: process.env.BACKUP_S3_ENDPOINT || '',
     bucket: process.env.BACKUP_S3_BUCKET || '',

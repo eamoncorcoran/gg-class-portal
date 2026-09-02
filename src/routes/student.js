@@ -21,6 +21,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
+import { sendEmail } from '../email.js';
 
 const router = Router();
 router.use(requireStudent);
@@ -546,7 +547,71 @@ router.post('/withdrawal', asyncRoute(async (req, res) => {
 
   await audit({ actorId: req.user.id, action: 'course.withdrawn', entityType: 'user', entityId: req.user.id, metadata: { reason: data.reason, classId: klass?.id }, ip: req.ip });
   res.status(201).json({ ok: true, withdrawnAt: new Date().toISOString(), response: row });
+
+  /* Somebody leaving the course is the one thing here worth interrupting a day
+     for. It was recorded and nothing else: it would sit in the withdrawals
+     screen until somebody happened to look, which could be weeks, by which time
+     the conversation that might have kept them is long past having.
+
+     After the response and never awaited, on the same rule as everywhere else:
+     the withdrawal is saved and the student has been told, and a mail server
+     having a bad minute must not turn that into an error on their screen. */
+  notifyWithdrawal({ student: req.user, klass, answers: data }).catch((error) => {
+    console.error(`Could not send the withdrawal notice for ${req.user.email}: ${error.message}`);
+  });
 }));
+
+const DAYS = [, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/* What the teacher is sent when somebody leaves. Plain text and the whole form,
+   because the point is to be able to read it on a phone without opening the
+   portal and decide whether this is somebody to ring. */
+async function notifyWithdrawal({ student, klass, answers }) {
+  const to = config.withdrawalNoticeTo || config.emailReplyTo;
+  if (!to) return;
+
+  const rating = (value) => (value ? `${value} out of 5` : 'not answered');
+  const said = (value) => (String(value || '').trim() || 'nothing said');
+
+  const lines = [
+    `${student.name} has withdrawn from ${klass ? klass.programme_name : 'the course'}.`,
+    '',
+    `Student:   ${student.name} <${student.email}>`,
+    klass ? `Class:     ${klass.programme_name} | ${DAYS[klass.day_of_week] || ''} | ${String(klass.start_time).slice(0, 5)}` : null,
+    `Reason:    ${answers.reason}`,
+    '',
+    'In their words:',
+    said(answers.detail),
+    '',
+    `Overall:    ${rating(answers.overallRating)}`,
+    `Teaching:   ${rating(answers.teachingRating)}`,
+    `Materials:  ${rating(answers.materialsRating)}`,
+    `Pace:       ${said(answers.pace)}`,
+    `Recommend:  ${said(answers.wouldRecommend)}`,
+    '',
+    'What worked:',
+    said(answers.whatWorked),
+    '',
+    'What would have helped:',
+    said(answers.whatToImprove),
+    '',
+    answers.mayContact
+      ? 'They are happy to be contacted about this.'
+      : 'They have NOT agreed to be contacted about this.',
+    '',
+    'Their reminders and new homework have stopped. Everything they submitted is still in their account.',
+    /* Only the line that may not apply is dropped. Filtering every empty string
+       would take the blank lines with it and run the whole notice together into
+       one paragraph, which is the opposite of the point. */
+  ].filter((line) => line !== null);
+
+  await sendEmail({
+    to,
+    subject: `Withdrawal: ${student.name}${klass ? ` (${klass.programme_name})` : ''}`,
+    text: lines.join('\n'),
+    metadata: { type: 'withdrawal_notice', studentId: student.id },
+  });
+}
 
 /* Uploading work. The file is read straight away so the correction pipeline has
    something to work with, but a failed read never costs the student their upload. */
