@@ -47,6 +47,20 @@ function apiKeyProblem(key) {
   return null;
 }
 
+/* Whose fault the failure was, in the only terms that matter to the answer.
+   ------------------------------------------------------------------
+   Both test routes worked out whether a credential had been rejected — they had
+   to, to write a useful message — and then returned 502 either way. 502 says the
+   server is broken. A key the administrator typed wrongly is not the server
+   being broken, and saying so makes a configuration problem look like an
+   outage: in a browser console, in a log, and to anything watching the portal's
+   error rate while somebody is simply pasting in a new key.
+
+   A credential the caller supplied is 400, because the request was wrong. A
+   timeout, a refused connection or an upstream fault is 502, because it was
+   not. */
+const rejectedCredential = (detail) => /535|invalid login|authentication|unauthor|api key|401|invalid x-api-key/i.test(detail);
+
 router.put('/anthropic', asyncRoute(async (req, res) => {
   const parsed = z.object({ apiKey: z.string().optional(), model: z.string().min(1).max(100) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Enter a valid model and optional API key.' });
@@ -80,8 +94,9 @@ router.post('/anthropic/test', asyncRoute(async (_req, res) => {
        is the least useful sentence available to somebody trying to work out
        which key is wrong. */
     const detail = String(error?.message || error);
-    res.status(error?.status === 409 ? 409 : 502).json({
-      error: /authentication|api key|401|invalid x-api-key/i.test(detail)
+    const status = error?.status === 409 ? 409 : (rejectedCredential(detail) ? 400 : 502);
+    res.status(status).json({
+      error: rejectedCredential(detail)
         ? 'Claude rejected that API key. The usual cause is an Admin key rather than a standard one: a standard key begins sk-ant-api and is created at console.anthropic.com under API Keys. A revoked key gives the same error.'
         : detail.slice(0, 400),
     });
@@ -132,8 +147,8 @@ router.post('/email/test', asyncRoute(async (req, res) => {
     const detail = String(error?.message || error);
     /* A rejected login is far and away the most common cause, and the raw SMTP
        response says so obliquely. Name it, and name what to do about it. */
-    const authFailed = /535|invalid login|authentication|unauthor/i.test(detail);
-    res.status(502).json({
+    const authFailed = rejectedCredential(detail);
+    res.status(authFailed ? 400 : 502).json({
       error: authFailed
         ? `The mail server rejected the login. The API key in SMTP_PASSWORD is wrong, revoked, or belongs to a different account. (${redactSecrets(detail)})`
         : `The mail server refused the message: ${redactSecrets(detail)}`,

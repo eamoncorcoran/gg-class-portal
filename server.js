@@ -74,12 +74,32 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
 }));
+/* A ceiling on crude abuse, and nothing more than that.
+   ------------------------------------------------------------------
+   Signing in and resetting a password are limited separately and far more
+   tightly, in src/routes/auth.js, and those are the limits that matter for
+   security. This one only exists to stop the API being hammered, so it is set
+   where a real class cannot reach it.
+
+   Per IP, which is the thing to be careful about here: a school shares one
+   address, so a limit is not per person but per staffroom. A single screen of
+   this app makes several requests, and a board full of posts asks for one
+   photograph per author on top, so twenty people arriving at once is a few
+   hundred requests in a minute quite legitimately. At 240 that was reachable by
+   ordinary use, and being refused for using the app normally is worse than the
+   abuse this guards against.
+
+   It answers in JSON, like every other refusal here. Plain text left the client
+   — which reads `error` out of a JSON body — with nothing to show but "Something
+   went wrong", so the one message that needs to say "wait a moment and try
+   again" was the one message that could not. */
 app.use(rateLimit({
   windowMs: 60 * 1000,
-  limit: 240,
+  limit: 600,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path === '/api/health',
+  message: { error: 'Too many requests in a short time. Wait a moment and try again.' },
 }));
 /* Ahead of the JSON parser: verifying Zoom's signature needs the bytes they
    actually sent, and a re-serialised object is not those bytes. */

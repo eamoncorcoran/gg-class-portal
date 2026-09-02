@@ -203,6 +203,36 @@ Restore into an empty database rather than over a live one.
 
 ---
 
+## Checking the whole app still works
+
+Two harnesses, both run against a running server. Neither leaves anything
+behind: every record they create is removed again at the end.
+
+```
+BASE_URL=http://localhost:3111 SMOKE_ADMIN_EMAIL=… SMOKE_ADMIN_PASSWORD=… npm run audit-journey
+```
+
+`audit-journey` performs every action a person can perform — sets up a class,
+invites a student, sets homework, builds a course, posts to the board, submits a
+check-in and homework as the student, returns feedback, takes attendance,
+imports spreadsheets, and deletes it all again. It reports how many of the
+server's routes it actually called, so a route that stops being covered as the
+app grows is named rather than quietly dropped.
+
+`audit-routes` is the cheaper one: it calls every GET against real records and
+reports anything that throws.
+
+The unit tests (`npm test`) need no server and no database, and run in a second.
+Those with `RUN_DB_TESTS=1` additionally walk real journeys against Postgres.
+
+These exist because the failures this app has actually had were silent ones:
+routes that were never written, functions that were never defined, rules that
+drifted apart at two ends of the same journey. None of them announced
+themselves, and all of them would have been caught by something calling the
+thing and looking at the answer.
+
+---
+
 ## Costs
 
 | | |

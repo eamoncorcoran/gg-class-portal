@@ -14,8 +14,18 @@ import { sendPasswordChanged, sendPasswordReset } from '../email.js';
 import { audit } from '../audit.js';
 
 const router = Router();
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: true, legacyHeaders: false });
-const resetLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false });
+/* Both answer in JSON and say how long the wait is. In plain text the client had
+   nothing to read and fell back to "Something went wrong" — so somebody locked
+   out after twelve attempts was told nothing about why, or that waiting would
+   fix it, and the natural next move is to keep trying. */
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many sign-in attempts. Wait fifteen minutes and try again, or use “Forgot password”.' },
+});
+const resetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many password reset requests. Wait an hour and try again.' },
+});
 
 router.get('/me', asyncRoute(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Not signed in.' });

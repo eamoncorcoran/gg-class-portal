@@ -20,7 +20,9 @@
     "build:preview": "node scripts/build-preview.js",
     "backup": "node scripts/backup.js",
     "secure-attachments": "node scripts/secure-attachments.js",
-    "check-backup": "node scripts/check-backup.js"
+    "check-backup": "node scripts/check-backup.js",
+    "audit-routes": "node scripts/audit-routes.js",
+    "audit-journey": "node scripts/audit-journey.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

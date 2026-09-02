@@ -13,6 +13,7 @@ import { config } from '../config.js';
 import { asyncRoute } from '../middleware.js';
 import { requireAuth } from '../session.js';
 import { one } from '../db.js';
+import { studentCanSeeLesson } from '../courses.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -57,11 +58,18 @@ const ATTACHMENT_SOURCES = {
   post: `SELECT a.stored_name, a.file_name, a.mime_type, t.class_id, t.deleted_at
          FROM discussion_attachments a JOIN discussion_threads t ON t.id=a.thread_id
          WHERE a.id=$1`,
-  lesson: `SELECT a.stored_name, a.file_name, a.mime_type, c.class_id, NULL::timestamptz deleted_at
+  /* A course used to belong to one class and this asked `courses` for its
+     class_id. Courses became many-to-many and that column went, so every request
+     for a lesson attachment has been failing on the missing column — a 500 for
+     students and teachers alike, on every file attached to a lesson. Nothing was
+     calling the route, so nothing said so.
+
+     The lesson id comes back instead of a class, and who may open it is decided
+     by the same rule the rest of the courses use rather than a second copy
+     written here. The first copy is how this broke. */
+  lesson: `SELECT a.stored_name, a.file_name, a.mime_type, l.id lesson_id, NULL::timestamptz deleted_at
            FROM lesson_attachments a
            JOIN course_lessons l ON l.id=a.lesson_id
-           JOIN course_modules m ON m.id=l.module_id
-           JOIN courses c ON c.id=m.course_id
            WHERE a.id=$1`,
 };
 
@@ -73,12 +81,24 @@ router.get('/attachment/:kind/:id', asyncRoute(async (req, res) => {
 
   if (req.user.role !== 'admin') {
     if (row.deleted_at) return res.status(404).json({ error: 'Not found.' });
-    /* A course with no class is open to everybody; one scoped to a class is for
-       that class. The board is always scoped. */
-    const allowed = row.class_id === null || Boolean(await one(
-      'SELECT 1 FROM class_students WHERE class_id=$1 AND student_id=$2 AND active=true',
-      [row.class_id, req.user.id],
-    ));
+    let allowed;
+    if (row.lesson_id) {
+      /* Courses decide their own visibility: open to everybody, or offered to
+         particular classes. Asked of the courses themselves so this cannot drift
+         away from what the student is actually shown. */
+      const enrolled = await one(
+        `SELECT cs.class_id FROM class_students cs JOIN classes c ON c.id=cs.class_id
+         WHERE cs.student_id=$1 AND cs.active=true AND c.active=true LIMIT 1`,
+        [req.user.id],
+      );
+      allowed = await studentCanSeeLesson({ lessonId: row.lesson_id, classId: enrolled?.class_id || null });
+    } else {
+      // The board is always scoped to one class.
+      allowed = row.class_id === null || Boolean(await one(
+        'SELECT 1 FROM class_students WHERE class_id=$1 AND student_id=$2 AND active=true',
+        [row.class_id, req.user.id],
+      ));
+    }
     if (!allowed) return res.status(403).json({ error: 'Not yours to open.' });
   }
 
