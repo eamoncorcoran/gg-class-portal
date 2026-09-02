@@ -7309,7 +7309,7 @@ function feedEmpty(admin) {
   return `<div class="feed-empty">
     <h3>${state.boardCategoryId ? 'Nothing here yet' : 'No posts yet'}</h3>
     <p>${admin
-      ? 'Start it off with something worth replying to — a question about the last class, or where to find this week’s notes. An empty feed stays empty until somebody goes first, and it is usually easier for that somebody to be you.'
+      ? 'Start it off with something worth replying to: a question about the last class, or where to find this week’s notes. An empty feed stays empty until somebody goes first, and it is usually easier for that somebody to be you.'
       : 'Be the first. A question you think is too simple is usually the one three other people were also wondering about.'}</p>
   </div>`;
 }
@@ -10241,7 +10241,7 @@ function privateMessageView() {
         <h2>Try the community first</h2>
         <p>Nearly every question about the course is one somebody else in the class
           is also sitting with. Posting it on the board means it gets answered once
-          and read by everyone — and you will usually hear back faster, because your
+          and read by everyone, and you will usually hear back faster, because your
           classmates answer too, not just us.</p>
         <p class="private-nudge">If you are about to ask something another student
           could learn from, please put it on the board.</p>
@@ -10250,15 +10250,11 @@ function privateMessageView() {
 
       <section class="card private-chat">
         <h2>Something private?</h2>
-        <p>If it is personal — your own circumstances, something you would rather
-          not put in front of the class, or anything to do with your account or
-          payment — use the chat at the bottom of this page. It comes straight to
-          us and nobody else sees it.</p>
-        <p class="private-wait"><strong>Please allow up to 48 hours for a reply.</strong>
-          We read everything, but we are teaching for a good part of the week.</p>
-        <p class="muted small">Anything about a deadline you have already missed is
-          worth sending here rather than waiting — say what happened and we will sort
-          it out with you.</p>
+        <p>Use the chat at the bottom of this page for anything personal: your own
+          circumstances, something you would rather not put in front of the class,
+          or anything to do with your account or payment. It comes straight to us
+          and nobody else sees it.</p>
+        <p class="private-wait"><strong>Please allow up to 48 hours for a reply.</strong></p>
       </section>
     </div>`;
 }
