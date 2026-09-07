@@ -168,6 +168,22 @@ try {
     expectOk('switch several weeks on at once', await admin.call('/api/admin/weeks/bulk-checkin',
       { method: 'POST', body: { weekIds: [made.weekId], enabled: true } }));
     expectOk('see what deleting a week would remove', await admin.call(`/api/admin/weeks/${made.weekId}/impact`));
+
+    /* The class recording. A link the teacher pastes becomes an href on the
+       student's screen, so what is not a link must not be stored as one. */
+    expectStatus('a javascript: link is refused', await admin.call(`/api/admin/weeks/${made.weekId}/recording`,
+      { method: 'PUT', body: { url: 'javascript:alert(1)' } }), 400);
+    expectStatus('and so is something that is not a URL', await admin.call(`/api/admin/weeks/${made.weekId}/recording`,
+      { method: 'PUT', body: { url: 'not a url' } }), 400);
+    const rec = expectOk('a Zoom recording link is saved', await admin.call(`/api/admin/weeks/${made.weekId}/recording`,
+      { method: 'PUT', body: {
+        url: 'https://us02web.zoom.us/rec/share/audit123', passcode: 'Aud1t?Pass', note: 'Audit recording.' } }));
+    expect('with the date it was added', Boolean(rec?.recording_added_at), JSON.stringify(rec));
+    const weekList = await admin.call(`/api/admin/teaching-weeks?classId=${made.classId}`);
+    const listed = (Array.isArray(weekList.data) ? weekList.data : []).find((row) => row.id === made.weekId);
+    expect('and it reaches the screen the teacher manages weeks on',
+      listed?.recording_url === 'https://us02web.zoom.us/rec/share/audit123',
+      JSON.stringify(listed).slice(0, 200));
   }
 
   /* ------------------------------------------------------------ students */
@@ -385,6 +401,13 @@ try {
       { method: 'POST', body: { completed: true, positionSeconds: 120 } }));
   }
   expectOk('the student’s courses load', await student.call('/api/student/courses'));
+  {
+    const week = (home?.weeks || []).find((row) => row.id === made.weekId);
+    expect('the student can see the class recording', week?.recording_url?.includes('audit123'),
+      JSON.stringify(week && { url: week.recording_url, pass: week.recording_passcode }));
+    expect('and the passcode that opens it', week?.recording_passcode === 'Aud1t?Pass',
+      JSON.stringify(week?.recording_passcode));
+  }
 
   /* The address the portal asks for at the top of the screen. */
   expect('a new student is asked for their address', home?.addressNeeded === true,

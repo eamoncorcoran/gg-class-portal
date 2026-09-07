@@ -961,6 +961,7 @@ router.get('/teaching-weeks', asyncRoute(async (req, res) => {
   const result = await query(
     `SELECT w.id, w.class_id, w.week_start, w.checkin_enabled, w.checkin_release_at, w.checkin_due_at,
             w.checkin_hard_deadline, w.label, w.notes,
+            w.recording_url, w.recording_passcode, w.recording_note, w.recording_added_at,
             c.programme_name, c.day_of_week, c.start_time, c.timezone
      FROM weeks w JOIN classes c ON c.id=w.class_id ${where} ORDER BY w.week_start`, params,
   );
@@ -1335,6 +1336,56 @@ router.get('/weeks/:id/impact', asyncRoute(async (req, res) => {
     [req.params.id],
   );
   res.json({ ...week, ...counts, work: counts.checkins + counts.attendance });
+}));
+
+/* The recording of one week's class.
+   ------------------------------------------------------------------
+   A link, not a file. Zoom already holds it, has already transcoded it and
+   already streams it; copying it onto this server's disk to serve it worse
+   would be no improvement.
+
+   Any host is accepted — Zoom today, Drive or an unlisted YouTube link on a week
+   when something else was used — but the scheme is checked, because this string
+   ends up as an href and `javascript:` in an href is not a link, it is a script
+   the student runs by clicking. Blank clears it.
+
+   A passcode of its own, because a Zoom share link almost always needs one and a
+   link without it is a page asking the student for something they have not got.*/
+router.put('/weeks/:id/recording', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    url: z.string().trim().max(2000).optional().default(''),
+    passcode: z.string().trim().max(60).optional().default(''),
+    note: z.string().trim().max(300).optional().default(''),
+  }).safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid recording.' });
+
+  const url = parsed.data.url;
+  if (url) {
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch { parsedUrl = null; }
+    if (!parsedUrl || !['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({ error: 'Paste the full link to the recording, starting with https://' });
+    }
+  }
+
+  const week = await one('SELECT id FROM weeks WHERE id=$1', [req.params.id]);
+  if (!week) return res.status(404).json({ error: 'Week not found.' });
+
+  const row = await one(
+    `UPDATE weeks SET recording_url=$1, recording_passcode=$2, recording_note=$3,
+       -- Cast, because the only other use of $1 is an assignment to a text
+       -- column, and asking whether it IS NULL tells Postgres nothing about the
+       -- type on its own.
+       recording_added_at=CASE WHEN $1::text IS NULL THEN NULL ELSE now() END
+     WHERE id=$4
+     RETURNING id, week_start, recording_url, recording_passcode, recording_note, recording_added_at`,
+    [url || null, parsed.data.passcode || null, parsed.data.note || null, week.id],
+  );
+  await audit({
+    actorId: req.user.id, action: url ? 'week.recording_set' : 'week.recording_cleared',
+    entityType: 'week', entityId: week.id, ip: req.ip,
+  });
+  res.json(row);
 }));
 
 router.delete('/weeks/:id', asyncRoute(async (req, res) => {

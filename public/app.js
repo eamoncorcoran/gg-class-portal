@@ -2096,6 +2096,69 @@ function checkinCalendar(weeks, today) {
   </section>`;
 }
 
+/* Where the week's class recording is pasted.
+   ------------------------------------------------------------------
+   A dialog rather than two more inputs on the row: that table already carries
+   seven columns of check-in settings, and a link is long enough to make a
+   readable table an unreadable one.
+
+   The passcode has a field of its own because a Zoom share link almost always
+   needs one, and a student given the link without it just meets a page asking
+   for something nobody gave them. */
+async function openWeekRecording(weekId) {
+  const week = (state.teachingWeeks || []).find((row) => row.id === weekId);
+  if (!week) return showToast('That week could not be found.', 'error');
+
+  modal({
+    title: `Class recording — ${fmtWeek(week.week_start)}`,
+    subtitle: 'Paste the Zoom link so students can watch the class back.',
+    body: `
+      <form id="week-recording-form">
+        <div class="form-field">
+          <label for="rec-url">Recording link</label>
+          <input id="rec-url" name="url" maxlength="2000" placeholder="https://us02web.zoom.us/rec/share/…"
+                 value="${escapeHtml(week.recording_url || '')}">
+          <small class="muted">Zoom, or anywhere else the recording lives. Leave blank to remove it.</small>
+        </div>
+        <div class="form-field">
+          <label for="rec-pass">Passcode <span class="muted">(optional)</span></label>
+          <input id="rec-pass" name="passcode" maxlength="60" placeholder="e.g. 8Xk?2wQz"
+                 value="${escapeHtml(week.recording_passcode || '')}">
+          <small class="muted">Zoom shows this beside the share link. Without it students cannot open the recording.</small>
+        </div>
+        <div class="form-field">
+          <label for="rec-note">Note <span class="muted">(optional)</span></label>
+          <input id="rec-note" name="note" maxlength="300" placeholder="e.g. The first ten minutes are missing"
+                 value="${escapeHtml(week.recording_note || '')}">
+        </div>
+      </form>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button>
+      ${week.recording_url ? '<button class="btn danger" id="rec-remove">Remove</button>' : ''}
+      <button class="btn primary" id="rec-save">Save</button>`,
+    onOpen() {
+      const form = document.getElementById('week-recording-form');
+      const save = async (clear = false) => {
+        const button = document.getElementById(clear ? 'rec-remove' : 'rec-save');
+        button.disabled = true;
+        try {
+          await api(`/api/admin/weeks/${weekId}/recording`, { method: 'PUT', body: clear
+            ? { url: '', passcode: '', note: '' }
+            : { url: form.url.value.trim(), passcode: form.passcode.value.trim(), note: form.note.value.trim() } });
+          closeModal();
+          await loadAdmin();
+          showToast(clear ? 'Recording removed' : 'Recording saved');
+        } catch (error) {
+          button.disabled = false;
+          showToast(error.message, 'error');
+        }
+      };
+      document.getElementById('rec-save').addEventListener('click', () => save(false));
+      document.getElementById('rec-remove')?.addEventListener('click', () => save(true));
+      form.addEventListener('submit', (event) => { event.preventDefault(); save(false); });
+    },
+  });
+}
+
 function checkinRow(week, today) {
   const past = String(week.week_start).slice(0, 10) < today;
   const disabled = week.checkin_enabled === false;
@@ -2115,6 +2178,8 @@ function checkinRow(week, today) {
     <td><input class="compact" data-week-label="${week.id}" value="${escapeHtml(week.label || '')}" placeholder="e.g. Christmas week" ${disabled ? '' : ''}>
       ${marks.length ? `<span class="wk-holiday">${marks.map((mark) => escapeHtml(mark.name)).join(' · ')}</span>` : ''}</td>
     <td class="row-actions"><button class="btn small" data-week-save="${week.id}">Save</button>
+      <button class="btn small ${week.recording_url ? 'has-recording' : ''}" data-week-recording="${week.id}"
+        title="${week.recording_url ? 'This week has a recording' : 'Add the class recording'}">${svg.video} ${week.recording_url ? 'Recording' : 'Add recording'}</button>
       <button class="btn small danger" data-week-delete="${week.id}" title="Delete this week">${svg.trash}</button></td>
   </tr>`;
 }
@@ -2346,6 +2411,8 @@ function bindCheckins() {
     });
   });
 
+  document.querySelectorAll('[data-week-recording]').forEach((button) =>
+    button.addEventListener('click', () => openWeekRecording(button.dataset.weekRecording)));
   document.querySelectorAll('[data-week-delete]').forEach((button) =>
     button.addEventListener('click', () => confirmDeleteWeek(button.dataset.weekDelete)));
   document.getElementById('checkin-bulk-off')?.addEventListener('click', () => bulk(false));
@@ -7053,6 +7120,46 @@ async function dismissDeadline(kind, refId, title) {
   });
 }
 
+/* Which teaching week a calendar date belongs to.
+   A week is stored by its Monday, so a class on the Thursday of that week is
+   still that week's class — and the recording of it is the one the student is
+   looking for when they click the Thursday. */
+function weekForDate(date) {
+  const day = String(date).slice(0, 10);
+  return (state.studentData?.weeks || []).find((week) => {
+    const start = String(week.week_start).slice(0, 10);
+    const end = new Date(`${start}T00:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + 6);
+    return day >= start && day <= end.toISOString().slice(0, 10);
+  }) || null;
+}
+
+/* Every class recording there is, newest first.
+   ------------------------------------------------------------------
+   The popup on the calendar answers "the class I missed was the 14th"; this
+   answers "where are the recordings", which is how somebody asks for it when
+   they do not remember the date. Hidden entirely until there is one, rather
+   than showing an empty card on a course where recordings are not posted. */
+function recordingsCard() {
+  const weeks = (state.studentData?.weeks || [])
+    .filter((week) => week.recording_url)
+    .sort((a, b) => String(b.week_start).localeCompare(String(a.week_start)));
+  if (!weeks.length) return '';
+
+  return `<aside class="card">
+    <div class="card-header"><div><h2>Class recordings</h2><p>Watch back a class you missed.</p></div></div>
+    <div class="card-body recording-list">${weeks.slice(0, 8).map((week) => `
+      <article class="recording-row">
+        <div class="recording-copy">
+          <strong>${escapeHtml(fmtWeek(week.week_start))}</strong>
+          ${week.recording_passcode ? `<small>Passcode <code>${escapeHtml(week.recording_passcode)}</code></small>` : ''}
+          ${week.recording_note ? `<small>${escapeHtml(week.recording_note)}</small>` : ''}
+        </div>
+        <a class="btn small primary" href="${escapeHtml(week.recording_url)}" target="_blank" rel="noopener noreferrer">${svg.play} Watch</a>
+      </article>`).join('')}</div>
+  </aside>`;
+}
+
 function studentCalendarView() {
   const maps = studentMaps();
   const items = [];
@@ -7092,6 +7199,7 @@ function studentCalendarView() {
       </aside>` : ''}
       <aside class="card"><div class="card-header"><div><h2>Upcoming work</h2><p>Still to do. Times in ${escapeHtml(classTimezone())}.</p></div></div>
       <div class="card-body deadline-list">${upcoming.slice(0, 6).map(card).join('') || '<div class="empty-state"><h3>Nothing due</h3><p>You are fully up to date.</p></div>'}</div></aside>
+      ${recordingsCard()}
     </div></div>`;
 }
 
@@ -7259,6 +7367,12 @@ function openClassInfo(date, kind) {
     ? (sitting.joinUrl || next?.joinUrl || null)
     : (['running', 'moved'].includes(sitting.kind) ? (sameSitting ? next?.joinUrl : klass?.join_url) : null);
 
+  /* The recording belongs to the teaching week this date falls in, so a student
+     clicking the day they missed finds it there rather than being sent to look
+     for it. */
+  const week = weekForDate(date);
+  const recording = week?.recording_url ? week : null;
+
   const said = {
     running: ['Class as usual', `Your weekly class, at the time it always runs. Times shown in ${zone}.`],
     moved: ['This class has moved', `It was due on ${usual} and is running at the time above instead.`],
@@ -7278,9 +7392,15 @@ function openClassInfo(date, kind) {
         ${sitting.minutes ? `<div><dt>Length</dt><dd>${sitting.minutes} minutes</dd></div>` : ''}
         ${klass?.join_note && joinUrl ? `<div><dt>Passcode</dt><dd>${escapeHtml(passcodeOnly(klass.join_note))}</dd></div>` : ''}
       </dl>`}
+      ${recording ? `<dl class="class-info-rows">
+        <div><dt>Recording</dt><dd>Available to watch back</dd></div>
+        ${recording.recording_passcode ? `<div><dt>Recording passcode</dt><dd><code>${escapeHtml(recording.recording_passcode)}</code></dd></div>` : ''}
+        ${recording.recording_note ? `<div><dt>Note</dt><dd>${escapeHtml(recording.recording_note)}</dd></div>` : ''}
+      </dl>` : ''}
     </div>`,
     footer: `<button class="btn" data-close-modal>Close</button>
-      ${sitting.kind === 'recorded'
+      ${recording ? `<a class="btn ${joinUrl ? '' : 'primary'}" href="${escapeHtml(recording.recording_url)}" target="_blank" rel="noopener noreferrer">${svg.play} Watch the recording</a>` : ''}
+      ${sitting.kind === 'recorded' && !recording
         ? '<button class="btn primary" id="class-info-courses">Go to Courses</button>'
         : joinUrl
           ? `<a class="btn primary" href="${escapeHtml(joinUrl)}" target="_blank" rel="noopener noreferrer">Join class</a>`
