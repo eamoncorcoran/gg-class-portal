@@ -3265,6 +3265,22 @@ async function renderZoomList() {
 /* Adding a recording. The host is chosen and the link pasted; whole URLs and
    bare ids both work, because nobody should have to know which one their host
    wants. */
+/* Which host a pasted link belongs to. The same rules as the server's
+   detectVideoProvider, kept here so the dropdown can fill itself in as somebody
+   types rather than only finding out when they save. */
+function detectVideoHost(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  let host = '';
+  try { host = new URL(raw).hostname.toLowerCase(); } catch { host = ''; }
+  if (/(^|\.)zoom\.us$/.test(host)) return 'zoom';
+  if (/(^|\.)(youtube\.com|youtu\.be)$/.test(host)) return 'youtube';
+  if (/(^|\.)loom\.com$/.test(host)) return 'loom';
+  if (/(^|\.)mediadelivery\.net$/.test(host)) return 'bunny';
+  if (raw.startsWith('/uploads/') || /\.(mp4|m4v|webm|mov)(\?|$)/i.test(raw)) return 'mp4';
+  return null;
+}
+
 function openLessonModal(moduleId, lesson = null) {
   const providers = [
     ['bunny', 'Bunny Stream'],
@@ -3304,10 +3320,26 @@ function openLessonModal(moduleId, lesson = null) {
     footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-lesson">${lesson ? 'Save lesson' : 'Add lesson'}</button>`,
     onOpen() {
       const providerPick = document.querySelector('#lesson-form [name="videoProvider"]');
+      const linkBox = document.querySelector('#lesson-form [name="video"]');
       const passcodeField = document.getElementById('lesson-passcode-field');
-      providerPick?.addEventListener('change', () => {
-        passcodeField.hidden = providerPick.value !== 'zoom';
-      });
+      const syncPasscode = () => { passcodeField.hidden = providerPick.value !== 'zoom'; };
+      providerPick?.addEventListener('change', syncPasscode);
+
+      /* The host is read off the link as it is pasted, so the dropdown shows
+         what will be saved rather than the person having to tell the software
+         what the URL already says. Leaving it unset used to throw the link away
+         without a word. */
+      const readHost = () => {
+        const link = linkBox.value.trim();
+        if (!link) return;
+        const host = detectVideoHost(link);
+        if (host && !providerPick.value) {
+          providerPick.value = host;
+          syncPasscode();
+        }
+      };
+      linkBox?.addEventListener('input', readHost);
+      linkBox?.addEventListener('paste', () => setTimeout(readHost, 0));
       document.getElementById('save-lesson').addEventListener('click', async () => {
         const form = document.getElementById('lesson-form');
         const data = new FormData(form);

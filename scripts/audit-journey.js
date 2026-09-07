@@ -234,6 +234,18 @@ try {
       /* A Zoom recording, which is a link rather than a player. The database
          enforces the list of hosts as well as the code, so this fails loudly if
          one is added in only one of the two places. */
+      /* The bug this covers: a link pasted with no host chosen was thrown away
+         and the save reported success. */
+      const inferred = expectOk('a recording link works without choosing the host', await admin.call(
+        `/api/admin/modules/${made.moduleId}/lessons`,
+        { method: 'POST', body: { title: 'Host worked out', videoProvider: null,
+          video: 'https://us06web.zoom.us/rec/share/audit456', published: true } }));
+      expect('and the host is read off the link', inferred?.video_provider === 'zoom',
+        JSON.stringify(inferred && { p: inferred.video_provider, r: inferred.video_ref }));
+      expectStatus('a link belonging to nothing is refused rather than dropped', await admin.call(
+        `/api/admin/modules/${made.moduleId}/lessons`,
+        { method: 'POST', body: { title: 'Nowhere', videoProvider: null,
+          video: 'https://example.com/whatever', published: true } }), 400);
       expectStatus('a javascript: link is refused as a recording', await admin.call(
         `/api/admin/modules/${made.moduleId}/lessons`,
         { method: 'POST', body: { title: 'Bad link', videoProvider: 'zoom', video: 'javascript:alert(1)' } }), 400);
@@ -593,11 +605,15 @@ try {
     expectOk('course progress loads', await admin.call(`/api/admin/courses/${made.courseId}/progress`));
     expectOk('the course deletion impact loads', await admin.call(`/api/admin/courses/${made.courseId}/impact`));
     const seen = expectOk('the student can open the course', await student.call(`/api/student/courses/${made.courseId}`));
-    const zoomSeen = (seen?.modules || []).flatMap((m) => m.lessons || [])
-      .find((l) => l.video?.provider === 'zoom');
-    expect('a Zoom recording reaches the student as a link, not a frame',
-      zoomSeen?.video?.type === 'link' && zoomSeen?.video?.passcode === 'Aud1t?Pass',
-      JSON.stringify(zoomSeen?.video));
+    const zoomLessons = (seen?.modules || []).flatMap((m) => m.lessons || [])
+      .filter((l) => l.video?.provider === 'zoom');
+    expect('a Zoom recording reaches the student as a link, never a frame',
+      zoomLessons.length >= 2 && zoomLessons.every((l) => l.video.type === 'link'),
+      JSON.stringify(zoomLessons.map((l) => l.video?.type)));
+    // The one that was given a passcode carries it; the one that was not, does not.
+    const withPass = zoomLessons.find((l) => l.title.startsWith('Zoom class'));
+    expect('and its passcode travels with it', withPass?.video?.passcode === 'Aud1t?Pass',
+      JSON.stringify(withPass && { title: withPass.title, pass: withPass.video.passcode }));
   }
   if (made.lessonId) {
     const attachment = new FormData();

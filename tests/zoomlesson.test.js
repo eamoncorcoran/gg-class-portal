@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { VIDEO_PROVIDERS, PROVIDER_LABELS, parseVideoSource, videoSource } from '../src/lessonvideo.js';
+import { VIDEO_PROVIDERS, PROVIDER_LABELS, parseVideoSource, videoSource, detectVideoProvider } from '../src/lessonvideo.js';
 
 /* A Zoom recording as a lesson.
    ------------------------------------------------------------------
@@ -74,4 +74,61 @@ test('the student is given the passcode, not only the link', () => {
   assert.match(body, /lesson\.video\.passcode/, 'the player must show the passcode');
   assert.match(body, /target="_blank" rel="noopener noreferrer"/,
     'and open Zoom without handing it a reference to this page');
+});
+
+/* A pasted link must never be quietly thrown away.
+   ------------------------------------------------------------------
+   It was. Paste a recording link, leave the host dropdown on "No recording
+   yet", press save: the lesson saved, the message said it had, and the link was
+   gone. Nothing anywhere said so — the classic shape of failure in this app,
+   and the one that costs the most trust, because the person did the thing
+   correctly and was told it worked.
+
+   Two changes hold it shut. The host is read off the link, so the common case
+   needs no dropdown at all; and a link that cannot be placed is refused with a
+   sentence rather than dropped. */
+
+test('the host is read off the link, so it need not be chosen', () => {
+  assert.equal(detectVideoProvider('https://us06web.zoom.us/rec/share/abc.def'), 'zoom');
+  assert.equal(detectVideoProvider('https://www.youtube.com/watch?v=aqz-KE-bpKQ'), 'youtube');
+  assert.equal(detectVideoProvider('https://youtu.be/aqz-KE-bpKQ'), 'youtube');
+  assert.equal(detectVideoProvider('https://www.loom.com/share/abcdefgh1234'), 'loom');
+  assert.equal(detectVideoProvider('https://iframe.mediadelivery.net/embed/1/a-b'), 'bunny');
+  assert.equal(detectVideoProvider('/uploads/week-1.mp4'), 'mp4');
+});
+
+test('a host is matched on the domain, not on the text of the link', () => {
+  /* A link merely mentioning zoom.us somewhere in its path is not a Zoom
+     recording, and treating it as one would send a student to the wrong place. */
+  assert.equal(detectVideoProvider('https://example.com/zoom.us/rec/share/abc'), null);
+  assert.equal(detectVideoProvider('https://notzoom.us.evil.test/rec'), null);
+  assert.equal(detectVideoProvider('https://example.com/watch'), null);
+});
+
+test('a link that cannot be placed is refused rather than discarded', () => {
+  const admin = fs.readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
+  const fn = admin.slice(admin.indexOf('function resolveVideo('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+
+  assert.match(body, /detectVideoProvider\(link\)/, 'the host has to be worked out from the link');
+  assert.match(body, /if \(!provider\) \{[\s\S]*?status: 400/,
+    'a link with no host must be refused, not silently dropped');
+  /* The specific line that did the dropping. If it comes back, so does the bug:
+     a link present and a provider absent returned "no video" and reported
+     success. */
+  assert.doesNotMatch(body, /if \(!provider \|\| !String\(raw \|\| ''\)\.trim\(\)\) return \{ provider: null, ref: null \}/,
+    'the silent discard has come back');
+  // Emptying the link is still how a recording is removed.
+  assert.match(body, /if \(!link\) return \{ provider: null, ref: null \}/);
+});
+
+test('the browser and the server read a link the same way', () => {
+  /* The dropdown fills itself in as somebody pastes, which is only helpful if it
+     agrees with what the server will do with the same link. */
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const fn = app.slice(app.indexOf('function detectVideoHost('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  for (const host of ['zoom\\.us', 'youtube\\.com|youtu\\.be', 'loom\\.com', 'mediadelivery\\.net']) {
+    assert.ok(body.includes(host), `the browser does not recognise ${host} the way the server does`);
+  }
 });

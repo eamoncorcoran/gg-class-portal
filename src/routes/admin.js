@@ -25,7 +25,7 @@ import { listThreads, getThread, createThread, createPost, listCategories, toggl
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
 import { nextClassWithSessions, joinLinkFor } from '../classtime.js';
-import { parseVideoSource, VIDEO_PROVIDERS } from '../lessonvideo.js';
+import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
 import { bunnyConfigured, bunnySigning } from '../bunny.js';
@@ -2478,12 +2478,30 @@ function resolveVideo(data, current = {}) {
   if (data.videoProvider === undefined && data.video === undefined) {
     return { provider: current.video_provider ?? null, ref: current.video_ref ?? null };
   }
-  const provider = data.videoProvider ?? current.video_provider;
   const raw = data.video ?? current.video_ref;
-  if (!provider || !String(raw || '').trim()) return { provider: null, ref: null };
-  const parsed = parseVideoSource(provider, raw);
+  const link = String(raw || '').trim();
+  // No link is how a recording is removed, and how a lesson written before it is
+  // taught sits waiting for one.
+  if (!link) return { provider: null, ref: null };
+
+  /* The host is worked out from the link when it has not been chosen. Requiring
+     somebody to confirm in a dropdown what the URL already says is asking them
+     to do the computer's work — and forgetting to did not warn, it silently
+     dropped the link and reported success, which is how a pasted recording came
+     to vanish with a lesson saved happily on top of it. */
+  const provider = data.videoProvider || current.video_provider || detectVideoProvider(link);
+  if (!provider) {
+    throw Object.assign(new Error(
+      'That link was not recognised. Choose where the recording is hosted, or paste a Zoom, YouTube, Loom or Bunny link.',
+    ), { status: 400 });
+  }
+  const parsed = parseVideoSource(provider, link);
   if (!parsed) {
-    throw Object.assign(new Error('That video link was not recognised for the host you chose.'), { status: 400 });
+    /* Say which host it was read as. "Not recognised" alone sends somebody
+       checking a link that is perfectly good but filed under the wrong host. */
+    throw Object.assign(new Error(
+      `That link was not recognised as ${PROVIDER_LABELS[provider] || provider}. Check the host is right for the link you pasted.`,
+    ), { status: 400 });
   }
   return parsed;
 }

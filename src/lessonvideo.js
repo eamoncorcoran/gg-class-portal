@@ -26,6 +26,32 @@ export const PROVIDER_LABELS = Object.freeze({
 const BUNNY_REF = /^(\d+)\/([a-f0-9-]{8,})$/i;
 
 /**
+ * Which host a pasted link belongs to, read from the link itself.
+ *
+ * Nobody should have to tell the software what a URL plainly says. A link
+ * containing zoom.us is a Zoom recording, and asking somebody to confirm that in
+ * a dropdown is asking them to do the computer's work — with the added trap
+ * that forgetting to means the link is thrown away.
+ *
+ * Returns null for anything unrecognised, which is a real answer: an .mp4 on
+ * some other server is a legitimate thing to paste, and so is a typo.
+ */
+export function detectVideoProvider(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  let host = '';
+  try { host = new URL(raw).hostname.toLowerCase(); } catch { host = ''; }
+
+  if (/(^|\.)zoom\.us$/.test(host)) return 'zoom';
+  if (/(^|\.)(youtube\.com|youtu\.be)$/.test(host)) return 'youtube';
+  if (/(^|\.)loom\.com$/.test(host)) return 'loom';
+  if (/(^|\.)mediadelivery\.net$/.test(host)) return 'bunny';
+  // Something we serve ourselves, or a plain video file sitting on a URL.
+  if (raw.startsWith('/uploads/') || /\.(mp4|m4v|webm|mov)(\?|$)/i.test(raw)) return 'mp4';
+  return null;
+}
+
+/**
  * Accepts what somebody pasted and returns the pair to store, or null.
  *
  * People paste whole URLs rather than ids, so every provider takes either.
