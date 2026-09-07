@@ -1731,16 +1731,15 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .cw-email:has(input:checked){background:var(--warning-25);color:var(--warning-800)}
 .cw-email.none{font-size:11.5px;color:var(--text-secondary);padding:6px 10px;align-self:center}
 
-/* A week that has its recording already, so the list reads at a glance rather
-   than needing each row opened to find out. */
-.btn.has-recording{border-color:var(--brand-300,var(--border-strong));color:var(--brand-700)}
-
-/* The list of class recordings on a student's calendar. */
-.recording-list{display:grid;gap:8px}
-.recording-row{display:flex;align-items:center;gap:10px;justify-content:space-between;
-  border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:10px 12px}
-.recording-copy{display:grid;gap:2px;min-width:0}
-.recording-copy strong{font-size:13px}
-.recording-copy small{font-size:11.5px;color:var(--text-secondary)}
-.recording-copy code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
-.recording-row .btn{flex:0 0 auto}
+/* A Zoom recording cannot play in the page, so the lesson shows a door to it
+   rather than an empty player. Sized like the player it replaces, so the lesson
+   page does not jump about between one lesson and the next. */
+.lp-link{display:grid;gap:8px;justify-items:center;text-align:center;padding:40px 24px;
+  background:var(--gray-50);border:1px solid var(--border-strong);border-radius:var(--radius-sm);min-height:220px;align-content:center}
+.lp-link-icon{display:flex;color:var(--text-secondary)}
+.lp-link-icon svg{width:28px;height:28px}
+.lp-link strong{font-size:14px}
+.lp-link p{margin:0;font-size:12px;color:var(--text-secondary)}
+.lp-pass code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+  background:var(--white);border:1px solid var(--border-strong);border-radius:4px;padding:2px 6px}
+.lp-link .btn{margin-top:6px}

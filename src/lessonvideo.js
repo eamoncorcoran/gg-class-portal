@@ -11,12 +11,13 @@
  * into something the browser can play.
  */
 
-export const VIDEO_PROVIDERS = Object.freeze(['bunny', 'youtube', 'loom', 'mp4']);
+export const VIDEO_PROVIDERS = Object.freeze(['bunny', 'youtube', 'loom', 'zoom', 'mp4']);
 
 export const PROVIDER_LABELS = Object.freeze({
   bunny: 'Bunny Stream',
   youtube: 'YouTube',
   loom: 'Loom',
+  zoom: 'Zoom recording',
   mp4: 'Uploaded file',
 });
 
@@ -43,6 +44,19 @@ export function parseVideoSource(provider, input) {
     const id = value.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]{8,})/)?.[1]
       || (/^[a-zA-Z0-9]{8,}$/.test(value) ? value : null);
     return id ? { provider, ref: id } : null;
+  }
+
+  /* A Zoom cloud recording, kept whole.
+     Unlike the others there is no id to pull out and no embed to build from one:
+     what Zoom hands you is a share URL, and the only thing to be done with it is
+     open it. Checked for being a real web address, because this ends up in an
+     href, and javascript: in an href is not a link — it is a script somebody
+     runs by clicking it. */
+  if (provider === 'zoom') {
+    let url;
+    try { url = new URL(value); } catch { return null; }
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    return { provider, ref: url.toString() };
   }
 
   if (provider === 'bunny') {
@@ -75,6 +89,12 @@ export function videoSource(lesson, { signBunny = null } = {}) {
   }
   if (provider === 'loom') {
     return { type: 'iframe', provider, src: `https://www.loom.com/embed/${ref}` };
+  }
+  /* Opened rather than embedded. A Zoom recording page asks for its passcode and
+     offers to open the Zoom app, and neither works inside a frame on somebody
+     else's site — it renders as an empty rectangle with nothing to say why. */
+  if (provider === 'zoom') {
+    return { type: 'link', provider, src: ref, passcode: lesson.video_passcode || null };
   }
   if (provider === 'bunny') {
     const [library, video] = ref.split('/');

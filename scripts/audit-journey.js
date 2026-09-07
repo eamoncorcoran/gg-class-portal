@@ -168,22 +168,6 @@ try {
     expectOk('switch several weeks on at once', await admin.call('/api/admin/weeks/bulk-checkin',
       { method: 'POST', body: { weekIds: [made.weekId], enabled: true } }));
     expectOk('see what deleting a week would remove', await admin.call(`/api/admin/weeks/${made.weekId}/impact`));
-
-    /* The class recording. A link the teacher pastes becomes an href on the
-       student's screen, so what is not a link must not be stored as one. */
-    expectStatus('a javascript: link is refused', await admin.call(`/api/admin/weeks/${made.weekId}/recording`,
-      { method: 'PUT', body: { url: 'javascript:alert(1)' } }), 400);
-    expectStatus('and so is something that is not a URL', await admin.call(`/api/admin/weeks/${made.weekId}/recording`,
-      { method: 'PUT', body: { url: 'not a url' } }), 400);
-    const rec = expectOk('a Zoom recording link is saved', await admin.call(`/api/admin/weeks/${made.weekId}/recording`,
-      { method: 'PUT', body: {
-        url: 'https://us02web.zoom.us/rec/share/audit123', passcode: 'Aud1t?Pass', note: 'Audit recording.' } }));
-    expect('with the date it was added', Boolean(rec?.recording_added_at), JSON.stringify(rec));
-    const weekList = await admin.call(`/api/admin/teaching-weeks?classId=${made.classId}`);
-    const listed = (Array.isArray(weekList.data) ? weekList.data : []).find((row) => row.id === made.weekId);
-    expect('and it reaches the screen the teacher manages weeks on',
-      listed?.recording_url === 'https://us02web.zoom.us/rec/share/audit123',
-      JSON.stringify(listed).slice(0, 200));
   }
 
   /* ------------------------------------------------------------ students */
@@ -247,6 +231,23 @@ try {
       expectOk('see what deleting the section would remove', await admin.call(`/api/admin/modules/${made.moduleId}/impact`));
       const lesson = expectOk('add a lesson', await admin.call(`/api/admin/modules/${made.moduleId}/lessons`,
         { method: 'POST', body: { title: 'Lesson one', notes: 'Notes', published: true } }));
+      /* A Zoom recording, which is a link rather than a player. The database
+         enforces the list of hosts as well as the code, so this fails loudly if
+         one is added in only one of the two places. */
+      expectStatus('a javascript: link is refused as a recording', await admin.call(
+        `/api/admin/modules/${made.moduleId}/lessons`,
+        { method: 'POST', body: { title: 'Bad link', videoProvider: 'zoom', video: 'javascript:alert(1)' } }), 400);
+      const zoomLesson = expectOk('a Zoom recording can be added to a lesson', await admin.call(
+        `/api/admin/modules/${made.moduleId}/lessons`,
+        { method: 'POST', body: { title: 'Zoom class', videoProvider: 'zoom',
+          video: 'https://us02web.zoom.us/rec/share/audit123', videoPasscode: 'Aud1t?Pass', published: true } }));
+      expect('with its passcode stored beside it', zoomLesson?.video_passcode === 'Aud1t?Pass',
+        JSON.stringify(zoomLesson).slice(0, 200));
+      if (zoomLesson?.id) {
+        expectOk('renaming it keeps the passcode', await admin.call(`/api/admin/lessons/${zoomLesson.id}`,
+          { method: 'PATCH', body: { title: 'Zoom class, renamed' } }),
+          (d) => d?.video_passcode === 'Aud1t?Pass');
+      }
       made.lessonId = lesson?.id;
       if (made.lessonId) {
         expectOk('edit the lesson', await admin.call(`/api/admin/lessons/${made.lessonId}`,
@@ -401,13 +402,6 @@ try {
       { method: 'POST', body: { completed: true, positionSeconds: 120 } }));
   }
   expectOk('the student’s courses load', await student.call('/api/student/courses'));
-  {
-    const week = (home?.weeks || []).find((row) => row.id === made.weekId);
-    expect('the student can see the class recording', week?.recording_url?.includes('audit123'),
-      JSON.stringify(week && { url: week.recording_url, pass: week.recording_passcode }));
-    expect('and the passcode that opens it', week?.recording_passcode === 'Aud1t?Pass',
-      JSON.stringify(week?.recording_passcode));
-  }
 
   /* The address the portal asks for at the top of the screen. */
   expect('a new student is asked for their address', home?.addressNeeded === true,
@@ -598,7 +592,12 @@ try {
     expectOk('one course loads', await admin.call(`/api/admin/courses/${made.courseId}`));
     expectOk('course progress loads', await admin.call(`/api/admin/courses/${made.courseId}/progress`));
     expectOk('the course deletion impact loads', await admin.call(`/api/admin/courses/${made.courseId}/impact`));
-    expectOk('the student can open the course', await student.call(`/api/student/courses/${made.courseId}`));
+    const seen = expectOk('the student can open the course', await student.call(`/api/student/courses/${made.courseId}`));
+    const zoomSeen = (seen?.modules || []).flatMap((m) => m.lessons || [])
+      .find((l) => l.video?.provider === 'zoom');
+    expect('a Zoom recording reaches the student as a link, not a frame',
+      zoomSeen?.video?.type === 'link' && zoomSeen?.video?.passcode === 'Aud1t?Pass',
+      JSON.stringify(zoomSeen?.video));
   }
   if (made.lessonId) {
     const attachment = new FormData();

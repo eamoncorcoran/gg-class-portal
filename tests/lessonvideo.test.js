@@ -40,15 +40,23 @@ test('a link for the wrong host is refused rather than half-accepted', () => {
   assert.equal(parseVideoSource('nonsense', 'anything'), null);
 });
 
-test('a Zoom recording link is not a valid source for any host', () => {
-  /* Zoom serves its playback pages with framing blocked and has no embed
-     product, so a share link must not be quietly accepted and then render as an
-     empty box. */
+test('a Zoom recording belongs to Zoom and to no other host', () => {
+  /* Zoom has no embed product and serves its playback pages so they cannot be
+     framed, so it is offered as a host of its own that opens in a new tab. What
+     must not happen is a Zoom link being accepted as Bunny or Loom and then
+     rendering as an empty box, which is what this originally guarded and still
+     does for every host but its own. */
   const zoom = 'https://us02web.zoom.us/rec/share/abc123XYZ';
   for (const provider of VIDEO_PROVIDERS) {
     if (provider === 'mp4') continue; // mp4 takes any https address by design
+    if (provider === 'zoom') {
+      assert.deepEqual(parseVideoSource(provider, zoom), { provider: 'zoom', ref: zoom });
+      continue;
+    }
     assert.equal(parseVideoSource(provider, zoom), null, `${provider} accepted a Zoom link`);
   }
+  // And it is offered as a link, never as something to embed.
+  assert.equal(videoSource({ video_provider: 'zoom', video_ref: zoom }).type, 'link');
 });
 
 test('an uploaded file is accepted as a path or an address', () => {

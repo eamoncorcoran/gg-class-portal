@@ -961,7 +961,6 @@ router.get('/teaching-weeks', asyncRoute(async (req, res) => {
   const result = await query(
     `SELECT w.id, w.class_id, w.week_start, w.checkin_enabled, w.checkin_release_at, w.checkin_due_at,
             w.checkin_hard_deadline, w.label, w.notes,
-            w.recording_url, w.recording_passcode, w.recording_note, w.recording_added_at,
             c.programme_name, c.day_of_week, c.start_time, c.timezone
      FROM weeks w JOIN classes c ON c.id=w.class_id ${where} ORDER BY w.week_start`, params,
   );
@@ -1336,56 +1335,6 @@ router.get('/weeks/:id/impact', asyncRoute(async (req, res) => {
     [req.params.id],
   );
   res.json({ ...week, ...counts, work: counts.checkins + counts.attendance });
-}));
-
-/* The recording of one week's class.
-   ------------------------------------------------------------------
-   A link, not a file. Zoom already holds it, has already transcoded it and
-   already streams it; copying it onto this server's disk to serve it worse
-   would be no improvement.
-
-   Any host is accepted — Zoom today, Drive or an unlisted YouTube link on a week
-   when something else was used — but the scheme is checked, because this string
-   ends up as an href and `javascript:` in an href is not a link, it is a script
-   the student runs by clicking. Blank clears it.
-
-   A passcode of its own, because a Zoom share link almost always needs one and a
-   link without it is a page asking the student for something they have not got.*/
-router.put('/weeks/:id/recording', asyncRoute(async (req, res) => {
-  const parsed = z.object({
-    url: z.string().trim().max(2000).optional().default(''),
-    passcode: z.string().trim().max(60).optional().default(''),
-    note: z.string().trim().max(300).optional().default(''),
-  }).safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid recording.' });
-
-  const url = parsed.data.url;
-  if (url) {
-    let parsedUrl;
-    try { parsedUrl = new URL(url); } catch { parsedUrl = null; }
-    if (!parsedUrl || !['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return res.status(400).json({ error: 'Paste the full link to the recording, starting with https://' });
-    }
-  }
-
-  const week = await one('SELECT id FROM weeks WHERE id=$1', [req.params.id]);
-  if (!week) return res.status(404).json({ error: 'Week not found.' });
-
-  const row = await one(
-    `UPDATE weeks SET recording_url=$1, recording_passcode=$2, recording_note=$3,
-       -- Cast, because the only other use of $1 is an assignment to a text
-       -- column, and asking whether it IS NULL tells Postgres nothing about the
-       -- type on its own.
-       recording_added_at=CASE WHEN $1::text IS NULL THEN NULL ELSE now() END
-     WHERE id=$4
-     RETURNING id, week_start, recording_url, recording_passcode, recording_note, recording_added_at`,
-    [url || null, parsed.data.passcode || null, parsed.data.note || null, week.id],
-  );
-  await audit({
-    actorId: req.user.id, action: url ? 'week.recording_set' : 'week.recording_cleared',
-    entityType: 'week', entityId: week.id, ip: req.ip,
-  });
-  res.json(row);
 }));
 
 router.delete('/weeks/:id', asyncRoute(async (req, res) => {
@@ -2516,6 +2465,9 @@ const lessonInput = z.object({
   video: z.string().max(2000).nullable().optional(),
   durationSeconds: z.coerce.number().int().min(0).max(60 * 60 * 12).nullable().optional(),
   recordedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  /* Zoom share links nearly always carry one, and a link given out without it
+     is a page asking the student for something nobody gave them. */
+  videoPasscode: z.string().trim().max(60).nullable().optional(),
   published: z.boolean().optional().default(true),
 });
 
@@ -2542,9 +2494,10 @@ router.post('/modules/:id/lessons', asyncRoute(async (req, res) => {
   const video = resolveVideo(parsed.data);
   const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM course_lessons WHERE module_id=$1', [req.params.id]);
   const row = await one(
-    `INSERT INTO course_lessons(module_id,title,notes,video_provider,video_ref,duration_seconds,recorded_on,published,position)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    `INSERT INTO course_lessons(module_id,title,notes,video_provider,video_ref,video_passcode,duration_seconds,recorded_on,published,position)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [req.params.id, parsed.data.title, parsed.data.notes, video.provider, video.ref,
+     parsed.data.videoPasscode || null,
      parsed.data.durationSeconds || null, parsed.data.recordedOn || null, parsed.data.published, next.position],
   );
   await audit({ actorId: req.user.id, action: 'lesson.created', entityType: 'lesson', entityId: row.id, ip: req.ip });
@@ -2559,13 +2512,16 @@ router.patch('/lessons/:id', asyncRoute(async (req, res) => {
   const data = parsed.data;
   const video = resolveVideo(data, current);
   const row = await one(
-    `UPDATE course_lessons SET title=$1,notes=$2,video_provider=$3,video_ref=$4,
+    `UPDATE course_lessons SET title=$1,notes=$2,video_provider=$3,video_ref=$4,video_passcode=$9,
        duration_seconds=$5,recorded_on=$6,published=$7,updated_at=now()
      WHERE id=$8 RETURNING *`,
     [data.title ?? current.title, data.notes ?? current.notes, video.provider, video.ref,
      data.durationSeconds === undefined ? current.duration_seconds : (data.durationSeconds || null),
      data.recordedOn === undefined ? current.recorded_on : (data.recordedOn || null),
-     data.published ?? current.published, current.id],
+     data.published ?? current.published, current.id,
+     /* Undefined means the edit did not mention it, which is not the same as
+        being cleared: a lesson edited to fix its title must keep its passcode. */
+     data.videoPasscode === undefined ? current.video_passcode : (data.videoPasscode || null)],
   );
   res.json(row);
 }));

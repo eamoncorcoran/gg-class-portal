@@ -125,7 +125,7 @@ export async function getCourse({ courseId, viewerId, classId, isAdmin = false }
         signBunny: bunnySigning() ? (videoId, libraryId) => bunnyEmbedUrl(videoId, { libraryId }) : null,
       }),
       // What the administrator needs to edit it; never sent to a student.
-      ...(isAdmin ? { videoProvider: row.video_provider, videoRef: row.video_ref } : {}),
+      ...(isAdmin ? { videoProvider: row.video_provider, videoRef: row.video_ref, videoPasscode: row.video_passcode } : {}),
     });
   }
 
