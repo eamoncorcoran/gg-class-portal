@@ -64,6 +64,10 @@ export const config = Object.freeze({
   },
   ghlEmailWebhookUrl: process.env.GHL_EMAIL_WEBHOOK_URL || '',
   reminderCron: process.env.REMINDER_CRON || '*/5 * * * *',
+  /* Only scheduled posts wait on this — one written and published now is emailed
+     by the route that made it — so five minutes late is five minutes on a post
+     that was set to appear at a particular time anyway. */
+  boardEmailCron: process.env.BOARD_EMAIL_CRON || '*/5 * * * *',
   /* On by default in production: a backup nobody remembered to switch on is the
      one you find out about the night you need it. */
   backupEnabled: bool(process.env.BACKUP_ENABLED, (process.env.NODE_ENV || 'development') === 'production'),

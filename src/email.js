@@ -139,6 +139,51 @@ export async function sendPasswordChanged({ user }) {
   });
 }
 
+/**
+ * A post on the class board, sent to the class.
+ *
+ * The post itself goes in the body rather than a line saying there is one to
+ * read. If it is worth emailing about it is worth reading in the email, and a
+ * notification that only says "something was posted" makes somebody sign in to
+ * find out it did not concern them.
+ *
+ * Long posts are cut, because an email is not where a thousand words are read,
+ * and the button goes to the board where the whole thing is.
+ */
+export async function sendBoardPost({ student, thread }) {
+  const author = thread.author_name || 'Gaeilgeoir Guides';
+  const full = String(thread.body || '');
+  /* Cut on a line break rather than mid-sentence where there is one to cut on. */
+  const limit = 1200;
+  const tooLong = full.length > limit;
+  const head = tooLong ? full.slice(0, limit) : full;
+  const cut = tooLong ? head.slice(0, Math.max(head.lastIndexOf('\n'), head.lastIndexOf('. ') + 1) || limit) : full;
+  const shown = tooLong ? `${cut.trimEnd()}…` : full;
+
+  const paragraphs = shown.split('\n')
+    .map((line) => (line.trim() ? `<p>${escapeHtml(line)}</p>` : '<br>')).join('');
+  const more = tooLong ? '<p><em>There is more in the post itself.</em></p>' : '';
+
+  const text = [
+    `${author} posted on the class board.`, '', thread.title, '', shown,
+    tooLong ? '\nThere is more in the post itself.' : '',
+    '', `Read it and reply: ${config.appUrl}`,
+  ].filter((line) => line !== undefined).join('\n');
+
+  return sendEmail({
+    to: student.email,
+    subject: thread.title,
+    text,
+    html: layout({
+      title: thread.title,
+      body: `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">${escapeHtml(author)} posted on the class board.</p>${paragraphs}${more}`,
+      buttonText: 'Read it and reply',
+      buttonUrl: config.appUrl,
+    }),
+    metadata: { type: 'board_post', threadId: thread.id, studentId: student.id },
+  });
+}
+
 export async function sendDeadlineReminder({ student, assignment, template }) {
   const values = {
     first_name: student.name.split(' ')[0],

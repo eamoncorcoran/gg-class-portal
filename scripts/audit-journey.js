@@ -252,6 +252,10 @@ try {
     expectOk('rename the category', await admin.call(`/api/admin/community/categories/${made.categoryId}`,
       { method: 'PATCH', body: { name: 'Questions renamed' } }));
   }
+  const board = expectOk('the board reports how many an email would reach', await admin.call(`/api/admin/community/${made.classId}`));
+  expect('and that is the students actually on the class', board?.emailAudience === 1,
+    `emailAudience was ${JSON.stringify(board?.emailAudience)}`);
+
   const thread = expectOk('the teacher posts to the board', await admin.call(`/api/admin/community/${made.classId}/threads`,
     { method: 'POST', body: { title: 'Audit board post', body: 'The body of the post.', categoryId: made.categoryId ?? null, pinned: false } }));
   made.threadId = thread?.id;
@@ -294,6 +298,34 @@ try {
         { method: 'POST', body: { removed: false } }));
     }
     expectOk('read the board', await admin.call(`/api/admin/community/${made.classId}`));
+
+    /* Emailing the class about a post: the one thing here that reaches people
+       outside the portal, so it is checked for who, and for how many times. */
+    const { one: findOne, query: runQuery } = await import('../src/db.js');
+    const silent = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_post']);
+    const announced = expectOk('the teacher posts and emails the class', await admin.call(
+      `/api/admin/community/${made.classId}/threads`,
+      { method: 'POST', body: { title: 'Audit announcement', body: 'Something worth an email.', notifyEmail: true } }));
+    // Sent after the response, so give it a moment before counting.
+    await new Promise((resolve) => { setTimeout(resolve, 1500); });
+    const afterSend = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_post']);
+    expect('everyone on the class was emailed exactly once',
+      afterSend.c - silent.c === 1, `${afterSend.c - silent.c} deliveries for one student`);
+
+    /* The sweep must not send it again. This is the failure that matters: a
+       whole class hearing the same thing twice. */
+    const { runBoardNotifications } = await import('../src/boardemail.js');
+    await runBoardNotifications();
+    const afterSweep = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_post']);
+    expect('and the sweep does not send it again', afterSweep.c === afterSend.c,
+      `${afterSweep.c - afterSend.c} extra deliveries after the sweep`);
+
+    if (announced?.id) {
+      const marked = await one('SELECT notify_email, notified_at FROM discussion_threads WHERE id=$1', [announced.id]);
+      expect('the post records that it was emailed', Boolean(marked?.notify_email && marked?.notified_at),
+        JSON.stringify(marked));
+    }
+
     expectOk('open one post', await admin.call(`/api/admin/community/thread/${made.threadId}`));
   }
 
@@ -334,8 +366,19 @@ try {
     expectOk('the student reacts', await student.call(`/api/student/community/react/thread/${made.threadId}`,
       { method: 'POST', body: { emoji: '🎉' } }));
     expectOk('the student marks the board read', await student.call('/api/student/community/read', { method: 'POST', body: {} }));
-    expectOk('the student starts their own post', await student.call('/api/student/community/threads',
+    const ownPost = expectOk('the student starts their own post', await student.call('/api/student/community/threads',
       { method: 'POST', body: { title: 'A student question', body: 'How do I say this?' } }));
+    /* And asking to mail the whole class is ignored rather than obeyed. Zod
+       strips what the student schema does not name, so this proves the field is
+       genuinely absent there rather than merely unused. */
+    const tried = await student.call('/api/student/community/threads',
+      { method: 'POST', body: { title: 'Not a mailshot', body: 'Trying to email everyone.', notifyEmail: true } });
+    if (tried.status < 300 && tried.data?.id) {
+      const row = await one('SELECT notify_email FROM discussion_threads WHERE id=$1', [tried.data.id]);
+      expect('a student cannot email the class', row?.notify_email === false,
+        `notify_email was ${JSON.stringify(row?.notify_email)}`);
+    } else fail('the student could post at all', `status ${tried.status}`);
+    if (ownPost?.id) { /* kept for the teardown to remove with the class */ }
   }
   if (made.lessonId) {
     expectOk('the student marks a lesson watched', await student.call(`/api/student/lessons/${made.lessonId}/progress`,

@@ -3786,6 +3786,24 @@ function categoryChosen() {
 }
 
 
+/* Emailing the class about a post.
+   ------------------------------------------------------------------
+   Off unless asked for, and it says how many people it will reach before it is
+   ticked rather than after it is sent. Mailing thirty people is not undoable,
+   and the number is the thing that makes somebody read the post once more first.
+
+   The count comes from the server, worked out by the same rule that decides who
+   actually gets one — a figure calculated separately for the screen would be
+   free to drift from what happens. */
+function emailClassToggle(draft) {
+  const count = state.community?.emailAudience ?? 0;
+  if (!count) {
+    return '<span class="cw-email none">Nobody on this class to email yet</span>';
+  }
+  return `<label class="cw-pin cw-email"><input type="checkbox" name="notifyEmail" ${draft?.notifyEmail ? 'checked' : ''}>
+    Email the class (${count} student${count === 1 ? '' : 's'})</label>`;
+}
+
 function openComposer({ restore = false } = {}) {
   const categories = state.community?.categories || [];
   const admin = isAdmin();
@@ -3839,6 +3857,7 @@ function openComposer({ restore = false } = {}) {
         </div>
         <div class="cw-actions">
           ${admin ? `<label class="cw-pin"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin to the top</label>` : ''}
+          ${admin ? emailClassToggle(draft) : ''}
           <button type="button" class="btn" data-close-modal>Cancel</button>
           <button type="button" class="btn primary" id="save-thread">Post</button>
         </div>
@@ -3960,6 +3979,7 @@ async function submitComposer() {
   if (!categoryChosen()) return showToast('Choose where this post belongs.', 'error');
   if (isAdmin()) {
     body.pinned = form.pinned.checked;
+    body.notifyEmail = Boolean(form.notifyEmail?.checked);
     const when = document.getElementById('composer-when')?.value;
     if (when) {
       const at = fromZonedInput(when);
@@ -3974,7 +3994,12 @@ async function submitComposer() {
     draftAttachments = [];
     composerDraft = null;
     await reloadBoard();
-    showToast(body.publishedAt ? 'Scheduled' : 'Posted');
+    /* Say whether it went out, and to how many. "Posted" alone leaves somebody
+       who ticked the box wondering whether it did anything. */
+    const reach = state.community?.emailAudience ?? 0;
+    if (body.notifyEmail && body.publishedAt) showToast(`Scheduled — the class will be emailed when it appears`);
+    else if (body.notifyEmail) showToast(`Posted and emailed to ${reach} student${reach === 1 ? '' : 's'}`);
+    else showToast(body.publishedAt ? 'Scheduled' : 'Posted');
   } catch (error) { showToast(error.message, 'error'); }
 }
 

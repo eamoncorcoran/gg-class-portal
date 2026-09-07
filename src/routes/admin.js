@@ -20,6 +20,7 @@ import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNote
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
 import { formatAddress, hasAddress } from '../address.js';
+import { boardAudienceCount, notifyClassOfPost } from '../boardemail.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
@@ -1745,6 +1746,11 @@ router.get('/community/:classId', asyncRoute(async (req, res) => {
       ? { ...next, joinUrl: next.sessionJoinUrl || joinLinkFor(klass, overrideWeeks, next), note: next.sessionLabel || klass.join_note || null }
       : null,
     threads, categories, contributors, sort, categoryId,
+    /* How many people an email about this class would actually reach, counted
+       by the same rule that decides who gets one. A number worked out separately
+       for the screen is a number free to disagree with what happens, and this is
+       the number somebody reads before mailing thirty people. */
+    emailAudience: await boardAudienceCount(klass.id),
   });
 }));
 
@@ -1965,6 +1971,10 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
     // Absent or past means publish now. The clock does the rest of the work.
     publishedAt: z.string().datetime().nullable().optional(),
     attachments: z.array(attachmentInput).max(6).optional().default([]),
+    /* Off unless asked for. A board that emails everybody about everything is a
+       board people mute, and a muted board cannot tell them the one thing that
+       mattered. */
+    notifyEmail: z.boolean().optional().default(false),
   }).safeParse(req.body);
   // An attachment that will not validate is not a missing title, and saying so
   // sends somebody hunting through a form that is already filled in.
@@ -1992,8 +2002,22 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
     attachments: [...parsed.data.attachments, ...video.attachments],
   });
   if (parsed.data.pinned) await query('UPDATE discussion_threads SET pinned=true WHERE id=$1', [row.id]);
-  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, metadata: { scheduled: Boolean(parsed.data.publishedAt) }, ip: req.ip });
+  if (parsed.data.notifyEmail) await query('UPDATE discussion_threads SET notify_email=true WHERE id=$1', [row.id]);
+  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, metadata: { scheduled: Boolean(parsed.data.publishedAt), notifyEmail: parsed.data.notifyEmail }, ip: req.ip });
   res.status(201).json({ ...row, pinned: parsed.data.pinned });
+
+  /* After the answer, because the post is saved either way and a class of
+     thirty is thirty round trips to a mail server — long enough for the button
+     to look stuck if it were waited on.
+
+     Only when it is already published. A scheduled post is emailed when it
+     appears, by the sweep, since nothing else runs at that moment: a post
+     becomes visible by the clock passing rather than by anything happening. */
+  if (parsed.data.notifyEmail && !parsed.data.publishedAt) {
+    notifyClassOfPost(row.id).catch((error) => {
+      console.error(`Could not email the class about post ${row.id}: ${error.message}`);
+    });
+  }
 }));
 
 /* Rescheduling, or releasing something early. Setting it to now is how a

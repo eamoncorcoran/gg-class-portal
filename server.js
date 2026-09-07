@@ -21,6 +21,7 @@ import { ensureAllWeeks } from './src/weeks.js';
 import { startReminderScheduler, runReminderCycle } from './src/reminders.js';
 import { startBackupScheduler } from './src/backup.js';
 import { startZoomScheduler } from './src/zoomscheduler.js';
+import { startBoardNotifier } from './src/boardemail.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -194,6 +195,9 @@ async function start() {
   startReminderScheduler();
   startBackupScheduler();
   startZoomScheduler();
+  // Scheduled board posts become visible by the clock passing rather than by
+  // anything running, so without this nothing would notice they had appeared.
+  startBoardNotifier();
   app.listen(config.port, () => {
     console.log(`Gaeilgeoir Guides Student Support running at ${config.appUrl}`);
   });
