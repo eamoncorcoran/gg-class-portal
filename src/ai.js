@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getAnthropicConfig, getSetting } from './settings.js';
-import { CHECKIN_SYSTEM, COMMUNITY_SYSTEM, HOMEWORK_VOICE, inEamonsVoice } from './draftprompts.js';
+import { CHECKIN_SYSTEM, COMMUNITY_SYSTEM, CORRECTION_FORMAT, HOMEWORK_VOICE, inEamonsVoice } from './draftprompts.js';
 
 /* Drafting runs on Claude; dictation and transcription stay on OpenAI, because
    there is no Anthropic equivalent of Whisper and the keyboard pipeline in
@@ -80,9 +80,14 @@ export async function draftHomeworkFeedback(payload) {
      still the one on the settings screen. Effort stays at the default because
      getting a séimhiú wrong in front of a student is worse than the cost of
      thinking about it properly. */
+  /* The stored prompts first, then the format and the voice from code. Last word
+     wins with a model the same way it does with a person, and the layout of a
+     correction is not a marking standard to be tuned on a settings screen: it is
+     the shape the student's screen renders. */
   const instructions = [
     prompts.correctionPrompt || '',
     prompts.generalFeedbackPrompt || '',
+    CORRECTION_FORMAT,
     HOMEWORK_VOICE,
   ].filter(Boolean).join('\n\n');
   const parsed = await draft({

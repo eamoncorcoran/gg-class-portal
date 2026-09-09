@@ -1780,3 +1780,14 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .cmt-reply-box{display:grid;gap:8px;margin:8px 0 4px}
 .cmt-reply-box textarea{width:100%;min-height:52px;resize:vertical}
 .cmt-reply-actions{display:flex;gap:8px;justify-content:flex-end}
+
+/* Bold and italics, over the box they apply to. */
+.fmt{display:inline-flex;gap:2px;align-items:center}
+.fmt button{width:26px;height:26px;display:grid;place-items:center;border:1px solid transparent;
+  border-radius:var(--radius-sm);background:none;color:var(--text-secondary);font-size:12.5px;cursor:pointer;padding:0}
+.fmt button:hover{background:var(--gray-50);color:var(--text);border-color:var(--border)}
+.fmt-i i{font-family:Georgia,serif}
+.cmt-reply-spacer{flex:1 1 auto}
+/* Formatting inside what somebody wrote, wherever it is read back. */
+.cmt-text strong,.feedback-box strong,.answer-box strong{font-weight:700}
+.cmt-text em,.feedback-box em,.answer-box em{font-style:italic}

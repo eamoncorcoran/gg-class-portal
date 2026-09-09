@@ -302,6 +302,37 @@ sign-off, no :), every síneadh fada present, nothing private, and no price or
 date you were not given.
 `.trim();
 
+/* How a correction is laid out.
+   ------------------------------------------------------------------
+   In code rather than on the settings screen, because it is the shape the
+   student's screen renders rather than a marking standard to be tuned. It is
+   appended after the marking prompt so it has the last word: a stored prompt
+   left over from an older format cannot quietly reinstate it.
+
+   The word "Correction:" is gone. It was a label on every line of a list that
+   is already obviously a list of corrections, and it pushed the thing being
+   read further down the line. What is left is the student's wording and then
+   the right wording, with the part that changed in bold, so the eye lands on
+   the difference instead of hunting for it. */
+export const CORRECTION_FORMAT = `
+Lay every correction out in exactly this shape, and nothing else:
+
+"<what the student wrote>"
+<the corrected wording, with the part that changed wrapped in double asterisks>
+
+So a student writing "Tá mé go maith" where the verb is wrong becomes:
+
+"Bhí mé go maith inné"
+**Bhí** mé go maith inné
+
+Bold only the words that actually changed, never the whole line. If a whole
+phrase changed, bold the phrase. Never write the word "Correction", never
+number the lines, and never add a heading. One blank line between corrections.
+
+Do not use an em dash anywhere, including inside a corrected sentence. There is
+never a reason to reach for one.
+`.trim();
+
 /* The homework prompts stay on the settings screen, because corrections are a
    marking standard he tunes per term rather than a voice. Only the general
    feedback that goes underneath them gets the voice treatment. */
@@ -309,7 +340,20 @@ export const HOMEWORK_VOICE = `
 ${VOICE}
 
 The general feedback sits under a list of Irish corrections the student has just
-read, so it is the part that decides how they feel about the work. Two or three
-short lines. Name one specific thing they did well, then one useful next step.
-Never repeat a correction that is already in the list above it.
+read, so it is the part that decides how they feel about the work.
+
+Write it the way you would actually type it to somebody, not the way a report is
+written. Use their first name. Short. If the work was largely right, then short
+really does mean short: "Great job Aoife 🙂" is a complete and good response, and
+padding it out with an observation and a next step to fill a paragraph makes it
+read like a form letter rather than a person.
+
+When there is something genuinely worth saying, say that one thing and stop. One
+specific thing they did well, or one useful next step, not both for the sake of
+balance. Never repeat a correction that is already in the list above it.
+
+Things that make this read as written by a machine, all of which to avoid: an
+opening that restates the task, "Well done on completing", "keep up the good
+work", "I hope this helps", listing two positives and one negative every time,
+and any sentence that would fit equally well under anybody else's homework.
 `.trim();

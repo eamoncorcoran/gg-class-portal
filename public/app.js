@@ -3428,6 +3428,83 @@ const REACTIONS = ['👍', '❤️', '🎉', '😂', '😮', '🙏', '💪', '�
 /* The reactions already on something, plus the button that adds another. A
    reaction nobody has used yet is not shown: a row of eight grey zeroes reads as
    a chore, and the same row with two live counts on it reads as a room. */
+/* Bold and italics, without ever putting somebody's HTML on the page.
+   ------------------------------------------------------------------
+   The order here is the whole safety argument. Everything is escaped first, so
+   whatever anybody typed is already inert text by the time this looks at it;
+   only then are the two markers turned into tags. There is no path by which a
+   `<script>` in a comment becomes a script, because by the time bolding happens
+   it is already the four characters &lt;s and so on.
+
+   Two markers and no more. A board is people writing to each other, not a
+   document, and every additional piece of syntax is another thing that turns out
+   to have been typed by accident.
+
+   `**` is matched before `*`, or bold would be read as italics wrapping an
+   empty string. Neither crosses a line break, so a stray asterisk at the end of
+   one paragraph cannot italicise everything down to the next one. */
+function richText(value) {
+  return escapeHtml(String(value ?? ''))
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
+    .replace(/\n/g, '<br>');
+}
+
+/* The buttons over a box that takes formatting.
+   Nothing clever: they wrap what is selected, or drop the markers in and put the
+   cursor between them, which is what somebody expects if they press bold before
+   typing rather than after. */
+function formatBar(targetId) {
+  return `<span class="fmt" data-fmt-for="${targetId}">
+    <button type="button" class="fmt-b" data-wrap="**" title="Bold (Ctrl+B)"><b>B</b></button>
+    <button type="button" class="fmt-i" data-wrap="*" title="Italic (Ctrl+I)"><i>I</i></button>
+  </span>`;
+}
+
+function wrapSelection(box, marker) {
+  const start = box.selectionStart;
+  const end = box.selectionEnd;
+  const chosen = box.value.slice(start, end);
+  const before = box.value.slice(0, start);
+  const after = box.value.slice(end);
+
+  /* Pressing bold on something already bold takes it off again, which is what
+     the button appears to promise. */
+  if (chosen && before.endsWith(marker) && after.startsWith(marker)) {
+    box.value = before.slice(0, -marker.length) + chosen + after.slice(marker.length);
+    box.setSelectionRange(start - marker.length, end - marker.length);
+  } else {
+    box.value = `${before}${marker}${chosen}${marker}${after}`;
+    box.setSelectionRange(start + marker.length, end + marker.length);
+  }
+  box.focus();
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function bindFormatBars(root = document) {
+  root.querySelectorAll('[data-fmt-for]').forEach((bar) => {
+    if (bar.dataset.bound) return;
+    bar.dataset.bound = '1';
+    const box = document.getElementById(bar.dataset.fmtFor);
+    if (!box) return;
+    bar.querySelectorAll('[data-wrap]').forEach((button) => {
+      // Down rather than click, so the box does not lose its selection first.
+      button.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        wrapSelection(box, button.dataset.wrap);
+      });
+    });
+    if (box.dataset.fmtKeys) return;
+    box.dataset.fmtKeys = '1';
+    box.addEventListener('keydown', (event) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === 'b') { event.preventDefault(); wrapSelection(box, '**'); }
+      if (key === 'i') { event.preventDefault(); wrapSelection(box, '*'); }
+    });
+  });
+}
+
 /* The like, and everything else.
    ------------------------------------------------------------------
    Liking something is the commonest thing anybody does here and it was two
@@ -3975,6 +4052,7 @@ function openComposer({ restore = false } = {}) {
         <div class="composer-tools">
           <button type="button" class="tool" data-emoji-for="composer-body" aria-label="Add an emoji">${svg.smiley}</button>
           ${admin ? tool('attach-file', svg.paperclip || svg.cloudUp, 'Attach a file') : ''}
+          ${formatBar('composer-body')}
           ${admin ? tool('attach-dictate', svg.mic, 'Dictate') : ''}
           ${admin ? tool('attach-schedule', svg.calendar, 'Schedule for later') : ''}
         </div>
@@ -3990,6 +4068,7 @@ function openComposer({ restore = false } = {}) {
     onOpen() {
       bindDictation();
       bindEmojiButtons(modalRoot);
+      bindFormatBars(modalRoot);
       bindCategoryPicker();
       renderDraftAttachments();
       if (!draft) document.getElementById('composer-title')?.focus();
@@ -4445,7 +4524,7 @@ function feedComment(comment, admin, replies = [], canReply = true) {
       </div>
       ${removed
         ? '<p class="cmt-gone">This comment was removed.</p>'
-        : `${comment.body ? `<div class="cmt-text">${escapeHtml(comment.body).replace(/\n/g, '<br>')}</div>` : ''}
+        : `${comment.body ? `<div class="cmt-text">${richText(comment.body)}</div>` : ''}
            ${comment.voice_note ? `<div class="cmt-voice">${voiceNotePlayer(comment.voice_note)}</div>` : ''}
            <div class="cmt-foot">
              ${reactionRow('post', comment.id, comment.reactions, 'sm')}
@@ -4508,7 +4587,7 @@ function renderThreadDrawer() {
           </div>
         </div>
         <h3 class="opening-title">${escapeHtml(thread.title)}</h3>
-        <div class="cmt-text">${escapeHtml(String(thread.body || '')).replace(/\n/g, '<br>')}</div>
+        <div class="cmt-text">${richText(thread.body)}</div>
         ${attachmentsPreview(thread.attachments, true)}
         <div class="opening-foot">${reactionRow('thread', thread.id, thread.reactions)}</div>
       </article>
@@ -4521,6 +4600,7 @@ function renderThreadDrawer() {
           ${dictateButton('reply-body')}
           <textarea id="reply-body" rows="2" data-grow placeholder="Write a comment"></textarea>
           <div class="reply-actions">
+            ${formatBar('reply-body')}
             ${emojiButton('reply-body')}
             <button class="btn primary" id="send-reply">Comment</button>
             ${admin ? replyRecorder() : ''}
@@ -4531,6 +4611,7 @@ function renderThreadDrawer() {
       bindDictation();
       bindReactions(modalRoot);
       bindEmojiButtons(modalRoot);
+      bindFormatBars(modalRoot);
       bindAutoGrow(modalRoot);
       if (admin) loadReplyDraft(thread.id);
       if (admin) bindReplyRecorder();
@@ -4609,14 +4690,17 @@ function openInlineReply(thread, parentId) {
   const name = modalRoot.querySelector(`[data-comment="${parentId}"] .post-name`)?.textContent?.trim() || 'this comment';
   slot.innerHTML = `
     <div class="cmt-reply-box">
-      <textarea rows="2" data-grow placeholder="Reply to ${escapeHtml(name)}"></textarea>
+      <textarea id="inline-reply-${parentId}" rows="2" data-grow placeholder="Reply to ${escapeHtml(name)}"></textarea>
       <div class="cmt-reply-actions">
+        ${formatBar(`inline-reply-${parentId}`)}
+        <span class="cmt-reply-spacer"></span>
         <button class="btn small" data-cancel-reply>Cancel</button>
         <button class="btn small primary" data-send-reply>Reply</button>
       </div>
     </div>`;
   const box = slot.querySelector('textarea');
   bindAutoGrow(slot);
+  bindFormatBars(slot);
   box.focus();
 
   const close = () => { slot.innerHTML = ''; };
@@ -6675,7 +6759,7 @@ function renderReviewDrawer() {
         <div class="section-title">Weekly win</div><div class="answer-box">${escapeHtml(answers.weeklyWin || 'No weekly win submitted.')}</div>
         <div class="section-title">Support requested</div><div class="answer-box">${escapeHtml(answers.support || 'No support requested.')}</div>
         ${lifecycle(row.feedback_state)}
-        <div class="form-field"><div class="input-row"><label for="checkin-feedback">Teacher response</label>${dictateButton('checkin-feedback')}</div><textarea id="checkin-feedback">${escapeHtml(row.teacher_feedback || row.ai_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
+        <div class="form-field"><div class="input-row"><label for="checkin-feedback">Teacher response</label>${formatBar('checkin-feedback')}${dictateButton('checkin-feedback')}</div><textarea id="checkin-feedback">${escapeHtml(row.teacher_feedback || row.ai_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
         ${voiceNoteBlock(record)}`;
       actions = `<button class="btn" id="save-checkin-draft">Save draft</button><button class="btn primary" id="return-checkin">${row.status === 'returned' ? 'Update submitted reply' : 'Submit reply'}</button>`;
     }
@@ -6690,8 +6774,8 @@ function renderReviewDrawer() {
         ${record.assignment.questions.map((question, index) => `<div class="section-title">Question ${index + 1}</div><div class="answer-box"><strong>${escapeHtml(question.prompt)}</strong><br><br>${escapeHtml(answers[index] || 'No answer submitted.')}</div>`).join('')}
         ${submittedFilesBlock(row.files)}
         ${lifecycle(row.feedback_state)}
-        <div class="form-field"><div class="input-row"><label for="homework-corrections">1. Irish corrections</label>${dictateButton('homework-corrections', 'light')}</div><textarea class="corrections" id="homework-corrections">${escapeHtml(row.teacher_corrections || row.ai_corrections || '')}</textarea><div class="muted small">If there are no genuine errors, this should say “No Irish corrections needed.” Dictation here only adds punctuation, so your Irish is never rewritten.</div></div>
-        <div class="form-field"><div class="input-row"><label for="homework-general">2. General feedback</label>${dictateButton('homework-general')}</div><textarea id="homework-general">${escapeHtml(row.teacher_general_feedback || row.ai_general_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
+        <div class="form-field"><div class="input-row"><label for="homework-corrections">1. Irish corrections</label>${formatBar('homework-corrections')}${dictateButton('homework-corrections', 'light')}</div><textarea class="corrections" id="homework-corrections">${escapeHtml(row.teacher_corrections || row.ai_corrections || '')}</textarea><div class="muted small">If there are no genuine errors, this should say “No Irish corrections needed.” Dictation here only adds punctuation, so your Irish is never rewritten.</div></div>
+        <div class="form-field"><div class="input-row"><label for="homework-general">2. General feedback</label>${formatBar('homework-general')}${dictateButton('homework-general')}</div><textarea id="homework-general">${escapeHtml(row.teacher_general_feedback || row.ai_general_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
         ${voiceNoteBlock(record)}`;
       actions = `<button class="btn" id="save-homework-draft">Save draft</button><button class="btn primary" id="return-homework">${row.status === 'returned' ? 'Update submitted feedback' : 'Submit feedback'}</button>`;
     }
@@ -6832,6 +6916,7 @@ function bindReviewDrawer() {
   if (document.getElementById('nudge-history')) loadNudgeHistory();
   bindDictation(modalRoot);
   bindVoiceNote();
+  bindFormatBars(modalRoot);
   const inputs = [document.getElementById('checkin-feedback'), document.getElementById('homework-corrections'), document.getElementById('homework-general')].filter(Boolean);
   inputs.forEach((input) => input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submitReview(state.activeReview.type); }
@@ -8010,7 +8095,7 @@ async function showCheckinFeedback(checkin, week) {
     title: 'Your check-in feedback',
     subtitle: `Week of ${fmtWeek(week.week_start)}`,
     body: `${studentVoiceNote(checkin.voice_note)}
-      ${written ? `<div class="section-title">Feedback from your teacher</div><div class="feedback-box"><h3>✓ Feedback returned</h3><p>${escapeHtml(written)}</p></div>` : ''}
+      ${written ? `<div class="section-title">Feedback from your teacher</div><div class="feedback-box"><h3>✓ Feedback returned</h3><p>${richText(written)}</p></div>` : ''}
       ${submittedCheckinBlock(checkin)}`,
     footer: '<button class="btn primary" data-close-modal>Done</button>',
   });
@@ -8031,8 +8116,8 @@ async function showHomeworkFeedback(submission, assignment) {
     subtitle: 'Feedback from your teacher',
     wide: true,
     body: `${studentVoiceNote(submission.voice_note)}
-      ${corrections ? `<div class="section-title">Irish corrections</div><div class="answer-box corrections">${escapeHtml(corrections)}</div>` : ''}
-      ${general ? `<div class="section-title">General feedback</div><div class="feedback-box"><h3>✓ Feedback returned</h3><p>${escapeHtml(general)}</p></div>` : ''}
+      ${corrections ? `<div class="section-title">Irish corrections</div><div class="answer-box corrections">${richText(corrections)}</div>` : ''}
+      ${general ? `<div class="section-title">General feedback</div><div class="feedback-box"><h3>✓ Feedback returned</h3><p>${richText(general)}</p></div>` : ''}
       ${submittedHomeworkBlock(assignment, submission)}`,
     footer: '<button class="btn primary" data-close-modal>Done</button>',
   });
