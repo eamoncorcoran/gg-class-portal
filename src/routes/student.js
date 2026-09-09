@@ -8,6 +8,7 @@ import { one, query, transaction } from '../db.js';
 import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
 import { audit } from '../audit.js';
 import { COUNTIES, normaliseCounty, normaliseEircode, hasAddress } from '../address.js';
+import { notifyNewComment, notifyNewPost } from '../boardnotify.js';
 import { checkinOpen, checkinOpenSql, ensureWeeksForClass } from '../weeks.js';
 import { withVoiceNote, withVoiceNotes } from '../voice.js';
 import { ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
@@ -930,6 +931,13 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
      able to slow that down or fail it. A missing key, a rate limit or a bad
      minute for the model all end the same way — no draft, and the teacher writes
      their own reply, which is what they were going to do anyway. */
+  /* A student's post reaches the class the same way the teacher's does. It was
+     asked for by the person who is about to be told about it, so there is no
+     scheduled case here: a student cannot schedule a post. */
+  query('UPDATE discussion_threads SET notified_at=now() WHERE id=$1', [row.id])
+    .then(() => notifyNewPost(row.id))
+    .catch((error) => console.error(`Could not announce post ${row.id}: ${error.message}`));
+
   draftReplyFor({ threadId: row.id }).catch((error) => {
     console.error(`Could not draft a reply for ${row.id}: ${error.message}`);
   });
@@ -958,7 +966,11 @@ router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
   const klass = await boardClass(req, res);
   if (!klass) return;
   if (await refuseIfWithdrawn(req, res)) return;
-  const parsed = z.object({ body: z.string().trim().min(1).max(20000) }).safeParse(req.body);
+  const parsed = z.object({
+    body: z.string().trim().min(1).max(20000),
+    // Present when replying to one comment rather than to the post itself.
+    parentId: z.string().uuid().nullable().optional(),
+  }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Write a reply before sending.' });
   const thread = await one(
     'SELECT * FROM discussion_threads WHERE id=$1 AND class_id=$2 AND deleted_at IS NULL',
@@ -966,8 +978,12 @@ router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
   );
   if (!thread) return res.status(404).json({ error: 'Post not found.' });
   if (thread.locked) return res.status(409).json({ error: 'This conversation has been closed to new replies.' });
-  const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body });
+  const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body, parentId: parsed.data.parentId || null });
   res.status(201).json(row);
+
+  notifyNewComment(row.id).catch((error) => {
+    console.error(`Could not tell anybody about comment ${row.id}: ${error.message}`);
+  });
 
   /* The draft was written against the post and the comments that existed at the
      time. A new comment can make it wrong — the commonest way being that it now

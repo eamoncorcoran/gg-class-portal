@@ -1116,6 +1116,49 @@ async function openFeedbackReadReport() {
   });
 }
 
+/* The switch every board notice points at.
+   ------------------------------------------------------------------
+   These are on by default, because a board nobody hears about is a board nobody
+   reads. Being able to turn them off has to be equally plain: somebody who
+   cannot find this switch uses the one their mail client provides instead, and a
+   spam complaint costs the sending domain far more than an unsubscribe ever
+   does. Every notice carries a line saying where this is. */
+function notificationSettings() {
+  return `<div class="section-title stack-top">Notifications</div>
+    <p class="muted small">Emails about the class board. Turning these off does not affect homework reminders or anything about your own work.</p>
+    <label class="toggle-row"><span class="toggle"><input id="notify-posts" type="checkbox"><span></span></span>
+      Email me when there is a new post</label>
+    <label class="toggle-row"><span class="toggle"><input id="notify-replies" type="checkbox"><span></span></span>
+      Email me when somebody replies to a post I am part of</label>`;
+}
+
+/* Loaded after the dialog is drawn rather than before it opens, so Settings
+   still opens instantly if this request is slow or fails. */
+async function bindNotificationSettings() {
+  const posts = document.getElementById('notify-posts');
+  const replies = document.getElementById('notify-replies');
+  if (!posts || !replies) return;
+  try {
+    const current = await api('/api/auth/notifications');
+    posts.checked = current.boardPosts !== false;
+    replies.checked = current.boardReplies !== false;
+  } catch { posts.checked = true; replies.checked = true; }
+
+  const save = async (box, key) => {
+    const wanted = box.checked;
+    try {
+      await api('/api/auth/notifications', { method: 'PUT', body: { [key]: wanted } });
+      showToast(wanted ? 'Emails on' : 'Emails off');
+    } catch (error) {
+      // Put the switch back rather than leaving it showing something untrue.
+      box.checked = !wanted;
+      showToast(error.message, 'error');
+    }
+  };
+  posts.addEventListener('change', () => save(posts, 'boardPosts'));
+  replies.addEventListener('change', () => save(replies, 'boardReplies'));
+}
+
 function openAccountModal() {
   const student = state.user.role === 'student';
   const withdrawn = state.studentData?.withdrawnAt;
@@ -1132,6 +1175,7 @@ function openAccountModal() {
         </div>
         <input type="file" id="acct-photo-input" accept="image/jpeg,image/png,image/webp" class="hidden">
       </div>
+      ${notificationSettings()}
       ${changePasswordForm(false)}
       ${student ? (withdrawn
         ? `<div class="notice stack-top"><strong>You have withdrawn from this course.</strong><span>Recorded ${escapeHtml(fmtDate(withdrawn, { dateStyle: 'medium' }))}. No further work is expected and reminders have stopped. Everything you submitted is still here.</span></div>`
@@ -1157,6 +1201,7 @@ function openAccountModal() {
     footer: `<button class="btn danger" id="logout-button">Log out</button><button class="btn" data-close-modal>Close</button>`,
     onOpen() {
       bindAccountPhoto();
+      bindNotificationSettings();
       document.getElementById('new-password')?.addEventListener('input', (event) => updatePasswordRules(event.target.value));
       document.getElementById('change-password-form').addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -3383,15 +3428,35 @@ const REACTIONS = ['👍', '❤️', '🎉', '😂', '😮', '🙏', '💪', '�
 /* The reactions already on something, plus the button that adds another. A
    reaction nobody has used yet is not shown: a row of eight grey zeroes reads as
    a chore, and the same row with two live counts on it reads as a room. */
+/* The like, and everything else.
+   ------------------------------------------------------------------
+   Liking something is the commonest thing anybody does here and it was two
+   clicks: open a picker, choose from eight. So the thumb has a button of its
+   own that toggles on the first press, and the picker keeps the rest.
+
+   One reaction each is still the rule — the count under an emoji is a count of
+   people, which is the only thing anybody reads it for — so liking something
+   you had hearted moves your reaction rather than adding to it. */
+const LIKE_EMOJI = '👍';
+
 function reactionRow(type, id, reactions = [], size = '') {
-  const chips = (reactions || []).map((row) => `
+  const rows = reactions || [];
+  const like = rows.find((row) => row.emoji === LIKE_EMOJI);
+  const others = rows.filter((row) => row.emoji !== LIKE_EMOJI);
+
+  const chip = (row) => `
     <button class="rx ${row.mine ? 'on' : ''} ${size}" data-react="${type}" data-id="${id}" data-emoji="${row.emoji}"
       aria-pressed="${Boolean(row.mine)}" title="${row.count} ${row.count === 1 ? 'person' : 'people'}">
       <span>${row.emoji}</span><b>${row.count}</b>
-    </button>`).join('');
+    </button>`;
+
   return `<span class="rx-row" data-rx-for="${type}:${id}">
-    ${chips}
-    <button class="rx add ${size}" data-react-open="${type}" data-id="${id}" aria-label="Add a reaction">${svg.smile}</button>
+    <button class="rx like ${like?.mine ? 'on' : ''} ${size}" data-react="${type}" data-id="${id}" data-emoji="${LIKE_EMOJI}"
+      aria-pressed="${Boolean(like?.mine)}" title="${like ? `${like.count} ${like.count === 1 ? 'person likes' : 'people like'} this` : 'Like this'}">
+      <span>${LIKE_EMOJI}</span><b>${like?.count || ''}</b>
+    </button>
+    ${others.map(chip).join('')}
+    <button class="rx add ${size}" data-react-open="${type}" data-id="${id}" aria-label="Add a different reaction">${svg.smile}</button>
   </span>`;
 }
 
@@ -4357,9 +4422,19 @@ function openCommentEditor(id) {
   });
 }
 
-function feedComment(comment, admin) {
+/* One comment, and the replies that hang off it.
+   ------------------------------------------------------------------
+   One level of indent and no more. A reply to a reply joins the same exchange
+   rather than starting a narrower one, so a long back-and-forth stays readable
+   instead of marching off the right of the screen — the same choice most boards
+   people already use have made.
+
+   The reply box opens under the comment it answers rather than at the bottom of
+   the page, because by the time somebody has read forty comments the box at the
+   bottom has no visible connection to the one they meant to answer. */
+function feedComment(comment, admin, replies = [], canReply = true) {
   const removed = Boolean(comment.deleted_at);
-  return `<article class="cmt ${removed ? 'is-removed' : ''}">
+  return `<article class="cmt ${removed ? 'is-removed' : ''}" data-comment="${comment.id}">
     ${boardAvatar(comment.author, 'sm')}
     <div class="cmt-body">
       <div class="cmt-head">
@@ -4372,9 +4447,31 @@ function feedComment(comment, admin) {
         ? '<p class="cmt-gone">This comment was removed.</p>'
         : `${comment.body ? `<div class="cmt-text">${escapeHtml(comment.body).replace(/\n/g, '<br>')}</div>` : ''}
            ${comment.voice_note ? `<div class="cmt-voice">${voiceNotePlayer(comment.voice_note)}</div>` : ''}
-           ${reactionRow('post', comment.id, comment.reactions, 'sm')}`}
+           <div class="cmt-foot">
+             ${reactionRow('post', comment.id, comment.reactions, 'sm')}
+             ${canReply ? `<button class="cmt-reply" data-reply-to="${comment.id}">Reply</button>` : ''}
+           </div>`}
+      ${replies.length ? `<div class="cmt-replies">${replies.map((reply) => feedComment(reply, admin, [], canReply)).join('')}</div>` : ''}
+      <div class="cmt-reply-slot" data-reply-slot="${comment.id}"></div>
     </div>
   </article>`;
+}
+
+/* The comments of a thread, arranged. Anything whose parent has gone — removed
+   and cleared out from under it — is drawn at the top level rather than
+   disappearing with it. */
+function commentTree(comments = []) {
+  const byParent = new Map();
+  const ids = new Set(comments.map((row) => row.id));
+  for (const comment of comments) {
+    const parent = comment.parent_id && ids.has(comment.parent_id) ? comment.parent_id : null;
+    if (!byParent.has(parent)) byParent.set(parent, []);
+    byParent.get(parent).push(comment);
+  }
+  return (byParent.get(null) || []).map((comment) => ({
+    comment,
+    replies: byParent.get(comment.id) || [],
+  }));
 }
 
 function renderThreadDrawer() {
@@ -4384,10 +4481,17 @@ function renderThreadDrawer() {
   const withdrawn = Boolean(state.studentData?.withdrawnAt);
   const canComment = admin || (!thread.locked && !withdrawn);
   const comments = thread.comments || [];
-  openDrawer({
+  const tree = commentTree(comments);
+  /* A panel over the middle of the screen rather than a drawer down the side.
+     A post and its conversation is the thing being read, so it takes the middle
+     and the feed dims behind it; a drawer put the reading matter in a column
+     narrower than the feed it came from. */
+  modal({
+    wide: true,
+    bare: true,
     title: thread.title,
-    subtitle: `${thread.author?.name || 'Removed account'} · ${timeAgo(thread.published_at || thread.created_at)}${thread.category_name ? ` · ${thread.category_name}` : ''}`,
     body: `
+      <button class="close cmt-close" aria-label="Close" data-close-modal>${svg.x}</button>
       ${admin ? `<div class="mod-bar">
         <button class="btn small" data-thread-pin="${thread.id}" data-pinned="${thread.pinned}">${thread.pinned ? 'Unpin' : 'Pin'}</button>
         <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close'}</button>
@@ -4400,15 +4504,16 @@ function renderThreadDrawer() {
           ${boardAvatar(thread.author)}
           <div class="post-who">
             <span class="post-name">${escapeHtml(thread.author?.name || 'Removed account')}${thread.author?.role === 'admin' ? '<i class="tag-teacher">Teacher</i>' : ''}</span>
-            <span class="post-meta">${escapeHtml(timeAgo(thread.published_at || thread.created_at))}</span>
+            <span class="post-meta">${escapeHtml(timeAgo(thread.published_at || thread.created_at))}${thread.category_name ? ` · ${escapeHtml(thread.category_name)}` : ''}</span>
           </div>
         </div>
+        <h3 class="opening-title">${escapeHtml(thread.title)}</h3>
         <div class="cmt-text">${escapeHtml(String(thread.body || '')).replace(/\n/g, '<br>')}</div>
         ${attachmentsPreview(thread.attachments, true)}
-        ${reactionRow('thread', thread.id, thread.reactions)}
+        <div class="opening-foot">${reactionRow('thread', thread.id, thread.reactions)}</div>
       </article>
       <h4 class="cmt-count">${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}</h4>
-      <div class="cmts">${comments.map((comment) => feedComment(comment, admin)).join('') || '<p class="side-empty">No comments yet.</p>'}</div>
+      <div class="cmts">${tree.map(({ comment, replies }) => feedComment(comment, admin, replies, canComment)).join('') || '<p class="side-empty">No comments yet. Be the first.</p>'}</div>
       ${admin ? `<div class="rd" id="reply-draft"><p class="muted small">Drafting a reply…</p></div>` : ''}
       ${canComment ? `<div class="reply">
         ${boardAvatar(me(), 'sm')}
@@ -4475,7 +4580,68 @@ function renderThreadDrawer() {
       }));
       modalRoot.querySelectorAll('[data-edit-comment]').forEach((button) => button.addEventListener('click',
         () => openCommentEditor(button.dataset.editComment)));
+      modalRoot.querySelectorAll('[data-reply-to]').forEach((button) => button.addEventListener('click',
+        () => openInlineReply(thread, button.dataset.replyTo)));
+      // Keep the reader where they were rather than at the top of a long thread.
+      if (state.communityScrollTo) {
+        modalRoot.querySelector(`[data-comment="${state.communityScrollTo}"]`)
+          ?.scrollIntoView({ block: 'center' });
+        state.communityScrollTo = null;
+      }
     },
+  });
+}
+
+/* Answering one comment, under that comment.
+   ------------------------------------------------------------------
+   Opened where the answer belongs rather than at the foot of the page. After
+   forty comments the box at the bottom has no visible connection to the one
+   somebody meant to answer, and the reply arrives looking like it was addressed
+   to the room. */
+function openInlineReply(thread, parentId) {
+  const slot = modalRoot.querySelector(`[data-reply-slot="${parentId}"]`);
+  if (!slot) return;
+  if (slot.querySelector('textarea')) return slot.querySelector('textarea').focus();
+
+  // One open at a time, so it is never ambiguous which one is being answered.
+  modalRoot.querySelectorAll('[data-reply-slot]').forEach((other) => { other.innerHTML = ''; });
+
+  const name = modalRoot.querySelector(`[data-comment="${parentId}"] .post-name`)?.textContent?.trim() || 'this comment';
+  slot.innerHTML = `
+    <div class="cmt-reply-box">
+      <textarea rows="2" data-grow placeholder="Reply to ${escapeHtml(name)}"></textarea>
+      <div class="cmt-reply-actions">
+        <button class="btn small" data-cancel-reply>Cancel</button>
+        <button class="btn small primary" data-send-reply>Reply</button>
+      </div>
+    </div>`;
+  const box = slot.querySelector('textarea');
+  bindAutoGrow(slot);
+  box.focus();
+
+  const close = () => { slot.innerHTML = ''; };
+  const send = async () => {
+    const body = box.value.trim();
+    if (!body) return showToast('Write a reply before sending.', 'error');
+    const button = slot.querySelector('[data-send-reply]');
+    button.disabled = true;
+    try {
+      const created = await api(`${boardApi()}/community/thread/${thread.id}/replies`, {
+        method: 'POST', body: { body, parentId },
+      });
+      state.communityScrollTo = created?.id || parentId;
+      await openThread(thread.id);
+      await reloadBoard();
+    } catch (error) {
+      button.disabled = false;
+      showToast(error.message, 'error');
+    }
+  };
+  slot.querySelector('[data-cancel-reply]').addEventListener('click', close);
+  slot.querySelector('[data-send-reply]').addEventListener('click', send);
+  box.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); close(); }
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); send(); }
   });
 }
 

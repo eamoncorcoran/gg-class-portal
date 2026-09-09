@@ -139,36 +139,48 @@ export async function sendPasswordChanged({ user }) {
   });
 }
 
-/**
- * A post on the class board, sent to the class.
- *
- * The post itself goes in the body rather than a line saying there is one to
- * read. If it is worth emailing about it is worth reading in the email, and a
- * notification that only says "something was posted" makes somebody sign in to
- * find out it did not concern them.
- *
- * Long posts are cut, because an email is not where a thousand words are read,
- * and the button goes to the board where the whole thing is.
- */
-export async function sendBoardPost({ student, thread }) {
+/* What a board notice looks like.
+   ------------------------------------------------------------------
+   The writing itself goes in the email rather than a line saying there is some
+   to read. If it is worth telling somebody about it is worth them being able to
+   read it where they are; a notice that only says "there is a new post" makes
+   somebody sign in to discover it did not concern them, and after that they
+   stop opening the notices.
+
+   Long ones are cut, because an email is not where a thousand words are read,
+   and the button goes to the board where the whole thing is. */
+const MAX_QUOTED = 900;
+
+function quoted(text) {
+  const full = String(text || '');
+  if (full.length <= MAX_QUOTED) return { shown: full, trimmed: false };
+  const head = full.slice(0, MAX_QUOTED);
+  const cut = Math.max(head.lastIndexOf('\n'), head.lastIndexOf('. ') + 1);
+  return { shown: `${head.slice(0, cut > 0 ? cut : MAX_QUOTED).trimEnd()}…`, trimmed: true };
+}
+
+const paragraphs = (text) => String(text).split('\n')
+  .map((line) => (line.trim() ? `<p>${escapeHtml(line)}</p>` : '<br>')).join('');
+
+/* Every notice says how to stop getting them. Somebody who cannot find the
+   switch uses the one their mail client provides instead, and a spam complaint
+   costs the sending domain far more than an unsubscribe ever does. */
+const OFF_SWITCH_HTML = '<p style="color:#6b7280;font-size:12px;margin-top:22px">'
+  + 'You can turn these off under your name in the top right of the portal, in Notifications.</p>';
+const OFF_SWITCH_TEXT = '\n\nTo stop these, open the portal and turn off notifications under your name in the top right.';
+
+/** A new post on the class board. */
+export async function sendBoardPostNotice({ student, thread }) {
   const author = thread.author_name || 'Gaeilgeoir Guides';
-  const full = String(thread.body || '');
-  /* Cut on a line break rather than mid-sentence where there is one to cut on. */
-  const limit = 1200;
-  const tooLong = full.length > limit;
-  const head = tooLong ? full.slice(0, limit) : full;
-  const cut = tooLong ? head.slice(0, Math.max(head.lastIndexOf('\n'), head.lastIndexOf('. ') + 1) || limit) : full;
-  const shown = tooLong ? `${cut.trimEnd()}…` : full;
+  const teacher = thread.author_role === 'admin';
+  const { shown, trimmed } = quoted(thread.body);
+  const lead = teacher
+    ? `${author} posted on the class board.`
+    : `${author} posted a question on the class board.`;
 
-  const paragraphs = shown.split('\n')
-    .map((line) => (line.trim() ? `<p>${escapeHtml(line)}</p>` : '<br>')).join('');
-  const more = tooLong ? '<p><em>There is more in the post itself.</em></p>' : '';
-
-  const text = [
-    `${author} posted on the class board.`, '', thread.title, '', shown,
-    tooLong ? '\nThere is more in the post itself.' : '',
-    '', `Read it and reply: ${config.appUrl}`,
-  ].filter((line) => line !== undefined).join('\n');
+  const text = [lead, '', thread.title, '', shown,
+    trimmed ? '\nThere is more in the post itself.' : '',
+    '', `Read it and reply: ${config.appUrl}`, OFF_SWITCH_TEXT].join('\n');
 
   return sendEmail({
     to: student.email,
@@ -176,11 +188,41 @@ export async function sendBoardPost({ student, thread }) {
     text,
     html: layout({
       title: thread.title,
-      body: `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">${escapeHtml(author)} posted on the class board.</p>${paragraphs}${more}`,
+      body: `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">${escapeHtml(lead)}</p>`
+        + paragraphs(shown)
+        + (trimmed ? '<p><em>There is more in the post itself.</em></p>' : '')
+        + OFF_SWITCH_HTML,
       buttonText: 'Read it and reply',
       buttonUrl: config.appUrl,
     }),
-    metadata: { type: 'board_post', threadId: thread.id, studentId: student.id },
+    metadata: { type: 'board_new_post', threadId: thread.id, studentId: student.id },
+  });
+}
+
+/** Somebody has replied in a conversation this person is part of. */
+export async function sendBoardReplyNotice({ student, thread, comment }) {
+  const author = comment.author_name || 'Somebody';
+  const { shown, trimmed } = quoted(comment.body);
+  const lead = `${author} replied on “${thread.title}”.`;
+
+  const text = [lead, '', shown,
+    trimmed ? '\nThere is more in the reply itself.' : '',
+    '', `Read it and reply: ${config.appUrl}`, OFF_SWITCH_TEXT].join('\n');
+
+  return sendEmail({
+    to: student.email,
+    subject: `New reply: ${thread.title}`,
+    text,
+    html: layout({
+      title: `Re: ${thread.title}`,
+      body: `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">${escapeHtml(lead)}</p>`
+        + paragraphs(shown)
+        + (trimmed ? '<p><em>There is more in the reply itself.</em></p>' : '')
+        + OFF_SWITCH_HTML,
+      buttonText: 'Read it and reply',
+      buttonUrl: config.appUrl,
+    }),
+    metadata: { type: 'board_new_comment', threadId: thread.id, postId: comment.id, studentId: student.id },
   });
 }
 

@@ -328,32 +328,27 @@ try {
     }
     expectOk('read the board', await admin.call(`/api/admin/community/${made.classId}`));
 
-    /* Emailing the class about a post: the one thing here that reaches people
-       outside the portal, so it is checked for who, and for how many times. */
-    const { one: findOne, query: runQuery } = await import('../src/db.js');
-    const silent = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_post']);
-    const announced = expectOk('the teacher posts and emails the class', await admin.call(
+    /* The board's notifications: the one thing here that reaches people outside
+       the portal. Checked for who hears, and for how many times. */
+    const before = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    made.announcedId = null;
+    const announced = expectOk('a new post tells the class', await admin.call(
       `/api/admin/community/${made.classId}/threads`,
-      { method: 'POST', body: { title: 'Audit announcement', body: 'Something worth an email.', notifyEmail: true } }));
+      { method: 'POST', body: { title: 'Audit announcement', body: 'Something worth hearing about.' } }));
     // Sent after the response, so give it a moment before counting.
     await new Promise((resolve) => { setTimeout(resolve, 1500); });
-    const afterSend = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_post']);
-    expect('everyone on the class was emailed exactly once',
-      afterSend.c - silent.c === 1, `${afterSend.c - silent.c} deliveries for one student`);
+    const after = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    expect('everyone on the class was told exactly once',
+      after.c - before.c === 1, `${after.c - before.c} notices for one student`);
 
-    /* The sweep must not send it again. This is the failure that matters: a
-       whole class hearing the same thing twice. */
-    const { runBoardNotifications } = await import('../src/boardemail.js');
-    await runBoardNotifications();
-    const afterSweep = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_post']);
-    expect('and the sweep does not send it again', afterSweep.c === afterSend.c,
-      `${afterSweep.c - afterSend.c} extra deliveries after the sweep`);
-
-    if (announced?.id) {
-      const marked = await one('SELECT notify_email, notified_at FROM discussion_threads WHERE id=$1', [announced.id]);
-      expect('the post records that it was emailed', Boolean(marked?.notify_email && marked?.notified_at),
-        JSON.stringify(marked));
-    }
+    /* The sweep must not announce it again. A whole class hearing the same thing
+       twice is what people unsubscribe over. */
+    const { notifyPublishedPosts } = await import('../src/boardnotify.js');
+    await notifyPublishedPosts();
+    const afterSweep = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    expect('and the sweep does not tell them again', afterSweep.c === after.c,
+      `${afterSweep.c - after.c} extra notices after the sweep`);
+    made.announcedId = announced?.id || null;
 
     expectOk('open one post', await admin.call(`/api/admin/community/thread/${made.threadId}`));
   }
@@ -395,20 +390,54 @@ try {
     expectOk('the student reacts', await student.call(`/api/student/community/react/thread/${made.threadId}`,
       { method: 'POST', body: { emoji: '🎉' } }));
     expectOk('the student marks the board read', await student.call('/api/student/community/read', { method: 'POST', body: {} }));
-    const ownPost = expectOk('the student starts their own post', await student.call('/api/student/community/threads',
+    expectOk('the student starts their own post', await student.call('/api/student/community/threads',
       { method: 'POST', body: { title: 'A student question', body: 'How do I say this?' } }));
-    /* And asking to mail the whole class is ignored rather than obeyed. Zod
-       strips what the student schema does not name, so this proves the field is
-       genuinely absent there rather than merely unused. */
-    const tried = await student.call('/api/student/community/threads',
-      { method: 'POST', body: { title: 'Not a mailshot', body: 'Trying to email everyone.', notifyEmail: true } });
-    if (tried.status < 300 && tried.data?.id) {
-      const row = await one('SELECT notify_email FROM discussion_threads WHERE id=$1', [tried.data.id]);
-      expect('a student cannot email the class', row?.notify_email === false,
-        `notify_email was ${JSON.stringify(row?.notify_email)}`);
-    } else fail('the student could post at all', `status ${tried.status}`);
-    if (ownPost?.id) { /* kept for the teardown to remove with the class */ }
   }
+    /* A reply reaches the people in that conversation, and never its author. */
+    if (made.announcedId) {
+      const reply = expectOk('the student replies to it', await student.call(
+        `/api/student/community/thread/${made.announcedId}/replies`,
+        { method: 'POST', body: { body: 'A student reply.' } }));
+      await new Promise((resolve) => { setTimeout(resolve, 1500); });
+      const told = await query(
+        `SELECT u.email FROM email_deliveries d JOIN users u ON u.id=d.user_id
+         WHERE d.post_id=$1 AND d.template_key='board_new_comment'`, [reply?.id]);
+      const emails = told.rows.map((row) => row.email);
+      expect('the post author hears about the reply', emails.includes(ADMIN_EMAIL), JSON.stringify(emails));
+      expect('and whoever wrote it does not', !emails.includes(studentEmail), JSON.stringify(emails));
+
+      /* A reply to a reply joins the same exchange rather than starting a
+         narrower one, however deep the chain is asked to go. */
+      const nested = expectOk('a reply can answer one comment', await admin.call(
+        `/api/admin/community/thread/${made.announcedId}/replies`,
+        { method: 'POST', body: { body: 'Answering that.', parentId: reply?.id } }));
+      expect('and hangs off the comment it answers', nested?.parent_id === reply?.id,
+        JSON.stringify({ got: nested?.parent_id, wanted: reply?.id }));
+      const deeper = expectOk('a reply to a reply is accepted', await admin.call(
+        `/api/admin/community/thread/${made.announcedId}/replies`,
+        { method: 'POST', body: { body: 'And again.', parentId: nested?.id } }));
+      expect('and joins the exchange rather than indenting further',
+        deeper?.parent_id === reply?.id,
+        JSON.stringify({ got: deeper?.parent_id, wanted: reply?.id }));
+    }
+
+    /* Turning them off has to actually stop them. */
+    expectOk('the notification settings load', await student.call('/api/auth/notifications'),
+      (d) => d?.boardPosts === true && d?.boardReplies === true);
+    expectOk('a student can turn the emails off', await student.call('/api/auth/notifications',
+      { method: 'PUT', body: { boardPosts: false } }));
+    const quiet = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    expectOk('a later post is still posted', await admin.call(
+      `/api/admin/community/${made.classId}/threads`,
+      { method: 'POST', body: { title: 'After opting out', body: 'Should reach nobody.' } }));
+    await new Promise((resolve) => { setTimeout(resolve, 1500); });
+    const stillQuiet = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    expect('but nobody who opted out is emailed', stillQuiet.c === quiet.c,
+      `${stillQuiet.c - quiet.c} notices went out after opting out`);
+    expectOk('and the setting can be put back', await student.call('/api/auth/notifications',
+      { method: 'PUT', body: { boardPosts: true } }));
+
+
   if (made.lessonId) {
     expectOk('the student marks a lesson watched', await student.call(`/api/student/lessons/${made.lessonId}/progress`,
       { method: 'POST', body: { completed: true, positionSeconds: 120 } }));

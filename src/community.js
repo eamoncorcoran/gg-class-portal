@@ -135,7 +135,7 @@ export async function getThread({ threadId, viewerId, includeDeleted = false, in
   );
   if (!thread) return null;
   const comments = await query(
-    `SELECT p.id, p.body, p.created_at, p.deleted_at, p.edited_at, ${AUTHOR} author,
+    `SELECT p.id, p.body, p.created_at, p.deleted_at, p.edited_at, p.parent_id, ${AUTHOR} author,
             p.teacher_audio_path, p.teacher_audio_mime, p.teacher_audio_seconds, p.teacher_audio_recorded_at,
             ${reactionsFor('post', 'p.id')} reactions
      FROM discussion_posts p
@@ -201,10 +201,23 @@ export async function addAttachments(threadId, attachments = []) {
   }
 }
 
-export async function createPost({ threadId, authorId, body }) {
+export async function createPost({ threadId, authorId, body, parentId = null }) {
+  /* A reply to a reply hangs off the comment that began the exchange, so one
+     conversation stays one conversation instead of marching across the screen.
+     Enforced here rather than in the drawing: a client that sent a deep chain
+     would otherwise build a shape nothing knows how to render. */
+  let parent = null;
+  if (parentId) {
+    parent = await one(
+      'SELECT id, parent_id, thread_id FROM discussion_posts WHERE id=$1 AND deleted_at IS NULL',
+      [parentId]);
+    if (!parent || parent.thread_id !== threadId) {
+      throw Object.assign(new Error('That comment is no longer there.'), { status: 404 });
+    }
+  }
   const post = await one(
-    `INSERT INTO discussion_posts(thread_id,author_id,body) VALUES ($1,$2,$3) RETURNING *`,
-    [threadId, authorId, body],
+    `INSERT INTO discussion_posts(thread_id,author_id,body,parent_id) VALUES ($1,$2,$3,$4) RETURNING *`,
+    [threadId, authorId, body, parent ? (parent.parent_id || parent.id) : null],
   );
   // Sorting the feed by activity is only honest if commenting counts as activity.
   await query('UPDATE discussion_threads SET last_activity_at=now(),updated_at=now() WHERE id=$1', [threadId]);

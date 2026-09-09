@@ -20,7 +20,8 @@ import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNote
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
 import { formatAddress, hasAddress } from '../address.js';
-import { boardAudienceCount, notifyClassOfPost } from '../boardemail.js';
+import { boardAudienceCount } from '../boardnotify.js';
+import { notifyNewPost, notifyNewComment } from '../boardnotify.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
@@ -1971,10 +1972,6 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
     // Absent or past means publish now. The clock does the rest of the work.
     publishedAt: z.string().datetime().nullable().optional(),
     attachments: z.array(attachmentInput).max(6).optional().default([]),
-    /* Off unless asked for. A board that emails everybody about everything is a
-       board people mute, and a muted board cannot tell them the one thing that
-       mattered. */
-    notifyEmail: z.boolean().optional().default(false),
   }).safeParse(req.body);
   // An attachment that will not validate is not a missing title, and saying so
   // sends somebody hunting through a form that is already filled in.
@@ -2002,21 +1999,20 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
     attachments: [...parsed.data.attachments, ...video.attachments],
   });
   if (parsed.data.pinned) await query('UPDATE discussion_threads SET pinned=true WHERE id=$1', [row.id]);
-  if (parsed.data.notifyEmail) await query('UPDATE discussion_threads SET notify_email=true WHERE id=$1', [row.id]);
-  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, metadata: { scheduled: Boolean(parsed.data.publishedAt), notifyEmail: parsed.data.notifyEmail }, ip: req.ip });
+  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, metadata: { scheduled: Boolean(parsed.data.publishedAt) }, ip: req.ip });
   res.status(201).json({ ...row, pinned: parsed.data.pinned });
 
-  /* After the answer, because the post is saved either way and a class of
-     thirty is thirty round trips to a mail server — long enough for the button
-     to look stuck if it were waited on.
+  /* After the answer, because the post is saved either way and a class of thirty
+     is thirty round trips to a mail server — long enough for the button to look
+     stuck if it were waited on.
 
-     Only when it is already published. A scheduled post is emailed when it
-     appears, by the sweep, since nothing else runs at that moment: a post
-     becomes visible by the clock passing rather than by anything happening. */
-  if (parsed.data.notifyEmail && !parsed.data.publishedAt) {
-    notifyClassOfPost(row.id).catch((error) => {
-      console.error(`Could not email the class about post ${row.id}: ${error.message}`);
-    });
+     Only when it is already published. A scheduled post is announced when it
+     appears, by the sweep, since nothing runs at that moment: a post becomes
+     visible by the clock passing rather than by anything happening. */
+  if (!parsed.data.publishedAt) {
+    query('UPDATE discussion_threads SET notified_at=now() WHERE id=$1', [row.id])
+      .then(() => notifyNewPost(row.id))
+      .catch((error) => console.error(`Could not announce post ${row.id}: ${error.message}`));
   }
 }));
 
@@ -2098,7 +2094,11 @@ router.post('/reminders/run', asyncRoute(async (req, res) => {
    class to check against — only that the thread is real and not deleted. */
 
 router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
-  const parsed = z.object({ body: z.string().trim().min(1).max(20000) }).safeParse(req.body);
+  const parsed = z.object({
+    body: z.string().trim().min(1).max(20000),
+    // Present when replying to one comment rather than to the post itself.
+    parentId: z.string().uuid().nullable().optional(),
+  }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Write a reply before sending.' });
   const thread = await one(
     'SELECT * FROM discussion_threads WHERE id=$1 AND deleted_at IS NULL', [req.params.id],
@@ -2107,9 +2107,15 @@ router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
   /* Deliberately not refused on a locked thread, unlike the student route. The
      teacher is who closes a conversation, and closing it to students while
      leaving a last word is the reason to close it. */
-  const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body });
+  const row = await createPost({ threadId: thread.id, authorId: req.user.id, body: parsed.data.body, parentId: parsed.data.parentId || null });
   await audit({ actorId: req.user.id, action: 'community.replied', entityType: 'thread', entityId: thread.id, ip: req.ip });
   res.status(201).json(row);
+
+  // After the answer: the reply is saved either way, and the people in a
+  // conversation are a handful of round trips to a mail server.
+  notifyNewComment(row.id).catch((error) => {
+    console.error(`Could not tell anybody about comment ${row.id}: ${error.message}`);
+  });
 }));
 
 router.post('/community/react/:type/:id', asyncRoute(async (req, res) => {

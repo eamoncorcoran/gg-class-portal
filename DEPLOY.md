@@ -133,7 +133,7 @@ Watch it in **Render → Logs**, or roll back from **Deploys → Rollback**.
 | | When | Where |
 | --- | --- | --- |
 | Deadline reminders | `REMINDER_CRON` | In-process |
-| Board posts marked "email the class" | `BOARD_EMAIL_CRON` | In-process |
+| Scheduled board posts, announced when they appear | `BOARD_EMAIL_CRON` | In-process |
 | Zoom recording sweep | `ZOOM_SWEEP_CRON` | In-process, only with Zoom keys set |
 | Database + upload backup | 03:15 daily | `/var/data/backups`, 14 days kept |
 

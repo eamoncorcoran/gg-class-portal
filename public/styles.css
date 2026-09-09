@@ -1743,3 +1743,40 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .lp-pass code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
   background:var(--white);border:1px solid var(--border-strong);border-radius:4px;padding:2px 6px}
 .lp-link .btn{margin-top:6px}
+
+/* The like sits first and keeps its shape whether or not anybody has pressed it,
+   so the row does not jump about as counts come and go. */
+.rx.like{min-width:44px;justify-content:center}
+.rx.like b:empty{display:none}
+.rx.like.on{background:var(--brand-50,var(--gray-50));border-color:var(--brand-300,var(--border-strong))}
+
+/* A post and its conversation, read in the middle of the screen.
+   ------------------------------------------------------------------
+   The panel takes the width it needs and scrolls inside itself, so the page
+   behind stays where it was and the reader comes back to the same place in the
+   feed when they close it. */
+.modal.wide.bare .modal-body{padding:0}
+.cmt-close{position:absolute;top:14px;right:14px;z-index:2}
+.opening{padding:20px 22px 14px;border-bottom:1px solid var(--border)}
+.opening-title{margin:12px 0 8px;font-size:19px;line-height:1.3}
+.opening .cmt-text{font-size:14px;line-height:1.6}
+.opening-foot{margin-top:14px}
+.cmt-count{margin:0;padding:14px 22px 8px;font-size:12px;font-weight:650;color:var(--text-secondary);
+  border-bottom:1px solid var(--border)}
+.cmts{padding:8px 22px 4px;display:grid;gap:4px}
+.mod-bar{padding:14px 22px 0}
+.sched-note{margin:14px 22px 0}
+.rd{margin:8px 22px}
+.reply{padding:14px 22px 20px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--white)}
+
+/* A reply sits under the comment it answers, indented once and no further. A
+   reply to a reply joins the same exchange rather than starting a narrower one,
+   which is what stops a long back-and-forth marching off the screen. */
+.cmt-replies{margin:8px 0 0;padding-left:14px;border-left:2px solid var(--border);display:grid;gap:4px}
+.cmt-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.cmt-reply{background:none;border:0;padding:2px 4px;font-size:11.5px;font-weight:650;
+  color:var(--text-secondary);cursor:pointer}
+.cmt-reply:hover{color:var(--text);text-decoration:underline}
+.cmt-reply-box{display:grid;gap:8px;margin:8px 0 4px}
+.cmt-reply-box textarea{width:100%;min-height:52px;resize:vertical}
+.cmt-reply-actions{display:flex;gap:8px;justify-content:flex-end}

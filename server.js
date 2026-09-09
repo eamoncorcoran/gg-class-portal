@@ -21,7 +21,7 @@ import { ensureAllWeeks } from './src/weeks.js';
 import { startReminderScheduler, runReminderCycle } from './src/reminders.js';
 import { startBackupScheduler } from './src/backup.js';
 import { startZoomScheduler } from './src/zoomscheduler.js';
-import { startBoardNotifier } from './src/boardemail.js';
+import { startBoardNotifier } from './src/boardsweep.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

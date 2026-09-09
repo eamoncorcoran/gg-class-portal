@@ -94,6 +94,37 @@ router.post('/logout', asyncRoute(async (req, res) => {
   res.status(204).end();
 }));
 
+/* Turning the board's emails off.
+   ------------------------------------------------------------------
+   On by default, because a board nobody hears about is a board nobody reads.
+   But it has to be one switch away and easy to find: somebody who cannot turn
+   these off uses the switch their mail client provides instead, and a spam
+   complaint costs the sending domain far more than an unsubscribe does. Every
+   notice carries a line pointing here. */
+router.get('/notifications', requireAuth, asyncRoute(async (req, res) => {
+  const row = await one('SELECT notify_board_posts, notify_board_replies FROM users WHERE id=$1', [req.user.id]);
+  res.json({
+    boardPosts: row?.notify_board_posts !== false,
+    boardReplies: row?.notify_board_replies !== false,
+  });
+}));
+
+router.put('/notifications', requireAuth, asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    boardPosts: z.boolean().optional(),
+    boardReplies: z.boolean().optional(),
+  }).safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid notification settings.' });
+  const current = await one('SELECT notify_board_posts, notify_board_replies FROM users WHERE id=$1', [req.user.id]);
+  const row = await one(
+    `UPDATE users SET notify_board_posts=$1, notify_board_replies=$2, updated_at=now()
+     WHERE id=$3 RETURNING notify_board_posts, notify_board_replies`,
+    [parsed.data.boardPosts ?? current.notify_board_posts,
+     parsed.data.boardReplies ?? current.notify_board_replies, req.user.id],
+  );
+  res.json({ boardPosts: row.notify_board_posts, boardReplies: row.notify_board_replies });
+}));
+
 router.post('/change-password', requireAuth, asyncRoute(async (req, res) => {
   const parsed = z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(1) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Both password fields are required.' });
