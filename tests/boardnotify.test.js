@@ -91,3 +91,45 @@ test('a preference that fails to save shows what is actually true', () => {
   assert.match(body, /box\.checked = !wanted/,
     'a switch that failed to save must go back, not sit there showing a lie');
 });
+
+/* The one that actually went wrong.
+   ------------------------------------------------------------------
+   notified_at was added as a nullable column, so every post that already existed
+   read as never announced. The sweep that catches scheduled posts then worked
+   through the whole history of the board, twenty at a time every five minutes,
+   emailing a class about conversations months old. It burned through a month's
+   sending allowance in a day.
+
+   Two things hold it shut, and both matter. The backfill fixed the posts that
+   existed. The window makes the shape of it impossible, so a future migration
+   that clears the column, or an import that brings in old posts, cannot turn
+   into a mass mailing. */
+test('the sweep cannot reach back into history', () => {
+  assert.match(notify, /const ANNOUNCE_WINDOW = "interval '24 hours'"/,
+    'the sweep must have a horizon');
+  const fn = notify.slice(notify.indexOf('export async function notifyPublishedPosts'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /t\.published_at > now\(\) - \$\{ANNOUNCE_WINDOW\}/,
+    'a post that became visible long ago is history, not news');
+  assert.match(body, /t\.published_at <= now\(\)/,
+    'and one that has not appeared yet is not news either');
+});
+
+test('an unusual number of posts at once is said out loud', () => {
+  /* Sending cannot be taken back, so a batch that looks wrong is worth a line in
+     the log where somebody will see it rather than a quiet mass mailing. */
+  const fn = notify.slice(notify.indexOf('export async function notifyPublishedPosts'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /due\.rowCount > 5/);
+  assert.match(body, /console\.warn/);
+});
+
+test('the backfill claims the history rather than deleting it', () => {
+  const migration = fs.readFileSync(
+    new URL('../migrations/035_stop_announcing_history.sql', import.meta.url), 'utf8');
+  assert.match(migration, /SET notified_at = COALESCE\(published_at, created_at\)/,
+    'an old post should record the time it appeared, not the time we noticed');
+  assert.match(migration, /WHERE notified_at IS NULL/);
+  assert.doesNotMatch(migration, /DELETE FROM discussion_threads/,
+    'nothing here is worth deleting a post over');
+});

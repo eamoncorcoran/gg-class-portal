@@ -161,14 +161,37 @@ export async function notifyNewComment(postId) {
 /* Scheduled posts appear because the clock passed, not because anything ran, so
    something has to notice. Shared with the sweep in boardemail.js rather than a
    second timer of its own. */
+/* How far back this will reach.
+   ------------------------------------------------------------------
+   The sweep exists to catch a post that was scheduled and has just become
+   visible, which is a thing that happened minutes ago. It has no business
+   looking at anything older, and the one time it did, it emailed a class about
+   every post on the board going back to the start of the course: notified_at was
+   added as a nullable column, so all of history read as never announced.
+
+   A day is generous for the job. It survives the portal being down overnight and
+   still catching this morning's scheduled post, and it means no future change
+   that clears this column, or import that brings in old posts, can turn into a
+   mass mailing. The backfill fixed what happened; this makes the shape of it
+   impossible. */
+const ANNOUNCE_WINDOW = "interval '24 hours'";
+
 export async function notifyPublishedPosts() {
   const due = await query(
     `SELECT t.id FROM discussion_threads t
-     WHERE t.deleted_at IS NULL AND t.published_at <= now()
+     WHERE t.deleted_at IS NULL
+       AND t.published_at <= now()
+       AND t.published_at > now() - ${ANNOUNCE_WINDOW}
        AND t.notified_at IS NULL
      ORDER BY t.published_at
      LIMIT 20`,
   );
+  /* A handful is normal. A pile of them means something upstream is wrong, and
+     since sending cannot be taken back it is worth saying so where somebody
+     reading the logs will see it. */
+  if (due.rowCount > 5) {
+    console.warn(`Board sweep found ${due.rowCount} posts to announce at once, which is unusual. Check nothing has cleared notified_at.`);
+  }
   for (const row of due.rows) {
     try {
       await query('UPDATE discussion_threads SET notified_at=now() WHERE id=$1 AND notified_at IS NULL', [row.id]);
