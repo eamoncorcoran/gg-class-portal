@@ -5749,6 +5749,48 @@ function attendanceView() {
     </form></section>`;
 }
 
+/* What has gone out, and a way to stop it.
+   ------------------------------------------------------------------
+   On the screen rather than only in a log, because the question "is this thing
+   sending more than it should" was asked after the fact once and the only way
+   to answer it was to read code. The switch is beside the number for the same
+   reason: by the time somebody has found out, they want to act, not file an
+   issue. */
+async function loadEmailPause() {
+  const card = document.getElementById('email-pause-card');
+  if (!card) return;
+  let state_;
+  try { state_ = await api('/api/settings/email/pause'); }
+  catch (error) { card.innerHTML = `<div class="card-body"><p class="muted small">${escapeHtml(error.message)}</p></div>`; return; }
+
+  const day = state_.lastDay || {};
+  const went = (day.sent || 0) + (day.simulated || 0);
+  const held = day.suppressed || 0;
+  const failed = day.failed || 0;
+
+  card.innerHTML = `
+    <div class="card-header">
+      <div><h2>Sending</h2><p>${went} email${went === 1 ? '' : 's'} in the last 24 hours${held ? `, ${held} held back by pacing` : ''}${failed ? `, ${failed} failed` : ''}.</p></div>
+      ${state_.paused
+        ? '<button class="btn small" id="resume-email">Resume sending</button>'
+        : '<button class="btn small" id="pause-email">Hold sending for 24 hours</button>'}
+    </div>
+    ${state_.paused ? `<div class="card-body"><div class="notice warning">
+      <strong>Sending is on hold until ${escapeHtml(fmtDate(state_.until, { time: true, weekday: true, dateStyle: 'medium' }))}.</strong>
+      <span>Board notices and reminders are being held. Password resets and invitations still go out, because somebody is waiting on those.${state_.reason ? ` Reason given: ${escapeHtml(state_.reason)}.` : ''}</span>
+    </div></div>` : ''}`;
+
+  const set = async (hours, reason) => {
+    try {
+      await api('/api/settings/email/pause', { method: 'PUT', body: { hours, reason } });
+      await loadEmailPause();
+      showToast(hours ? 'Sending held' : 'Sending resumed');
+    } catch (error) { showToast(error.message, 'error'); }
+  };
+  document.getElementById('pause-email')?.addEventListener('click', () => set(24, 'held by hand'));
+  document.getElementById('resume-email')?.addEventListener('click', () => set(0, ''));
+}
+
 function remindersView() {
   const reminders = state.settings.reminders || {};
   const nudge = state.settings.nudge || {};
@@ -5760,6 +5802,7 @@ function remindersView() {
       <div class="form-field"><label>Email body</label><textarea data-reminder-body="${key}">${escapeHtml(value.body || '')}</textarea></div></div>`;
   };
   return `${pageHeader('Automation', 'Email reminders', 'Configure the delivery provider, templates and automatic deadline sequence.', `<button class="btn" id="run-reminders">Run reminder check</button><button class="btn primary" id="save-reminders">Save settings</button>`)}
+    <section class="card" id="email-pause-card"><div class="card-body"><p class="muted small">Checking what has been sent…</p></div></section>
     <div class="settings-grid"><div class="settings-stack">
       <section class="card"><div class="card-header"><div><h2>Delivery settings</h2><p>Use a GoHighLevel webhook, SMTP or console mode.</p></div></div><div class="card-body">
         <div class="setting-row"><div class="setting-copy"><strong>Provider</strong><span>Console mode logs email locally without sending.</span></div><div><select id="email-provider"><option value="console" ${email.provider === 'console' ? 'selected' : ''}>Console / test</option><option value="ghl_webhook" ${email.provider === 'ghl_webhook' ? 'selected' : ''}>GoHighLevel webhook</option><option value="smtp" ${email.provider === 'smtp' ? 'selected' : ''}>SMTP</option></select></div></div>
@@ -6462,6 +6505,7 @@ function bindReminderSettings() {
   });
   document.getElementById('save-email')?.addEventListener('click', saveEmailSettings);
   document.getElementById('test-email')?.addEventListener('click', testEmail);
+  if (document.getElementById('email-pause-card')) loadEmailPause();
   document.getElementById('run-reminders')?.addEventListener('click', async () => {
     try { await api('/api/admin/reminders/run', { method: 'POST' }); showToast('Reminder cycle completed'); }
     catch (error) { showToast(error.message, 'error'); }

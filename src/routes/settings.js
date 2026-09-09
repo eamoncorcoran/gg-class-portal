@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncRoute } from '../middleware.js';
+import { query } from '../db.js';
 import { requireAdmin } from '../session.js';
 import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting } from '../settings.js';
 import { draftCheckinFeedback } from '../ai.js';
@@ -154,6 +155,49 @@ router.post('/email/test', asyncRoute(async (req, res) => {
         : `The mail server refused the message: ${redactSecrets(detail)}`,
     });
   }
+}));
+
+/* Holding the post.
+   ------------------------------------------------------------------
+   A switch for the day when the answer is simply "not today". It exists because
+   the alternative, when something is sending more than it should, is asking
+   somebody to push code — and by the time that is done another hour of it has
+   gone out.
+
+   Password resets and invitations are never held. Somebody is sitting waiting
+   for those, and holding one does not save an email, it produces a locked-out
+   student and a message asking why the portal is broken. */
+router.get('/email/pause', asyncRoute(async (_req, res) => {
+  const pause = await getSetting('emailPause', {});
+  const until = pause?.until && new Date(pause.until).getTime() > Date.now() ? pause.until : null;
+  const recent = await query(
+    `SELECT status, count(*)::int count FROM email_sends
+     WHERE created_at > now() - interval '24 hours' GROUP BY status`,
+  );
+  res.json({
+    paused: Boolean(until),
+    until,
+    reason: until ? pause.reason || null : null,
+    lastDay: Object.fromEntries(recent.rows.map((row) => [row.status, row.count])),
+  });
+}));
+
+router.put('/email/pause', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    hours: z.coerce.number().min(0).max(168).optional(),
+    reason: z.string().max(200).optional().default(''),
+  }).safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Say how many hours to hold sending for.' });
+
+  // Zero lifts it, which is the same control rather than a second one.
+  const hours = parsed.data.hours ?? 24;
+  const until = hours > 0 ? new Date(Date.now() + hours * 3600 * 1000).toISOString() : null;
+  await setSetting('emailPause', until ? { until, reason: parsed.data.reason } : {}, req.user.id);
+  await audit({
+    actorId: req.user.id, action: until ? 'email.paused' : 'email.resumed',
+    entityType: 'settings', entityId: 'emailPause', metadata: { until }, ip: req.ip,
+  });
+  res.json({ paused: Boolean(until), until });
 }));
 
 router.put('/prompts', asyncRoute(async (req, res) => {

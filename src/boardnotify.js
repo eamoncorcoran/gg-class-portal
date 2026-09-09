@@ -62,6 +62,7 @@ async function conversationAudience(thread, parentId) {
 async function deliver({ recipients, actorId, send, threadId, postId, templateKey }) {
   let sent = 0;
   let failed = 0;
+  let suppressed = 0;
   const seen = new Set();
   for (const person of recipients) {
     // Never about your own action, and never twice.
@@ -81,6 +82,16 @@ async function deliver({ recipients, actorId, send, threadId, postId, templateKe
 
     try {
       const result = await send(person);
+      if (result?.suppressed) {
+        /* Held by the pacing rather than failed. Recorded as suppressed and the
+           claim left in place, so it is not tried again the next time round:
+           the point of the pace is that this person hears once, not that they
+           hear later as well. */
+        await query('UPDATE email_deliveries SET status=$1, error=$2 WHERE id=$3',
+          ['suppressed', result.reason || null, claim.id]);
+        suppressed += 1;
+        continue;
+      }
       await query('UPDATE email_deliveries SET status=$1, provider_id=$2, sent_at=now() WHERE id=$3',
         [result.simulated ? 'simulated' : 'sent', result.id || null, claim.id]);
       sent += 1;
@@ -92,7 +103,7 @@ async function deliver({ recipients, actorId, send, threadId, postId, templateKe
       console.error(`Board notice to ${person.email} failed: ${error.message}`);
     }
   }
-  return { sent, failed };
+  return { sent, failed, suppressed };
 }
 
 /** How many people a new post on this class would reach. */

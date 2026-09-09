@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
-import { getEmailConfig } from './settings.js';
+import { getEmailConfig, getSetting } from './settings.js';
+import { one, query } from './db.js';
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
@@ -17,7 +18,72 @@ function layout({ title, body, buttonText, buttonUrl }) {
   </table></td></tr></table></body></html>`;
 }
 
-export async function sendEmail({ to, subject, text, html, attachments = [], metadata = {} }) {
+/* What may be sent, and how often.
+   ------------------------------------------------------------------
+   Every message in the portal goes through sendEmail, so the pacing lives here
+   rather than at the twenty places that call it. A rule enforced at each caller
+   is a rule somebody forgets at the twenty-first.
+
+   Four kinds of message, and they are paced differently because they are not
+   the same kind of thing:
+
+   transactional  Somebody is sitting there waiting for it right now: a password
+                  reset, an invitation, the button a teacher just pressed.
+                  Never held back. Holding one of these back does not save
+                  anybody an email, it produces a locked-out student and a
+                  support message.
+
+   deadline       Homework and check-in reminders. Exempt from the hourly pace,
+                  because a reminder that arrives an hour late about something
+                  due at midnight is not a reminder.
+
+   announcement   A post the teacher put out. Also exempt from the pace: it was
+                  written to be read, and it is one message, not a stream.
+
+   notice         Everything the board generates on its own: a reply, somebody
+                  else's post. This is the traffic that multiplies, so this is
+                  what the hour applies to.
+
+   The default is `notice`, which is the cautious end. A message added later and
+   never categorised gets paced rather than escaping the pacing. */
+const NEVER_HELD = new Set(['transactional']);
+const PACED = new Set(['notice']);
+const PACE_INTERVAL = "interval '1 hour'";
+
+async function pacingProblem({ to, priority }) {
+  /* A pause set by hand, for a day when the answer is simply "not today". Read
+     every time rather than cached, so lifting it takes effect at once. */
+  const paused = await getSetting('emailPause', {});
+  if (paused?.until && new Date(paused.until).getTime() > Date.now() && !NEVER_HELD.has(priority)) {
+    return `sending is paused until ${paused.until}${paused.reason ? ` (${paused.reason})` : ''}`;
+  }
+  if (!PACED.has(priority)) return null;
+
+  const recent = await one(
+    `SELECT created_at FROM email_sends
+     WHERE recipient=$1 AND status IN ('sent','simulated')
+       AND created_at > now() - ${PACE_INTERVAL}
+     ORDER BY created_at DESC LIMIT 1`,
+    [String(to).toLowerCase()],
+  );
+  return recent ? 'one message an hour is the pace for board notices' : null;
+}
+
+async function recordSend({ to, priority, subject, status, reason }) {
+  await query(
+    `INSERT INTO email_sends(recipient,priority,subject,status,reason) VALUES ($1,$2,$3,$4,$5)`,
+    [String(to).toLowerCase(), priority, String(subject || '').slice(0, 300), status, reason || null],
+  ).catch((error) => console.error(`Could not record an email send: ${error.message}`));
+}
+
+export async function sendEmail({ to, subject, text, html, attachments = [], metadata = {}, priority = 'notice' }) {
+  const held = await pacingProblem({ to, priority });
+  if (held) {
+    await recordSend({ to, priority, subject, status: 'suppressed', reason: held });
+    /* Answered rather than thrown. A held message is the system working, and a
+       caller that treats it as a failure would retry it. */
+    return { suppressed: true, reason: held };
+  }
   const email = await getEmailConfig();
   const message = {
     to,
@@ -39,6 +105,7 @@ export async function sendEmail({ to, subject, text, html, attachments = [], met
       body: JSON.stringify({ ...message, metadata }),
     });
     if (!response.ok) throw new Error(`GHL webhook returned ${response.status}`);
+    await recordSend({ to, priority, subject, status: 'sent' });
     return { provider: 'ghl_webhook', id: response.headers.get('x-request-id') || null };
   }
   if (email.provider === 'smtp') {
@@ -49,9 +116,11 @@ export async function sendEmail({ to, subject, text, html, attachments = [], met
       auth: email.smtpUser ? { user: email.smtpUser, pass: email.smtpPassword } : undefined,
     });
     const result = await transporter.sendMail(message);
+    await recordSend({ to, priority, subject, status: 'sent' });
     return { provider: 'smtp', id: result.messageId };
   }
   console.log('\n--- EMAIL SIMULATION ---\n', { ...message, html: '[html omitted]', metadata }, '\n------------------------\n');
+  await recordSend({ to, priority, subject, status: 'simulated' });
   return { provider: 'console', id: `sim-${Date.now()}`, simulated: true };
 }
 
@@ -94,6 +163,7 @@ export async function sendStudentInvite({ student, temporaryPassword }) {
       'Tá Gaeilge bhriste níos fearr ná Béarla cliste. See you in class.',
     ].join('\n'),
     html: layout({ title: 'Your Class Portal login', body, buttonText: 'Sign in and set your password', buttonUrl: loginUrl }),
+    priority: 'transactional',
     metadata: { type: 'student_invite', studentId: student.id },
   });
 }
@@ -112,6 +182,7 @@ export async function sendNudge({ student, subject, body, metadata = {} }) {
     subject,
     text: body,
     html: layout({ title: subject, body: htmlBody, buttonText: 'Open the Class Portal', buttonUrl: config.appUrl }),
+    priority: 'transactional',
     metadata: { type: 'nudge', studentId: student.id, ...metadata },
   });
 }
@@ -124,6 +195,7 @@ export async function sendPasswordReset({ user, token }) {
     subject: 'Reset your Gaeilgeoir Guides password',
     text: `Reset your password: ${url}`,
     html: layout({ title: 'Reset your password', body, buttonText: 'Choose a new password', buttonUrl: url }),
+    priority: 'transactional',
     metadata: { type: 'password_reset', userId: user.id },
   });
 }
@@ -135,6 +207,7 @@ export async function sendPasswordChanged({ user }) {
     subject: 'Your password was changed',
     text: 'Your Gaeilgeoir Guides password was changed. Contact support if this was not you.',
     html: layout({ title: 'Password changed', body }),
+    priority: 'transactional',
     metadata: { type: 'password_changed', userId: user.id },
   });
 }
@@ -195,33 +268,46 @@ export async function sendBoardPostNotice({ student, thread }) {
       buttonText: 'Read it and reply',
       buttonUrl: config.appUrl,
     }),
+    /* A post the teacher put out was written to be read and is one message, so
+       it is not held behind the hourly pace. A student's post is board traffic
+       like any other and is. */
+    priority: teacher ? 'announcement' : 'notice',
     metadata: { type: 'board_new_post', threadId: thread.id, studentId: student.id },
   });
 }
 
-/** Somebody has replied in a conversation this person is part of. */
-export async function sendBoardReplyNotice({ student, thread, comment }) {
-  const author = comment.author_name || 'Somebody';
-  const { shown, trimmed } = quoted(comment.body);
-  const lead = `${author} replied on “${thread.title}”.`;
+/* Somebody has replied in a conversation this person is part of.
+   ------------------------------------------------------------------
+   Deliberately says nothing about what was written. A reply is one turn in a
+   conversation that is still going, and quoting it into an email means the same
+   words land in two places, out of order, with the email version already stale
+   by the time it is read. It also puts one student's words in front of another
+   student in a channel neither of them chose.
 
-  const text = [lead, '', shown,
-    trimmed ? '\nThere is more in the reply itself.' : '',
-    '', `Read it and reply: ${config.appUrl}`, OFF_SWITCH_TEXT].join('\n');
+   So this says that there is something to read, and where. The reading happens
+   on the board, where the rest of the conversation is. */
+export async function sendBoardReplyNotice({ student, thread, comment }) {
+  const answeringTheirComment = Boolean(comment?.parent_id);
+  const lead = answeringTheirComment
+    ? 'Somebody has replied to a comment on the class board.'
+    : 'Somebody has replied to a post on the class board.';
+
+  const text = [
+    lead, '', `On: ${thread.title}`, '',
+    `Read it and reply: ${config.appUrl}`, OFF_SWITCH_TEXT,
+  ].join('\n');
 
   return sendEmail({
     to: student.email,
-    subject: `New reply: ${thread.title}`,
+    subject: `New reply on “${thread.title}”`,
     text,
     html: layout({
-      title: `Re: ${thread.title}`,
-      body: `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">${escapeHtml(lead)}</p>`
-        + paragraphs(shown)
-        + (trimmed ? '<p><em>There is more in the reply itself.</em></p>' : '')
-        + OFF_SWITCH_HTML,
+      title: 'There is a new reply',
+      body: `<p>${escapeHtml(lead)}</p><p style="color:#6b7280;font-size:13px">On: ${escapeHtml(thread.title)}</p>${OFF_SWITCH_HTML}`,
       buttonText: 'Read it and reply',
       buttonUrl: config.appUrl,
     }),
+    priority: 'notice',
     metadata: { type: 'board_new_comment', threadId: thread.id, postId: comment.id, studentId: student.id },
   });
 }
@@ -242,6 +328,7 @@ export async function sendDeadlineReminder({ student, assignment, template }) {
     subject,
     text: plain,
     html: layout({ title: subject, body: htmlBody, buttonText: 'Continue work', buttonUrl: values.assignment_link }),
+    priority: 'deadline',
     metadata: { type: 'deadline_reminder', assignmentId: assignment.id, studentId: student.id },
   });
 }

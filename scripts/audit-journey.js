@@ -686,6 +686,20 @@ try {
   expectGraceful('a test email can be asked for', await admin.call('/api/settings/email/test', { method: 'POST', body: { to: 'audit@gaeilgeoirguides.test' } }));
   expectGraceful('a draft can be previewed', await admin.call('/api/settings/anthropic/test', { method: 'POST', body: {} }));
 
+  /* Holding the post, and letting it go again. Checked as a pair, because a
+     pause that cannot be lifted is worse than no pause at all. */
+  expectOk('the sending summary loads', await admin.call('/api/settings/email/pause'),
+    (d) => typeof d?.paused === 'boolean' && d?.lastDay !== undefined);
+  const wasPaused = (await admin.call('/api/settings/email/pause')).data?.paused;
+  expectOk('sending can be held', await admin.call('/api/settings/email/pause',
+    { method: 'PUT', body: { hours: 1, reason: 'audit' } }), (d) => d?.paused === true);
+  expectOk('and let go again', await admin.call('/api/settings/email/pause',
+    { method: 'PUT', body: { hours: 0 } }), (d) => d?.paused === false);
+  if (wasPaused) {
+    // Put back whatever was there, so an audit run cannot lift a real pause.
+    await admin.call('/api/settings/email/pause', { method: 'PUT', body: { hours: 24, reason: 'restored by the audit' } });
+  }
+
   section('Passwords and administrators');
   expectOk('the password policy loads', await admin.call('/api/auth/password-policy'));
   expectGraceful('a forgotten password can be requested', await admin.call('/api/auth/forgot-password', { method: 'POST', body: { email: studentEmail } }));
