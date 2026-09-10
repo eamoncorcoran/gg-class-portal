@@ -133,3 +133,34 @@ test('the backfill claims the history rather than deleting it', () => {
   assert.doesNotMatch(migration, /DELETE FROM discussion_threads/,
     'nothing here is worth deleting a post over');
 });
+
+/* The question the board exists to carry.
+   ------------------------------------------------------------------
+   A student posted a question and nobody was told, including the person whose
+   job it is to answer. The audience for a post was "who is on this class",
+   which is class_students with role student. A teacher is on neither, so the
+   only people eligible were the class, and the author is never told about their
+   own post. On a class of one that meant the notification went to nobody at
+   all, and it would have been just as silent on a class of thirty for the one
+   person who needed it. */
+test('a student’s post reaches the staff, who are the people it is addressed to', () => {
+  assert.match(notify, /async function staffAudience\(\)/);
+  const fn = notify.slice(notify.indexOf('async function staffAudience('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /role='admin' AND active=true/);
+  assert.match(body, /notify_board_posts=true/, 'and can still be turned off');
+
+  const post = notify.slice(notify.indexOf('export async function notifyNewPost'));
+  const postBody = post.slice(0, post.indexOf('\n}\n'));
+  assert.match(postBody, /thread\.author_role === 'admin' \? \[\] : await staffAudience\(\)/,
+    'a student post goes to the staff; a teacher post does not');
+  assert.match(postBody, /recipients: \[\.\.\.staff, \.\.\.klass\]/);
+});
+
+test('one administrator is not told about another one posting', () => {
+  /* They already know it happened, and it is not news to the other. */
+  const post = notify.slice(notify.indexOf('export async function notifyNewPost'));
+  const body = post.slice(0, post.indexOf('\n}\n'));
+  assert.match(body, /author_role === 'admin' \? \[\]/,
+    'a teacher post must not go round the staff');
+});

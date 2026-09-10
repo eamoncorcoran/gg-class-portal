@@ -341,6 +341,7 @@ try {
     expect('everyone on the class was told exactly once',
       after.c - before.c === 1, `${after.c - before.c} notices for one student`);
 
+
     /* The sweep must not announce it again. A whole class hearing the same thing
        twice is what people unsubscribe over. */
     const { notifyPublishedPosts } = await import('../src/boardnotify.js');
@@ -390,8 +391,19 @@ try {
     expectOk('the student reacts', await student.call(`/api/student/community/react/thread/${made.threadId}`,
       { method: 'POST', body: { emoji: '🎉' } }));
     expectOk('the student marks the board read', await student.call('/api/student/community/read', { method: 'POST', body: {} }));
-    expectOk('the student starts their own post', await student.call('/api/student/community/threads',
-      { method: 'POST', body: { title: 'A student question', body: 'How do I say this?' } }));
+    /* The other direction, and the one that was silently broken: a student
+       posting a question has to reach the person whose job it is to answer. */
+    const staffBefore = await one(
+      `SELECT count(*)::int c FROM email_deliveries d JOIN users u ON u.id=d.user_id
+       WHERE d.template_key='board_new_post' AND u.role='admin'`);
+    expectOk('a student posts a question', await student.call('/api/student/community/threads',
+      { method: 'POST', body: { title: 'Audit student question', body: 'Does anybody hear this?' } }));
+    await new Promise((resolve) => { setTimeout(resolve, 1500); });
+    const staffAfter = await one(
+      `SELECT count(*)::int c FROM email_deliveries d JOIN users u ON u.id=d.user_id
+       WHERE d.template_key='board_new_post' AND u.role='admin'`);
+    expect('and the teacher is told about it', staffAfter.c > staffBefore.c,
+      `${staffAfter.c - staffBefore.c} staff notices for a student post`);
   }
     /* A reply reaches the people in that conversation, and never its author. */
     if (made.announcedId) {

@@ -34,6 +34,26 @@ async function classAudience(classId, column) {
   return result.rows;
 }
 
+/* The people who run the course.
+   ------------------------------------------------------------------
+   A teacher is not on class_students and has no student role, so asking "who is
+   on this class" returns everybody except the person whose job it is to answer.
+   That is how a student could post a question and nobody was told at all: the
+   only other people on the board were the class, and the author is never
+   notified about their own post.
+
+   Every active administrator, because a class has no owning teacher in this
+   portal and guessing at one would quietly drop the notice for whoever guessed
+   wrong. */
+async function staffAudience() {
+  const result = await query(
+    `SELECT id, name, email FROM users
+     WHERE role='admin' AND active=true AND notify_board_posts=true
+     ORDER BY name`,
+  );
+  return result.rows;
+}
+
 /**
  * Everybody already in one conversation.
  *
@@ -134,9 +154,13 @@ export async function notifyNewPost(threadId) {
     return { sent: 0, skipped: 'not published yet' };
   }
 
-  const recipients = await classAudience(thread.class_id, 'notify_board_posts');
+  const klass = await classAudience(thread.class_id, 'notify_board_posts');
+  /* A student's post also goes to the staff, who are the people it is usually
+     addressed to. A teacher's post does not: they already know, and telling one
+     administrator about another's post is noise rather than news. */
+  const staff = thread.author_role === 'admin' ? [] : await staffAudience();
   return deliver({
-    recipients,
+    recipients: [...staff, ...klass],
     actorId: thread.author_id,
     threadId: thread.id,
     postId: null,
