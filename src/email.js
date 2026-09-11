@@ -7,15 +7,103 @@ function escapeHtml(value = '') {
   return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 }
 
-function layout({ title, body, buttonText, buttonUrl }) {
-  return `<!doctype html><html><body style="margin:0;background:#f5f7f3;font-family:Arial,sans-serif;color:#243322">
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center" style="padding:32px 16px">
-  <table width="100%" style="max-width:600px;background:#fff;border:1px solid #dfe8da;border-radius:14px;overflow:hidden" cellpadding="0" cellspacing="0">
-  <tr><td style="padding:22px 28px;background:#50AF37;color:#fff;font-size:19px;font-weight:700;letter-spacing:-.01em">Gaeilgeoir Guides<span style="opacity:.72;font-weight:500"> · Class Portal</span></td></tr>
-  <tr><td style="padding:30px 28px"><h1 style="font-size:22px;margin:0 0 16px">${escapeHtml(title)}</h1><div style="font-size:15px;line-height:1.65;color:#465643">${body}</div>
-  ${buttonUrl ? `<p style="margin:24px 0 0"><a href="${escapeHtml(buttonUrl)}" style="display:inline-block;background:#50AF37;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">${escapeHtml(buttonText || 'Open')}</a></p>` : ''}
-  </td></tr><tr><td style="padding:18px 28px;background:#f8fbf6;color:#748171;font-size:12px">Gaeilgeoir Guides Class Portal. If you were not expecting this email, you can ignore it.</td></tr>
-  </table></td></tr></table></body></html>`;
+/* What every email from the portal looks like.
+   ------------------------------------------------------------------
+   Written for mail clients rather than for browsers, which is a different and
+   older craft: tables for layout, every style inline, no flexbox, no grid, no
+   stylesheet. Anything cleverer than this is fine in Gmail and broken in
+   Outlook, and Outlook is where half of a staffroom reads its mail.
+
+   The changes from what was here before are all about it reading as a message
+   from a person rather than a mailshot:
+
+   The heavy green band across the top is gone. A colour slab is what marketing
+   email looks like, and these are notes to a student about their own work. The
+   name sits quietly at the top with a thin rule under it.
+
+   There is a preheader now: the hidden line a mail client shows in the inbox
+   list beside the subject. Without one Gmail pulls the first words of the body,
+   which is why these appeared in the list as "Hi Kacey, Just a reminder that".
+   A sentence chosen for that slot is the difference between an email that looks
+   considered and one that looks automated.
+
+   One call to action, not a link in the body and a button underneath saying the
+   same thing. And a real footer, with the off switch in it. */
+function layout({ title, preheader = '', body, buttonText, buttonUrl, footnote = '' }) {
+  const ink = '#1f2d1c';
+  const muted = '#5c6b59';
+  const line = '#e3e9df';
+  const brand = '#3f8f2b';
+
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>${escapeHtml(title)}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f2;-webkit-font-smoothing:antialiased">
+<!-- The line the inbox shows beside the subject, then enough blank characters
+     that the body text underneath is not dragged in after it. -->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">${escapeHtml(preheader || title)}${'&#8199;&#65279;&#847; '.repeat(30)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f6f2">
+<tr><td align="center" style="padding:28px 12px 36px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid ${line};border-radius:12px">
+
+<tr><td style="padding:24px 30px 0">
+  <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px;font-weight:700;color:${brand};letter-spacing:-.01em">Gaeilgeoir Guides</span>
+  <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px;color:${muted}"> · Class Portal</span>
+</td></tr>
+<tr><td style="padding:16px 30px 0"><div style="height:1px;background:${line};line-height:1px;font-size:0">&nbsp;</div></td></tr>
+
+<tr><td style="padding:24px 30px 0">
+  <h1 style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:21px;line-height:1.3;font-weight:700;color:${ink};letter-spacing:-.01em">${escapeHtml(title)}</h1>
+</td></tr>
+
+<tr><td style="padding:14px 30px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.65;color:${ink}">${body}</td></tr>
+
+${buttonUrl ? `<tr><td style="padding:24px 30px 0">
+  <!-- A table rather than a padded anchor, because Outlook drops padding on an
+       inline link and the button collapses to underlined text. -->
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td align="center" bgcolor="${brand}" style="border-radius:8px">
+      <a href="${escapeHtml(buttonUrl)}" style="display:inline-block;padding:12px 22px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px">${escapeHtml(buttonText || 'Open the portal')}</a>
+    </td>
+  </tr></table>
+</td></tr>` : ''}
+
+${footnote ? `<tr><td style="padding:22px 30px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;line-height:1.6;color:${muted}">${footnote}</td></tr>` : ''}
+
+<tr><td style="padding:26px 30px 24px">
+  <div style="height:1px;background:${line};line-height:1px;font-size:0">&nbsp;</div>
+  <p style="margin:16px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:12px;line-height:1.6;color:${muted}">
+    Gaeilgeoir Guides Class Portal<br>
+    <a href="${escapeHtml(config.appUrl)}" style="color:${muted}">${escapeHtml(String(config.appUrl).replace(/^https?:\/\//, ''))}</a>
+  </p>
+</td></tr>
+
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+/* Somebody's writing, turned into paragraphs.
+   ------------------------------------------------------------------
+   Handles a literal backslash-n as well as a real line break. The reminder
+   templates were seeded through a single-quoted SQL string, where \n is two
+   characters rather than a newline, so every deadline reminder ever sent showed
+   "Hi Kacey,\n\nJust a reminder" to the student. The stored templates are
+   repaired by migration; this means a template typed with \n by hand, which is a
+   very easy thing to do in a text box, comes out right as well. */
+function paragraphsFrom(text) {
+  return String(text ?? '')
+    .replace(/\\r\\n|\\n|\\r/g, '\n')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => `<p style="margin:0 0 14px">${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .join('');
 }
 
 /* What may be sent, and how often.
@@ -195,7 +283,11 @@ export async function sendStudentInvite({ student, temporaryPassword }) {
       '',
       'Tá Gaeilge bhriste níos fearr ná Béarla cliste. See you in class.',
     ].join('\n'),
-    html: layout({ title: 'Your Class Portal login', body, buttonText: 'Sign in and set your password', buttonUrl: loginUrl }),
+    html: layout({
+      title: 'Your Class Portal login',
+      preheader: 'Your account is ready. Your temporary password is inside.',
+      body, buttonText: 'Sign in and set your password', buttonUrl: loginUrl,
+    }),
     priority: 'transactional',
     metadata: { type: 'student_invite', studentId: student.id },
   });
@@ -209,12 +301,17 @@ export async function sendStudentInvite({ student, temporaryPassword }) {
  * it can be sent whenever and edited before it goes.
  */
 export async function sendNudge({ student, subject, body, metadata = {} }) {
-  const htmlBody = String(body).split('\n').map((line) => (line.trim() ? `<p>${escapeHtml(line)}</p>` : '<br>')).join('');
   return sendEmail({
     to: student.email,
     subject,
     text: body,
-    html: layout({ title: subject, body: htmlBody, buttonText: 'Open the Class Portal', buttonUrl: config.appUrl }),
+    html: layout({
+      title: subject,
+      preheader: String(body).replace(/\s+/g, ' ').slice(0, 90),
+      body: paragraphsFrom(body),
+      buttonText: 'Open the Class Portal',
+      buttonUrl: config.appUrl,
+    }),
     priority: 'transactional',
     metadata: { type: 'nudge', studentId: student.id, ...metadata },
   });
@@ -227,7 +324,11 @@ export async function sendPasswordReset({ user, token }) {
     to: user.email,
     subject: 'Reset your Gaeilgeoir Guides password',
     text: `Reset your password: ${url}`,
-    html: layout({ title: 'Reset your password', body, buttonText: 'Choose a new password', buttonUrl: url }),
+    html: layout({
+      title: 'Reset your password',
+      preheader: 'Use the link inside to choose a new one. It expires in an hour.',
+      body, buttonText: 'Choose a new password', buttonUrl: url,
+    }),
     priority: 'transactional',
     metadata: { type: 'password_reset', userId: user.id },
   });
@@ -239,7 +340,11 @@ export async function sendPasswordChanged({ user }) {
     to: user.email,
     subject: 'Your password was changed',
     text: 'Your Gaeilgeoir Guides password was changed. Contact support if this was not you.',
-    html: layout({ title: 'Password changed', body }),
+    html: layout({
+      title: 'Password changed',
+      preheader: 'If this was not you, contact us straight away.',
+      body,
+    }),
     priority: 'transactional',
     metadata: { type: 'password_changed', userId: user.id },
   });
@@ -265,14 +370,10 @@ function quoted(text) {
   return { shown: `${head.slice(0, cut > 0 ? cut : MAX_QUOTED).trimEnd()}…`, trimmed: true };
 }
 
-const paragraphs = (text) => String(text).split('\n')
-  .map((line) => (line.trim() ? `<p>${escapeHtml(line)}</p>` : '<br>')).join('');
-
 /* Every notice says how to stop getting them. Somebody who cannot find the
    switch uses the one their mail client provides instead, and a spam complaint
    costs the sending domain far more than an unsubscribe ever does. */
-const OFF_SWITCH_HTML = '<p style="color:#6b7280;font-size:12px;margin-top:22px">'
-  + 'You can turn these off under your name in the top right of the portal, in Notifications.</p>';
+const OFF_SWITCH_HTML = 'You can turn these off under your name in the portal, in Notifications.';
 const OFF_SWITCH_TEXT = '\n\nTo stop these, open the portal and turn off notifications under your name in the top right.';
 
 /** A new post on the class board. */
@@ -294,12 +395,13 @@ export async function sendBoardPostNotice({ student, thread }) {
     text,
     html: layout({
       title: thread.title,
-      body: `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">${escapeHtml(lead)}</p>`
-        + paragraphs(shown)
-        + (trimmed ? '<p><em>There is more in the post itself.</em></p>' : '')
-        + OFF_SWITCH_HTML,
+      preheader: lead,
+      body: `<p style="margin:0 0 16px;font-size:13px;color:#5c6b59">${escapeHtml(lead)}</p>`
+        + paragraphsFrom(shown)
+        + (trimmed ? '<p style="margin:0 0 14px;color:#5c6b59"><em>There is more in the post itself.</em></p>' : ''),
       buttonText: 'Read it and reply',
       buttonUrl: config.appUrl,
+      footnote: OFF_SWITCH_HTML,
     }),
     /* A post the teacher put out was written to be read and is one message, so
        it is not held behind the hourly pace. A student's post is board traffic
@@ -336,9 +438,12 @@ export async function sendBoardReplyNotice({ student, thread, comment }) {
     text,
     html: layout({
       title: 'There is a new reply',
-      body: `<p>${escapeHtml(lead)}</p><p style="color:#6b7280;font-size:13px">On: ${escapeHtml(thread.title)}</p>${OFF_SWITCH_HTML}`,
+      preheader: lead,
+      body: `<p style="margin:0 0 14px">${escapeHtml(lead)}</p>`
+        + `<p style="margin:0;font-size:13px;color:#5c6b59">On: ${escapeHtml(thread.title)}</p>`,
       buttonText: 'Read it and reply',
       buttonUrl: config.appUrl,
+      footnote: OFF_SWITCH_HTML,
     }),
     priority: 'notice',
     metadata: { type: 'board_new_comment', threadId: thread.id, postId: comment.id, studentId: student.id },
@@ -354,13 +459,28 @@ export async function sendDeadlineReminder({ student, assignment, template }) {
   };
   const fill = (value) => String(value || '').replace(/{{\s*([^}]+)\s*}}/g, (_, key) => values[key.trim()] ?? '');
   const subject = fill(template.subject);
-  const plain = fill(template.body);
-  const htmlBody = plain.split('\n').map((line) => line ? `<p>${escapeHtml(line)}</p>` : '<br>').join('');
+  const plain = fill(template.body).replace(/\\r\\n|\\n|\\r/g, '\n');
+  /* The link is the button. A template that also writes it out inline leaves the
+     same address twice, once as a raw URL with a uuid in it, which is what the
+     reminder looked like. Taken out of the body rather than out of the template,
+     so somebody who wants it inline can still put it there and it is the line
+     naming it that goes. */
+  const withoutDuplicateLink = plain
+    .split('\n')
+    .filter((line) => !line.includes(values.assignment_link))
+    .join('\n')
+    .trim();
   return sendEmail({
     to: student.email,
     subject,
-    text: plain,
-    html: layout({ title: subject, body: htmlBody, buttonText: 'Continue work', buttonUrl: values.assignment_link }),
+    text: `${withoutDuplicateLink}\n\n${values.assignment_link}`,
+    html: layout({
+      title: subject,
+      preheader: `Due ${values.deadline_time}.`,
+      body: paragraphsFrom(withoutDuplicateLink),
+      buttonText: 'Open your homework',
+      buttonUrl: values.assignment_link,
+    }),
     priority: 'deadline',
     metadata: { type: 'deadline_reminder', assignmentId: assignment.id, studentId: student.id },
   });

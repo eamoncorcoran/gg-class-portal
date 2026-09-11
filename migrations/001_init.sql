@@ -205,9 +205,9 @@ VALUES
 )),
 ('reminders', jsonb_build_object(
   'enabled', true,
-  'tomorrow', jsonb_build_object('enabled',true,'subject','Your {{assignment_title}} is due tomorrow','body','Hi {{first_name}},\n\nJust a reminder that {{assignment_title}} is due tomorrow at {{deadline_time}}.\n\nContinue here: {{assignment_link}}'),
-  'twoHours', jsonb_build_object('enabled',true,'subject','{{assignment_title}} is due in 2 hours','body','Hi {{first_name}},\n\nYour {{assignment_title}} deadline is in 2 hours.\n\nContinue here: {{assignment_link}}'),
-  'thirtyMinutes', jsonb_build_object('enabled',true,'subject','30 minutes left for {{assignment_title}}','body','Hi {{first_name}},\n\nThere are 30 minutes remaining before {{assignment_title}} closes.\n\nContinue here: {{assignment_link}}')
+  'tomorrow', jsonb_build_object('enabled',true,'subject','Your {{assignment_title}} is due tomorrow','body',E'Hi {{first_name}},\n\nJust a reminder that {{assignment_title}} is due tomorrow at {{deadline_time}}.\n\nContinue here: {{assignment_link}}'),
+  'twoHours', jsonb_build_object('enabled',true,'subject','{{assignment_title}} is due in 2 hours','body',E'Hi {{first_name}},\n\nYour {{assignment_title}} deadline is in 2 hours.\n\nContinue here: {{assignment_link}}'),
+  'thirtyMinutes', jsonb_build_object('enabled',true,'subject','30 minutes left for {{assignment_title}}','body',E'Hi {{first_name}},\n\nThere are 30 minutes remaining before {{assignment_title}} closes.\n\nContinue here: {{assignment_link}}')
 ))
 ON CONFLICT (key) DO NOTHING;
 
