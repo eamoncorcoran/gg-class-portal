@@ -68,6 +68,10 @@ export const config = Object.freeze({
      by the route that made it — so five minutes late is five minutes on a post
      that was set to appear at a particular time anyway. */
   boardEmailCron: process.env.BOARD_EMAIL_CRON || '*/5 * * * *',
+  /* A backstop on the whole day's sending, not a policy. Set well above a normal
+     day, so reaching it means something has gone wrong rather than busy. Zero
+     switches it off. */
+  emailDailyCap: Number(process.env.EMAIL_DAILY_CAP ?? 150),
   /* On by default in production: a backup nobody remembered to switch on is the
      one you find out about the night you need it. */
   backupEnabled: bool(process.env.BACKUP_ENABLED, (process.env.NODE_ENV || 'development') === 'production'),

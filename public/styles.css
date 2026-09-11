@@ -1791,3 +1791,12 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 /* Formatting inside what somebody wrote, wherever it is read back. */
 .cmt-text strong,.feedback-box strong,.answer-box strong{font-weight:700}
 .cmt-text em,.feedback-box em,.answer-box em{font-style:italic}
+
+/* What went out this week, by kind. A bar under each so the one that matters
+   is obvious without reading the numbers. */
+.send-kinds{display:grid;gap:10px;margin-bottom:4px}
+.send-kind{display:grid;grid-template-columns:48px 1fr;grid-template-rows:auto auto;gap:2px 10px;align-items:baseline}
+.send-kind strong{font-size:16px;grid-row:1/3;align-self:center}
+.send-kind span{font-size:12px;color:var(--text-secondary)}
+.send-kind i{grid-column:2;height:4px;border-radius:2px;background:var(--brand-500,var(--text-secondary));opacity:.5;display:block;min-width:2px}
+.data-table.compact td,.data-table.compact th{padding:6px 10px;font-size:12px}

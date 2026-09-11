@@ -5768,12 +5768,36 @@ async function loadEmailPause() {
   const held = day.suppressed || 0;
   const failed = day.failed || 0;
 
+  /* Named in the words somebody would use about them, because "notice" and
+     "announcement" are the code's categories rather than anybody's idea of what
+     an email is. */
+  const KINDS = {
+    transactional: 'Logins, invitations and nudges',
+    deadline: 'Homework and check-in reminders',
+    announcement: 'Posts you put out',
+    notice: 'Board activity: replies and student posts',
+  };
+  const week = (state_.byKind || []).reduce((total, row) => total + row.count, 0);
+
   card.innerHTML = `
     <div class="card-header">
-      <div><h2>Sending</h2><p>${went} email${went === 1 ? '' : 's'} in the last 24 hours${held ? `, ${held} held back by pacing` : ''}${failed ? `, ${failed} failed` : ''}.</p></div>
+      <div><h2>Sending</h2><p>${went} email${went === 1 ? '' : 's'} in the last 24 hours${held ? `, ${held} held back` : ''}${failed ? `, ${failed} failed` : ''}. Limit is ${state_.dailyCap} a day.</p></div>
       ${state_.paused
         ? '<button class="btn small" id="resume-email">Resume sending</button>'
         : '<button class="btn small" id="pause-email">Hold sending for 24 hours</button>'}
+    </div>
+    <div class="card-body">
+      ${week ? `<div class="section-title">What went out this week (${week})</div>
+        <div class="send-kinds">${(state_.byKind || []).map((row) => `
+          <div class="send-kind">
+            <strong>${row.count}</strong>
+            <span>${escapeHtml(KINDS[row.priority] || row.priority)}</span>
+            <i style="width:${Math.round((row.count / week) * 100)}%"></i>
+          </div>`).join('')}</div>` : '<p class="muted small">Nothing sent in the last seven days.</p>'}
+      ${(state_.byDay || []).length ? `<div class="section-title">By day</div>
+        <table class="data-table compact"><thead><tr><th>Day</th><th>Sent</th><th>Held</th></tr></thead><tbody>
+        ${state_.byDay.map((row) => `<tr><td>${escapeHtml(row.day)}</td><td>${row.sent}</td><td>${row.held || ''}</td></tr>`).join('')}
+        </tbody></table>` : ''}
     </div>
     ${state_.paused ? `<div class="card-body"><div class="notice warning">
       <strong>Sending is on hold until ${escapeHtml(fmtDate(state_.until, { time: true, weekday: true, dateStyle: 'medium' }))}.</strong>

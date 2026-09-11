@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
+import { config } from '../config.js';
 import { requireAdmin } from '../session.js';
 import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting } from '../settings.js';
 import { draftCheckinFeedback } from '../ai.js';
@@ -174,11 +175,31 @@ router.get('/email/pause', asyncRoute(async (_req, res) => {
     `SELECT status, count(*)::int count FROM email_sends
      WHERE created_at > now() - interval '24 hours' GROUP BY status`,
   );
+  /* What is actually generating the volume, which is the question somebody has
+     when a provider tells them they are near a limit. A total answers "is it a
+     lot"; only the breakdown answers "and what do I do about it". */
+  const byKind = await query(
+    `SELECT priority, count(*)::int count FROM email_sends
+     WHERE status IN ('sent','simulated') AND created_at > now() - interval '7 days'
+     GROUP BY priority ORDER BY count DESC`,
+  );
+  const byDay = await query(
+    // The alias is quoted: DAY is a reserved word and a bare one is a syntax error.
+    `SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS "day",
+            count(*) FILTER (WHERE status IN ('sent','simulated'))::int sent,
+            count(*) FILTER (WHERE status='suppressed')::int held
+     FROM email_sends
+     WHERE created_at > now() - interval '7 days'
+     GROUP BY 1 ORDER BY 1 DESC`,
+  );
   res.json({
     paused: Boolean(until),
     until,
     reason: until ? pause.reason || null : null,
     lastDay: Object.fromEntries(recent.rows.map((row) => [row.status, row.count])),
+    dailyCap: config.emailDailyCap,
+    byKind: byKind.rows,
+    byDay: byDay.rows,
   });
 }));
 

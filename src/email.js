@@ -50,6 +50,36 @@ const NEVER_HELD = new Set(['transactional']);
 const PACED = new Set(['notice']);
 const PACE_INTERVAL = "interval '1 hour'";
 
+/* A ceiling on the day, whatever the cause.
+   ------------------------------------------------------------------
+   The pace limits what one person receives. It does nothing about the total,
+   because a hundred people receiving one message each is a hundred messages, and
+   an allowance is spent by the total.
+
+   This is deliberately a backstop rather than a policy. It is set well above a
+   normal day, so reaching it means something is wrong rather than busy, and what
+   it holds back is chosen accordingly: board notices and announcements stop,
+   while deadline reminders and anything somebody is waiting on keep going. A
+   ceiling that silenced a homework reminder would have traded a smaller problem
+   for a worse one.
+
+   Counted over a rolling day rather than to midnight, so a burst at eleven at
+   night is still covered at one in the morning. */
+const CEILING_EXEMPT = new Set(['transactional', 'deadline']);
+
+async function overDailyCeiling(priority) {
+  if (CEILING_EXEMPT.has(priority)) return null;
+  const limit = Number(config.emailDailyCap);
+  if (!Number.isFinite(limit) || limit <= 0) return null;
+  const today = await one(
+    `SELECT count(*)::int count FROM email_sends
+     WHERE status IN ('sent','simulated') AND created_at > now() - interval '24 hours'`,
+  );
+  if ((today?.count ?? 0) < limit) return null;
+  console.warn(`Email ceiling reached: ${today.count} sent in 24 hours, limit ${limit}. Holding notices and announcements. Reminders and password resets are still going out.`);
+  return `${today.count} emails have gone out in the last 24 hours, which is over the limit of ${limit}`;
+}
+
 async function pacingProblem({ to, priority }) {
   /* A pause set by hand, for a day when the answer is simply "not today". Read
      every time rather than cached, so lifting it takes effect at once. */
@@ -57,6 +87,9 @@ async function pacingProblem({ to, priority }) {
   if (paused?.until && new Date(paused.until).getTime() > Date.now() && !NEVER_HELD.has(priority)) {
     return `sending is paused until ${paused.until}${paused.reason ? ` (${paused.reason})` : ''}`;
   }
+  const ceiling = await overDailyCeiling(priority);
+  if (ceiling) return ceiling;
+
   if (!PACED.has(priority)) return null;
 
   const recent = await one(

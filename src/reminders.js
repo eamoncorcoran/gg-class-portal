@@ -50,12 +50,21 @@ export async function runReminderCycle() {
           assignment: { id: row.assignment_id, title: row.title, deadline_at: row.deadline_at, timezone: row.timezone },
           template,
         });
-        status = result.simulated ? 'simulated' : 'sent';
-        providerId = result.id;
+        /* A held message is neither sent nor failed, and recording it as sent
+           was worse than either: the delivery row stops it being tried again, so
+           a reminder held during a pause was lost for good and the log said it
+           had gone. Recorded as suppressed, and no row is written, so the next
+           cycle picks it up once sending resumes. */
+        if (result?.suppressed) { status = 'suppressed'; error = result.reason || null; }
+        else { status = result.simulated ? 'simulated' : 'sent'; providerId = result.id; }
       } catch (sendError) {
         error = sendError.message;
         console.error('Reminder delivery failed', sendError);
       }
+      /* Nothing recorded for a held message. The row is what stops a reminder
+         being sent twice, so writing one for a reminder that never went would
+         stop it being sent at all. */
+      if (status === 'suppressed') continue;
       await query(
         `INSERT INTO email_deliveries(user_id,assignment_id,template_key,recipient,status,provider_id,error,sent_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,CASE WHEN $5 IN ('sent','simulated') THEN now() ELSE NULL END)

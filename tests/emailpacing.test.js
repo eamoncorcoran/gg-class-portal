@@ -92,3 +92,53 @@ test('the pause can be lifted without a deploy', () => {
      than two that can disagree. */
   assert.match(settings, /const until = hours > 0 \? /);
 });
+
+/* A ceiling on the day, as distinct from the pace.
+   ------------------------------------------------------------------
+   The pace limits what one person receives and does nothing about the total. A
+   hundred people getting one message each is a hundred messages, and an
+   allowance is spent by the total. */
+test('there is a ceiling on the day as well as a pace on the person', () => {
+  assert.match(email, /async function overDailyCeiling\(priority\)/);
+  const fn = email.slice(email.indexOf('async function overDailyCeiling('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /interval '24 hours'/, 'a rolling day, so a burst at midnight is still covered');
+  assert.match(body, /console\.warn/, 'reaching it means something is wrong, so it should say so');
+});
+
+test('the ceiling never silences a reminder or a login', () => {
+  /* A ceiling that stopped a homework reminder would trade a smaller problem
+     for a worse one. */
+  assert.match(email, /const CEILING_EXEMPT = new Set\(\['transactional', 'deadline'\]\)/);
+});
+
+test('the ceiling can be raised or switched off without a deploy', () => {
+  const config = fs.readFileSync(new URL('../src/config.js', import.meta.url), 'utf8');
+  assert.match(config, /emailDailyCap: Number\(process\.env\.EMAIL_DAILY_CAP \?\? 150\)/);
+  const fn = email.slice(email.indexOf('async function overDailyCeiling('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /if \(!Number\.isFinite\(limit\) \|\| limit <= 0\) return null/,
+    'zero has to switch it off, or a wrong value becomes a silent outage');
+});
+
+/* The bug found while looking into this. */
+test('a reminder that was held is not recorded as sent', () => {
+  const reminders = fs.readFileSync(new URL('../src/reminders.js', import.meta.url), 'utf8');
+  assert.match(reminders, /if \(result\?\.suppressed\) \{ status = 'suppressed'/,
+    'a held message is neither sent nor failed');
+  assert.match(reminders, /if \(status === 'suppressed'\) continue;/,
+    'and no delivery row, or the reminder is never tried again');
+  /* The delivery row is what stops a reminder going twice. Writing one for a
+     reminder that never went stopped it going at all, and the log said it had. */
+  assert.doesNotMatch(reminders, /status = result\.simulated \? 'simulated' : 'sent';\s*\n\s*providerId = result\.id;/,
+    'the old unconditional recording has come back');
+});
+
+test('the screen says what is generating the volume, not just how much', () => {
+  const settings = fs.readFileSync(new URL('../src/routes/settings.js', import.meta.url), 'utf8');
+  assert.match(settings, /GROUP BY priority/, 'a total says it is a lot; only a breakdown says what to do');
+  assert.match(settings, /date_trunc\('day', created_at\)/);
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /Board activity: replies and student posts/,
+    'and in words somebody would use, not the code categories');
+});
