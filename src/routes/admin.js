@@ -2065,6 +2065,30 @@ router.delete('/community/categories/:id', asyncRoute(async (req, res) => {
 
 /* Send the reminders that are due, now, rather than waiting for tonight. The
    same cycle the schedule runs, so what happens here is what happens then. */
+/* This week's check-in reminder, sent by hand.
+   ------------------------------------------------------------------
+   Two routes rather than one, because the send cannot be taken back. The first
+   says who it would reach and who has already had one this week; the second
+   does it. Nobody should be finding out how many people they just emailed by
+   reading the log afterwards. */
+router.get('/reminders/checkin-preview', asyncRoute(async (req, res) => {
+  const { previewCheckinReminder } = await import('../reminders.js');
+  res.json(await previewCheckinReminder(req.query.classId || null));
+}));
+
+router.post('/reminders/checkin-now', asyncRoute(async (req, res) => {
+  const { sendCheckinReminderNow } = await import('../reminders.js');
+  const summary = await sendCheckinReminderNow({
+    classId: req.body?.classId || null,
+    actorId: req.user.id,
+  });
+  await audit({
+    actorId: req.user.id, action: 'reminders.checkin_sent_manually',
+    entityType: 'settings', entityId: 'reminders', metadata: summary, ip: req.ip,
+  });
+  res.json(summary);
+}));
+
 router.post('/reminders/run', asyncRoute(async (req, res) => {
   const { runReminderCycle } = await import('../reminders.js');
   const summary = await runReminderCycle();

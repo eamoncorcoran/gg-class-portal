@@ -215,6 +215,101 @@ export async function runClassReminders() {
   return sent;
 }
 
+/* Sending this week's check-in reminder by hand.
+   ------------------------------------------------------------------
+   The scheduled one fires a day before the check-in closes. Sometimes the
+   answer is simply "send it now", and waiting for a window to come round is not
+   a reason to leave a class unreminded.
+
+   Same audience rule as the scheduled one, minus the timing: an open check-in
+   somebody has not done. Never anybody who has already submitted, because
+   chasing somebody for work they have handed in is the fastest way to make them
+   stop reading these.
+*/
+async function pendingCheckins(classId = null) {
+  const params = [];
+  let scope = '';
+  if (classId) { params.push(classId); scope = `AND w.class_id=$${params.length}`; }
+  const result = await query(
+    `SELECT w.id week_id, w.week_start, w.checkin_due_at, c.timezone, c.id class_id,
+            c.programme_name, c.day_of_week, c.start_time,
+            u.id student_id, u.name, u.email
+     FROM weeks w
+     JOIN classes c ON c.id=w.class_id AND c.active=true
+     JOIN class_students cs ON cs.class_id=w.class_id AND cs.active=true
+     JOIN users u ON u.id=cs.student_id AND u.active=true AND u.withdrawn_at IS NULL
+     LEFT JOIN checkins ch ON ch.week_id=w.id AND ch.student_id=u.id
+     WHERE w.checkin_enabled=true
+       AND w.checkin_release_at <= now()
+       AND w.checkin_due_at > now()
+       AND COALESCE(ch.status,'draft') = 'draft'
+       ${scope}
+     ORDER BY w.checkin_due_at, u.name`,
+    params,
+  );
+  /* One per student, about whichever closes first.
+     A student with two check-ins open is usually a sign that an old week was
+     left switched on, and either way two emails about two weeks reads as the
+     portal sending the same thing twice. The nearest deadline is the one worth
+     chasing. */
+  const perStudent = new Map();
+  for (const row of result.rows) {
+    if (!perStudent.has(row.student_id)) perStudent.set(row.student_id, row);
+  }
+  return [...perStudent.values()];
+}
+
+/** Who a reminder sent right now would reach, without sending anything. */
+export async function previewCheckinReminder(classId = null) {
+  const rows = await pendingCheckins(classId);
+  const already = await query(
+    `SELECT user_id, dedupe_key FROM email_deliveries
+     WHERE dedupe_key = ANY($1::text[]) AND status IN ('sent','simulated')`,
+    [rows.map((row) => `checkin_due:${row.week_id}`)],
+  );
+  const told = new Set(already.rows.map((row) => `${row.user_id}|${row.dedupe_key}`));
+  return {
+    total: rows.length,
+    alreadyReminded: rows.filter((row) => told.has(`${row.student_id}|checkin_due:${row.week_id}`)).length,
+    students: rows.map((row) => ({
+      name: row.name,
+      email: row.email,
+      week: row.week_start,
+      closes: row.checkin_due_at,
+      alreadyReminded: told.has(`${row.student_id}|checkin_due:${row.week_id}`),
+    })),
+  };
+}
+
+/**
+ * Send it now.
+ *
+ * Keyed on the day rather than the week, so pressing the button twice in an
+ * evening sends nothing the second time, while somebody who had the scheduled
+ * reminder yesterday can still be reminded again today if that is what is
+ * wanted. The decision to send twice is the teacher's; sending twice by accident
+ * is not.
+ */
+export async function sendCheckinReminderNow({ classId = null, actorId = null } = {}) {
+  const rows = await pendingCheckins(classId);
+  const today = new Date().toISOString().slice(0, 10);
+  let sent = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const ok = await sendOnce({
+      studentId: row.student_id, email: row.email,
+      key: `checkin_nudge:${row.week_id}:${today}`, templateKey: 'checkin_due',
+      send: () => sendCheckinReminder({
+        student: { id: row.student_id, name: row.name, email: row.email },
+        week: row,
+      }),
+    });
+    if (ok) sent += 1; else skipped += 1;
+  }
+  console.log(`Check-in reminder sent by hand${actorId ? ` by ${actorId}` : ''}: ${sent} sent, ${skipped} skipped.`);
+  return { sent, skipped, considered: rows.length };
+}
+
 export function startReminderScheduler() {
   cron.schedule(config.reminderCron, async () => {
     /* One after another rather than together: they share a mail server and a

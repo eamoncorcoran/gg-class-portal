@@ -9137,6 +9137,72 @@ function attendanceView() {
    to answer it was to read code. The switch is beside the number for the same
    reason: by the time somebody has found out, they want to act, not file an
    issue. */
+/* Sending this week's check-in reminder by hand.
+   ------------------------------------------------------------------
+   The count comes first and the button says it, because this is the one control
+   on the screen that reaches people outside the portal and cannot be taken
+   back. A number somebody has to read before pressing is most of what stops an
+   accident.
+
+   Anybody already reminded this week is named separately rather than hidden,
+   since sending twice is sometimes exactly what is wanted and sometimes a
+   mistake, and only the person pressing knows which. */
+async function openCheckinReminderModal() {
+  let preview;
+  try { preview = await api('/api/admin/reminders/checkin-preview'); }
+  catch (error) { return showToast(error.message, 'error'); }
+
+  if (!preview.total) {
+    return modal({
+      title: 'Nobody to remind',
+      subtitle: 'Everybody with an open check-in has done it.',
+      body: '<p class="muted small">A reminder only goes to somebody whose check-in is open and not yet submitted. There is nobody in that position right now.</p>',
+      footer: '<button class="btn primary" data-close-modal>Close</button>',
+    });
+  }
+
+  const fresh = preview.total - preview.alreadyReminded;
+  modal({
+    title: `Remind ${preview.total} student${preview.total === 1 ? '' : 's'}?`,
+    subtitle: 'They have an open check-in they have not done yet.',
+    body: `
+      <p class="muted small">This sends straight away. It goes only to students whose check-in is open and still unsubmitted, so nobody is chased for work they have handed in.</p>
+      ${preview.alreadyReminded ? `<div class="notice warning stack-top">
+        <strong>${preview.alreadyReminded} of them already had a reminder for this week.</strong>
+        <span>Sending now means a second one. That is sometimes the point, and sometimes not, so it is worth a look at the list below first.</span>
+      </div>` : ''}
+      <div class="card table-wrap stack-top"><table class="data-table compact"><thead><tr>
+        <th>Student</th><th>Week</th><th>Closes</th><th></th>
+      </tr></thead><tbody>
+        ${preview.students.map((row) => `<tr>
+          <td>${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(fmtWeek(row.week))}</td>
+          <td>${escapeHtml(fmtDate(row.closes, { time: true, weekday: true, dateStyle: 'short' }))}</td>
+          <td>${row.alreadyReminded ? '<span class="pill orange">Already reminded</span>' : ''}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`,
+    footer: `<button class="btn" data-close-modal>Cancel</button>
+      <button class="btn primary" id="confirm-checkin-now">Send to ${preview.total} student${preview.total === 1 ? '' : 's'}${preview.alreadyReminded ? ` (${fresh} for the first time)` : ''}</button>`,
+    onOpen() {
+      const button = document.getElementById('confirm-checkin-now');
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        button.textContent = 'Sending…';
+        try {
+          const result = await api('/api/admin/reminders/checkin-now', { method: 'POST', body: {} });
+          closeModal();
+          showToast(`Reminder sent to ${result.sent} student${result.sent === 1 ? '' : 's'}`);
+          loadEmailPause();
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = 'Send';
+          showToast(error.message, 'error');
+        }
+      });
+    },
+  });
+}
+
 async function loadEmailPause() {
   const card = document.getElementById('email-pause-card');
   if (!card) return;
@@ -9206,7 +9272,7 @@ function remindersView() {
       <div class="form-field"><label>Subject</label><input data-reminder-subject="${key}" value="${escapeHtml(value.subject || '')}"></div>
       <div class="form-field"><label>Email body</label><textarea data-reminder-body="${key}">${escapeHtml(value.body || '')}</textarea></div></div>`;
   };
-  return `${pageHeader('Automation', 'Email reminders', 'Configure the delivery provider, templates and automatic deadline sequence.', `<button class="btn" id="run-reminders">Run reminder check</button><button class="btn primary" id="save-reminders">Save settings</button>`)}
+  return `${pageHeader('Automation', 'Email reminders', 'Configure the delivery provider, templates and automatic deadline sequence.', `<button class="btn" id="send-checkin-now">Send the check-in reminder now</button><button class="btn" id="run-reminders">Run reminder check</button><button class="btn primary" id="save-reminders">Save settings</button>`)}
     <section class="card" id="email-pause-card"><div class="card-body"><p class="muted small">Checking what has been sent…</p></div></section>
     <div class="settings-grid"><div class="settings-stack">
       <section class="card"><div class="card-header"><div><h2>Delivery settings</h2><p>Use a GoHighLevel webhook, SMTP or console mode.</p></div></div><div class="card-body">
@@ -9911,6 +9977,7 @@ function bindReminderSettings() {
   document.getElementById('save-email')?.addEventListener('click', saveEmailSettings);
   document.getElementById('test-email')?.addEventListener('click', testEmail);
   if (document.getElementById('email-pause-card')) loadEmailPause();
+  document.getElementById('send-checkin-now')?.addEventListener('click', openCheckinReminderModal);
   document.getElementById('run-reminders')?.addEventListener('click', async () => {
     try { await api('/api/admin/reminders/run', { method: 'POST' }); showToast('Reminder cycle completed'); }
     catch (error) { showToast(error.message, 'error'); }

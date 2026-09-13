@@ -548,6 +548,30 @@ try {
       typeof (await runCheckinReminders()) === 'number', 'it threw');
     expect('the class reminder runs without falling over',
       typeof (await runClassReminders()) === 'number', 'it threw');
+
+    /* Sending this week's reminder by hand. The preview is checked separately
+       from the send, because the whole point of it is that somebody can see who
+       it reaches before anybody is emailed. */
+    const preview = expectOk('the reminder preview says who it would reach',
+      await admin.call('/api/admin/reminders/checkin-preview'),
+      (d) => typeof d?.total === 'number' && Array.isArray(d?.students));
+    const beforeManual = await one(
+      `SELECT count(*)::int c FROM email_deliveries WHERE dedupe_key LIKE 'checkin_nudge:%'`);
+    const sentNow = expectOk('and it can be sent', await admin.call('/api/admin/reminders/checkin-now',
+      { method: 'POST', body: {} }), (d) => typeof d?.sent === 'number');
+    expect('it sends to exactly the people the preview named',
+      sentNow?.considered === preview?.total,
+      JSON.stringify({ considered: sentNow?.considered, previewed: preview?.total }));
+    /* Pressing it twice in an evening must not mail the class twice. */
+    const twice = expectOk('and pressing it again sends nothing',
+      await admin.call('/api/admin/reminders/checkin-now', { method: 'POST', body: {} }),
+      (d) => d?.sent === 0);
+    const afterManual = await one(
+      `SELECT count(*)::int c FROM email_deliveries WHERE dedupe_key LIKE 'checkin_nudge:%'`);
+    expect('so the second press adds no deliveries',
+      afterManual.c - beforeManual.c === (sentNow?.sent ?? 0),
+      `${afterManual.c - beforeManual.c} rows for ${sentNow?.sent} sends`);
+    if (!twice) fail('the repeat press was refused cleanly', 'it was not');
   }
 
   section('Settings');
