@@ -128,10 +128,13 @@ test('a reminder that was held is not recorded as sent', () => {
     'a held message is neither sent nor failed');
   assert.match(reminders, /if \(status === 'suppressed'\) continue;/,
     'and no delivery row, or the reminder is never tried again');
-  /* The delivery row is what stops a reminder going twice. Writing one for a
-     reminder that never went stopped it going at all, and the log said it had. */
-  assert.doesNotMatch(reminders, /status = result\.simulated \? 'simulated' : 'sent';\s*\n\s*providerId = result\.id;/,
-    'the old unconditional recording has come back');
+  /* Scoped to the deadline cycle. The other reminders have their own send
+     helper with its own guard, and matching across the whole file would flag
+     that one as the bug it is not. */
+  const cycle = reminders.slice(reminders.indexOf('export async function runReminderCycle'));
+  const cycleBody = cycle.slice(0, cycle.indexOf('\n}\n'));
+  assert.ok(cycleBody.indexOf("if (result?.suppressed)") < cycleBody.indexOf("status = result.simulated"),
+    'the suppressed check must come before the recording, or a held reminder is logged as sent');
 });
 
 test('the screen says what is generating the volume, not just how much', () => {

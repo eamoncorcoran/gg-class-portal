@@ -11634,6 +11634,52 @@ function debounce(fn, delay) {
 async function loadApplication() {
   if (state.user.role === 'admin') await loadAdmin();
   else await loadStudent();
+  await followLink();
+}
+
+/* Where an email meant to send somebody.
+   ------------------------------------------------------------------
+   Every reminder has always carried a link with the destination in it, and
+   nothing ever read it: the homework reminder's ?assignment= was written into
+   the URL, sent to students for months, and landed every one of them on the
+   calendar with no idea why the button had not worked.
+
+   Read once, after the screen has loaded, and then cleared out of the address
+   bar so a refresh does not reopen whatever it named. A query parameter rather
+   than a fragment, because it survives the sign-in round trip: somebody
+   following this link from an email is usually signed out, and the fragment
+   would be gone by the time they were back. */
+async function followLink() {
+  const params = new URLSearchParams(location.search);
+  const go = params.get('go');
+  if (!go) return;
+
+  // Taken out of the address bar first, so a failure below cannot leave a link
+  // that reopens the same thing on every refresh.
+  const clean = new URL(location.href);
+  ['go', 'id'].forEach((key) => clean.searchParams.delete(key));
+  history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
+
+  if (isAdmin()) return; // These links are written to students.
+  const id = params.get('id');
+  try {
+    if (go === 'calendar') return showStudentView('calendar');
+    if (go === 'tracker') return showStudentView('tracker');
+    if (go === 'community') {
+      if (state.studentData?.hasCommunity) return showStudentView('community');
+      return showStudentView('calendar');
+    }
+    if (go === 'assignment' && id) {
+      showStudentView('calendar');
+      const assignment = (state.studentData?.assignments || []).find((row) => row.id === id);
+      /* An assignment that is gone, or belongs to somebody else's class, simply
+         leaves them on the calendar rather than on an error. */
+      if (assignment) openHomeworkForm(assignment);
+      return;
+    }
+  } catch (error) {
+    console.error(`Could not follow the link from that email: ${error.message}`);
+  }
 }
 
 async function boot() {

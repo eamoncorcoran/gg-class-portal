@@ -17,63 +17,78 @@
 import { query, one } from './db.js';
 import { sendBoardPostNotice, sendBoardReplyNotice } from './email.js';
 
-/* Everybody on the class who wants to hear about it. Whether they have ever
-   signed in does not come into it: somebody invited last week is exactly who a
-   first post is for. Withdrawn and deactivated accounts are left out. */
-async function classAudience(classId, column) {
+/* Who hears about what, written down once.
+   ------------------------------------------------------------------
+   These rules are narrower than they were, and the narrowing is the point: the
+   board was generating more mail than the sending allowance could carry, mostly
+   by telling people about conversations they were not really in.
+
+   A post: the class hears when the teacher posts, because that is the teacher
+   addressing the class. A student's post does not go round the class. It goes
+   to the staff, who are who it is actually addressed to, and the rest of the
+   class sees it when they next open the board.
+
+   A reply: a student hears about replies to a post they wrote. Only that. Having
+   left a comment on somebody else's thread is not a subscription to it, and
+   treating it as one is what turned one busy thread into an email each for
+   everybody who had ever said anything on it. Staff hear about replies on
+   anything they wrote or replied to, because following up is the job. */
+
+/* The class, for a post from the teacher. Whether somebody has ever signed in
+   does not come into it: a student invited last week is exactly who an
+   announcement is for. Withdrawn and deactivated accounts are left out. */
+async function classAudience(classId) {
   const result = await query(
     `SELECT u.id, u.name, u.email
      FROM class_students cs
      JOIN users u ON u.id=cs.student_id
      WHERE cs.class_id=$1 AND cs.active=true
        AND u.role='student' AND u.active=true AND u.withdrawn_at IS NULL
-       AND u.${column}=true
+       AND u.notify_board_posts=true
      ORDER BY u.name`,
     [classId],
   );
   return result.rows;
 }
 
-/* The people who run the course.
-   ------------------------------------------------------------------
-   A teacher is not on class_students and has no student role, so asking "who is
-   on this class" returns everybody except the person whose job it is to answer.
-   That is how a student could post a question and nobody was told at all: the
-   only other people on the board were the class, and the author is never
-   notified about their own post.
-
-   Every active administrator, because a class has no owning teacher in this
-   portal and guessing at one would quietly drop the notice for whoever guessed
-   wrong. */
-async function staffAudience() {
+/* The people who run the course. A teacher is not on class_students and has no
+   student role, so asking "who is on this class" returns everybody except the
+   person whose job it is to answer. Every active administrator, because a class
+   here has no owning teacher and guessing at one would drop the notice for
+   whoever was guessed wrong. */
+async function staffAudience(column = 'notify_board_posts') {
   const result = await query(
     `SELECT id, name, email FROM users
-     WHERE role='admin' AND active=true AND notify_board_posts=true
+     WHERE role='admin' AND active=true AND ${column}=true
      ORDER BY name`,
   );
   return result.rows;
 }
 
 /**
- * Everybody already in one conversation.
+ * Who hears about a reply.
  *
- * The person who wrote the post, everybody who has commented on it, and — when
- * this is a reply to a particular comment — whoever wrote that comment. An
- * administrator is included: a teacher who answered a question wants to know
- * when the student comes back, and they are not on class_students, so asking
- * only the class would miss them.
+ * The author of the post, always: it is their post. Staff who have written
+ * anything in the thread, because a teacher who answered a question wants to
+ * know when the student comes back.
+ *
+ * A student who merely commented on somebody else's post does not hear about
+ * every later turn in it. That was the single largest source of mail on a busy
+ * thread, and it is the weakest claim to an email in the list.
  */
-async function conversationAudience(thread, parentId) {
+async function conversationAudience(thread) {
   const result = await query(
     `SELECT DISTINCT u.id, u.name, u.email
      FROM users u
      WHERE u.active=true AND u.withdrawn_at IS NULL AND u.notify_board_replies=true
-       AND (u.id=$1
-            OR u.id IN (SELECT author_id FROM discussion_posts
-                        WHERE thread_id=$2 AND deleted_at IS NULL AND author_id IS NOT NULL)
-            OR u.id = (SELECT author_id FROM discussion_posts WHERE id=$3))
+       AND (
+         u.id = $1
+         OR (u.role = 'admin' AND u.id IN (
+              SELECT author_id FROM discussion_posts
+              WHERE thread_id = $2 AND deleted_at IS NULL AND author_id IS NOT NULL))
+       )
      ORDER BY u.name`,
-    [thread.author_id, thread.id, parentId || null],
+    [thread.author_id, thread.id],
   );
   return result.rows;
 }
@@ -128,6 +143,8 @@ async function deliver({ recipients, actorId, send, threadId, postId, templateKe
 
 /** How many people a new post on this class would reach. */
 export async function boardAudienceCount(classId) {
+  // What a post from the teacher reaches. A student's post reaches the staff
+  // only, and the composer showing this number is the teacher's own composer.
   const row = await one(
     `SELECT count(*)::int count
      FROM class_students cs JOIN users u ON u.id=cs.student_id
@@ -154,11 +171,15 @@ export async function notifyNewPost(threadId) {
     return { sent: 0, skipped: 'not published yet' };
   }
 
-  const klass = await classAudience(thread.class_id, 'notify_board_posts');
-  /* A student's post also goes to the staff, who are the people it is usually
-     addressed to. A teacher's post does not: they already know, and telling one
-     administrator about another's post is noise rather than news. */
-  const staff = thread.author_role === 'admin' ? [] : await staffAudience();
+  /* The class hears from the teacher. A student's post does not go round the
+     class: the rest of them see it when they next open the board, and mailing
+     twenty five people about one student's question is most of where the
+     allowance was going.
+
+     Staff hear about every post, whoever wrote it. That is the one they asked
+     for by name, and it is one message rather than a stream. */
+  const klass = thread.author_role === 'admin' ? await classAudience(thread.class_id) : [];
+  const staff = await staffAudience();
   return deliver({
     recipients: [...staff, ...klass],
     actorId: thread.author_id,
@@ -182,7 +203,7 @@ export async function notifyNewComment(postId) {
     'SELECT * FROM discussion_threads WHERE id=$1 AND deleted_at IS NULL', [comment.thread_id]);
   if (!thread) return { sent: 0, skipped: 'the post is gone' };
 
-  const recipients = await conversationAudience(thread, comment.parent_id);
+  const recipients = await conversationAudience(thread);
   return deliver({
     recipients,
     actorId: comment.author_id,

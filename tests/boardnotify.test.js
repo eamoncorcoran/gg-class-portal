@@ -57,19 +57,6 @@ test('the audience for a new post is the class, however new the student is', () 
   assert.match(body, /u\.active=true/);
 });
 
-test('the audience for a reply is the conversation, including the teacher', () => {
-  const fn = notify.slice(notify.indexOf('async function conversationAudience('));
-  const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /u\.id=\$1/, 'the person who wrote the post');
-  assert.match(body, /SELECT author_id FROM discussion_posts\s*\n?\s*WHERE thread_id=\$2/,
-    'everybody who has commented on it');
-  assert.match(body, /SELECT author_id FROM discussion_posts WHERE id=\$3/,
-    'and whoever is being replied to');
-  /* Deliberately not scoped to class_students: a teacher who answered a question
-     is not on that list and would otherwise never hear the student come back. */
-  assert.doesNotMatch(body, /class_students/);
-});
-
 test('every notice says how to stop getting them', () => {
   const email = fs.readFileSync(new URL('../src/email.js', import.meta.url), 'utf8');
   assert.match(email, /OFF_SWITCH_HTML/);
@@ -134,33 +121,57 @@ test('the backfill claims the history rather than deleting it', () => {
     'nothing here is worth deleting a post over');
 });
 
-/* The question the board exists to carry.
+/* Who hears about what, as it was asked for.
    ------------------------------------------------------------------
-   A student posted a question and nobody was told, including the person whose
-   job it is to answer. The audience for a post was "who is on this class",
-   which is class_students with role student. A teacher is on neither, so the
-   only people eligible were the class, and the author is never told about their
-   own post. On a class of one that meant the notification went to nobody at
-   all, and it would have been just as silent on a class of thirty for the one
-   person who needed it. */
-test('a student’s post reaches the staff, who are the people it is addressed to', () => {
-  assert.match(notify, /async function staffAudience\(\)/);
+   These rules are narrower than they were, and the narrowing was the whole
+   point: the board was sending more than the allowance could carry, mostly by
+   telling people about conversations they were not really in.
+
+     a post from the teacher  → the class, and the other staff
+     a post from a student    → the staff only
+     a reply                  → whoever wrote the post, and any staff in it
+
+   The case that used to cost the most is the one now missing: a student who
+   left a comment on somebody else's thread was mailed about every later turn in
+   it. Having said something once is not a subscription. */
+
+test('the class hears from the teacher, and not from each other', () => {
+  const post = notify.slice(notify.indexOf('export async function notifyNewPost'));
+  const body = post.slice(0, post.indexOf('\n}\n'));
+  assert.match(body, /thread\.author_role === 'admin' \? await classAudience\(thread\.class_id\) : \[\]/,
+    'a student post must not go round the class');
+  assert.match(body, /const staff = await staffAudience\(\)/,
+    'and the staff hear about every post, whoever wrote it');
+});
+
+test('a reply reaches the person whose post it is', () => {
+  const fn = notify.slice(notify.indexOf('async function conversationAudience('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /u\.id = \$1/, 'the author of the post, always');
+});
+
+test('a student who once commented is not subscribed to the thread', () => {
+  const fn = notify.slice(notify.indexOf('async function conversationAudience('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  /* The commenter clause is now scoped to staff. Without that scoping this is
+     an email to everybody who ever spoke on a busy thread, for every reply. */
+  assert.match(body, /u\.role = 'admin' AND u\.id IN \(\s*\n?\s*SELECT author_id FROM discussion_posts/,
+    'only staff are followed into a thread by having commented on it');
+});
+
+test('a teacher who answered a question hears when the student comes back', () => {
+  const fn = notify.slice(notify.indexOf('async function conversationAudience('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /thread_id = \$2/);
+  /* Deliberately not scoped to class_students: a teacher is not on that list
+     and would otherwise never be told. */
+  assert.doesNotMatch(body, /class_students/);
+});
+
+test('the staff are found by role, since a class has no owning teacher', () => {
+  assert.match(notify, /async function staffAudience\(column = 'notify_board_posts'\)/);
   const fn = notify.slice(notify.indexOf('async function staffAudience('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /role='admin' AND active=true/);
-  assert.match(body, /notify_board_posts=true/, 'and can still be turned off');
-
-  const post = notify.slice(notify.indexOf('export async function notifyNewPost'));
-  const postBody = post.slice(0, post.indexOf('\n}\n'));
-  assert.match(postBody, /thread\.author_role === 'admin' \? \[\] : await staffAudience\(\)/,
-    'a student post goes to the staff; a teacher post does not');
-  assert.match(postBody, /recipients: \[\.\.\.staff, \.\.\.klass\]/);
-});
-
-test('one administrator is not told about another one posting', () => {
-  /* They already know it happened, and it is not news to the other. */
-  const post = notify.slice(notify.indexOf('export async function notifyNewPost'));
-  const body = post.slice(0, post.indexOf('\n}\n'));
-  assert.match(body, /author_role === 'admin' \? \[\]/,
-    'a teacher post must not go round the staff');
+  assert.match(body, /\$\{column\}=true/, 'and can still turn it off');
 });

@@ -330,14 +330,20 @@ try {
 
     /* The board's notifications: the one thing here that reaches people outside
        the portal. Checked for who hears, and for how many times. */
-    const before = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    /* Counted per role, because a post now reaches two different audiences for
+       two different reasons: the class, because the teacher addressed them, and
+       the staff, because answering is their job. */
+    const studentNotices = () => one(
+      `SELECT count(*)::int c FROM email_deliveries d JOIN users u ON u.id=d.user_id
+       WHERE d.template_key='board_new_post' AND u.role='student'`);
+    const before = await studentNotices();
     made.announcedId = null;
     const announced = expectOk('a new post tells the class', await admin.call(
       `/api/admin/community/${made.classId}/threads`,
       { method: 'POST', body: { title: 'Audit announcement', body: 'Something worth hearing about.' } }));
     // Sent after the response, so give it a moment before counting.
     await new Promise((resolve) => { setTimeout(resolve, 1500); });
-    const after = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    const after = await studentNotices();
     expect('everyone on the class was told exactly once',
       after.c - before.c === 1, `${after.c - before.c} notices for one student`);
 
@@ -346,7 +352,7 @@ try {
        twice is what people unsubscribe over. */
     const { notifyPublishedPosts } = await import('../src/boardnotify.js');
     await notifyPublishedPosts();
-    const afterSweep = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    const afterSweep = await studentNotices();
     expect('and the sweep does not tell them again', afterSweep.c === after.c,
       `${afterSweep.c - after.c} extra notices after the sweep`);
     made.announcedId = announced?.id || null;
@@ -438,12 +444,16 @@ try {
       (d) => d?.boardPosts === true && d?.boardReplies === true);
     expectOk('a student can turn the emails off', await student.call('/api/auth/notifications',
       { method: 'PUT', body: { boardPosts: false } }));
-    const quiet = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    const quiet = await one(
+      `SELECT count(*)::int c FROM email_deliveries d JOIN users u ON u.id=d.user_id
+       WHERE d.template_key='board_new_post' AND u.email=$1`, [studentEmail]);
     expectOk('a later post is still posted', await admin.call(
       `/api/admin/community/${made.classId}/threads`,
       { method: 'POST', body: { title: 'After opting out', body: 'Should reach nobody.' } }));
     await new Promise((resolve) => { setTimeout(resolve, 1500); });
-    const stillQuiet = await one('SELECT count(*)::int c FROM email_deliveries WHERE template_key=$1', ['board_new_post']);
+    const stillQuiet = await one(
+      `SELECT count(*)::int c FROM email_deliveries d JOIN users u ON u.id=d.user_id
+       WHERE d.template_key='board_new_post' AND u.email=$1`, [studentEmail]);
     expect('but nobody who opted out is emailed', stillQuiet.c === quiet.c,
       `${stillQuiet.c - quiet.c} notices went out after opting out`);
     expectOk('and the setting can be put back', await student.call('/api/auth/notifications',
@@ -528,6 +538,18 @@ try {
   }
 
   /* ---------------------------------------------------------- settings */
+  section('Reminders');
+  {
+    const { runCheckinReminders, runClassReminders } = await import('../src/reminders.js');
+    /* Both are new, and both are the kind of thing that is only noticed when it
+       does not happen. Run them here so the journey would catch either going
+       silent. */
+    expect('the check-in reminder runs without falling over',
+      typeof (await runCheckinReminders()) === 'number', 'it threw');
+    expect('the class reminder runs without falling over',
+      typeof (await runClassReminders()) === 'number', 'it threw');
+  }
+
   section('Settings');
   expectOk('the settings screen loads', await admin.call('/api/settings'));
   expectOk('save the reminder settings', await admin.call('/api/settings/reminders',

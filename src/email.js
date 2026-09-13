@@ -450,12 +450,82 @@ export async function sendBoardReplyNotice({ student, thread, comment }) {
   });
 }
 
+/* A day before the weekly check-in closes.
+   Short on purpose: the check-in itself is six questions and takes two minutes,
+   so an email about it should not take longer to read than the thing it is
+   asking for. */
+export async function sendCheckinReminder({ student, week }) {
+  const firstName = String(student.name || '').split(' ')[0] || 'there';
+  const closes = new Intl.DateTimeFormat('en-IE', {
+    weekday: 'long', hour: 'numeric', minute: '2-digit', hour12: true,
+    timeZone: week.timezone || config.defaultTimezone,
+  }).format(new Date(week.checkin_due_at));
+  const url = `${config.appUrl}/?go=tracker`;
+
+  const text = [
+    `Hi ${firstName},`, '',
+    `This week's check-in closes ${closes}. It takes two minutes.`, '',
+    url,
+  ].join('\n');
+
+  return sendEmail({
+    to: student.email,
+    subject: 'Your weekly check-in closes tomorrow',
+    text,
+    html: layout({
+      title: 'Your weekly check-in closes tomorrow',
+      preheader: `Closes ${closes}. It takes two minutes.`,
+      body: paragraphsFrom(`Hi ${firstName},\n\nThis week's check-in closes ${closes}. It takes two minutes, and it is how I know how the week went for you.`),
+      buttonText: 'Do this week\u2019s check-in',
+      buttonUrl: url,
+    }),
+    priority: 'deadline',
+    metadata: { type: 'checkin_reminder', weekId: week.week_id, studentId: student.id },
+  });
+}
+
+/* Two hours before class.
+   Enough notice to move something and be there, and late enough that it is
+   about today rather than a thing on a list. The link opens the calendar,
+   which is where the join button lives and where a student would look for it. */
+export async function sendClassReminder({ student, klass, sitting }) {
+  const firstName = String(student.name || '').split(' ')[0] || 'there';
+  const zone = klass.timezone || config.defaultTimezone;
+  const at = new Intl.DateTimeFormat('en-IE', {
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone,
+  }).format(new Date(sitting.at)).replace(/\s/g, '').toLowerCase();
+  const extra = sitting.kind === 'extra';
+  const what = extra ? (sitting.label || 'An extra class') : 'Class';
+  const url = `${config.appUrl}/?go=calendar`;
+
+  const text = [
+    `Hi ${firstName},`, '',
+    `${what} is at ${at} today, about two hours from now.`, '',
+    `The join button is on your calendar: ${url}`,
+  ].join('\n');
+
+  return sendEmail({
+    to: student.email,
+    subject: `${what} at ${at} today`,
+    text,
+    html: layout({
+      title: `${what} at ${at} today`,
+      preheader: 'About two hours from now. The join button is on your calendar.',
+      body: paragraphsFrom(`Hi ${firstName},\n\n${what} is at ${at} today, about two hours from now.\n\nThe join button is on your calendar, along with the passcode.`),
+      buttonText: 'Open your calendar',
+      buttonUrl: url,
+    }),
+    priority: 'deadline',
+    metadata: { type: 'class_reminder', classId: klass.id, at: sitting.at, studentId: student.id },
+  });
+}
+
 export async function sendDeadlineReminder({ student, assignment, template }) {
   const values = {
     first_name: student.name.split(' ')[0],
     assignment_title: assignment.title,
     deadline_time: new Intl.DateTimeFormat('en-IE', { dateStyle: 'medium', timeStyle: 'short', timeZone: assignment.timezone || config.defaultTimezone }).format(new Date(assignment.deadline_at)),
-    assignment_link: `${config.appUrl}/?assignment=${assignment.id}`,
+    assignment_link: `${config.appUrl}/?go=assignment&id=${assignment.id}`,
   };
   const fill = (value) => String(value || '').replace(/{{\s*([^}]+)\s*}}/g, (_, key) => values[key.trim()] ?? '');
   const subject = fill(template.subject);
