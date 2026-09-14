@@ -1462,7 +1462,7 @@ function legendKey(tone, icon, label) {
 function trackerLegend(role = 'admin') {
   const states = role === 'admin'
     ? [['grey', 'book', 'Open'], ['orange', 'book', 'Needs your review'], ['green', 'book', 'Returned'], ['red', 'x', 'Missed or absent']]
-    : [['grey', 'book', 'To do'], ['green', 'book', 'Submitted or returned'], ['none', 'book', 'No homework set'], ['red', 'x', 'Missed or absent']];
+    : [['grey', 'book', 'To do'], ['green', 'book', 'Submitted or returned'], ['red', 'x', 'Missed or absent']];
   return `<div class="legend">
     <div class="legend-group"><span class="legend-title">Columns</span>
       ${legendKey('plain', 'camera', 'Attendance')}${legendKey('plain', 'talk', 'Check-in')}${legendKey('plain', 'book', 'Homework')}
@@ -7812,15 +7812,12 @@ function studentTrackerView() {
         const unread = homework?.status === 'returned' && !homework.feedback_read_at;
         actions.push({ state: { ...homeworkState(homework, assignment), unread }, name: assignments.length > 1 ? assignment.title : 'Homework', unread, attributes: `data-open-student-item="homework" data-assignment-id="${assignment.id}"` });
       });
-    } else {
-      // Some weeks carry homework and some do not. Leaving the slot out entirely
-      // made an empty week look identical to a week that had not loaded, so it
-      // now says so plainly.
-      actions.push({
-        state: { tone: 'none', icon: 'book', label: 'None set', hint: 'There is no homework for this week' },
-        name: 'Homework', disabled: true, attributes: '',
-      });
     }
+    /* A week with no homework shows no homework tile. It used to carry a greyed
+       "None set" one, on the reasoning that an absent tile looked like a week
+       that had not loaded. In practice it was a tile on every quiet week saying
+       there was nothing to do, which is what the empty space already says. The
+       row sizes itself from the number of tiles, so what is left closes up. */
     const needsAction = actions.some((action) => action.unread || action.state.tone === 'grey');
     return `<article class="week-card ${needsAction ? 'is-open' : ''} ${isCurrent ? 'is-current' : ''}">
       <header class="week-card-head">

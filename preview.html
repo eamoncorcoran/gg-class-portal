@@ -607,10 +607,7 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .options-block.nested{background:#fff;margin-top:2px}
 .options-body p{margin:0 0 12px;color:var(--text-tertiary);font-size:11px;line-height:1.65}
 
-/* A week with no homework says so, rather than quietly dropping the column. */
-.status-icon.none{background:transparent;color:var(--gray-300);border:1px dashed var(--border-strong)}
-.wk-action:disabled .status-icon.none{opacity:.85}
-
+.wk-action:disabled 
 /* Assignment upload settings */
 .upload-settings{padding:14px;margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--gray-25)}
 .upload-settings.is-on{border-color:var(--brand-200);background:var(--brand-25)}
@@ -656,7 +653,6 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .my-answer small{display:block;color:var(--text-quaternary);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 .my-answer p{margin:6px 0 0;color:var(--text-secondary);font-size:12px;line-height:1.65;white-space:pre-wrap}
 .my-files{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
-.legend-icon.none{background:transparent;color:var(--gray-400);border:1px dashed var(--border-strong)}
 
 /* In-page confirmation, replacing the browser dialog that sandboxed frames refuse. */
 .confirm-layer .overlay{z-index:100}
@@ -4856,7 +4852,7 @@ function legendKey(tone, icon, label) {
 function trackerLegend(role = 'admin') {
   const states = role === 'admin'
     ? [['grey', 'book', 'Open'], ['orange', 'book', 'Needs your review'], ['green', 'book', 'Returned'], ['red', 'x', 'Missed or absent']]
-    : [['grey', 'book', 'To do'], ['green', 'book', 'Submitted or returned'], ['none', 'book', 'No homework set'], ['red', 'x', 'Missed or absent']];
+    : [['grey', 'book', 'To do'], ['green', 'book', 'Submitted or returned'], ['red', 'x', 'Missed or absent']];
   return `<div class="legend">
     <div class="legend-group"><span class="legend-title">Columns</span>
       ${legendKey('plain', 'camera', 'Attendance')}${legendKey('plain', 'talk', 'Check-in')}${legendKey('plain', 'book', 'Homework')}
@@ -11206,15 +11202,12 @@ function studentTrackerView() {
         const unread = homework?.status === 'returned' && !homework.feedback_read_at;
         actions.push({ state: { ...homeworkState(homework, assignment), unread }, name: assignments.length > 1 ? assignment.title : 'Homework', unread, attributes: `data-open-student-item="homework" data-assignment-id="${assignment.id}"` });
       });
-    } else {
-      // Some weeks carry homework and some do not. Leaving the slot out entirely
-      // made an empty week look identical to a week that had not loaded, so it
-      // now says so plainly.
-      actions.push({
-        state: { tone: 'none', icon: 'book', label: 'None set', hint: 'There is no homework for this week' },
-        name: 'Homework', disabled: true, attributes: '',
-      });
     }
+    /* A week with no homework shows no homework tile. It used to carry a greyed
+       "None set" one, on the reasoning that an absent tile looked like a week
+       that had not loaded. In practice it was a tile on every quiet week saying
+       there was nothing to do, which is what the empty space already says. The
+       row sizes itself from the number of tiles, so what is left closes up. */
     const needsAction = actions.some((action) => action.unread || action.state.tone === 'grey');
     return `<article class="week-card ${needsAction ? 'is-open' : ''} ${isCurrent ? 'is-current' : ''}">
       <header class="week-card-head">

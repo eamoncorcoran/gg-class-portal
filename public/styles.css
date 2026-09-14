@@ -598,10 +598,7 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .options-block.nested{background:#fff;margin-top:2px}
 .options-body p{margin:0 0 12px;color:var(--text-tertiary);font-size:11px;line-height:1.65}
 
-/* A week with no homework says so, rather than quietly dropping the column. */
-.status-icon.none{background:transparent;color:var(--gray-300);border:1px dashed var(--border-strong)}
-.wk-action:disabled .status-icon.none{opacity:.85}
-
+.wk-action:disabled 
 /* Assignment upload settings */
 .upload-settings{padding:14px;margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--gray-25)}
 .upload-settings.is-on{border-color:var(--brand-200);background:var(--brand-25)}
@@ -647,7 +644,6 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .my-answer small{display:block;color:var(--text-quaternary);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 .my-answer p{margin:6px 0 0;color:var(--text-secondary);font-size:12px;line-height:1.65;white-space:pre-wrap}
 .my-files{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
-.legend-icon.none{background:transparent;color:var(--gray-400);border:1px dashed var(--border-strong)}
 
 /* In-page confirmation, replacing the browser dialog that sandboxed frames refuse. */
 .confirm-layer .overlay{z-index:100}
