@@ -25,7 +25,7 @@ import { notifyNewPost, notifyNewComment } from '../boardnotify.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
-import { nextClassWithSessions, joinLinkFor } from '../classtime.js';
+import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
@@ -956,6 +956,54 @@ router.get('/assignments', asyncRoute(async (req, res) => {
 
 /* The teaching calendar: every week of every class, so the homework screen can
    show which weeks carry an assignment and which deliberately do not. */
+/* Every class sitting in a range, for the calendar.
+   ------------------------------------------------------------------
+   Sittings are worked out rather than stored, so this asks classtime for them
+   the same way the student's calendar does. A week that was moved appears at
+   the time it actually runs, one that was cancelled appears struck through
+   rather than vanishing, and an extra evening appears as itself.
+
+   The join link is resolved here rather than on the screen, because it can be
+   overridden per week and per session, and the rule for which one wins should
+   not be written twice. */
+router.get('/class-dates', asyncRoute(async (req, res) => {
+  const params = [];
+  let scope = '';
+  if (req.query.classId) { params.push(req.query.classId), scope = `AND id=$${params.length}`; }
+  const classes = await query(`SELECT * FROM classes WHERE active=true ${scope}`, params);
+
+  const out = [];
+  for (const klass of classes.rows) {
+    const [changes, sessions, weeks] = await Promise.all([
+      query('SELECT on_date, kind, moved_to, reason FROM class_date_changes WHERE class_id=$1', [klass.id]),
+      query(`SELECT id, starts_at, duration_minutes, join_url, label, cancelled
+             FROM class_sessions WHERE class_id=$1`, [klass.id]),
+      query('SELECT week_start, join_url FROM weeks WHERE class_id=$1 AND join_url IS NOT NULL', [klass.id]),
+    ]);
+    for (const sitting of classSittings(klass, { changes: changes.rows, sessions: sessions.rows })) {
+      out.push({
+        ...sitting,
+        classId: klass.id,
+        classLabel: classLabel(klass),
+        timezone: klass.timezone,
+        joinUrl: sitting.joinUrl
+          || joinLinkFor(klass, weeks.rows, { weekStart: mondayOf(sitting.onDate) }),
+        note: klass.join_note || null,
+      });
+    }
+  }
+  out.sort((a, b) => new Date(a.at) - new Date(b.at));
+  res.json(out);
+}));
+
+/* The Monday a date belongs to, which is how a week is keyed everywhere here. */
+function mondayOf(isoDate) {
+  const date = new Date(`${String(isoDate).slice(0, 10)}T12:00:00Z`);
+  const shift = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - shift);
+  return date.toISOString().slice(0, 10);
+}
+
 router.get('/teaching-weeks', asyncRoute(async (req, res) => {
   const params = [];
   const where = req.query.classId ? (params.push(req.query.classId), 'WHERE w.class_id=$1') : '';

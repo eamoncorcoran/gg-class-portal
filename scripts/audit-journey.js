@@ -791,6 +791,21 @@ try {
   expectOk('the class list loads', await admin.call('/api/admin/classes'));
   expectOk('the student list loads', await admin.call('/api/admin/students'));
   expectOk('the assignment list loads', await admin.call('/api/admin/assignments'));
+  {
+    /* The teacher's calendar draws classes from these, so an empty or broken
+       answer is a calendar with no classes on it and nothing to say why. */
+    const dates = expectOk('the class dates load for the calendar',
+      await admin.call('/api/admin/class-dates'), (d) => Array.isArray(d));
+    if (Array.isArray(dates) && dates.length) {
+      const sitting = dates.find((row) => row.classId === made.classId) || dates[0];
+      expect('each sitting knows its class, its time and its kind',
+        Boolean(sitting.classId && sitting.at && sitting.kind),
+        JSON.stringify(sitting).slice(0, 160));
+    }
+    expectOk('and can be narrowed to one class',
+      await admin.call(`/api/admin/class-dates?classId=${made.classId}`),
+      (d) => Array.isArray(d) && d.every((row) => row.classId === made.classId));
+  }
   expectOk('the calendar feed address loads', await admin.call('/api/admin/calendar-feed'));
 
   if (made.classId) {

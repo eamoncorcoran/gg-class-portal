@@ -1800,3 +1800,13 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .send-kind span{font-size:12px;color:var(--text-secondary)}
 .send-kind i{grid-column:2;height:4px;border-radius:2px;background:var(--brand-500,var(--text-secondary));opacity:.5;display:block;min-width:2px}
 .data-table.compact td,.data-table.compact th{padding:6px 10px;font-size:12px}
+
+/* Classes and check-ins on the teacher's calendar, alongside the homework.
+   Each kind is a different colour so a month reads at a glance rather than
+   needing every entry hovered. */
+.calendar-event.klass{background:var(--brand-50,#eef6ea);border-color:var(--brand-300,#bcd9ae)}
+.calendar-event.klass .event-title{font-weight:650}
+.calendar-event.klass.skipped{opacity:.55;text-decoration:line-through}
+.calendar-event.klass.recorded{background:var(--gray-50);border-color:var(--border)}
+.calendar-event.klass.extra{border-style:dashed}
+.calendar-event.checkin{background:var(--warning-25);border-color:var(--warning-200)}

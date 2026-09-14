@@ -1809,6 +1809,16 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .send-kind span{font-size:12px;color:var(--text-secondary)}
 .send-kind i{grid-column:2;height:4px;border-radius:2px;background:var(--brand-500,var(--text-secondary));opacity:.5;display:block;min-width:2px}
 .data-table.compact td,.data-table.compact th{padding:6px 10px;font-size:12px}
+
+/* Classes and check-ins on the teacher's calendar, alongside the homework.
+   Each kind is a different colour so a month reads at a glance rather than
+   needing every entry hovered. */
+.calendar-event.klass{background:var(--brand-50,#eef6ea);border-color:var(--brand-300,#bcd9ae)}
+.calendar-event.klass .event-title{font-weight:650}
+.calendar-event.klass.skipped{opacity:.55;text-decoration:line-through}
+.calendar-event.klass.recorded{background:var(--gray-50);border-color:var(--border)}
+.calendar-event.klass.extra{border-style:dashed}
+.calendar-event.checkin{background:var(--warning-25);border-color:var(--warning-200)}
 </style>
 </head>
 <body>
@@ -4372,7 +4382,7 @@ function mobileNav() {
   const buttons = state.user.role === 'admin'
     ? [
         ['tracker', svg.grid, 'Tracker'],
-        ['assignments', svg.book, 'Homework'],
+        ['assignments', svg.calendar, 'Calendar'],
         ['courses', svg.cap, 'Courses'],
         ['community', svg.board, 'Board'],
       ]
@@ -4614,7 +4624,7 @@ function adminNav() {
     <div class="nav-label">Class trackers</div><nav class="nav">${classButtons}</nav>
     <div class="nav-label">Manage</div><nav class="nav">
       ${adminNavButton('people', svg.users, 'Classes & students')}
-      ${adminNavButton('assignments', svg.book, 'Homework')}
+      ${adminNavButton('assignments', svg.calendar, 'Calendar')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
       ${adminNavButton('community', svg.board, 'Community')}
@@ -4688,12 +4698,13 @@ async function renderAdmin() {
       title = 'Classes & students'; content = peopleView();
     } else if (state.view === 'assignments') {
       const query = state.showArchived ? '?includeArchived=true' : '';
-      [state.assignments, state.teachingWeeks, state.classes] = await Promise.all([
+      [state.assignments, state.teachingWeeks, state.classes, state.classDates] = await Promise.all([
         api(`/api/admin/assignments${query}`),
         api('/api/admin/teaching-weeks'),
         api('/api/admin/classes'),
+        api('/api/admin/class-dates'),
       ]);
-      title = 'Homework'; content = assignmentsView();
+      title = 'Calendar'; content = assignmentsView();
     } else if (state.view === 'checkins') {
       state.classes = await api('/api/admin/classes');
       state.checkinClassId ||= state.classes[0]?.id || null;
@@ -5142,7 +5153,7 @@ function assignmentsView() {
     <button class="btn primary" id="create-assignment">Create assignment</button>`;
 
   return `
-    ${pageHeader('Coursework', 'Homework', 'Plan the term week by week. Click a day to set homework, click an assignment to edit it.', actions)}
+    ${pageHeader('Coursework', 'Calendar', 'Classes, check-ins and homework, week by week. Click a class for its link, a day to set homework, an assignment to edit it.', actions)}
     <div class="card toolbar">
       <div class="toolbar-group">
         <div class="view-switch">
@@ -5160,6 +5171,62 @@ function assignmentsView() {
     </div>
     ${state.assignmentView === 'list' ? assignmentListView(visible) : assignmentCalendarView(visible)}`;
 }
+
+/* One class, opened from the calendar.
+   ------------------------------------------------------------------
+   The thing somebody wants from a calendar entry at ten to seven is the link,
+   so it is a button rather than a line of text to copy. The passcode is beside
+   it because the link alone drops a student into a page asking for something
+   nobody gave them.
+
+   A cancelled week still opens, and says it is cancelled. Silently having no
+   entry would leave somebody wondering whether they had the wrong week. */
+function openAdminClassInfo(classId, at) {
+  const sitting = (state.classDates || []).find((row) => row.classId === classId && row.at === at);
+  if (!sitting) return showToast('That class could not be found.', 'error');
+
+  const zone = sitting.timezone || 'Europe/Dublin';
+  const when = new Date(sitting.at).toLocaleString('en-IE', {
+    weekday: 'long', day: 'numeric', month: 'long',
+    hour: '2-digit', minute: '2-digit', timeZone: zone,
+  });
+  const running = ['running', 'moved', 'extra'].includes(sitting.kind);
+  const passcode = sitting.note ? passcodeOnly(sitting.note) : '';
+
+  modal({
+    title: sitting.classLabel.split(' | ')[0],
+    subtitle: CLASS_KIND_LABEL[sitting.kind] || 'Class',
+    body: `<div class="class-info">
+      ${sitting.reason ? `<p>${escapeHtml(sitting.reason)}</p>` : ''}
+      <dl class="class-info-rows">
+        <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
+        <div><dt>Timezone</dt><dd>${escapeHtml(zone)}</dd></div>
+        ${sitting.minutes ? `<div><dt>Length</dt><dd>${sitting.minutes} minutes</dd></div>` : ''}
+        ${running && passcode ? `<div><dt>Passcode</dt><dd><code>${escapeHtml(passcode)}</code></dd></div>` : ''}
+        ${running && !sitting.joinUrl ? '<div><dt>Link</dt><dd>No class link set</dd></div>' : ''}
+      </dl>
+    </div>`,
+    footer: `<button class="btn" data-close-modal>Close</button>
+      <button class="btn" id="class-info-setup">Class setup</button>
+      ${running && sitting.joinUrl
+        ? `<a class="btn primary" href="${escapeHtml(sitting.joinUrl)}" target="_blank" rel="noopener noreferrer">${svg.video} Open the class</a>`
+        : ''}`,
+    onOpen() {
+      document.getElementById('class-info-setup').addEventListener('click', () => {
+        closeModal();
+        openClassSetupModal(classId);
+      });
+    },
+  });
+}
+
+const CLASS_KIND_LABEL = {
+  running: 'Class as usual',
+  moved: 'Moved to this time',
+  recorded: 'Pre-recorded this week',
+  skipped: 'No class this week',
+  extra: 'Extra class',
+};
 
 function assignmentCalendarView(assignments) {
   const cursor = state.assignmentMonth ? new Date(state.assignmentMonth) : new Date();
@@ -5213,15 +5280,51 @@ function assignmentCalendarView(assignments) {
   });
 
   const events = new Map();
+  const add = (day, html) => events.set(day, [...(events.get(day) || []), html]);
+
+  /* The classes themselves, which is what somebody is usually looking for when
+     they open a calendar. Drawn from the worked-out sittings, so a moved class
+     sits at its new time and a cancelled one is struck through rather than
+     quietly missing. */
+  (state.classDates || [])
+    .filter((sitting) => !filter || sitting.classId === filter)
+    .forEach((sitting) => {
+      const when = zonedDateParts(sitting.at, sitting.timezone);
+      if (when.year !== year || when.month !== month) return;
+      const off = sitting.kind === 'skipped';
+      const label = sitting.kind === 'extra' ? (sitting.label || 'Extra class') : sitting.classLabel.split(' | ')[0];
+      add(when.day, `<button class="calendar-event klass ${sitting.kind}" data-class-sitting="${escapeHtml(sitting.at)}" data-class-id="${sitting.classId}"
+        title="${escapeHtml(`${sitting.classLabel} — ${CLASS_KIND_LABEL[sitting.kind] || sitting.kind}`)}">
+        <span class="event-time">${off ? '' : escapeHtml(fmtDate(sitting.at, { time: true, timeOnly: true }))}</span>
+        <span class="event-title">${escapeHtml(label)}</span>
+      </button>`);
+    });
+
+  /* Check-ins, which close on a day of their own and were invisible here: the
+     week was shaded but the deadline that matters was not on it anywhere. */
+  weeks.filter((week) => week.checkin_enabled !== false).forEach((week) => {
+    const when = zonedDateParts(week.checkin_due_at);
+    if (when.year !== year || when.month !== month) return;
+    /* Named by class. Three groups can have a check-in closing at the same
+       minute, and three identical chips on one day say nothing about which is
+       which. */
+    const whose = String(week.classLabel || '').split(' | ')[0];
+    add(when.day, `<button class="calendar-event checkin" data-week-checkin="${week.id}"
+      title="${escapeHtml(`${whose}: check-in closes ${fmtDate(week.checkin_due_at, { time: true, weekday: true, dateStyle: 'short' })}`)}">
+      <span class="event-time">${escapeHtml(fmtDate(week.checkin_due_at, { time: true, timeOnly: true }))}</span>
+      <span class="event-title">Check-in${filter ? '' : `: ${escapeHtml(whose)}`}</span>
+    </button>`);
+  });
+
   assignments.forEach((assignment) => {
     const when = zonedDateParts(assignment.reopened_until || assignment.deadline_at);
     if (when.year !== year || when.month !== month) return;
     const closed = assignmentClosed(assignment);
     const tone = assignment.status === 'archived' ? 'archived' : closed ? 'closed' : 'open';
-    events.set(when.day, [...(events.get(when.day) || []), `<button class="calendar-event assignment ${tone}" data-edit-assignment="${assignment.id}" title="${escapeHtml(`${assignment.title} — due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, weekday: true, dateStyle: 'short' })}`)}">
+    add(when.day, `<button class="calendar-event assignment ${tone}" data-edit-assignment="${assignment.id}" title="${escapeHtml(`${assignment.title} — due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, weekday: true, dateStyle: 'short' })}`)}">
       <span class="event-time">${escapeHtml(fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, timeOnly: true }))}</span>
       <span class="event-title">${escapeHtml(assignment.title)}</span>
-    </button>`]);
+    </button>`);
   });
 
   const cells = [];
@@ -9441,6 +9544,16 @@ function bindAdminView() {
   document.querySelectorAll('[data-reset-student]').forEach((button) => button.addEventListener('click', () => studentAccessAction(button.dataset.resetStudent, 'reset-password')));
   document.querySelectorAll('[data-remove-student]').forEach((button) => button.addEventListener('click', () => confirmRemoveStudent(button.dataset.removeStudent)));
   document.querySelectorAll('[data-edit-assignment]').forEach((button) => button.addEventListener('click', () => openAssignmentModal(state.assignments.find((item) => item.id === button.dataset.editAssignment))));
+  document.querySelectorAll('[data-class-sitting]').forEach((button) => button.addEventListener('click',
+    () => openAdminClassInfo(button.dataset.classId, button.dataset.classSitting)));
+  /* A check-in on the calendar goes to the screen where its dates are set,
+     which is the only thing anybody wants to do with one from here. */
+  document.querySelectorAll('[data-week-checkin]').forEach((button) => button.addEventListener('click', () => {
+    const week = (state.teachingWeeks || []).find((row) => row.id === button.dataset.weekCheckin);
+    state.checkinClassId = week?.class_id || state.checkinClassId;
+    state.view = 'checkins';
+    renderAdmin();
+  }));
   document.querySelectorAll('[data-reopen-assignment]').forEach((button) => button.addEventListener('click', () => openReopenModal(button.dataset.reopenAssignment)));
   bindAssignmentCalendar();
   bindAttendance();
@@ -10717,7 +10830,13 @@ function plainHour(value, timeZone = classTimezone()) {
  */
 function passcodeOnly(note) {
   const text = String(note || '').trim();
-  const match = /^pass\s*code\s*[:\-]?\s*(.+)$/i.exec(text);
+  /* Anywhere in the line, not only at the start. A class note is usually written
+     as a sentence, "7pm Irish · Passcode: 975967", and anchoring to the start
+     meant the whole sentence was printed under the heading Passcode.
+
+     The code itself stops at the next separator, so anything written after it
+     does not get dragged in. */
+  const match = /pass\s*code\s*[:\-]?\s*([^\s·|,;]+)/i.exec(text);
   return match ? match[1].trim() : text;
 }
 
