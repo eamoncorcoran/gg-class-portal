@@ -390,6 +390,55 @@ try {
         `/api/admin/plan-topics/${spare.id}`, { method: 'PATCH', body: { examGroup: 'Paper 9' } }), 400);
     }
 
+    /* A topic the packaged plan did not know about, and taking one off the
+       course altogether. */
+    const extra = expectOk('a topic can be added to the course', await admin.call(
+      `/api/admin/plans/${made.courseId}/topics`,
+      { method: 'POST', body: { title: `Audit topic ${stamp}`, category: 'Oral', examGroup: 'Oral' } }),
+    (d) => d?.exam_group === 'Oral');
+    expectStatus('but not the same one twice', await admin.call(
+      `/api/admin/plans/${made.courseId}/topics`,
+      { method: 'POST', body: { title: `Audit topic ${stamp}` } }), 409);
+    expectStatus('and not one with no name', await admin.call(
+      `/api/admin/plans/${made.courseId}/topics`, { method: 'POST', body: { title: 'x' } }), 400);
+    const guessed = expectOk('a topic with no section given is put in one', await admin.call(
+      `/api/admin/plans/${made.courseId}/topics`,
+      { method: 'POST', body: { title: `Audit filíocht ${stamp}`, category: 'Filíocht' } }),
+    (d) => d?.exam_group === 'Paper 2');
+    expectOk('and it shows up in the bank unscheduled', await admin.call(
+      `/api/admin/plans/${made.courseId}/topics`),
+    (d) => d.counts.total === 99 && d.topics.some((topic) => topic.id === extra?.id && !topic.weeks.length));
+
+    expectOk('an unscheduled topic comes off without a question', await admin.call(
+      `/api/admin/plan-topics/${guessed?.id}`, { method: 'DELETE' }), (d) => d?.scheduled === 0);
+
+    /* One that is scheduled and ticked. Removing it takes the weeks with it, so
+       it is confirmed against the ticks the way removing a plan is. */
+    const busy = bank?.topics?.find((topic) => topic.weeks.length);
+    if (busy) {
+      const full = await admin.call(`/api/admin/plans/${made.courseId}`);
+      const item = full.data?.weeks?.flatMap((week) => week.items)
+        .find((row) => row.title === busy.title);
+      await admin.call(`/api/admin/plan-items/${item?.id}`, { method: 'PATCH', body: { done: true } });
+      const cost = expectOk('what removing a topic costs can be asked first',
+        await admin.call(`/api/admin/plan-topics/${busy.id}/cost`),
+        (d) => d?.scheduled === busy.weeks.length && d?.done === 1);
+      expectStatus('removing a taught topic without confirming is refused', await admin.call(
+        `/api/admin/plan-topics/${busy.id}`, { method: 'DELETE' }), 409);
+      expectStatus('and confirming the wrong number is refused too', await admin.call(
+        `/api/admin/plan-topics/${busy.id}?confirmDone=99`, { method: 'DELETE' }), 409);
+      expectOk('confirming the right number removes it', await admin.call(
+        `/api/admin/plan-topics/${busy.id}?confirmDone=${cost?.done}`, { method: 'DELETE' }));
+      const after = await admin.call(`/api/admin/plans/${made.courseId}`);
+      expect('and it is out of every week it was in',
+        !after.data?.weeks?.some((week) => week.items.some((row) => row.title === busy.title)),
+        'the topic went but its weeks did not');
+      expect('with the tick gone from the count', after.data?.progress?.done === 0,
+        JSON.stringify(after.data?.progress));
+    }
+    expectStatus('a topic that is already gone says so', await admin.call(
+      `/api/admin/plan-topics/${guessed?.id}`, { method: 'DELETE' }), 404);
+
     expectOk('the plan can be removed', await admin.call(
       `/api/admin/plans/${made.courseId}?confirmDone=0`, { method: 'DELETE' }));
     expectStatus('and its topics go with it', await admin.call(

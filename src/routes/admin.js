@@ -25,8 +25,8 @@ import { notifyNewPost, notifyNewComment } from '../boardnotify.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
-import { coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, reorderWeek,
-  scheduleTopic, setItemDone, setTopicGroup, unscheduleItem } from '../plans.js';
+import { addTopic, coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, removeTopic,
+  reorderWeek, scheduleTopic, setItemDone, setTopicGroup, topicCost, unscheduleItem } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
@@ -2538,6 +2538,35 @@ router.delete('/plan-items/:id', asyncRoute(async (req, res) => {
   const row = await unscheduleItem(req.params.id);
   if (!row) return res.status(404).json({ error: 'That item is no longer in the plan.' });
   res.json({ ok: true });
+}));
+
+/* A topic the course covers that the packaged plan did not know about. */
+router.post('/plans/:courseId/topics', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    title: z.string().trim().min(2).max(160),
+    category: z.string().trim().max(60).optional(),
+    examGroup: z.string().trim().max(40).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'A topic needs a name of at least two characters.' });
+  const row = await addTopic({ courseId: req.params.courseId, ...parsed.data });
+  await audit({ actorId: req.user.id, action: 'plan.topic.added', entityType: 'course', entityId: req.params.courseId, metadata: { title: row.title }, ip: req.ip });
+  res.status(201).json(row);
+}));
+
+/* What removing one would cost, so the question can name it before it is asked. */
+router.get('/plan-topics/:id/cost', asyncRoute(async (req, res) => {
+  const cost = await topicCost(req.params.id);
+  if (!cost) return res.status(404).json({ error: 'Topic not found.' });
+  res.json(cost);
+}));
+
+/* Off the course altogether, and out of every week it was in. Unscheduling an
+   item is the other thing: that leaves the topic in the bank. */
+router.delete('/plan-topics/:id', asyncRoute(async (req, res) => {
+  const row = await removeTopic({ topicId: req.params.id, confirmDone: req.query.confirmDone ?? -1 });
+  if (!row) return res.status(404).json({ error: 'Topic not found.' });
+  await audit({ actorId: req.user.id, action: 'plan.topic.removed', entityType: 'course', entityId: req.params.id, metadata: { title: row.title, done: row.done }, ip: req.ip });
+  res.json(row);
 }));
 
 router.patch('/plan-topics/:id', asyncRoute(async (req, res) => {

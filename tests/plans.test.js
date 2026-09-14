@@ -234,3 +234,77 @@ test('a plan imported before the topic bank existed gets one', () => {
     assert.ok(backfill.includes(`('${escaped}'`), `${topic.title} is missing from the backfill`);
   }
 });
+
+/* Changing what the course covers.
+   ------------------------------------------------------------------
+   A topic can be added to the bank and taken off the course altogether, which
+   is a different and larger thing than taking it out of one week. */
+
+test('a topic cannot be added to the same plan twice', () => {
+  const body = bodyOf(plans, 'export async function addTopic');
+  assert.match(body, /ON CONFLICT \(plan_id,title\) DO NOTHING/);
+  assert.match(body, /status: 409/, 'a silent no-op would look like it worked');
+  const migration = fs.readFileSync(
+    new URL('../migrations/042_plan_topic_bank.sql', import.meta.url), 'utf8');
+  assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS plan_topics_unique ON plan_topics\(plan_id, title\)/,
+    'the index is what actually refuses it');
+});
+
+test('a topic added without a section is given one', () => {
+  const body = bodyOf(plans, 'export async function addTopic');
+  assert.match(body, /examGroupFor\(\{ title, category \}\)/,
+    'an ungrouped topic would be missing from the topic list');
+});
+
+test('removing a topic takes its weeks with it, unscheduling does not', () => {
+  const remove = bodyOf(plans, 'export async function removeTopic');
+  assert.match(remove, /DELETE FROM plan_items WHERE topic_id=\$1/,
+    'the column is ON DELETE SET NULL, so the items have to go explicitly');
+  assert.match(remove, /DELETE FROM plan_topics WHERE id=\$1/);
+  const unschedule = bodyOf(plans, 'export async function unscheduleItem');
+  assert.doesNotMatch(unschedule, /plan_topics/, 'that one leaves the topic in the bank');
+});
+
+test('removing a topic that has been taught is confirmed against the ticks', () => {
+  /* The same guard as removing a whole plan. A tick is the only thing here that
+     cannot be got back from the file. */
+  const body = bodyOf(plans, 'export async function removeTopic');
+  assert.match(body, /cost\.done > 0 && Number\(confirmDone\) !== cost\.done/);
+  assert.match(body, /status: 409/);
+  assert.match(app, /confirmDone=\$\{cost\.done\}/, 'and the screen has to send the count it showed');
+  assert.match(app, /async function confirmRemoveTopic/, 'asked before it happens, not after');
+});
+
+test('all three exam sections are always there, even an empty one', () => {
+  const body = bodyOf(plans, 'export async function getTopics');
+  assert.doesNotMatch(body, /\.filter\(\(group\) => group\.topics\.length\)/,
+    'a section that vanished would take its "add a topic" button with it');
+  assert.match(app, /data-add-topic="/);
+});
+
+test('the checklist drags as well as ticks', () => {
+  const body = bodyOf(app, 'function planChecklistView');
+  assert.match(body, /class="plan-items plan-drop" data-week=/,
+    'every week is a drop target, including one with nothing in it');
+  assert.match(body, /plan-item plan-item-drag/);
+  assert.match(body, /draggable="true"/);
+  /* An empty week renders its list anyway. Without it there would be nowhere to
+     drag the first topic of a week to. */
+  assert.match(body, /Nothing here yet\. Drag a topic in from another week\./);
+});
+
+test('only the view on screen is wired up', () => {
+  /* All three views draw the same rows as draggable, so binding more than one
+     of them put two handlers on every drop: the week order went twice, and the
+     second one was built from a DOM the first had already changed. */
+  const body = bodyOf(app, 'function bindPlans');
+  assert.match(body, /if \(mode === 'build'\) bindPlanBuilder\(\);/);
+  assert.match(body, /else if \(mode === 'topics'\) bindPlanTopics\(\);/);
+  assert.match(body, /else bindPlanChecklist\(\);/);
+});
+
+test('the checklist and the builder share one piece of dragging', () => {
+  assert.match(app, /function bindPlanItemDrag\(refresh\)/);
+  assert.match(app, /bindPlanItemDrag\(refreshPlanChecklist\)/);
+  assert.match(app, /bindPlanItemDrag\(refreshPlanBuilder\)/);
+});

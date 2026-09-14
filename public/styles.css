@@ -1889,7 +1889,8 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 
 /* Every topic the course covers, in the three parts of the exam. */
 .plan-group{padding:16px 18px;margin-bottom:12px}
-.plan-group-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.plan-group-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+.plan-group-head .muted{margin-left:auto}
 .plan-group-head h3{margin:0;font-size:14px}
 .plan-topic-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
 .plan-topic{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--radius-sm)}
@@ -1903,11 +1904,25 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .plan-topic-weeks{font-size:11.5px;color:var(--text-secondary);flex:0 0 auto}
 .plan-topic:not(.is-on) .plan-topic-weeks{color:var(--warning-700,#8a6100);font-weight:600}
 .plan-topic-group{min-height:28px;padding:3px 6px;font-size:10.5px;flex:0 0 auto}
+.plan-topic .plan-item-remove{opacity:0}
+.plan-topic:hover .plan-item-remove,.plan-topic .plan-item-remove:focus-visible{opacity:1}
+
+/* The checklist drags too, so its rows need the same handle and the same
+   feedback. The grip is faint until the row is under the cursor: a plan is read
+   far more often than it is rearranged. */
+.plan-items .plan-item{border:1px solid transparent}
+.plan-items .plan-item-drag{cursor:grab}
+.plan-items .plan-item-drag:hover{border-color:var(--border)}
+.plan-items .plan-grip{opacity:0;transition:opacity .12s}
+.plan-items .plan-item-drag:hover .plan-grip{opacity:1}
+.plan-items.is-over{outline:2px dashed var(--brand-400);outline-offset:4px;border-radius:var(--radius-sm)}
+.plan-items{min-height:20px}
 
 @media (max-width:900px){
   .plan-builder{grid-template-columns:minmax(0,1fr)}
   .plan-bank{position:static;max-height:none}
-  .plan-item-remove{opacity:1}
+  .plan-item-remove,.plan-topic .plan-item-remove,.plan-items .plan-grip{opacity:1}
+  .plan-group-head{flex-wrap:wrap}
 }
 
 .plan-homework,.plan-notes{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);

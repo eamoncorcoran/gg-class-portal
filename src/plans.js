@@ -237,10 +237,13 @@ export async function getTopics(courseId) {
   return {
     // Flat for the builder's bank, grouped for the topic list.
     topics,
+    /* All three sections, always, even an empty one. A section that disappeared
+       when its last topic was removed would take its "add a topic" button with
+       it, and there would be no way back into it. */
     groups: EXAM_GROUPS.map((name) => ({
       name,
       topics: topics.filter((topic) => topic.examGroup === name),
-    })).filter((group) => group.topics.length),
+    })),
     counts: {
       total: topics.length,
       scheduled: topics.filter((topic) => topic.weeks.length).length,
@@ -307,6 +310,71 @@ export async function reorderWeek({ weekId, itemIds }) {
 /** Take an item out of a week. The topic stays in the bank. */
 export async function unscheduleItem(itemId) {
   return one('DELETE FROM plan_items WHERE id=$1 RETURNING id, title', [itemId]);
+}
+
+/**
+ * Put a topic into the bank without scheduling it.
+ *
+ * The bank is what the course covers; a week is where it is taught. A topic
+ * added here appears in the topic list as "not scheduled" and in the builder as
+ * something to drag, which is the point of it: a course grows a topic before it
+ * has a week to put it in.
+ */
+export async function addTopic({ courseId, title, category, examGroup }) {
+  const plan = await one('SELECT id FROM course_plans WHERE course_id=$1', [courseId]);
+  if (!plan) throw Object.assign(new Error('This course has no plan yet.'), { status: 404 });
+
+  const group = EXAM_GROUPS.includes(examGroup) ? examGroup : examGroupFor({ title, category });
+  const next = await one(
+    'SELECT COALESCE(max(position),-1)+1 position FROM plan_topics WHERE plan_id=$1', [plan.id]);
+  const row = await one(
+    `INSERT INTO plan_topics(plan_id,title,category,exam_group,position)
+     VALUES ($1,$2,$3,$4,$5) ON CONFLICT (plan_id,title) DO NOTHING RETURNING *`,
+    [plan.id, title, category || null, group, next.position],
+  );
+  /* The unique index is what refuses a second copy. Two topics with the same
+     name in one bank would be indistinguishable in the builder. */
+  if (!row) throw Object.assign(new Error('That topic is already on this plan.'), { status: 409 });
+  return row;
+}
+
+/** What removing a topic would cost: the weeks it is in, and the ticks on them. */
+export async function topicCost(topicId) {
+  return one(
+    `SELECT t.id, t.title,
+            count(i.id)::int scheduled,
+            count(i.id) FILTER (WHERE i.done_at IS NOT NULL)::int done
+     FROM plan_topics t LEFT JOIN plan_items i ON i.topic_id=t.id
+     WHERE t.id=$1 GROUP BY t.id, t.title`,
+    [topicId],
+  );
+}
+
+/**
+ * Take a topic off the course altogether, and out of every week it was in.
+ *
+ * Distinct from unscheduling, which takes it out of one week and leaves it in
+ * the bank. Confirmed against the number of ticks it carries, the same way
+ * removing a whole plan is: a tick is the one thing here that cannot be got
+ * back from the file.
+ */
+export async function removeTopic({ topicId, confirmDone }) {
+  const cost = await topicCost(topicId);
+  if (!cost) return null;
+  if (cost.done > 0 && Number(confirmDone) !== cost.done) {
+    throw Object.assign(
+      new Error(`${cost.title} is ticked off in ${cost.done} week${cost.done === 1 ? '' : 's'}. Removing it loses that record.`),
+      { status: 409, done: cost.done },
+    );
+  }
+  return transaction(async (client) => {
+    /* The items go first and explicitly. The column is ON DELETE SET NULL, which
+       is right for a topic being retired out from under weeks that were taught,
+       but here the weeks are meant to go with it. */
+    await client.query('DELETE FROM plan_items WHERE topic_id=$1', [topicId]);
+    await client.query('DELETE FROM plan_topics WHERE id=$1', [topicId]);
+    return { ok: true, title: cost.title, scheduled: cost.scheduled, done: cost.done };
+  });
 }
 
 /** Move a topic to a different part of the exam. */
