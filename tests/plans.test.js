@@ -210,3 +210,27 @@ test('the three ways of looking at a plan are one page, not three', () => {
   const body = bodyOf(app, 'function planView');
   assert.match(body, /state\.planMode \|\| 'list'/, 'ticking off is the everyday view');
 });
+
+test('a plan imported before the topic bank existed gets one', () => {
+  /* 042 made the table; a plan brought in between the two deploys had its weeks
+     and its ticks and an empty bank, which reads as a builder with nothing to
+     drag. Written out in full rather than gathered from the weeks, because the
+     weeks do not know about the topics that are on the course but not yet
+     scheduled, which are the ones worth looking at. */
+  const backfill = fs.readFileSync(
+    new URL('../migrations/043_backfill_plan_topics.sql', import.meta.url), 'utf8');
+  const values = backfill.match(/^    \('/gm) || [];
+  assert.equal(values.length, data.topics.length,
+    'every packaged topic has to be in the backfill');
+  assert.match(backfill, /ON CONFLICT \(plan_id, title\) DO NOTHING/,
+    'running it twice must not double the bank');
+  assert.match(backfill, /AND i\.topic_id IS NULL/,
+    'and it must not re-point items that already know their topic');
+  /* The fadas have to survive being written into SQL, and an apostrophe in a
+     title would end the string early. */
+  assert.ok(backfill.includes("'Fáiltiú'"), 'the Irish was mangled on the way in');
+  for (const topic of data.topics) {
+    const escaped = topic.title.replace(/'/g, "''");
+    assert.ok(backfill.includes(`('${escaped}'`), `${topic.title} is missing from the backfill`);
+  }
+});
