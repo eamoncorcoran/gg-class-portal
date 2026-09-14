@@ -1,0 +1,991 @@
+{
+  "topics": [
+    {
+      "title": "Introduction to Course",
+      "category": "Course"
+    },
+    {
+      "title": "HL Irish Course Overview",
+      "category": "Course"
+    },
+    {
+      "title": "How to Be Strategic with the Marking Scheme",
+      "category": "Course"
+    },
+    {
+      "title": "Fáiltiú",
+      "category": "Oral"
+    },
+    {
+      "title": "Introduction to Verbs",
+      "category": "Grammar"
+    },
+    {
+      "title": "Leathan vs Caol",
+      "category": "Grammar"
+    },
+    {
+      "title": "Sentence Structure",
+      "category": "Grammar"
+    },
+    {
+      "title": "Aimsir Chaite: Briathra Neamhrialta",
+      "category": "Grammar"
+    },
+    {
+      "title": "Aimsir Chaite: Briathra Rialta",
+      "category": "Grammar"
+    },
+    {
+      "title": "Aimsir Láithreach: Briathra Neamhrialta",
+      "category": "Grammar"
+    },
+    {
+      "title": "Aimsir Láithreach: Briathra Rialta",
+      "category": "Grammar"
+    },
+    {
+      "title": "Aimsir Fháistineach",
+      "category": "Grammar"
+    },
+    {
+      "title": "Question Words",
+      "category": "Grammar"
+    },
+    {
+      "title": "Grammar Consolidation / Common Errors",
+      "category": "Grammar"
+    },
+    {
+      "title": "Mé Féin",
+      "category": "Oral"
+    },
+    {
+      "title": "Clann",
+      "category": "Oral"
+    },
+    {
+      "title": "Áit Chónaithe",
+      "category": "Oral"
+    },
+    {
+      "title": "Spórt",
+      "category": "Oral"
+    },
+    {
+      "title": "Ceol",
+      "category": "Oral"
+    },
+    {
+      "title": "Teilifís",
+      "category": "Oral"
+    },
+    {
+      "title": "Léitheoireacht",
+      "category": "Oral"
+    },
+    {
+      "title": "Post",
+      "category": "Oral"
+    },
+    {
+      "title": "Deireadh Seachtaine A.C.",
+      "category": "Oral"
+    },
+    {
+      "title": "Deireadh Seachtaine A.L.",
+      "category": "Oral"
+    },
+    {
+      "title": "Deireadh Seachtaine A.F.",
+      "category": "Oral"
+    },
+    {
+      "title": "Laethanta Saoire A.C.",
+      "category": "Oral"
+    },
+    {
+      "title": "Laethanta Saoire A.F.",
+      "category": "Oral"
+    },
+    {
+      "title": "Oideachas atá agat",
+      "category": "Oral"
+    },
+    {
+      "title": "Céim Ollscoile",
+      "category": "Oral"
+    },
+    {
+      "title": "Ardteist & Múinteoireacht",
+      "category": "Oral"
+    },
+    {
+      "title": "Córas Oideachais",
+      "category": "Oral"
+    },
+    {
+      "title": "Staid na Gaeilge",
+      "category": "Oral"
+    },
+    {
+      "title": "Todhchaí na Gaeilge",
+      "category": "Oral"
+    },
+    {
+      "title": "Tábhacht na Gaeilge",
+      "category": "Oral"
+    },
+    {
+      "title": "Cur chun cinn na Gaeilge",
+      "category": "Oral"
+    },
+    {
+      "title": "Alcól & Drugaí",
+      "category": "Oral"
+    },
+    {
+      "title": "Meabhairshláinte",
+      "category": "Oral"
+    },
+    {
+      "title": "Foréigean",
+      "category": "Oral"
+    },
+    {
+      "title": "Caitheamh Aimsirí",
+      "category": "Oral"
+    },
+    {
+      "title": "Full Oral Simulation",
+      "category": "Oral"
+    },
+    {
+      "title": "Mock Oral / Oral Correction",
+      "category": "Oral"
+    },
+    {
+      "title": "Introduction to Essay",
+      "category": "Aiste"
+    },
+    {
+      "title": "General Opening",
+      "category": "Aiste"
+    },
+    {
+      "title": "Phrases for Paragraphs",
+      "category": "Aiste"
+    },
+    {
+      "title": "Rialtas Paragraph",
+      "category": "Aiste"
+    },
+    {
+      "title": "Future Paragraph",
+      "category": "Aiste"
+    },
+    {
+      "title": "General Closing",
+      "category": "Aiste"
+    },
+    {
+      "title": "An Ghaeilge: Aiste",
+      "category": "Aiste"
+    },
+    {
+      "title": "Sochaí na hÉireann: Aiste",
+      "category": "Aiste"
+    },
+    {
+      "title": "Daoine Óga: Aiste",
+      "category": "Aiste"
+    },
+    {
+      "title": "Timpeallacht: Aiste",
+      "category": "Aiste"
+    },
+    {
+      "title": "Foréigean: Aiste",
+      "category": "Aiste"
+    },
+    {
+      "title": "Fadhb na Tithíochta: Aiste",
+      "category": "Aiste"
+    },
+    {
+      "title": "Essay Consolidation / Adapting to Titles",
+      "category": "Aiste"
+    },
+    {
+      "title": "Sraith 1",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 2",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 3",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 4",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 5",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 6",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 7",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 8",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 9",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Sraith 10",
+      "category": "Sraith Pictiúr"
+    },
+    {
+      "title": "Dínit an Bhróin",
+      "category": "Filíocht"
+    },
+    {
+      "title": "Deireadh na Feide",
+      "category": "Filíocht"
+    },
+    {
+      "title": "Iníon",
+      "category": "Filíocht"
+    },
+    {
+      "title": "Glaoch Abhaile",
+      "category": "Filíocht"
+    },
+    {
+      "title": "Úirchill an Chreagáin",
+      "category": "Filíocht"
+    },
+    {
+      "title": "Clann Lir",
+      "category": "Prós"
+    },
+    {
+      "title": "Athair",
+      "category": "Prós"
+    },
+    {
+      "title": "Cuairteoir",
+      "category": "Prós"
+    },
+    {
+      "title": "Eoinín na nÉan",
+      "category": "Prós"
+    },
+    {
+      "title": "An tIriseoir",
+      "category": "Prós"
+    },
+    {
+      "title": "Dordán: Introduction / Structure",
+      "category": "Dordán"
+    },
+    {
+      "title": "Dordán: Characters & Relationships",
+      "category": "Dordán"
+    },
+    {
+      "title": "Dordán: Themes & Key Events",
+      "category": "Dordán"
+    },
+    {
+      "title": "Dordán: Exam Questions",
+      "category": "Dordán"
+    },
+    {
+      "title": "Dordán: Revision",
+      "category": "Dordán"
+    },
+    {
+      "title": "Cluastuiscint: Introduction",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Cluastuiscint: Cómhrá",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Cluastuiscint: Fógra",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Cluastuiscint: Píosa Nuachta",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Cluastuiscint Masterclass",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Léamhthuiscint Explained",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Léamhthuiscint Masterclass",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Poetry Exam Technique",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Prose Exam Technique",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Paper 1 Masterclass",
+      "category": "Exam Skills"
+    },
+    {
+      "title": "Literature Revision",
+      "category": "Revision"
+    },
+    {
+      "title": "Grammar + Oral + Essay Revision",
+      "category": "Revision"
+    },
+    {
+      "title": "Listening + Reading Revision",
+      "category": "Revision"
+    },
+    {
+      "title": "Full Course Revision",
+      "category": "Revision"
+    },
+    {
+      "title": "Réamhfhocal",
+      "category": "Grammar",
+      "group": "Paper 1"
+    },
+    {
+      "title": "6A",
+      "category": "Sraith Pictiúr",
+      "group": "Sraith Pictiúr"
+    },
+    {
+      "title": "Revision Week",
+      "category": "Revision",
+      "group": "Paper 1"
+    },
+    {
+      "title": "Topical Essay Title",
+      "category": "Aiste",
+      "group": "Paper 1"
+    }
+  ],
+  "weeks": [
+    {
+      "name": "Week 1",
+      "topics": [
+        {
+          "title": "Introduction to Course",
+          "category": "Course"
+        },
+        {
+          "title": "HL Irish Course Overview",
+          "category": "Course"
+        },
+        {
+          "title": "How to Be Strategic with the Marking Scheme",
+          "category": "Course"
+        },
+        {
+          "title": "Fáiltiú",
+          "category": "Oral"
+        },
+        {
+          "title": "Sentence Structure",
+          "category": "Grammar"
+        }
+      ],
+      "homework": "- Answer the fáiltiú",
+      "notes": ""
+    },
+    {
+      "name": "Week 2",
+      "topics": [
+        {
+          "title": "Aimsir Chaite: Briathra Neamhrialta",
+          "category": "Grammar"
+        },
+        {
+          "title": "Leathan vs Caol",
+          "category": "Grammar"
+        },
+        {
+          "title": "Clann",
+          "category": "Oral"
+        },
+        {
+          "title": "Introduction to Verbs",
+          "category": "Grammar"
+        },
+        {
+          "title": "Aimsir Chaite: Briathra Rialta",
+          "category": "Grammar"
+        }
+      ],
+      "homework": "- Write about what you did last weekend\n- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 3",
+      "topics": [
+        {
+          "title": "Question Words",
+          "category": "Grammar"
+        },
+        {
+          "title": "Deireadh Seachtaine A.C.",
+          "category": "Oral"
+        },
+        {
+          "title": "Laethanta Saoire A.C.",
+          "category": "Oral"
+        },
+        {
+          "title": "Mé Féin",
+          "category": "Oral"
+        }
+      ],
+      "homework": "- Learn last weekend\n- Write what you did yesterday",
+      "notes": ""
+    },
+    {
+      "name": "Week 4",
+      "topics": [
+        {
+          "title": "Áit Chónaithe",
+          "category": "Oral"
+        },
+        {
+          "title": "Aimsir Láithreach: Briathra Neamhrialta",
+          "category": "Grammar"
+        },
+        {
+          "title": "Aimsir Láithreach: Briathra Rialta",
+          "category": "Grammar"
+        },
+        {
+          "title": "Deireadh Seachtaine A.L.",
+          "category": "Oral"
+        }
+      ],
+      "homework": "- Cad a dhéanann tú gach seachtain?\n- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 5",
+      "topics": [
+        {
+          "title": "Post",
+          "category": "Oral"
+        },
+        {
+          "title": "Sraith 1",
+          "category": "Sraith Pictiúr"
+        },
+        {
+          "title": "Léamhthuiscint Explained",
+          "category": "Exam Skills"
+        },
+        {
+          "title": "Teilifís",
+          "category": "Oral"
+        }
+      ],
+      "homework": "- Learn 1-3 of Sraith\n- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 6",
+      "topics": [
+        {
+          "title": "Aimsir Fháistineach",
+          "category": "Grammar"
+        },
+        {
+          "title": "Deireadh Seachtaine A.F.",
+          "category": "Oral"
+        },
+        {
+          "title": "Laethanta Saoire A.F.",
+          "category": "Oral"
+        }
+      ],
+      "homework": "- Learn 3-6 Sraith\n- Cad a dhéanfaidh tú an Samhradh seo chugainn?",
+      "notes": ""
+    },
+    {
+      "name": "Week 7",
+      "topics": [
+        {
+          "title": "Spórt",
+          "category": "Oral"
+        },
+        {
+          "title": "Sraith 2",
+          "category": "Sraith Pictiúr"
+        },
+        {
+          "title": "Réamhfhocal",
+          "category": "Grammar"
+        }
+      ],
+      "homework": "- An imríonn tú spórt?\n- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 8",
+      "topics": [
+        {
+          "title": "Ceol",
+          "category": "Oral"
+        },
+        {
+          "title": "Cluastuiscint: Introduction",
+          "category": "Exam Skills"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 9",
+      "topics": [
+        {
+          "title": "Oideachas atá agat",
+          "category": "Oral"
+        },
+        {
+          "title": "Introduction to Essay",
+          "category": "Aiste"
+        },
+        {
+          "title": "General Opening",
+          "category": "Aiste"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 10",
+      "topics": [
+        {
+          "title": "Sraith 3",
+          "category": "Sraith Pictiúr"
+        },
+        {
+          "title": "Céim Ollscoile",
+          "category": "Oral"
+        },
+        {
+          "title": "Poetry Exam Technique",
+          "category": "Exam Skills"
+        },
+        {
+          "title": "Dínit an Bhróin",
+          "category": "Filíocht"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 11",
+      "topics": [
+        {
+          "title": "Phrases for Paragraphs",
+          "category": "Aiste"
+        },
+        {
+          "title": "Córas Oideachais",
+          "category": "Oral"
+        },
+        {
+          "title": "Alcól & Drugaí",
+          "category": "Oral"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 12",
+      "topics": [
+        {
+          "title": "Meabhairshláinte",
+          "category": "Oral"
+        },
+        {
+          "title": "Future Paragraph",
+          "category": "Aiste"
+        },
+        {
+          "title": "Rialtas Paragraph",
+          "category": "Aiste"
+        },
+        {
+          "title": "Sochaí na hÉireann: Aiste",
+          "category": "Aiste"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 13",
+      "topics": [
+        {
+          "title": "Sraith 4",
+          "category": "Sraith Pictiúr"
+        },
+        {
+          "title": "General Closing",
+          "category": "Aiste"
+        },
+        {
+          "title": "Daoine Óga: Aiste",
+          "category": "Aiste"
+        },
+        {
+          "title": "Essay Consolidation / Adapting to Titles",
+          "category": "Aiste"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 14",
+      "topics": [
+        {
+          "title": "Staid na Gaeilge",
+          "category": "Oral"
+        },
+        {
+          "title": "Tábhacht na Gaeilge",
+          "category": "Oral"
+        },
+        {
+          "title": "Fadhb na Tithíochta: Aiste",
+          "category": "Aiste"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 15",
+      "topics": [
+        {
+          "title": "Todhchaí na Gaeilge",
+          "category": "Oral"
+        },
+        {
+          "title": "Cur chun cinn na Gaeilge",
+          "category": "Oral"
+        },
+        {
+          "title": "Sraith 5",
+          "category": "Sraith Pictiúr"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 16",
+      "topics": [
+        {
+          "title": "Deireadh na Feide",
+          "category": "Filíocht"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 17",
+      "topics": [
+        {
+          "title": "Sraith 6",
+          "category": "Sraith Pictiúr"
+        },
+        {
+          "title": "6A",
+          "category": "Sraith Pictiúr"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 18",
+      "topics": [
+        {
+          "title": "Revision Week",
+          "category": "Revision"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 19",
+      "topics": [
+        {
+          "title": "Sraith 7",
+          "category": "Sraith Pictiúr"
+        },
+        {
+          "title": "Foréigean",
+          "category": "Oral"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 20",
+      "topics": [
+        {
+          "title": "Ardteist & Múinteoireacht",
+          "category": "Oral"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 21",
+      "topics": [
+        {
+          "title": "Iníon",
+          "category": "Filíocht"
+        },
+        {
+          "title": "Sraith 8",
+          "category": "Sraith Pictiúr"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 22",
+      "topics": [
+        {
+          "title": "Revision Week",
+          "category": "Revision"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 23",
+      "topics": [
+        {
+          "title": "Sraith 9",
+          "category": "Sraith Pictiúr"
+        },
+        {
+          "title": "Úirchill an Chreagáin",
+          "category": "Filíocht"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 24",
+      "topics": [
+        {
+          "title": "Sraith 10",
+          "category": "Sraith Pictiúr"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 25",
+      "topics": [
+        {
+          "title": "Clann Lir",
+          "category": "Prós"
+        },
+        {
+          "title": "Prose Exam Technique",
+          "category": "Exam Skills"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 26",
+      "topics": [
+        {
+          "title": "Revision Week",
+          "category": "Revision"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 27",
+      "topics": [
+        {
+          "title": "Athair",
+          "category": "Prós"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 28",
+      "topics": [
+        {
+          "title": "Grammar + Oral + Essay Revision",
+          "category": "Revision"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 29",
+      "topics": [
+        {
+          "title": "Foréigean: Aiste",
+          "category": "Aiste"
+        },
+        {
+          "title": "Eoinín na nÉan",
+          "category": "Prós"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 30",
+      "topics": [
+        {
+          "title": "Topical Essay Title",
+          "category": "Aiste"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 31",
+      "topics": [
+        {
+          "title": "Cuairteoir",
+          "category": "Prós"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 32",
+      "topics": [
+        {
+          "title": "Dordán: Introduction / Structure",
+          "category": "Dordán"
+        },
+        {
+          "title": "Dordán: Characters & Relationships",
+          "category": "Dordán"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 33",
+      "topics": [
+        {
+          "title": "Dordán: Themes & Key Events",
+          "category": "Dordán"
+        },
+        {
+          "title": "Dordán: Exam Questions",
+          "category": "Dordán"
+        },
+        {
+          "title": "Dordán: Revision",
+          "category": "Dordán"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 34",
+      "topics": [
+        {
+          "title": "Listening + Reading Revision",
+          "category": "Revision"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    },
+    {
+      "name": "Week 35",
+      "topics": [
+        {
+          "title": "Literature Revision",
+          "category": "Revision"
+        }
+      ],
+      "homework": "- Practice Listening",
+      "notes": ""
+    },
+    {
+      "name": "Week 36",
+      "topics": [
+        {
+          "title": "Full Course Revision",
+          "category": "Revision"
+        }
+      ],
+      "homework": "",
+      "notes": ""
+    }
+  ],
+  "calendar": {
+    "startDate": "2026-09-07",
+    "breakStart": "2026-12-21",
+    "breakEnd": "2027-01-03"
+  }
+}

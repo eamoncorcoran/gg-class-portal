@@ -25,6 +25,7 @@ import { notifyNewPost, notifyNewComment } from '../boardnotify.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
+import { coursesWithPlans, getPlan, importPlan, packagedPlan, setItemDone } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
@@ -2450,6 +2451,99 @@ const courseInput = z.object({
   coverUrl: z.string().max(2000).nullable().optional(),
   published: z.boolean().optional().default(false),
 });
+
+/* Teaching plans. Teacher only, deliberately: there is no route for a plan on
+   the student side and nothing that returns one to them. What a course intends
+   to cover, and how far through it the teaching has got, is not something a
+   student needs to be reading. */
+router.get('/plans', asyncRoute(async (_req, res) => {
+  res.json(await coursesWithPlans());
+}));
+
+router.get('/plans/:courseId', asyncRoute(async (req, res) => {
+  const plan = await getPlan(req.params.courseId);
+  if (!plan) return res.status(404).json({ error: 'This course has no plan yet.' });
+  res.json(plan);
+}));
+
+/* The plan that ships with the portal, brought into a course. */
+router.post('/plans/:courseId/import', asyncRoute(async (req, res) => {
+  const course = await one('SELECT id, title FROM courses WHERE id=$1', [req.params.courseId]);
+  if (!course) return res.status(404).json({ error: 'Course not found.' });
+  const plan = await packagedPlan();
+  const created = await importPlan({
+    courseId: course.id,
+    title: req.body?.title?.trim() || 'Irish for Primary Teaching 2026/27',
+    plan,
+    actorId: req.user.id,
+  });
+  await audit({ actorId: req.user.id, action: 'plan.imported', entityType: 'course', entityId: course.id, ip: req.ip });
+  res.status(201).json(created);
+}));
+
+router.delete('/plans/:courseId', asyncRoute(async (req, res) => {
+  const plan = await one('SELECT id FROM course_plans WHERE course_id=$1', [req.params.courseId]);
+  if (!plan) return res.status(404).json({ error: 'This course has no plan.' });
+  const covered = await one(
+    `SELECT count(*)::int c FROM plan_items i JOIN plan_weeks w ON w.id=i.week_id
+     WHERE w.plan_id=$1 AND i.done_at IS NOT NULL`, [plan.id]);
+  /* The ticks are the one thing here that cannot be recreated from the file, so
+     removing a plan that carries them has to be confirmed against the count. */
+  const confirmed = Number(req.query.confirmDone ?? -1);
+  if (covered.c > 0 && confirmed !== covered.c) {
+    return res.status(409).json({
+      error: `This plan has ${covered.c} item${covered.c === 1 ? '' : 's'} ticked off. Removing it loses that record.`,
+      done: covered.c,
+    });
+  }
+  await query('DELETE FROM course_plans WHERE id=$1', [plan.id]);
+  await audit({ actorId: req.user.id, action: 'plan.removed', entityType: 'course', entityId: req.params.courseId, metadata: { done: covered.c }, ip: req.ip });
+  res.json({ ok: true });
+}));
+
+router.patch('/plan-items/:id', asyncRoute(async (req, res) => {
+  const parsed = z.object({ done: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Say whether it is done.' });
+  const row = await setItemDone({ itemId: req.params.id, done: parsed.data.done, actorId: req.user.id });
+  if (!row) return res.status(404).json({ error: 'That item is no longer in the plan.' });
+  res.json(row);
+}));
+
+/* The checklist, as a file.
+   Every scheduled item with its week, its category and whether it is done, which
+   is what somebody wants when they are looking at the term away from a screen. */
+router.get('/plans/:courseId/checklist.csv', asyncRoute(async (req, res) => {
+  const plan = await getPlan(req.params.courseId);
+  if (!plan) return res.status(404).json({ error: 'This course has no plan yet.' });
+
+  const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const lines = [
+    ['Week', 'Topic', 'Category', 'Done', 'Date covered', 'Covered by', 'Homework for that week']
+      .map(cell).join(','),
+  ];
+  for (const week of plan.weeks) {
+    if (!week.items.length) {
+      lines.push([week.name, '', '', '', '', '', week.homework || ''].map(cell).join(','));
+      continue;
+    }
+    for (const [index, item] of week.items.entries()) {
+      lines.push([
+        week.name, item.title, item.category || '',
+        item.doneAt ? 'Yes' : 'No',
+        item.doneAt ? new Date(item.doneAt).toISOString().slice(0, 10) : '',
+        item.doneBy || '',
+        // Written against the week, so it goes on the week's first line only.
+        index === 0 ? (week.homework || '') : '',
+      ].map(cell).join(','));
+    }
+  }
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="plan-${String(plan.course_title).replace(/[^\w -]/g, '').slice(0, 40).trim() || 'course'}-${new Date().toISOString().slice(0, 10)}.csv"`);
+  // The byte order mark, or Excel reads the fadas in these topic names as Latin-1.
+  res.send(`\uFEFF${lines.join('\n')}\n`);
+}));
 
 router.post('/courses', asyncRoute(async (req, res) => {
   const parsed = courseInput.safeParse(req.body);

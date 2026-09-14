@@ -1235,6 +1235,7 @@ function adminNav() {
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.calendar, 'Calendar')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
+      ${adminNavButton('plans', svg.grid, 'Plans')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
       ${adminNavButton('community', svg.board, 'Community')}
       ${adminNavButton('attendance', svg.upload, 'Attendance upload')}
@@ -1319,6 +1320,14 @@ async function renderAdmin() {
       state.checkinClassId ||= state.classes[0]?.id || null;
       state.teachingWeeks = state.checkinClassId ? await api(`/api/admin/teaching-weeks?classId=${state.checkinClassId}`) : [];
       title = 'Weekly check-ins'; content = checkinsView();
+    } else if (state.view === 'plans') {
+      if (state.planCourseId) {
+        state.plan = await api(`/api/admin/plans/${state.planCourseId}`).catch(() => null);
+        // A plan removed in another tab leaves the picker rather than an error.
+        if (!state.plan) state.planCourseId = null;
+      }
+      if (!state.planCourseId) state.plans = await api('/api/admin/plans');
+      title = 'Plans'; content = state.planCourseId ? planView() : plansView();
     } else if (state.view === 'courses') {
       state.classes = await api('/api/admin/classes');
       if (state.course) { title = 'Courses'; content = coursePage(); }
@@ -1344,6 +1353,7 @@ async function renderAdmin() {
     shell({ nav: adminNav(), content, title, roleLabel: 'Administrator' });
     bindAdminView();
     if (state.view === 'courses') bindCourse();
+    if (state.view === 'plans') bindPlans();
   } catch (error) {
     showToast(error.message, 'error');
     if (error.status === 401) renderAuth('login');
@@ -2571,6 +2581,196 @@ function courseCard(course) {
       ${isAdmin() ? '' : `<div class="cc-bar"><span style="width:${percent}%"></span></div>`}
     </div>
   </article>`;
+}
+
+/* Teaching plans.
+   ------------------------------------------------------------------
+   What a course is meant to cover, week by week, and what has been. The teacher
+   ticks items off as they are taught, so the plan doubles as the record of where
+   the term actually got to, which is the thing nobody has when they need it in
+   April.
+
+   Students never see this. There is no route for it on their side. */
+function plansView() {
+  const courses = state.plans || [];
+  if (!courses.length) {
+    return `${pageHeader('Teaching', 'Plans', 'What each course covers, week by week.')}
+      <div class="empty-state"><h3>No courses yet</h3><p>A plan belongs to a course, so make the course first.</p></div>`;
+  }
+
+  return `${pageHeader('Teaching', 'Plans', 'What each course covers, week by week, and what has been taught.')}
+    <div class="class-grid">${courses.map((course) => {
+      const has = Boolean(course.plan_id);
+      const pct = has && course.total ? Math.round((course.done / course.total) * 100) : 0;
+      return `<article class="card class-card">
+        <div class="card-actions">
+          <div><h3>${escapeHtml(course.title)}</h3>
+            <p>${has ? escapeHtml(course.plan_title) : 'No plan yet'}</p></div>
+          ${has
+            ? `<button class="btn small" data-open-plan="${course.id}">Open plan</button>`
+            : `<button class="btn small primary" data-import-plan="${course.id}">Add the plan</button>`}
+        </div>
+        ${has ? `<div class="mini-stats">
+          <span class="mini-stat ${pct === 100 ? 'good' : ''}">${course.done} of ${course.total} covered</span>
+          <span class="mini-stat">${pct}%</span>
+        </div>
+        <div class="plan-bar"><i style="width:${pct}%"></i></div>` : `<p class="muted small">Bring in the Irish for Primary Teaching plan, or leave this course without one.</p>`}
+      </article>`;
+    }).join('')}</div>`;
+}
+
+/* One plan, open.
+   Grouped by week because that is how it is taught and how somebody looks for
+   their place in it. The categories are coloured rather than grouped, since a
+   week deliberately mixes them. */
+function planView() {
+  const plan = state.plan;
+  if (!plan) return '<div class="empty-state"><h3>Plan not found</h3></div>';
+  const pct = plan.progress.total ? Math.round((plan.progress.done / plan.progress.total) * 100) : 0;
+
+  const actions = `
+    <button class="btn" id="plan-back">All plans</button>
+    <button class="btn" id="plan-export">Export the checklist</button>
+    <button class="btn danger" id="plan-remove">Remove plan</button>`;
+
+  return `${pageHeader('Teaching', escapeHtml(plan.title), `${escapeHtml(plan.course_title)} · ${plan.progress.done} of ${plan.progress.total} covered`, actions)}
+    <section class="card plan-summary">
+      <div class="plan-bar big"><i style="width:${pct}%"></i></div>
+      <p class="muted small">${pct}% of the plan taught${plan.starts_on ? ` · starts ${escapeHtml(fmtDate(plan.starts_on, { dateStyle: 'medium' }))}` : ''}${plan.break_start ? ` · break ${escapeHtml(fmtDate(plan.break_start, { dateStyle: 'short' }))} to ${escapeHtml(fmtDate(plan.break_end, { dateStyle: 'short' }))}` : ''}</p>
+    </section>
+    <div class="plan-weeks">${plan.weeks.map((week) => {
+      const done = week.items.filter((item) => item.doneAt).length;
+      const all = week.items.length && done === week.items.length;
+      return `<section class="card plan-week ${all ? 'is-done' : ''}">
+        <div class="plan-week-head">
+          <div><strong>${escapeHtml(week.name)}</strong>
+            ${week.items.length ? `<span class="muted small">${done} of ${week.items.length}</span>` : '<span class="muted small">Nothing scheduled</span>'}</div>
+          ${week.items.length ? `<button class="btn small" data-plan-week-all="${week.id}" data-all-done="${all}">${all ? 'Clear week' : 'Tick the week'}</button>` : ''}
+        </div>
+        ${week.items.length ? `<ul class="plan-items">${week.items.map((item) => `
+          <li class="plan-item ${item.doneAt ? 'is-done' : ''}">
+            <label>
+              <input type="checkbox" data-plan-item="${item.id}" ${item.doneAt ? 'checked' : ''}>
+              <span class="plan-item-title">${escapeHtml(item.title)}</span>
+            </label>
+            <span class="plan-cat cat-${escapeHtml(String(item.category || '').toLowerCase().replace(/[^a-z]/g, ''))}">${escapeHtml(item.category || '')}</span>
+            ${item.doneAt ? `<span class="plan-when" title="${escapeHtml(`Ticked by ${item.doneBy || 'somebody'}`)}">${escapeHtml(fmtDate(item.doneAt, { dateStyle: 'short' }))}</span>` : ''}
+          </li>`).join('')}</ul>` : ''}
+        ${week.homework ? `<div class="plan-homework"><strong>Homework</strong>${richText(week.homework)}</div>` : ''}
+        ${week.notes ? `<div class="plan-notes">${richText(week.notes)}</div>` : ''}
+      </section>`;
+    }).join('')}</div>`;
+}
+
+function bindPlans() {
+  document.querySelectorAll('[data-open-plan]').forEach((button) => button.addEventListener('click', async () => {
+    state.planCourseId = button.dataset.openPlan;
+    await loadAdmin();
+  }));
+  document.querySelectorAll('[data-import-plan]').forEach((button) => button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await api(`/api/admin/plans/${button.dataset.importPlan}/import`, { method: 'POST', body: {} });
+      state.planCourseId = button.dataset.importPlan;
+      await loadAdmin();
+      showToast('Plan added');
+    } catch (error) {
+      button.disabled = false;
+      showToast(error.message, 'error');
+    }
+  }));
+
+  document.getElementById('plan-back')?.addEventListener('click', async () => {
+    state.planCourseId = null;
+    await loadAdmin();
+  });
+  document.getElementById('plan-export')?.addEventListener('click', () => {
+    window.location.href = `/api/admin/plans/${state.planCourseId}/checklist.csv`;
+  });
+  document.getElementById('plan-remove')?.addEventListener('click', confirmRemovePlan);
+
+  /* Ticked one at a time and redrawn in place, so a plan of eighty items does
+     not scroll back to the top on every tick. */
+  document.querySelectorAll('[data-plan-item]').forEach((box) => box.addEventListener('change', async () => {
+    const wanted = box.checked;
+    try {
+      await api(`/api/admin/plan-items/${box.dataset.planItem}`, { method: 'PATCH', body: { done: wanted } });
+      box.closest('.plan-item')?.classList.toggle('is-done', wanted);
+      await refreshPlanCounts();
+    } catch (error) {
+      box.checked = !wanted;
+      showToast(error.message, 'error');
+    }
+  }));
+
+  document.querySelectorAll('[data-plan-week-all]').forEach((button) => button.addEventListener('click', async () => {
+    const week = state.plan?.weeks.find((row) => row.id === button.dataset.planWeekAll);
+    if (!week) return;
+    const done = button.dataset.allDone !== 'true';
+    button.disabled = true;
+    try {
+      for (const item of week.items) {
+        if (Boolean(item.doneAt) === done) continue;
+        await api(`/api/admin/plan-items/${item.id}`, { method: 'PATCH', body: { done } });
+      }
+      await loadAdmin();
+    } catch (error) {
+      button.disabled = false;
+      showToast(error.message, 'error');
+    }
+  }));
+}
+
+/* The counts at the top, without redrawing eighty rows underneath them. */
+async function refreshPlanCounts() {
+  try {
+    const plan = await api(`/api/admin/plans/${state.planCourseId}`);
+    state.plan = plan;
+    const pct = plan.progress.total ? Math.round((plan.progress.done / plan.progress.total) * 100) : 0;
+    document.querySelectorAll('.plan-summary .plan-bar i').forEach((bar) => { bar.style.width = `${pct}%`; });
+    const note = document.querySelector('.plan-summary p');
+    if (note) note.textContent = `${pct}% of the plan taught`;
+    const heading = document.querySelector('.page-header p');
+    if (heading) heading.textContent = `${plan.course_title} · ${plan.progress.done} of ${plan.progress.total} covered`;
+    plan.weeks.forEach((week) => {
+      const card = document.querySelector(`[data-plan-week-all="${week.id}"]`)?.closest('.plan-week');
+      if (!card) return;
+      const done = week.items.filter((item) => item.doneAt).length;
+      const all = done === week.items.length;
+      card.classList.toggle('is-done', all);
+      const count = card.querySelector('.plan-week-head .muted');
+      if (count) count.textContent = `${done} of ${week.items.length}`;
+      const button = card.querySelector('[data-plan-week-all]');
+      if (button) { button.dataset.allDone = String(all); button.textContent = all ? 'Clear week' : 'Tick the week'; }
+    });
+  } catch { /* The tick itself is saved; the counts catch up on the next load. */ }
+}
+
+async function confirmRemovePlan() {
+  const plan = state.plan;
+  if (!plan) return;
+  const done = plan.progress.done;
+  modal({
+    title: `Remove ${plan.title}?`,
+    subtitle: done ? 'This loses the record of what was taught.' : 'The plan can be added again at any time.',
+    body: done
+      ? `<div class="error-banner"><strong>${done} item${done === 1 ? '' : 's'} ticked off will be lost.</strong></div>
+         <p class="muted small">The plan itself comes back from the file, but which weeks you had covered does not. Export the checklist first if that record matters.</p>`
+      : '<p class="muted small">Nothing has been ticked off, so there is nothing to lose. The plan can be brought back in whenever you want it.</p>',
+    footer: `<button class="btn" data-close-modal>Cancel</button>
+      <button class="btn danger" id="confirm-remove-plan">Remove${done ? ` and lose ${done} tick${done === 1 ? '' : 's'}` : ''}</button>`,
+    onOpen() {
+      document.getElementById('confirm-remove-plan').addEventListener('click', async () => {
+        try {
+          await api(`/api/admin/plans/${state.planCourseId}?confirmDone=${done}`, { method: 'DELETE' });
+          closeModal();
+          state.planCourseId = null;
+          await loadAdmin();
+          showToast('Plan removed');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
 }
 
 function coursesView() {

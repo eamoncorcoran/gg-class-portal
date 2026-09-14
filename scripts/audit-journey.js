@@ -294,6 +294,49 @@ try {
           { method: 'PUT', body: { modules: [{ id: made.moduleId, lessons: [made.lessonId] }] } }));
       }
     }
+    /* The teaching plan: brought in, ticked off, exported, and out of reach of
+       every student. */
+    expectOk('the plan picker lists the courses', await admin.call('/api/admin/plans'),
+      (d) => Array.isArray(d));
+    expectStatus('a course with no plan says so', await admin.call(`/api/admin/plans/${made.courseId}`), 404);
+    expectOk('a plan can be brought into a course', await admin.call(
+      `/api/admin/plans/${made.courseId}/import`, { method: 'POST', body: {} }));
+    const plan = expectOk('and reads back with its weeks', await admin.call(`/api/admin/plans/${made.courseId}`),
+      (d) => Array.isArray(d?.weeks) && d.weeks.length === 36 && d?.progress?.total === 84);
+    expectStatus('importing a second time is refused rather than merged', await admin.call(
+      `/api/admin/plans/${made.courseId}/import`, { method: 'POST', body: {} }), 409);
+
+    const firstItem = plan?.weeks?.[0]?.items?.[0]?.id;
+    if (firstItem) {
+      expectOk('an item can be ticked off', await admin.call(`/api/admin/plan-items/${firstItem}`,
+        { method: 'PATCH', body: { done: true } }), (d) => Boolean(d?.done_at));
+      const after = await admin.call(`/api/admin/plans/${made.courseId}`);
+      expect('and the count follows', after.data?.progress?.done === 1,
+        JSON.stringify(after.data?.progress));
+      expectOk('and can be unticked', await admin.call(`/api/admin/plan-items/${firstItem}`,
+        { method: 'PATCH', body: { done: false } }), (d) => d?.done_at === null);
+    }
+
+    /* Fetched whole rather than through the actor, which truncates a long body
+       and would make a full checklist look like a short one. */
+    const checklist = await fetch(`${BASE}/api/admin/plans/${made.courseId}/checklist.csv`, {
+      headers: { cookie: [...admin.jar].map(([k, v]) => `${k}=${v}`).join('; ') },
+    });
+    const csv = await checklist.text();
+    expect('the checklist exports', checklist.status === 200, `status ${checklist.status}`);
+    /* Counted by the Done cell rather than by lines. A homework field carries
+       its own newlines inside the quotes, which is correct CSV and makes a line
+       count say more rows than there are. */
+    const doneCells = (csv.match(/,"(Yes|No)",/g) || []).length;
+    expect('with a row for every scheduled item', doneCells === 84,
+      `${doneCells} item rows, expected 84`);
+    /* Called through the actor as well, so the route counts as exercised. */
+    await admin.call(`/api/admin/plans/${made.courseId}/checklist.csv`);
+    expect('and the fadas survive it', csv.includes('Fáiltiú'), 'the Irish was mangled');
+
+    expectOk('the plan can be removed', await admin.call(
+      `/api/admin/plans/${made.courseId}?confirmDone=0`, { method: 'DELETE' }));
+
     expectOk('duplicate the course', await admin.call(`/api/admin/courses/${made.courseId}/duplicate`,
       { method: 'POST', body: { title: `Audit course ${stamp} copy` } }));
   }
@@ -491,6 +534,14 @@ try {
       { method: 'POST', body: { completed: true, positionSeconds: 120 } }));
   }
   expectOk('the student’s courses load', await student.call('/api/student/courses'));
+
+  /* The plan is the teacher's. A signed-in student must be refused it, not
+     merely not shown it. */
+  if (made.courseId) {
+    const sneak = await student.call(`/api/admin/plans/${made.courseId}`);
+    expect('a signed-in student is refused the plan', sneak.status === 401 || sneak.status === 403,
+      `status ${sneak.status}`);
+  }
 
   /* The address the portal asks for at the top of the screen. */
   expect('a new student is asked for their address', home?.addressNeeded === true,

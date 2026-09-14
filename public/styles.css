@@ -1809,3 +1809,45 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .contact-row{display:flex;gap:8px;align-items:center}
 .contact-row input{flex:1 1 auto}
 .contact-row .btn{flex:0 0 auto}
+
+/* A teaching plan: the weeks of a course, and what has been taught.
+   Read as a list rather than a grid, because that is the order it happens in
+   and somebody is usually looking for their place in it. */
+.plan-bar{height:6px;border-radius:3px;background:var(--gray-100,#eceff0);overflow:hidden;margin-top:10px}
+.plan-bar i{display:block;height:100%;background:var(--brand-500,#3f8f2b);border-radius:3px;transition:width .2s}
+.plan-bar.big{height:10px;border-radius:5px;margin:0}
+.plan-summary{padding:18px 20px;display:grid;gap:8px}
+.plan-summary p{margin:0}
+
+.plan-weeks{display:grid;gap:12px}
+.plan-week{padding:16px 18px}
+.plan-week.is-done{background:var(--brand-25,#f6faf4)}
+.plan-week-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.plan-week-head strong{font-size:14px;margin-right:8px}
+
+.plan-items{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.plan-item{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--radius-sm)}
+.plan-item:hover{background:var(--gray-50)}
+.plan-item label{display:flex;align-items:center;gap:10px;flex:1 1 auto;cursor:pointer;min-width:0}
+.plan-item input{width:auto;margin:0;flex:0 0 auto}
+.plan-item-title{font-size:13px}
+/* A covered item stays readable. Struck through and greyed at once makes a long
+   plan hard to scan once most of it is done, which is exactly when it is read. */
+.plan-item.is-done .plan-item-title{color:var(--text-secondary)}
+.plan-when{font-size:11px;color:var(--text-quaternary,var(--text-secondary));flex:0 0 auto}
+
+.plan-cat{font-size:10.5px;font-weight:650;padding:2px 7px;border-radius:999px;flex:0 0 auto;
+  background:var(--gray-50);color:var(--text-secondary);border:1px solid var(--border)}
+.plan-cat.catoral{background:#eef6ff;color:#1e4f87;border-color:#cfe2f7}
+.plan-cat.catgrammar{background:#f4eeff;color:#563b8f;border-color:#e0d4f7}
+.plan-cat.cataiste{background:#fff3e8;color:#8a4b16;border-color:#f7ddc5}
+.plan-cat.catsraithpictiur{background:#eefaf3;color:#166b45;border-color:#cceedd}
+.plan-cat.catfiliocht,.plan-cat.catpros{background:#fdf0f4;color:#8b2f4d;border-color:#f5d3de}
+.plan-cat.catdordan{background:#f0f4ff;color:#2f3f8b;border-color:#d4dcf7}
+.plan-cat.catexamskills{background:#fff8e1;color:#7a5a00;border-color:#f2e3b0}
+.plan-cat.catrevision{background:#eef1f4;color:#3f4a56;border-color:#dbe1e7}
+
+.plan-homework,.plan-notes{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);
+  font-size:12.5px;line-height:1.6;color:var(--text-secondary)}
+.plan-homework strong{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--text-quaternary,var(--text-secondary));margin-bottom:4px}
