@@ -6294,10 +6294,14 @@ function catClass(category) {
    unusable. */
 async function refreshPlanBuilder() {
   const top = window.scrollY;
+  /* Called from the failure path as well as the success one, so a plan that has
+     been removed in another tab has to land on the picker rather than throw out
+     of a drop handler where nothing would catch it. */
   const [plan, topics] = await Promise.all([
-    api(`/api/admin/plans/${state.planCourseId}`),
-    api(`/api/admin/plans/${state.planCourseId}/topics`),
+    api(`/api/admin/plans/${state.planCourseId}`).catch(() => null),
+    api(`/api/admin/plans/${state.planCourseId}/topics`).catch(() => null),
   ]);
+  if (!plan || !topics) { state.planCourseId = null; await loadAdmin(); return; }
   state.plan = plan;
   state.planTopics = topics;
   const host = document.querySelector('.plan-builder');
