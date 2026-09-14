@@ -1584,7 +1584,7 @@ function adminStudentRow(student, weeks, maps, currentWeekId) {
 
 function peopleView() {
   return `
-    ${pageHeader('Administration', 'Classes and students', 'Create class groups, invite students and manage access.', `<button class="btn" id="add-class">Add class</button><button class="btn" id="add-student">Add student</button><button class="btn" id="export-addresses">Export addresses</button><button class="btn primary" id="import-students">Upload students</button>`)}
+    ${pageHeader('Administration', 'Classes and students', 'Create class groups, invite students and manage access.', `<button class="btn" id="add-class">Add class</button><button class="btn" id="add-student">Add student</button><button class="btn" id="import-phones">Add phone numbers</button><button class="btn" id="export-addresses">Export contacts</button><button class="btn primary" id="import-students">Upload students</button>`)}
     ${emailModeBanner()}
     <div class="tabs"><button class="tab active" data-people-tab="classes">Classes</button><button class="tab" data-people-tab="students">Students</button></div>
     <section id="classes-tab"><div class="class-grid">${state.classes.map((klass) => `
@@ -6093,6 +6093,7 @@ function bindAdminView() {
   /* Straight to the file. The browser downloads it because the route says
      attachment, and the session cookie goes with the navigation, so there is no
      need to fetch it and rebuild a file out of the bytes. */
+  document.getElementById('import-phones')?.addEventListener('click', openPhoneImport);
   document.getElementById('export-addresses')?.addEventListener('click', () => {
     window.location.href = '/api/admin/students/addresses.csv';
   });
@@ -6755,6 +6756,95 @@ async function openStudentProfile(studentId) {
 /* The postal address on the teacher's side of the same record.
    Shown whether or not it has been given, because "not given yet" is the thing
    worth knowing when the envelopes are being written. */
+/* The phone number, on the teacher's side of the record.
+   ------------------------------------------------------------------
+   Editable in place rather than behind a dialog, because it is one short field
+   and the commonest thing done to it is correcting a digit. Saved on blur as
+   well as on Enter, since somebody who types a number and clicks away has
+   plainly finished with it. */
+function contactPanel(student) {
+  return `
+    <div class="section-title">Phone</div>
+    <div class="contact-row">
+      <input id="student-phone" class="input" type="tel" maxlength="40" autocomplete="off"
+             value="${escapeHtml(student.phone || '')}" placeholder="087 123 4567">
+      ${student.phone ? `<a class="btn small" href="tel:${escapeHtml(String(student.phone).replace(/[^0-9+]/g, ''))}">Call</a>` : ''}
+    </div>
+    <p class="muted small">Only the Gaeilgeoir Guides team sees this. Students are not asked for it and never see it.</p>`;
+}
+
+async function bindContactPanel(studentId) {
+  const box = document.getElementById('student-phone');
+  if (!box) return;
+  let saved = box.value;
+  const save = async () => {
+    const phone = box.value.trim();
+    if (phone === saved) return;
+    try {
+      await api(`/api/admin/students/${studentId}`, { method: 'PATCH', body: { phone } });
+      saved = phone;
+      showToast(phone ? 'Phone saved' : 'Phone cleared');
+    } catch (error) {
+      box.value = saved;
+      showToast(error.message, 'error');
+    }
+  };
+  box.addEventListener('blur', save);
+  box.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); box.blur(); }
+  });
+}
+
+/* Pasting a class worth of numbers in one go.
+   ------------------------------------------------------------------
+   The list always arrives copied out of a spreadsheet, so the box takes exactly
+   that: one student to a line, columns separated by tabs. Matching is on email
+   rather than name, because a name is not unique and this very list carried the
+   same person twice.
+
+   Nothing is created. A line that matches no student is reported back rather
+   than turned into an account, since a typo in a spreadsheet should not become
+   a new student. */
+function openPhoneImport() {
+  modal({
+    title: 'Paste phone numbers',
+    subtitle: 'One student to a line, copied straight out of a spreadsheet.',
+    body: `
+      <p class="muted small">Each line needs an email and a number. Anything else on the line, a name for instance, is ignored. Students are matched on their email, so nobody is created and nothing is overwritten except the phone number.</p>
+      <div class="form-field">
+        <label for="phone-paste">Name, email, phone</label>
+        <textarea id="phone-paste" rows="10" placeholder="Holly Donnelly&#9;hollydonnelly116@gmail.com&#9;087 123 4567"></textarea>
+      </div>
+      <div id="phone-import-result"></div>`,
+    footer: '<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="do-phone-import">Import</button>',
+    onOpen() {
+      const button = document.getElementById('do-phone-import');
+      button.addEventListener('click', async () => {
+        const text = document.getElementById('phone-paste').value.trim();
+        if (!text) return showToast('Paste the list first.', 'error');
+        button.disabled = true;
+        try {
+          const result = await api('/api/admin/students/phone-import', { method: 'POST', body: { text } });
+          document.getElementById('phone-import-result').innerHTML = `
+            <div class="notice ${result.unknown.length ? 'warning' : ''} stack-top">
+              <strong>${result.updated.length} number${result.updated.length === 1 ? '' : 's'} saved.</strong>
+              <span>${result.noPhone.length ? `${result.noPhone.length} line${result.noPhone.length === 1 ? '' : 's'} had no number on ${result.noPhone.length === 1 ? 'it' : 'them'}. ` : ''}${result.unknown.length ? `${result.unknown.length} did not match a student.` : 'Everything matched.'}</span>
+            </div>
+            ${result.unknown.length ? `<div class="card table-wrap stack-top"><table class="data-table compact"><thead><tr><th>Line</th><th>Why</th></tr></thead><tbody>
+              ${result.unknown.map((row) => `<tr><td>${escapeHtml(row.line.slice(0, 80))}</td><td>${escapeHtml(row.why)}</td></tr>`).join('')}
+            </tbody></table></div>` : ''}`;
+          button.disabled = false;
+          button.textContent = 'Import again';
+          await loadAdmin();
+        } catch (error) {
+          button.disabled = false;
+          showToast(error.message, 'error');
+        }
+      });
+    },
+  });
+}
+
 function addressPanel(student) {
   const given = Boolean(student.address_line1 && student.address_county && student.eircode);
   const lines = [student.address_line1, student.address_line2,
@@ -6785,6 +6875,7 @@ function renderStudentProfile() {
         <div class="detail"><small>Last login</small><strong>${student.last_login_at ? escapeHtml(fmtDate(student.last_login_at, { time: true })) : 'Never signed in'}</strong></div>
       </div>
 
+      ${contactPanel(student)}
       ${addressPanel(student)}
 
       ${state.profile.withdrawal ? withdrawalSummary(state.profile.withdrawal) : ''}
@@ -6836,6 +6927,7 @@ function noteCard(note) {
 
 function bindStudentProfile() {
   bindDictation(modalRoot);
+  bindContactPanel(state.profile?.student?.id);
   document.getElementById('save-note')?.addEventListener('click', async () => {
     const body = document.getElementById('new-note').value.trim();
     if (!body) return showToast('Write a note first', 'error');

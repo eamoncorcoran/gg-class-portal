@@ -390,7 +390,7 @@ router.get('/students', asyncRoute(async (req, res) => {
   let classWhere = '';
   if (req.query.classId) { params.push(req.query.classId); classWhere = `AND cs.class_id=$${params.length}`; }
   const result = await query(
-    `SELECT u.id,u.name,u.email,u.active,u.must_change_password,u.last_login_at,
+    `SELECT u.id,u.name,u.email,u.phone,u.active,u.must_change_password,u.last_login_at,
             c.id class_id,c.programme_name,c.day_of_week,c.start_time,c.timezone
      FROM users u
      LEFT JOIN class_students cs ON cs.student_id=u.id AND cs.active=true
@@ -436,12 +436,17 @@ router.post('/students/import', diskUpload.single('file'), asyncRoute(async (req
 }));
 
 router.patch('/students/:id', asyncRoute(async (req, res) => {
-  const parsed = z.object({ name: z.string().min(2).optional(), email: z.string().email().optional(), classId: z.string().uuid().optional(), active: z.boolean().optional() }).safeParse(req.body);
+  const parsed = z.object({ name: z.string().min(2).optional(), email: z.string().email().optional(), classId: z.string().uuid().optional(), active: z.boolean().optional(), phone: z.string().trim().max(40).nullable().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid student update.' });
   const student = await one(`SELECT u.*,cs.class_id FROM users u LEFT JOIN class_students cs ON cs.student_id=u.id AND cs.active=true WHERE u.id=$1 AND u.role='student'`, [req.params.id]);
   if (!student) return res.status(404).json({ error: 'Student not found.' });
   await transaction(async (client) => {
-    await client.query('UPDATE users SET name=$1,email=$2,active=$3,updated_at=now() WHERE id=$4', [parsed.data.name ?? student.name, parsed.data.email ?? student.email, parsed.data.active ?? student.active, student.id]);
+    await client.query(
+      'UPDATE users SET name=$1,email=$2,active=$3,phone=$5,updated_at=now() WHERE id=$4',
+      [parsed.data.name ?? student.name, parsed.data.email ?? student.email,
+       parsed.data.active ?? student.active, student.id,
+       // Undefined means the edit did not mention it; an empty string clears it.
+       parsed.data.phone === undefined ? student.phone : (parsed.data.phone || null)]);
     if (parsed.data.classId && parsed.data.classId !== student.class_id) {
       await client.query('UPDATE class_students SET active=false WHERE student_id=$1', [student.id]);
       await client.query(`INSERT INTO class_students(class_id,student_id,active) VALUES ($1,$2,true) ON CONFLICT (class_id,student_id) DO UPDATE SET active=true,enrolled_at=now()`, [parsed.data.classId, student.id]);
@@ -506,12 +511,69 @@ router.post('/students/:id/resend-invite', asyncRoute(async (req, res) => {
    byte order mark it reads UTF-8 as Latin-1 — which turns every fada in a name
    into mojibake. Ó Súilleabháin becomes Ã“ SÃºilleabhÃ¡in in a spreadsheet of
    Irish names, which is most of them. */
+/* Phone numbers, pasted in a block.
+   ------------------------------------------------------------------
+   Eighty odd students is not a job for eighty odd edits, and the list always
+   arrives the same way: copied out of a spreadsheet, one student to a line,
+   tab or comma between the columns.
+
+   Matched on email, because a name is not unique and is spelled differently in
+   different places. Two people called Gemma Mc Loughlin appeared twice in the
+   same list, and matching on a name would have to guess which. An email either
+   matches a student or it does not.
+
+   Nothing is created here. A line whose email is not on the portal is reported
+   rather than invented, since a typo in a spreadsheet should not quietly become
+   a new account.
+*/
+router.post('/students/phone-import', asyncRoute(async (req, res) => {
+  const parsed = z.object({ text: z.string().min(1).max(200000) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Paste the list before importing.' });
+
+  const rows = String(parsed.data.text).split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      /* Split on tabs first, since that is what a spreadsheet paste gives and a
+         name can contain a comma. Falls back to commas for a CSV. */
+      const parts = (line.includes('\t') ? line.split('\t') : line.split(',')).map((part) => part.trim());
+      const email = parts.find((part) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(part)) || '';
+      /* The phone is whatever else on the line looks like a number: at least
+         seven digits, allowing the spaces, brackets, plus and dashes people
+         write them with. */
+      const phone = parts.find((part) => part !== email && /[0-9]/.test(part)
+        && part.replace(/[^0-9]/g, '').length >= 7) || '';
+      return { line, email: email.toLowerCase(), phone };
+    });
+
+  const updated = [];
+  const noPhone = [];
+  const unknown = [];
+  for (const row of rows) {
+    if (!row.email) { unknown.push({ line: row.line, why: 'no email on this line' }); continue; }
+    if (!row.phone) { noPhone.push({ email: row.email }); continue; }
+    const student = await one(
+      `UPDATE users SET phone=$1, updated_at=now()
+       WHERE lower(email)=$2 AND role='student' RETURNING id, name, email`,
+      [row.phone, row.email],
+    );
+    if (student) updated.push({ name: student.name, email: student.email, phone: row.phone });
+    else unknown.push({ line: row.line, why: 'no student with that email' });
+  }
+
+  await audit({
+    actorId: req.user.id, action: 'students.phones_imported', entityType: 'user', entityId: null,
+    metadata: { updated: updated.length, unmatched: unknown.length, withoutPhone: noPhone.length }, ip: req.ip,
+  });
+  res.json({ updated, unknown, noPhone, considered: rows.length });
+}));
+
 router.get('/students/addresses.csv', asyncRoute(async (req, res) => {
   const params = [];
   let where = '';
   if (req.query.classId) { params.push(req.query.classId); where = `AND cs.class_id=$${params.length}`; }
   const result = await query(
-    `SELECT u.name, u.email, u.address_line1, u.address_line2, u.address_county, u.eircode,
+    `SELECT u.name, u.email, u.phone, u.address_line1, u.address_line2, u.address_county, u.eircode,
             u.address_updated_at, c.programme_name, c.day_of_week, c.start_time
      FROM users u
      LEFT JOIN class_students cs ON cs.student_id=u.id AND cs.active=true
@@ -526,16 +588,16 @@ router.get('/students/addresses.csv', asyncRoute(async (req, res) => {
      that is only noticed when an envelope comes back. */
   const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const lines = [
-    ['Name', 'Email', 'Class', 'Address line 1', 'Address line 2', 'County', 'Eircode', 'Full address', 'Given on'].map(cell).join(','),
+    ['Name', 'Email', 'Phone', 'Class', 'Address line 1', 'Address line 2', 'County', 'Eircode', 'Full address', 'Given on'].map(cell).join(','),
     ...result.rows.map((row) => [
-      row.name, row.email, row.programme_name ? classLabel(row) : '',
+      row.name, row.email, row.phone || '', row.programme_name ? classLabel(row) : '',
       row.address_line1 || '', row.address_line2 || '', row.address_county || '', row.eircode || '',
       hasAddress(row) ? formatAddress(row) : 'Not given yet',
       row.address_updated_at ? new Date(row.address_updated_at).toISOString().slice(0, 10) : '',
     ].map(cell).join(',')),
   ];
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="student-addresses-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.setHeader('Content-Disposition', `attachment; filename="student-contacts-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.send(`\uFEFF${lines.join('\n')}\n`);
 }));
 
@@ -1609,6 +1671,7 @@ router.patch('/homework/:id/feedback-draft', asyncRoute(async (req, res) => {
 router.get('/students/:id/profile', asyncRoute(async (req, res) => {
   const student = await one(
     `SELECT u.id,u.name,u.email,u.active,u.must_change_password,u.last_login_at,u.created_at,u.withdrawn_at,
+            u.phone,
             u.address_line1,u.address_line2,u.address_county,u.eircode,u.address_updated_at,
             c.id class_id,c.programme_name,c.day_of_week,c.start_time,c.timezone
      FROM users u

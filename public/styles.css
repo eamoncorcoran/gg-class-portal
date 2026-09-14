@@ -1808,3 +1808,8 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .calendar-event.klass.recorded{background:var(--gray-50);border-color:var(--border)}
 .calendar-event.klass.extra{border-style:dashed}
 .calendar-event.checkin{background:var(--warning-25);border-color:var(--warning-200)}
+
+/* The phone on a student's record: one field and a way to ring it. */
+.contact-row{display:flex;gap:8px;align-items:center}
+.contact-row input{flex:1 1 auto}
+.contact-row .btn{flex:0 0 auto}

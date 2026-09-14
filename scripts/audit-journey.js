@@ -186,6 +186,32 @@ try {
         { method: 'PATCH', body: { body: 'An edited private note.', pinned: true } }));
     }
     expectOk('open the student profile', await admin.call(`/api/admin/students/${made.studentId}/profile`));
+
+    /* The phone number, and the paste that fills eighty of them in. */
+    expectOk('a phone number can be saved', await admin.call(`/api/admin/students/${made.studentId}`,
+      { method: 'PATCH', body: { phone: '087 123 4567' } }));
+    const withPhone = await admin.call(`/api/admin/students/${made.studentId}/profile`);
+    expect('and comes back on the profile', withPhone.data?.student?.phone === '087 123 4567',
+      JSON.stringify(withPhone.data?.student?.phone));
+    expectOk('renaming the student leaves the number alone', await admin.call(
+      `/api/admin/students/${made.studentId}`, { method: 'PATCH', body: { name: 'Audit Student Again' } }));
+    const afterRename = await admin.call(`/api/admin/students/${made.studentId}/profile`);
+    expect('so the number survives an unrelated edit',
+      afterRename.data?.student?.phone === '087 123 4567',
+      JSON.stringify(afterRename.data?.student?.phone));
+
+    const imported = expectOk('a pasted list fills in numbers', await admin.call(
+      '/api/admin/students/phone-import',
+      { method: 'POST', body: { text: `Audit Student\t${studentEmail}\t+353 86 999 1234\nNobody\tnobody@nowhere.invalid\t085 000 1111` } }));
+    expect('matching on email and reporting what it could not place',
+      imported?.updated?.length === 1 && imported?.unknown?.length === 1,
+      JSON.stringify({ updated: imported?.updated?.length, unknown: imported?.unknown?.length }));
+
+    /* The number is the teacher's to see. A student must not be handed it back. */
+    const theirOwn = await student.call('/api/student/bootstrap');
+    expect('and the student is never given their own number',
+      !JSON.stringify(theirOwn.data || {}).includes('999 1234'),
+      'the number appeared in the student payload');
     expectOk('see what deleting the student would remove', await admin.call(`/api/admin/students/${made.studentId}/impact`));
     // Give the student a password we know, rather than the emailed one.
     await query('UPDATE users SET password_hash=$1, must_change_password=false WHERE id=$2',
