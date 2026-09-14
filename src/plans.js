@@ -16,6 +16,34 @@ import { one, query, transaction } from './db.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
+/* Which half of the exam a topic belongs to.
+   ------------------------------------------------------------------
+   The planner this came from sorted topics into six sections of its own: Paper
+   1, Irish Oral, Sraith Pictiúr, Poetry, Prós and Drama. Those fold onto the
+   three the exam actually has.
+
+   Sraith Pictiúr goes with the Oral because it is part of that exam rather than
+   a paper. The literature, poetry, prose and the drama, is Paper 2. Everything
+   else, course setup, grammar, the essay, listening, reading and exam
+   technique, stays where the original put it, under Paper 1.
+
+   A guess about somebody else's syllabus, so it is stored rather than computed
+   and can be changed per topic afterwards. Léamhthuiscint in particular sits
+   under Paper 1 here because that is where the original file had it. */
+export const EXAM_GROUPS = Object.freeze(['Oral', 'Paper 1', 'Paper 2']);
+
+export function examGroupFor(topic) {
+  const category = topic?.category || '';
+  const title = topic?.title || '';
+
+  if (category === 'Oral' || category === 'Sraith Pictiúr') return 'Oral';
+  if (category === 'Filíocht' || category === 'Prós' || category === 'Dordán') return 'Paper 2';
+
+  // Revision named after a piece of literature belongs with that literature.
+  if (/filíocht|poetry|prós|prose|dordán|literature/i.test(title)) return 'Paper 2';
+  return 'Paper 1';
+}
+
 /** The plan that ships with the portal, ready to be brought into a course. */
 export async function packagedPlan() {
   const raw = await fs.readFile(path.join(here, '..', 'data', 'irish-primary-teaching-plan.json'), 'utf8');
@@ -45,6 +73,22 @@ export async function importPlan({ courseId, title, plan, actorId }) {
     );
     const planRow = created.rows[0];
 
+    /* The bank first, so the schedule can point at it. Everything the course
+       covers, including the topics not yet placed in a week, which are the ones
+       a list of topics exists to show. */
+    const byTitle = new Map();
+    for (const [index, topic] of (plan.topics || []).entries()) {
+      const row = await client.query(
+        `INSERT INTO plan_topics(plan_id,title,category,exam_group,position)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (plan_id, title) DO NOTHING
+         RETURNING id, title`,
+        [planRow.id, topic.title, topic.category || null,
+         topic.group || examGroupFor(topic), index],
+      );
+      if (row.rows[0]) byTitle.set(row.rows[0].title, row.rows[0].id);
+    }
+
     for (const [index, week] of (plan.weeks || []).entries()) {
       const weekRow = await client.query(
         `INSERT INTO plan_weeks(plan_id,position,name,homework,notes)
@@ -53,9 +97,24 @@ export async function importPlan({ courseId, title, plan, actorId }) {
          week.homework || null, week.notes || null],
       );
       for (const [spot, topic] of (week.topics || []).entries()) {
+        /* A week can schedule something that is not in the bank. It is kept as a
+           scheduled item either way, with no topic behind it, rather than
+           dropped for not being on a list. */
+        let topicId = byTitle.get(topic.title) || null;
+        if (!topicId) {
+          const made = await client.query(
+            `INSERT INTO plan_topics(plan_id,title,category,exam_group,position)
+             VALUES ($1,$2,$3,$4,$5)
+             ON CONFLICT (plan_id, title) DO UPDATE SET title=EXCLUDED.title
+             RETURNING id`,
+            [planRow.id, topic.title, topic.category || null, examGroupFor(topic), 900 + spot],
+          );
+          topicId = made.rows[0]?.id || null;
+          if (topicId) byTitle.set(topic.title, topicId);
+        }
         await client.query(
-          'INSERT INTO plan_items(week_id,position,title,category) VALUES ($1,$2,$3,$4)',
-          [weekRow.rows[0].id, spot, topic.title, topic.category || null],
+          'INSERT INTO plan_items(week_id,position,title,category,topic_id) VALUES ($1,$2,$3,$4,$5)',
+          [weekRow.rows[0].id, spot, topic.title, topic.category || null, topicId],
         );
       }
     }
@@ -132,4 +191,129 @@ export async function coursesWithPlans() {
      ORDER BY c.position, c.created_at`,
   );
   return result.rows;
+}
+
+/**
+ * Every topic the course covers, and where each one has landed.
+ *
+ * Grouped the way the exam is, and carrying the weeks each topic appears in,
+ * because the question somebody actually has in front of this list is "what
+ * still has no week". A topic can appear more than once, so the weeks come back
+ * as a list rather than a number.
+ */
+export async function getTopics(courseId) {
+  const plan = await one('SELECT id FROM course_plans WHERE course_id=$1', [courseId]);
+  if (!plan) return null;
+
+  const result = await query(
+    `SELECT t.id, t.title, t.category, t.exam_group, t.position,
+            w.name week_name, w.position week_position,
+            i.done_at
+     FROM plan_topics t
+     LEFT JOIN plan_items i ON i.topic_id=t.id
+     LEFT JOIN plan_weeks w ON w.id=i.week_id
+     WHERE t.plan_id=$1
+     ORDER BY t.position, t.title, w.position`,
+    [plan.id],
+  );
+
+  const byId = new Map();
+  for (const row of result.rows) {
+    let topic = byId.get(row.id);
+    if (!topic) {
+      topic = {
+        id: row.id, title: row.title, category: row.category,
+        examGroup: row.exam_group || 'Paper 1', weeks: [], done: 0,
+      };
+      byId.set(row.id, topic);
+    }
+    if (row.week_name) {
+      topic.weeks.push({ name: row.week_name, position: row.week_position });
+      if (row.done_at) topic.done += 1;
+    }
+  }
+
+  const topics = [...byId.values()];
+  return {
+    // Flat for the builder's bank, grouped for the topic list.
+    topics,
+    groups: EXAM_GROUPS.map((name) => ({
+      name,
+      topics: topics.filter((topic) => topic.examGroup === name),
+    })).filter((group) => group.topics.length),
+    counts: {
+      total: topics.length,
+      scheduled: topics.filter((topic) => topic.weeks.length).length,
+      unscheduled: topics.filter((topic) => !topic.weeks.length).length,
+    },
+  };
+}
+
+/** Put a topic into a week, at the end of it. */
+export async function scheduleTopic({ weekId, topicId }) {
+  const topic = await one(
+    `SELECT t.id, t.title, t.category FROM plan_topics t
+     JOIN plan_weeks w ON w.plan_id=t.plan_id
+     WHERE t.id=$1 AND w.id=$2`,
+    [topicId, weekId],
+  );
+  // The join is the check: a topic from another plan cannot be dropped in here.
+  if (!topic) throw Object.assign(new Error('That topic is not part of this plan.'), { status: 404 });
+
+  const next = await one(
+    'SELECT COALESCE(max(position),-1)+1 position FROM plan_items WHERE week_id=$1', [weekId]);
+  return one(
+    `INSERT INTO plan_items(week_id,position,title,category,topic_id)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [weekId, next.position, topic.title, topic.category, topic.id],
+  );
+}
+
+/**
+ * Where an item sits after a drag.
+ *
+ * The whole week arrives rather than one position, the same way the course
+ * reorder works: a list of ids is unambiguous, where a single move has to be
+ * reasoned about against whatever the other rows are currently holding.
+ */
+export async function reorderWeek({ weekId, itemIds }) {
+  return transaction(async (client) => {
+    const own = await client.query('SELECT id FROM plan_items WHERE week_id=$1', [weekId]);
+    const mine = new Set(own.rows.map((row) => row.id));
+    for (const [index, id] of itemIds.entries()) {
+      /* An id from another week is a move into this one, which is what a drag
+         between weeks is. Anything belonging to another plan is refused by the
+         join rather than quietly moved. */
+      if (mine.has(id)) {
+        await client.query('UPDATE plan_items SET position=$1 WHERE id=$2', [index, id]);
+      } else {
+        const moved = await client.query(
+          `UPDATE plan_items i SET week_id=$1, position=$2
+           FROM plan_weeks target, plan_weeks source
+           WHERE i.id=$3 AND target.id=$1 AND source.id=i.week_id
+             AND target.plan_id=source.plan_id
+           RETURNING i.id`,
+          [weekId, index, id],
+        );
+        if (!moved.rowCount) {
+          throw Object.assign(new Error('That item belongs to a different plan.'), { status: 400 });
+        }
+      }
+    }
+    return { ok: true };
+  });
+}
+
+/** Take an item out of a week. The topic stays in the bank. */
+export async function unscheduleItem(itemId) {
+  return one('DELETE FROM plan_items WHERE id=$1 RETURNING id, title', [itemId]);
+}
+
+/** Move a topic to a different part of the exam. */
+export async function setTopicGroup({ topicId, examGroup }) {
+  if (!EXAM_GROUPS.includes(examGroup)) {
+    throw Object.assign(new Error('That is not one of the exam sections.'), { status: 400 });
+  }
+  return one('UPDATE plan_topics SET exam_group=$1 WHERE id=$2 RETURNING id, title, exam_group',
+    [examGroup, topicId]);
 }

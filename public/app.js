@@ -40,6 +40,13 @@ const state = {
   admins: null,
   boardCategoryId: null,
   boardSort: 'new',
+  plans: null,
+  plan: null,
+  planCourseId: null,
+  planTopics: null,
+  planMode: 'list',
+  planBankSearch: '',
+  planBankOnlyFree: true,
 };
 
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -1322,7 +1329,12 @@ async function renderAdmin() {
       title = 'Weekly check-ins'; content = checkinsView();
     } else if (state.view === 'plans') {
       if (state.planCourseId) {
-        state.plan = await api(`/api/admin/plans/${state.planCourseId}`).catch(() => null);
+        const [plan, topics] = await Promise.all([
+          api(`/api/admin/plans/${state.planCourseId}`).catch(() => null),
+          api(`/api/admin/plans/${state.planCourseId}/topics`).catch(() => null),
+        ]);
+        state.plan = plan;
+        state.planTopics = topics;
         // A plan removed in another tab leaves the picker rather than an error.
         if (!state.plan) state.planCourseId = null;
       }
@@ -2633,7 +2645,23 @@ function planView() {
     <button class="btn" id="plan-export">Export the checklist</button>
     <button class="btn danger" id="plan-remove">Remove plan</button>`;
 
+  const mode = state.planMode || 'list';
+  /* Three ways of looking at the same plan. Ticking off is the everyday one, so
+     it is the default; building is what happens once a term; the topic list is
+     what somebody opens when the question is "what have we not covered". */
+  const modes = `<div class="view-switch">
+    <button class="view-tab ${mode === 'list' ? 'active' : ''}" data-plan-mode="list">${svg.note} Checklist</button>
+    <button class="view-tab ${mode === 'build' ? 'active' : ''}" data-plan-mode="build">${svg.grid} Builder</button>
+    <button class="view-tab ${mode === 'topics' ? 'active' : ''}" data-plan-mode="topics">${svg.library} Topics</button>
+  </div>`;
+
   return `${pageHeader('Teaching', escapeHtml(plan.title), `${escapeHtml(plan.course_title)} · ${plan.progress.done} of ${plan.progress.total} covered`, actions)}
+    <div class="card toolbar"><div class="toolbar-group">${modes}</div></div>
+    ${mode === 'topics' ? planTopicsView() : mode === 'build' ? planBuilderView(plan) : planChecklistView(plan, pct)}`;
+}
+
+function planChecklistView(plan, pct) {
+  return `
     <section class="card plan-summary">
       <div class="plan-bar big"><i style="width:${pct}%"></i></div>
       <p class="muted small">${pct}% of the plan taught${plan.starts_on ? ` · starts ${escapeHtml(fmtDate(plan.starts_on, { dateStyle: 'medium' }))}` : ''}${plan.break_start ? ` · break ${escapeHtml(fmtDate(plan.break_start, { dateStyle: 'short' }))} to ${escapeHtml(fmtDate(plan.break_end, { dateStyle: 'short' }))}` : ''}</p>
@@ -2653,7 +2681,7 @@ function planView() {
               <input type="checkbox" data-plan-item="${item.id}" ${item.doneAt ? 'checked' : ''}>
               <span class="plan-item-title">${escapeHtml(item.title)}</span>
             </label>
-            <span class="plan-cat cat-${escapeHtml(String(item.category || '').toLowerCase().replace(/[^a-z]/g, ''))}">${escapeHtml(item.category || '')}</span>
+            <span class="plan-cat ${catClass(item.category)}">${escapeHtml(item.category || '')}</span>
             ${item.doneAt ? `<span class="plan-when" title="${escapeHtml(`Ticked by ${item.doneBy || 'somebody'}`)}">${escapeHtml(fmtDate(item.doneAt, { dateStyle: 'short' }))}</span>` : ''}
           </li>`).join('')}</ul>` : ''}
         ${week.homework ? `<div class="plan-homework"><strong>Homework</strong>${richText(week.homework)}</div>` : ''}
@@ -2662,9 +2690,290 @@ function planView() {
     }).join('')}</div>`;
 }
 
+/* The builder: the bank on the left, the weeks on the right, dragging between
+   them. Every drag also has a plain control beside it (a week picker on a topic,
+   a remove on an item) so the plan can still be built on a phone, where HTML5
+   dragging does nothing at all. */
+function planBuilderView(plan) {
+  const bank = state.planTopics;
+  if (!bank) return '<div class="card"><p class="muted small">Loading the topics…</p></div>';
+
+  const search = (state.planBankSearch || '').toLowerCase();
+  const onlyFree = state.planBankOnlyFree !== false;
+  const topics = bank.topics.filter((topic) => {
+    if (onlyFree && topic.weeks.length) return false;
+    if (search && !topic.title.toLowerCase().includes(search)
+      && !String(topic.category || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const weekOptions = plan.weeks.map((week) => `<option value="${week.id}">${escapeHtml(week.name)}</option>`).join('');
+
+  return `<div class="plan-builder">
+    <aside class="card plan-bank">
+      <div class="plan-bank-head">
+        <strong>Topic bank</strong>
+        <span class="muted small">${bank.counts.unscheduled} of ${bank.counts.total} not on the plan</span>
+      </div>
+      <input class="input" id="plan-bank-search" placeholder="Search the topics" value="${escapeHtml(state.planBankSearch || '')}">
+      <label class="plan-bank-filter"><input type="checkbox" id="plan-bank-free" ${onlyFree ? 'checked' : ''}> Only the ones not scheduled</label>
+      ${topics.length ? `<ul class="plan-bank-list">${topics.map((topic) => `
+        <li class="plan-bank-item ${topic.weeks.length ? 'is-on' : ''}" draggable="true" data-topic="${topic.id}">
+          <span class="plan-grip" aria-hidden="true">⠿</span>
+          <div class="plan-bank-body">
+            <span class="plan-bank-title">${escapeHtml(topic.title)}</span>
+            <span class="plan-bank-meta">
+              <span class="plan-cat ${catClass(topic.category)}">${escapeHtml(topic.category || '')}</span>
+              ${topic.weeks.length ? `<span class="muted small">${escapeHtml(topic.weeks.map((week) => week.name).join(', '))}</span>` : ''}
+            </span>
+          </div>
+          <select class="select plan-bank-add" data-topic-add="${topic.id}" title="Put this topic into a week">
+            <option value="">Add to…</option>${weekOptions}
+          </select>
+        </li>`).join('')}</ul>`
+        : `<p class="muted small plan-bank-empty">${search ? 'Nothing matches that.' : 'Every topic is on the plan.'}</p>`}
+    </aside>
+
+    <div class="plan-build-weeks">${plan.weeks.map((week) => `
+      <section class="card plan-week plan-week-drop" data-week="${week.id}">
+        <div class="plan-week-head">
+          <div><strong>${escapeHtml(week.name)}</strong>
+            <span class="muted small">${week.items.length ? `${week.items.length} ${week.items.length === 1 ? 'topic' : 'topics'}` : 'Nothing scheduled'}</span></div>
+        </div>
+        <ul class="plan-drop" data-week="${week.id}">${week.items.map((item) => `
+          <li class="plan-item plan-item-drag ${item.doneAt ? 'is-done' : ''}" draggable="true" data-item="${item.id}">
+            <span class="plan-grip" aria-hidden="true">⠿</span>
+            <span class="plan-item-title">${escapeHtml(item.title)}</span>
+            <span class="plan-cat ${catClass(item.category)}">${escapeHtml(item.category || '')}</span>
+            <button class="plan-item-remove" data-item-remove="${item.id}" title="Take it off the plan" aria-label="Take ${escapeHtml(item.title)} off the plan">${svg.x}</button>
+          </li>`).join('')}</ul>
+        ${week.items.length ? '' : '<p class="muted small plan-drop-hint">Drag a topic in here.</p>'}
+      </section>`).join('')}</div>
+  </div>`;
+}
+
+/* Everything the course covers, in the three parts of the exam, and whether it
+   has found a week yet. The section a topic belongs to is a guess made from the
+   original file, so it is a dropdown rather than a label. */
+function planTopicsView() {
+  const bank = state.planTopics;
+  if (!bank) return '<div class="card"><p class="muted small">Loading the topics…</p></div>';
+
+  return `<section class="card plan-summary">
+      <p class="muted small">${bank.counts.total} topics · ${bank.counts.scheduled} on the plan · ${bank.counts.unscheduled} still to place</p>
+    </section>
+    ${bank.groups.map((group) => {
+      const on = group.topics.filter((topic) => topic.weeks.length).length;
+      return `<section class="card plan-group">
+        <div class="plan-group-head">
+          <h3>${escapeHtml(group.name)}</h3>
+          <span class="muted small">${on} of ${group.topics.length} on the plan</span>
+        </div>
+        <ul class="plan-topic-list">${group.topics.map((topic) => {
+          const scheduled = topic.weeks.length > 0;
+          return `<li class="plan-topic ${scheduled ? 'is-on' : ''}">
+            <span class="plan-topic-mark" aria-hidden="true">${scheduled ? svg.check : ''}</span>
+            <span class="plan-topic-title">${escapeHtml(topic.title)}</span>
+            <span class="plan-cat ${catClass(topic.category)}">${escapeHtml(topic.category || '')}</span>
+            <span class="plan-topic-weeks">${scheduled
+              ? escapeHtml(topic.weeks.map((week) => week.name).join(', '))
+              : 'Not scheduled'}</span>
+            <select class="select plan-topic-group" data-topic-group="${topic.id}" aria-label="Which part of the exam ${escapeHtml(topic.title)} belongs to">
+              ${['Oral', 'Paper 1', 'Paper 2'].map((name) => `<option value="${name}" ${name === topic.examGroup ? 'selected' : ''}>${name}</option>`).join('')}
+            </select>
+          </li>`;
+        }).join('')}</ul>
+      </section>`;
+    }).join('')}`;
+}
+
+/* The stylesheet spells these without a separator, .plan-cat.catoral and so
+   on, so the class has to be built the same way. */
+function catClass(category) {
+  return `cat${String(category || '').toLowerCase().replace(/[^a-z]/g, '')}`;
+}
+
+
+/* Redraw the builder alone, keeping the page where it was. A plan is thirty six
+   weeks long, so jumping back to the top after every drag would make it
+   unusable. */
+async function refreshPlanBuilder() {
+  const top = window.scrollY;
+  const [plan, topics] = await Promise.all([
+    api(`/api/admin/plans/${state.planCourseId}`),
+    api(`/api/admin/plans/${state.planCourseId}/topics`),
+  ]);
+  state.plan = plan;
+  state.planTopics = topics;
+  const host = document.querySelector('.plan-builder');
+  if (!host) { await loadAdmin(); return; }
+  host.outerHTML = planBuilderView(plan);
+  bindPlanBuilder();
+  window.scrollTo({ top });
+}
+
+/** The order a week is in on screen, which is what the server is told. */
+function weekOrder(list) {
+  return Array.from(list.querySelectorAll('[data-item]')).map((row) => row.dataset.item);
+}
+
+/** Which row a drop at this height lands above, or null for the end. */
+function dropTarget(list, y) {
+  const rows = Array.from(list.querySelectorAll('.plan-item-drag:not(.is-dragging)'));
+  return rows.find((row) => {
+    const box = row.getBoundingClientRect();
+    return y < box.top + box.height / 2;
+  }) || null;
+}
+
+function bindPlanBuilder() {
+  const search = document.getElementById('plan-bank-search');
+  if (search) {
+    /* Filtering is local to what is already loaded, so it redraws as it is
+       typed without going near the server. */
+    search.addEventListener('input', () => {
+      state.planBankSearch = search.value;
+      const host = document.querySelector('.plan-builder');
+      if (!host) return;
+      host.outerHTML = planBuilderView(state.plan);
+      bindPlanBuilder();
+      const again = document.getElementById('plan-bank-search');
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+  }
+  document.getElementById('plan-bank-free')?.addEventListener('change', (event) => {
+    state.planBankOnlyFree = event.target.checked;
+    const host = document.querySelector('.plan-builder');
+    if (!host) return;
+    host.outerHTML = planBuilderView(state.plan);
+    bindPlanBuilder();
+  });
+
+  // Dragging a topic out of the bank, and an item out of its week.
+  document.querySelectorAll('.plan-bank-item').forEach((row) => {
+    row.addEventListener('dragstart', (event) => {
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('text/plain', `topic:${row.dataset.topic}`);
+      row.classList.add('is-dragging');
+    });
+    row.addEventListener('dragend', () => row.classList.remove('is-dragging'));
+  });
+  document.querySelectorAll('.plan-item-drag').forEach((row) => {
+    row.addEventListener('dragstart', (event) => {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', `item:${row.dataset.item}`);
+      row.classList.add('is-dragging');
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('is-dragging');
+      document.querySelectorAll('.plan-drop').forEach((list) => list.classList.remove('is-over'));
+    });
+  });
+
+  document.querySelectorAll('.plan-drop').forEach((list) => {
+    list.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      list.classList.add('is-over');
+      /* The dragged row moves with the cursor, so what is on screen during the
+         drag is what the week will look like after it. */
+      const dragging = document.querySelector('.plan-item-drag.is-dragging');
+      if (!dragging) return;
+      const before = dropTarget(list, event.clientY);
+      if (before) list.insertBefore(dragging, before);
+      else list.appendChild(dragging);
+    });
+    list.addEventListener('dragleave', (event) => {
+      if (!list.contains(event.relatedTarget)) list.classList.remove('is-over');
+    });
+    list.addEventListener('drop', async (event) => {
+      event.preventDefault();
+      list.classList.remove('is-over');
+      const payload = event.dataTransfer.getData('text/plain') || '';
+      const weekId = list.dataset.week;
+      try {
+        if (payload.startsWith('topic:')) {
+          const before = dropTarget(list, event.clientY);
+          const created = await api(`/api/admin/plan-weeks/${weekId}/items`,
+            { method: 'POST', body: { topicId: payload.slice(6) } });
+          if (before) {
+            // It was added at the end, so say where it actually goes.
+            const ids = weekOrder(list);
+            ids.splice(ids.indexOf(before.dataset.item), 0, created.id);
+            await api(`/api/admin/plan-weeks/${weekId}/order`, { method: 'PUT', body: { itemIds: ids } });
+          }
+          await refreshPlanBuilder();
+          showToast('Added to the plan');
+        } else if (payload.startsWith('item:')) {
+          await api(`/api/admin/plan-weeks/${weekId}/order`,
+            { method: 'PUT', body: { itemIds: weekOrder(list) } });
+          await refreshPlanBuilder();
+        }
+      } catch (error) {
+        showToast(error.message, 'error');
+        await refreshPlanBuilder();
+      }
+    });
+  });
+
+  /* Dragging does nothing on a touch screen, so a topic can also be put into a
+     week by picking one. */
+  document.querySelectorAll('[data-topic-add]').forEach((select) => select.addEventListener('change', async () => {
+    const weekId = select.value;
+    if (!weekId) return;
+    select.disabled = true;
+    try {
+      await api(`/api/admin/plan-weeks/${weekId}/items`,
+        { method: 'POST', body: { topicId: select.dataset.topicAdd } });
+      await refreshPlanBuilder();
+      showToast('Added to the plan');
+    } catch (error) {
+      select.disabled = false;
+      select.value = '';
+      showToast(error.message, 'error');
+    }
+  }));
+
+  document.querySelectorAll('[data-item-remove]').forEach((button) => button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await api(`/api/admin/plan-items/${button.dataset.itemRemove}`, { method: 'DELETE' });
+      await refreshPlanBuilder();
+      showToast('Taken off the plan');
+    } catch (error) {
+      button.disabled = false;
+      showToast(error.message, 'error');
+    }
+  }));
+}
+
+function bindPlanTopics() {
+  document.querySelectorAll('[data-topic-group]').forEach((select) => {
+    const was = select.value;
+    select.addEventListener('change', async () => {
+      try {
+        await api(`/api/admin/plan-topics/${select.dataset.topicGroup}`,
+          { method: 'PATCH', body: { examGroup: select.value } });
+        state.planTopics = await api(`/api/admin/plans/${state.planCourseId}/topics`);
+        await loadAdmin();
+      } catch (error) {
+        select.value = was;
+        showToast(error.message, 'error');
+      }
+    });
+  });
+}
+
 function bindPlans() {
+  document.querySelectorAll('[data-plan-mode]').forEach((tab) => tab.addEventListener('click', async () => {
+    state.planMode = tab.dataset.planMode;
+    await loadAdmin();
+  }));
+  bindPlanBuilder();
+  bindPlanTopics();
   document.querySelectorAll('[data-open-plan]').forEach((button) => button.addEventListener('click', async () => {
     state.planCourseId = button.dataset.openPlan;
+    // A search left behind from the last plan would hide everything in this one.
+    state.planBankSearch = '';
     await loadAdmin();
   }));
   document.querySelectorAll('[data-import-plan]').forEach((button) => button.addEventListener('click', async () => {

@@ -334,8 +334,66 @@ try {
     await admin.call(`/api/admin/plans/${made.courseId}/checklist.csv`);
     expect('and the fadas survive it', csv.includes('Fáiltiú'), 'the Irish was mangled');
 
+    /* The builder: the bank of topics, and dragging them about. */
+    const bank = expectOk('every topic the course covers is listed',
+      await admin.call(`/api/admin/plans/${made.courseId}/topics`),
+      (d) => d?.counts?.total === 97 && Array.isArray(d?.topics) && d.topics.length === 97);
+    expect('grouped into the three parts of the exam',
+      bank?.groups?.length === 3 && bank.groups.every((group) => group.topics.length),
+      JSON.stringify(bank?.groups?.map((group) => [group.name, group.topics.length])));
+    expect('and says which are still to be placed',
+      bank?.counts?.scheduled + bank?.counts?.unscheduled === 97 && bank?.counts?.unscheduled > 0,
+      JSON.stringify(bank?.counts));
+
+    const spare = bank?.topics?.find((topic) => !topic.weeks.length);
+    const weekOne = plan?.weeks?.[0];
+    const weekTwo = plan?.weeks?.[1];
+    if (spare && weekOne && weekTwo) {
+      const added = expectOk('a topic can be dragged into a week', await admin.call(
+        `/api/admin/plan-weeks/${weekOne.id}/items`, { method: 'POST', body: { topicId: spare.id } }),
+      (d) => d?.title === spare.title);
+      const order = [added?.id, ...weekOne.items.map((item) => item.id)];
+      expectOk('a week can be put in a different order', await admin.call(
+        `/api/admin/plan-weeks/${weekOne.id}/order`, { method: 'PUT', body: { itemIds: order } }));
+      const moved = await admin.call(`/api/admin/plans/${made.courseId}`);
+      expect('and the new order is what reads back',
+        moved.data?.weeks?.[0]?.items?.[0]?.title === spare.title,
+        moved.data?.weeks?.[0]?.items?.[0]?.title);
+
+      expectOk('an item can be dragged into another week', await admin.call(
+        `/api/admin/plan-weeks/${weekTwo.id}/order`,
+        { method: 'PUT', body: { itemIds: [added?.id, ...weekTwo.items.map((item) => item.id)] } }));
+      const across = await admin.call(`/api/admin/plans/${made.courseId}`);
+      expect('and it leaves the week it came from',
+        across.data?.weeks?.[1]?.items?.[0]?.title === spare.title
+          && !across.data?.weeks?.[0]?.items?.some((item) => item.id === added?.id),
+        'the item was copied rather than moved');
+
+      expectStatus('an item from another plan cannot be dragged in', await admin.call(
+        `/api/admin/plan-weeks/${weekTwo.id}/order`,
+        { method: 'PUT', body: { itemIds: [crypto.randomUUID()] } }), 400);
+      expectStatus('nor a topic that is not in this plan', await admin.call(
+        `/api/admin/plan-weeks/${weekTwo.id}/items`,
+        { method: 'POST', body: { topicId: crypto.randomUUID() } }), 404);
+
+      expectOk('an item can be taken back off the plan', await admin.call(
+        `/api/admin/plan-items/${added?.id}`, { method: 'DELETE' }));
+      const back = await admin.call(`/api/admin/plans/${made.courseId}/topics`);
+      expect('and the topic returns to the bank',
+        back.data?.topics?.some((topic) => topic.id === spare.id && !topic.weeks.length),
+        'the topic went with the item');
+
+      expectOk('a topic can be moved to a different part of the exam', await admin.call(
+        `/api/admin/plan-topics/${spare.id}`, { method: 'PATCH', body: { examGroup: 'Paper 2' } }),
+      (d) => d?.exam_group === 'Paper 2');
+      expectStatus('but not to one that does not exist', await admin.call(
+        `/api/admin/plan-topics/${spare.id}`, { method: 'PATCH', body: { examGroup: 'Paper 9' } }), 400);
+    }
+
     expectOk('the plan can be removed', await admin.call(
       `/api/admin/plans/${made.courseId}?confirmDone=0`, { method: 'DELETE' }));
+    expectStatus('and its topics go with it', await admin.call(
+      `/api/admin/plans/${made.courseId}/topics`), 404);
 
     expectOk('duplicate the course', await admin.call(`/api/admin/courses/${made.courseId}/duplicate`,
       { method: 'POST', body: { title: `Audit course ${stamp} copy` } }));

@@ -1847,6 +1847,69 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .plan-cat.catexamskills{background:#fff8e1;color:#7a5a00;border-color:#f2e3b0}
 .plan-cat.catrevision{background:#eef1f4;color:#3f4a56;border-color:#dbe1e7}
 
+/* The builder: the topics that have no week yet on the left, the weeks on the
+   right. Two columns so a topic and its destination are on screen together;
+   stacked on a narrow screen, where dragging does not work anyway and the week
+   picker on each topic is what gets used. */
+.plan-builder{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:12px;align-items:start}
+.plan-bank{padding:14px 16px;display:grid;gap:10px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.plan-bank-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.plan-bank-filter{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-secondary)}
+.plan-bank-filter input{width:auto;margin:0}
+.plan-bank-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.plan-bank-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--white);cursor:grab}
+.plan-bank-item:hover{border-color:var(--border-strong);box-shadow:var(--shadow-xs)}
+.plan-bank-item.is-dragging{opacity:.4}
+/* Already on the plan, shown only when the filter is off, so it is obvious the
+   drag would be a second copy. */
+.plan-bank-item.is-on{background:var(--gray-50);border-style:dashed}
+.plan-bank-body{display:grid;gap:3px;min-width:0;flex:1 1 auto}
+.plan-bank-title{font-size:12.5px;font-weight:600;line-height:1.3}
+.plan-bank-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.plan-bank-add{min-height:28px;padding:3px 6px;font-size:10.5px;flex:0 0 auto;max-width:96px}
+.plan-bank-empty{margin:4px 0 0}
+.plan-grip{color:var(--text-quaternary,var(--text-tertiary));font-size:12px;line-height:1;flex:0 0 auto;cursor:grab}
+
+.plan-build-weeks{display:grid;gap:10px;min-width:0}
+.plan-week-drop{padding:12px 14px}
+.plan-drop{list-style:none;margin:0;padding:0;display:grid;gap:3px;min-height:34px}
+.plan-drop.is-over{outline:2px dashed var(--brand-400,#8fc07c);outline-offset:4px;border-radius:var(--radius-sm)}
+.plan-item-drag{border:1px solid transparent;cursor:grab;background:var(--white)}
+.plan-item-drag:hover{border-color:var(--border);background:var(--gray-50)}
+.plan-item-drag.is-dragging{opacity:.4}
+.plan-item-drag .plan-item-title{flex:1 1 auto;min-width:0}
+.plan-item-remove{width:22px;height:22px;flex:0 0 auto;display:grid;place-items:center;padding:0;
+  border:1px solid var(--border);border-radius:6px;background:var(--white);
+  color:var(--text-tertiary);opacity:0;transition:opacity .12s,color .12s,border-color .12s}
+.plan-item-remove svg{width:12px;height:12px;stroke-width:2.2}
+.plan-item-remove:hover{color:var(--error-700);border-color:var(--error-100);background:var(--error-50)}
+.plan-item-drag:hover .plan-item-remove,.plan-item-remove:focus-visible{opacity:1}
+.plan-drop-hint{margin:6px 0 0;font-style:italic}
+
+/* Every topic the course covers, in the three parts of the exam. */
+.plan-group{padding:16px 18px;margin-bottom:12px}
+.plan-group-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.plan-group-head h3{margin:0;font-size:14px}
+.plan-topic-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.plan-topic{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--radius-sm)}
+.plan-topic:hover{background:var(--gray-50)}
+.plan-topic-mark{width:16px;height:16px;display:grid;place-items:center;flex:0 0 auto;
+  border:1px solid var(--border-strong);border-radius:50%;color:transparent}
+.plan-topic.is-on .plan-topic-mark{background:var(--brand-500,#3f8f2b);border-color:var(--brand-500,#3f8f2b);color:var(--white)}
+.plan-topic-mark svg{width:10px;height:10px;stroke-width:3}
+.plan-topic-title{font-size:13px;flex:1 1 auto;min-width:0}
+/* Not scheduled is the thing being looked for, so it is not greyed away. */
+.plan-topic-weeks{font-size:11.5px;color:var(--text-secondary);flex:0 0 auto}
+.plan-topic:not(.is-on) .plan-topic-weeks{color:var(--warning-700,#8a6100);font-weight:600}
+.plan-topic-group{min-height:28px;padding:3px 6px;font-size:10.5px;flex:0 0 auto}
+
+@media (max-width:900px){
+  .plan-builder{grid-template-columns:minmax(0,1fr)}
+  .plan-bank{position:static;max-height:none}
+  .plan-item-remove{opacity:1}
+}
+
 .plan-homework,.plan-notes{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);
   font-size:12.5px;line-height:1.6;color:var(--text-secondary)}
 .plan-homework strong{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;

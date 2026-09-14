@@ -25,7 +25,8 @@ import { notifyNewPost, notifyNewComment } from '../boardnotify.js';
 import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
-import { coursesWithPlans, getPlan, importPlan, packagedPlan, setItemDone } from '../plans.js';
+import { coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, reorderWeek,
+  scheduleTopic, setItemDone, setTopicGroup, unscheduleItem } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
@@ -2512,6 +2513,41 @@ router.patch('/plan-items/:id', asyncRoute(async (req, res) => {
 /* The checklist, as a file.
    Every scheduled item with its week, its category and whether it is done, which
    is what somebody wants when they are looking at the term away from a screen. */
+/* Every topic the course covers, and where each has landed. */
+router.get('/plans/:courseId/topics', asyncRoute(async (req, res) => {
+  const topics = await getTopics(req.params.courseId);
+  if (!topics) return res.status(404).json({ error: 'This course has no plan yet.' });
+  res.json(topics);
+}));
+
+/* Dropping a topic into a week. */
+router.post('/plan-weeks/:weekId/items', asyncRoute(async (req, res) => {
+  const parsed = z.object({ topicId: z.string().uuid() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Say which topic to add.' });
+  res.status(201).json(await scheduleTopic({ weekId: req.params.weekId, topicId: parsed.data.topicId }));
+}));
+
+/* The order of a week after a drag. The whole week arrives, not one move. */
+router.put('/plan-weeks/:weekId/order', asyncRoute(async (req, res) => {
+  const parsed = z.object({ itemIds: z.array(z.string().uuid()).max(200) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid order.' });
+  res.json(await reorderWeek({ weekId: req.params.weekId, itemIds: parsed.data.itemIds }));
+}));
+
+router.delete('/plan-items/:id', asyncRoute(async (req, res) => {
+  const row = await unscheduleItem(req.params.id);
+  if (!row) return res.status(404).json({ error: 'That item is no longer in the plan.' });
+  res.json({ ok: true });
+}));
+
+router.patch('/plan-topics/:id', asyncRoute(async (req, res) => {
+  const parsed = z.object({ examGroup: z.string().max(40) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Say which section it belongs to.' });
+  const row = await setTopicGroup({ topicId: req.params.id, examGroup: parsed.data.examGroup });
+  if (!row) return res.status(404).json({ error: 'Topic not found.' });
+  res.json(row);
+}));
+
 router.get('/plans/:courseId/checklist.csv', asyncRoute(async (req, res) => {
   const plan = await getPlan(req.params.courseId);
   if (!plan) return res.status(404).json({ error: 'This course has no plan yet.' });
