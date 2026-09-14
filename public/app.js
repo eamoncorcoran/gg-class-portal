@@ -1849,43 +1849,21 @@ function assignmentCalendarView(assignments) {
   // already carry homework. Two classes can share the same dates, so each day
   // collects every week covering it rather than keeping only the last one.
   const weeks = (state.teachingWeeks || []).filter((week) => !filter || week.class_id === filter);
-  /* A week counts as having homework when a deadline actually falls inside it.
-     Linking an assignment to a teaching week is optional, so going by the link
-     alone would label a week empty while its deadlines sit there in plain sight. */
-  const weekHasHomework = new Set();
-  weeks.forEach((week) => {
-    const start = new Date(`${String(week.week_start).slice(0, 10)}T00:00:00Z`).getTime();
-    const end = start + 7 * 86400000;
-    const covered = assignments.some((assignment) => {
-      if (assignment.week_id === week.id) return true;
-      if (assignment.class_id !== week.class_id) return false;
-      const due = new Date(assignment.reopened_until || assignment.deadline_at).getTime();
-      return due >= start && due < end;
-    });
-    if (covered) weekHasHomework.add(week.id);
-  });
+  /* Which days are teaching days, for the shading. The calendar used to also
+     work out which weeks carried no homework and label them, back when this was
+     the Homework tab and an empty week was the thing it was there to point out.
+     It is a calendar of classes and check-ins now, and a chip on every quiet
+     week was mostly telling somebody what they already knew. */
   const weekDays = new Map();
-  const emptyWeekStarts = new Map();
   weeks.forEach((week) => {
     const start = new Date(`${String(week.week_start).slice(0, 10)}T12:00:00Z`);
-    const hasHomework = weekHasHomework.has(week.id);
     for (let i = 0; i < 7; i += 1) {
       const day = new Date(start.getTime() + i * 86400000);
       if (day.getUTCFullYear() !== year || day.getUTCMonth() !== month) continue;
-      const entry = weekDays.get(day.getUTCDate()) || { weeks: [], hasHomework: false };
+      const entry = weekDays.get(day.getUTCDate()) || { weeks: [] };
       entry.weeks.push(week);
-      // A day only counts as "nothing set" when no class covering it has homework.
-      entry.hasHomework = entry.hasHomework || hasHomework;
       weekDays.set(day.getUTCDate(), entry);
-      // The label goes on the first day of the week that falls inside this month.
-      if (!hasHomework && !emptyWeekStarts.has(week.id)) emptyWeekStarts.set(week.id, { day: day.getUTCDate(), week });
     }
-  });
-  // Only label a week as empty if nothing in it carries homework on any day.
-  const emptyLabels = new Map();
-  emptyWeekStarts.forEach(({ day, week }) => {
-    if (weekDays.get(day)?.hasHomework) return;
-    emptyLabels.set(day, [...(emptyLabels.get(day) || []), week]);
   });
 
   const events = new Map();
@@ -1942,17 +1920,14 @@ function assignmentCalendarView(assignments) {
     const teaching = weekDays.get(day);
     const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const isToday = today.year === year && today.month === month && today.day === day;
-    const empty = emptyLabels.get(day);
     cells.push(`<div class="calendar-day ${isToday ? 'is-today' : ''} ${teaching ? 'is-teaching' : ''}">
       <div class="calendar-day-head"><span class="calendar-number">${day}</span>
         <button class="day-add" data-add-on="${iso}" title="Set homework due ${escapeHtml(fmtDate(`${iso}T12:00:00Z`, { timeZone: 'UTC' }))}" aria-label="Set homework due on ${day}">+</button>
       </div>
-      ${empty ? `<span class="no-homework-chip" title="${escapeHtml(empty.map((week) => week.classLabel).join(', '))}">No homework this week</span>` : ''}
       ${(events.get(day) || []).join('')}
     </div>`);
   }
 
-  const withoutHomework = emptyLabels.size;
 
   return `<section class="card calendar assignment-calendar">
     <div class="calendar-head">
@@ -1968,7 +1943,6 @@ function assignmentCalendarView(assignments) {
       </div>
       <div class="legend-group"><span class="legend-title">Weeks</span>
         <span class="legend-item"><span class="legend-swatch teaching"></span>Teaching week</span>
-        <span class="legend-item"><span class="legend-swatch none"></span>No homework this week${withoutHomework ? ` (${withoutHomework} this month)` : ''}</span>
       </div>
     </div>
   </section>`;
