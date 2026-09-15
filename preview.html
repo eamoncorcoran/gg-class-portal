@@ -4259,6 +4259,13 @@ function checkinState(checkin, week, now = Date.now()) {
   if (checkin?.status === 'returned') return { tone: 'green', icon: 'talk', label: 'Returned', hint: 'Your teacher has replied. Open it to read the reply.' };
   if (checkin?.status === 'submitted') return { tone: 'green', icon: 'talk', label: 'Submitted', hint: 'Submitted. Open it to see what you sent.' };
   if (week.checkin_enabled === false) return { tone: 'grey', icon: 'talk', label: 'Off', hint: 'No check-in was set for this week' };
+  /* Before it opens it is still worth seeing, so it is on the calendar from the
+     start of its week saying when it can be done rather than appearing out of
+     nowhere on the Friday. */
+  if (week.checkin_release_at && now < new Date(week.checkin_release_at).getTime()) {
+    return { tone: 'grey', icon: 'talk', label: 'Opens Friday',
+      hint: `Opens ${fmtDate(week.checkin_release_at, { weekday: true, time: true, dateStyle: 'short' })}` };
+  }
   if (now > new Date(week.checkin_due_at).getTime()) {
     // A soft deadline keeps accepting late check-ins, so it is not a miss.
     return week.checkin_hard_deadline === false
@@ -5791,7 +5798,7 @@ function openCheckinScheduleModal() {
           <div class="muted small">Students cannot see a check-in before this.</div>
         </div>
         <div class="form-field"><label for="sched-due-day">Closes</label>
-          <div class="inline-fields"><select id="sched-due-day">${dayOptions(7)}</select><input id="sched-due-time" type="time" value="23:45"></div>
+          <div class="inline-fields"><select id="sched-due-day">${dayOptions(7)}</select><input id="sched-due-time" type="time" value="23:55"></div>
           <div class="muted small">Times are ${escapeHtml(classTimezone())}.</div>
         </div>
       </div>
@@ -5836,7 +5843,7 @@ function renderSchedulePreview() {
   const releaseDay = Number(document.getElementById('sched-release-day').value);
   const releaseTime = document.getElementById('sched-release-time').value || '10:00';
   const dueDay = Number(document.getElementById('sched-due-day').value);
-  const dueTime = document.getElementById('sched-due-time').value || '23:45';
+  const dueTime = document.getElementById('sched-due-time').value || '23:55';
 
   if (!weeks.length) {
     target.innerHTML = '<div class="empty-state"><h3>No weeks in that range</h3><p>Check the first and last week.</p></div>';
@@ -5916,7 +5923,7 @@ async function applyCheckinSchedule() {
   const weeks = scheduleWeeks();
   if (!weeks.length) return showToast('Choose a first and last week', 'error');
   const [releaseHour, releaseMinute] = (document.getElementById('sched-release-time').value || '10:00').split(':').map(Number);
-  const [dueHour, dueMinute] = (document.getElementById('sched-due-time').value || '23:45').split(':').map(Number);
+  const [dueHour, dueMinute] = (document.getElementById('sched-due-time').value || '23:55').split(':').map(Number);
   const button = document.getElementById('sched-apply');
   button.disabled = true; button.textContent = 'Creating…';
   try {
@@ -9506,7 +9513,7 @@ async function openClassSetupModal(classId) {
         <h4>Class link</h4>
         <div class="form-field"><label>Join address</label><input name="joinUrl" type="url" value="${escapeHtml(klass.join_url || '')}" placeholder="https://us02web.zoom.us/j/..."></div>
         <div class="form-field"><label>Note, optional</label><input name="joinNote" maxlength="200" value="${escapeHtml(klass.join_note || '')}" placeholder="Passcode 4821"></div>
-        <p class="muted small">Students see this from twelve hours before the class until it is over. Clearing the address removes the banner rather than leaving a button that goes nowhere.</p>
+        <p class="muted small">Students see a Join button on every page as soon as this is set, with a countdown from twelve hours before the class and until two hours after it starts. Clearing the address removes the banner rather than leaving a button that goes nowhere.</p>
       </section>
 
       <section class="setup-block">
@@ -11702,6 +11709,14 @@ function passcodeOnly(note) {
   return match ? match[1].trim() : text;
 }
 
+/* "Starts in 1 hours" was showing for the whole hour before every class, which
+   is the hour the banner matters most. */
+function hoursOrMinutes(minutes) {
+  if (minutes < 60) return `in ${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.round(minutes / 60);
+  return `in ${hours} hour${hours === 1 ? '' : 's'}`;
+}
+
 function nextClassBanner() {
   const next = state.studentData?.nextClass;
   const thisWeek = state.studentData?.thisWeek;
@@ -11726,7 +11741,7 @@ function nextClassBanner() {
   const when = next.live
     ? 'Happening now'
     : next.soon
-      ? `Starts ${next.minutesAway < 60 ? `in ${next.minutesAway} minute${next.minutesAway === 1 ? '' : 's'}` : `in ${Math.round(next.minutesAway / 60)} hours`}`
+      ? `Starts ${hoursOrMinutes(next.minutesAway)}`
       : `Next class ${fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' })}`;
   // The button is there whenever there is a link at all — somebody checking on a
   // Sunday to find the room should not be told to come back tomorrow. What the
@@ -11863,7 +11878,10 @@ function studentCalendarView() {
   const maps = studentMaps();
   const items = [];
   state.studentData.weeks.forEach((week) => {
-    if (week.checkin_enabled && week.checkin_available) {
+    /* Not gated on the window being open. A check-in that closed on Sunday with
+       nothing in it is exactly the thing a student needs to see, and one that
+       has not opened yet is what they are planning around. */
+    if (week.checkin_enabled) {
       const checkin = maps.checkins.get(week.id);
       items.push({ type: 'checkin', title: `Week of ${fmtWeek(week.week_start)} check-in`, due: week.checkin_due_at, status: checkinState(checkin, week), week, checkin, submitted: Boolean(checkin && checkin.status !== 'draft') });
     }
@@ -11927,15 +11945,23 @@ function calendarHtml() {
     events.set(when.day, [...(events.get(when.day) || []), html]);
   };
   state.studentData.weeks.forEach((week) => {
-    if (!week.checkin_enabled || !week.checkin_available) return;
+    if (!week.checkin_enabled) return;
     const checkin = maps.checkins.get(week.id);
     const status = checkinState(checkin, week);
-    add(week.checkin_due_at, `<button class="calendar-event ${status.tone}" title="${escapeHtml(status.hint)}" data-open-student-item="checkin" data-week-id="${week.id}">${escapeHtml(checkin?.status === 'returned' ? 'Check-in feedback' : 'Check-in')}</button>`);
+    const label = checkin?.status === 'returned' ? 'Check-in feedback'
+      : status.tone === 'red' ? 'Check-in missed'
+        : 'Check-in';
+    add(week.checkin_due_at, `<button class="calendar-event ${status.tone}" title="${escapeHtml(status.hint)}" data-open-student-item="checkin" data-week-id="${week.id}">${escapeHtml(label)}</button>`);
   });
   state.studentData.assignments.forEach((assignment) => {
     const submission = maps.homework.get(assignment.id);
     const status = homeworkState(submission, assignment);
-    add(assignment.reopened_until || assignment.deadline_at, `<button class="calendar-event ${status.tone}" title="${escapeHtml(status.hint)}" data-open-student-item="homework" data-assignment-id="${assignment.id}">${escapeHtml(submission?.status === 'returned' ? 'Homework feedback' : assignment.title)}</button>`);
+    /* Homework has always stayed on the calendar after its deadline. What it did
+       not do was say why it had gone red. */
+    const label = submission?.status === 'returned' ? 'Homework feedback'
+      : status.tone === 'red' ? `${assignment.title} (missed)`
+        : assignment.title;
+    add(assignment.reopened_until || assignment.deadline_at, `<button class="calendar-event ${status.tone}" title="${escapeHtml(status.hint)}" data-open-student-item="homework" data-assignment-id="${assignment.id}">${escapeHtml(label)}</button>`);
   });
 
   /* The classes themselves. A calendar that shows only what is due leaves out
@@ -11962,11 +11988,17 @@ function calendarHtml() {
   for (let day = 1; day <= days; day += 1) {
     cells.push(`<div class="calendar-day ${isToday(day) ? 'is-today' : ''}"><div class="calendar-number">${day}</div>${(events.get(day) || []).join('')}</div>`);
   }
+  /* A calendar with no class dates at all is a class that has not been given a
+     day, a time or a term, not a student who has nothing on. Saying so turns a
+     blank month into something the teacher can fix. */
+  const noSittings = !(state.studentData.classDates || []).length;
+
   return `<div class="calendar-head">
       <h2>${new Intl.DateTimeFormat('en-IE', { month: 'long', year: 'numeric' }).format(first)}</h2>
       <div class="calendar-nav"><button class="btn small" data-calendar-step="-1" aria-label="Previous month">←</button><button class="btn small" data-calendar-step="0">Today</button><button class="btn small" data-calendar-step="1" aria-label="Next month">→</button></div>
     </div>
-    <div class="calendar-grid">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day) => `<div class="calendar-name">${day}</div>`).join('')}${cells.join('')}</div>`;
+    <div class="calendar-grid">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day) => `<div class="calendar-name">${day}</div>`).join('')}${cells.join('')}</div>
+    ${noSittings ? '<p class="win-note">No class dates are set for this group yet, so none are shown here. Your deadlines are unaffected.</p>' : ''}`;
 }
 
 /* The student tracker is a grid of week cards rather than one very wide table row.
@@ -12029,7 +12061,7 @@ function studentTrackerView() {
    already looking at deadlines, because "why can I not do last week's" is the
    question it exists to answer. */
 function checkinWindowNote() {
-  return `<p class="win-note">Check-ins open <strong>Friday at 10am</strong> and close <strong>Sunday at 11:45pm</strong> Irish time. They cannot be completed after that.</p>`;
+  return `<p class="win-note">Check-ins open <strong>Friday at 10am</strong> and close <strong>Sunday at 11:55pm</strong> Irish time. They cannot be completed after that.</p>`;
 }
 
 /* What is happening on one class date.
@@ -12300,7 +12332,15 @@ function openStudentItem(dataset) {
       body: `<div class="success-banner">Submitted. Your teacher will reply here.</div>${submittedCheckinBlock(checkin)}`,
       footer: '<button class="btn primary" data-close-modal>Done</button>',
     });
-    if (Date.now() > new Date(week.checkin_due_at).getTime()) return showToast('This check-in deadline has passed', 'error');
+    /* Both ends of the window are answered here rather than by opening a form
+       the server will refuse. A missed check-in stays on the calendar now, so it
+       gets clicked, and it has to say something better than nothing. */
+    if (week.checkin_release_at && Date.now() < new Date(week.checkin_release_at).getTime()) {
+      return showToast(`This check-in opens ${fmtDate(week.checkin_release_at, { weekday: true, time: true, dateStyle: 'short' })}`);
+    }
+    if (Date.now() > new Date(week.checkin_due_at).getTime()) {
+      return showToast(`This check-in closed ${fmtDate(week.checkin_due_at, { weekday: true, time: true, dateStyle: 'short' })}`, 'error');
+    }
     openCheckinForm(week, checkin);
   } else {
     const assignment = state.studentData.assignments.find((item) => item.id === dataset.assignmentId);

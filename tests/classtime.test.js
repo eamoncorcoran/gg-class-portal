@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { DateTime } from 'luxon';
 import { nextClassAt, joinLinkFor, CLASS_RUNS_FOR_MINUTES } from '../src/classtime.js';
 
@@ -228,4 +229,15 @@ test('a class with no day or time has no sittings rather than throwing', async (
   const { classSittings } = await import('../src/classtime.js');
   assert.deepEqual(classSittings({ timezone: 'Europe/Dublin' }), []);
   assert.deepEqual(classSittings(null), []);
+});
+
+test('the countdown does not say "1 hours" in the hour before class', () => {
+  /* The hour before is the hour the banner matters most, and it read "Starts in
+     1 hours" for the whole of it: the plural was guarded on the minutes branch
+     and not on the hours one. */
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /function hoursOrMinutes\(minutes\)/);
+  assert.doesNotMatch(app, /\} hours`\}`/, 'an unguarded plural is how it happened the first time');
+  const body = app.slice(app.indexOf('function hoursOrMinutes'));
+  assert.match(body.slice(0, body.indexOf('\n}')), /hour\$\{hours === 1 \? '' : 's'\}/);
 });

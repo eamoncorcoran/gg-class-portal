@@ -1,11 +1,14 @@
 import { DateTime } from 'luxon';
 import { query } from './db.js';
 
-/* Students see a check-in from Friday afternoon and have until Sunday evening.
-   Both are per-week overridable from the Weekly check-ins screen. */
+/* Students see a check-in from Friday morning and have until Sunday night.
+   Five to midnight rather than midnight itself: a deadline written as 00:00
+   Monday is read by half the class as Sunday and half as Monday, and one written
+   as 23:59 looks like a technicality. Both are per-week overridable from the
+   Weekly check-ins screen. */
 export const CHECKIN_DEFAULTS = Object.freeze({
   releaseDay: 5, releaseHour: 10, releaseMinute: 0,   // Friday 10:00
-  dueDay: 7, dueHour: 23, dueMinute: 45,              // Sunday 23:45
+  dueDay: 7, dueHour: 23, dueMinute: 55,              // Sunday 23:55
 });
 
 /** The release and due instants for one week, in the class timezone. */

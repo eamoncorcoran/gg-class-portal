@@ -148,3 +148,75 @@ test('a submitted check-in reaches the teacher’s tracker', dbTest, async () =>
     await query('DELETE FROM users WHERE id=$1', [student.id]);
   }
 });
+
+/* When the window opens and closes, and what the calendar does either side.
+   ------------------------------------------------------------------
+   Being open is one question; being worth showing is another. The calendar used
+   to ask the first and answer the second with it, so a check-in that had closed
+   on Sunday without a submission simply disappeared, and one that had not opened
+   yet was never there to plan around. A student with nothing on their calendar
+   cannot tell that from a student who has missed three weeks. */
+
+test('a check-in opens Friday morning and closes five to midnight on Sunday', async () => {
+  const { CHECKIN_DEFAULTS, checkinTimesFor } = await import('../src/weeks.js');
+  const { DateTime } = await import('luxon');
+  assert.equal(CHECKIN_DEFAULTS.releaseDay, 5);
+  assert.equal(CHECKIN_DEFAULTS.releaseHour, 10);
+  assert.equal(CHECKIN_DEFAULTS.releaseMinute, 0);
+  assert.equal(CHECKIN_DEFAULTS.dueDay, 7);
+  assert.equal(CHECKIN_DEFAULTS.dueHour, 23);
+  assert.equal(CHECKIN_DEFAULTS.dueMinute, 55);
+
+  const monday = DateTime.fromISO('2026-09-14T00:00', { zone: 'Europe/Dublin' });
+  const { release, due } = checkinTimesFor(monday);
+  assert.equal(release.toFormat('ccc dd LLL HH:mm'), 'Fri 18 Sep 10:00');
+  assert.equal(due.toFormat('ccc dd LLL HH:mm'), 'Sun 20 Sep 23:55');
+  // Inside the same week, so a Monday check-in is never about last Sunday.
+  assert.equal(release.weekNumber, monday.weekNumber);
+  assert.equal(due.weekNumber, monday.weekNumber);
+});
+
+test('the deadline students are told matches the one they are held to', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const note = app.slice(app.indexOf('function checkinWindowNote'));
+  assert.match(note.slice(0, 400), /Friday at 10am/);
+  assert.match(note.slice(0, 400), /Sunday at 11:55pm/);
+  assert.doesNotMatch(app, /11:45pm/, 'the old time was left somewhere');
+  // The scheduler offers the same default rather than a different one.
+  assert.match(app, /id="sched-due-time" type="time" value="23:55"/);
+  assert.doesNotMatch(app, /value="23:45"/);
+});
+
+test('a check-in stays on the calendar after it closes and before it opens', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  /* The gate was checkin_available, which is false both before Friday and after
+     Sunday, so a check-in was on the calendar for two and a half days of its
+     life and invisible for the rest of it. */
+  assert.doesNotMatch(app, /week\.checkin_enabled && week\.checkin_available/);
+  assert.doesNotMatch(app, /!week\.checkin_enabled \|\| !week\.checkin_available/);
+  assert.match(app, /if \(!week\.checkin_enabled\) return;/,
+    'a week with no check-in set is the only one that stays off');
+  assert.match(app, /'Check-in missed'/, 'and a missed one has to say why it is red');
+});
+
+test('a check-in that is not open explains itself rather than opening a dead form', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const body = app.slice(app.indexOf('function openStudentItem'));
+  const inner = body.slice(0, body.indexOf('\n}'));
+  assert.match(inner, /This check-in opens \$\{fmtDate\(week\.checkin_release_at/);
+  assert.match(inner, /This check-in closed \$\{fmtDate\(week\.checkin_due_at/);
+  /* Both ends, because the calendar now shows both and a student will click
+     whatever is on it. */
+  assert.match(app, /label: 'Opens Friday'/);
+});
+
+test('the deadline move only touches weeks that have not closed', () => {
+  const migration = fs.readFileSync(
+    new URL('../migrations/044_checkin_closes_at_2355.sql', import.meta.url), 'utf8');
+  assert.match(migration, /w\.checkin_due_at > now\(\)/,
+    'a week that has already closed must not be reopened');
+  assert.match(migration, /'23:45'/, 'and only the ones sitting on the old default');
+  assert.match(migration, /AT TIME ZONE COALESCE\(c\.timezone/,
+    'read in the class timezone, which is what wrote it');
+  assert.match(migration, /interval '10 minutes'/);
+});
