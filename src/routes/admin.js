@@ -1157,6 +1157,20 @@ function questionsFrom(row) {
     .filter(Boolean);
 }
 
+/* A date on its own means the end of that day, for a deadline.
+   ------------------------------------------------------------------
+   "11/10/2026" parses to midnight, which is the first second of the Sunday
+   rather than the last. Written into a spreadsheet as a deadline it reads as
+   "you have until Sunday", and what it did was close the thing as Saturday
+   night turned into Sunday. Nobody writing a term of homework means that.
+
+   An opening date is the opposite and is already right: the start of the day is
+   when something should appear. */
+function endOfDayForDeadline(text, parsed) {
+  if (!parsed) return parsed;
+  return /\d{1,2}:\d{2}/.test(String(text)) ? parsed : parsed.set({ hour: 23, minute: 55 });
+}
+
 function readAssignmentCsv(content, { weeks, timezone }) {
   const rows = parse(content, { columns: true, skip_empty_lines: true, trim: true, bom: true });
   return rows.map((row, index) => {
@@ -1168,7 +1182,7 @@ function readAssignmentCsv(content, { weeks, timezone }) {
     const hardText = columnFrom(row, ASSIGNMENT_COLUMNS.hard).toLowerCase();
     const questions = questionsFrom(row);
 
-    const deadline = parseScheduleDate(deadlineText, timezone);
+    const deadline = endOfDayForDeadline(deadlineText, parseScheduleDate(deadlineText, timezone));
     const visible = visibleText ? parseScheduleDate(visibleText, timezone) : null;
 
     /* Homework belongs to the teaching week its deadline falls in, which is what

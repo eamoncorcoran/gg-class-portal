@@ -117,3 +117,21 @@ test('the import writes nothing until the preview has been seen', () => {
   assert.match(importBody, /await transaction\(/, 'the import must be one transaction');
   assert.match(importBody, /row\.problems\.length/, 'rows with problems must be skipped');
 });
+
+test('a homework deadline with no time closes at the end of that day', () => {
+  /* "11/10/2026" parses to midnight, which is the first second of the Sunday
+     rather than the last. In a spreadsheet it reads as "you have until Sunday",
+     and what it did was close as Saturday night turned into Sunday. */
+  const admin = fs.readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
+  assert.match(admin, /function endOfDayForDeadline\(text, parsed\)/);
+  const body = admin.slice(admin.indexOf('function endOfDayForDeadline'));
+  const inner = body.slice(0, body.indexOf('\n}'));
+  assert.match(inner, /hour: 23, minute: 55/);
+  assert.match(inner, /\\d\{1,2\}:\\d\{2\}/, 'a row that does name a time keeps it');
+  // Only the deadline. An opening date at the start of its day is correct.
+  assert.match(admin, /const deadline = endOfDayForDeadline\(deadlineText/);
+  assert.match(admin, /const visible = visibleText \? parseScheduleDate\(visibleText/);
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /A deadline with no time on it closes at 11:55pm that night\./,
+    'and the import screen has to say so');
+});
