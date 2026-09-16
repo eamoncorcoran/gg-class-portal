@@ -45,13 +45,34 @@ const EXTENSION_TYPES = {
   '.aac': 'audio/aac', '.flac': 'audio/flac', '.aif': 'audio/aiff', '.aiff': 'audio/aiff',
 };
 
+/* The name the file actually had.
+   ------------------------------------------------------------------
+   Multipart form data carries no encoding for a filename, so multer reads the
+   bytes as latin1. A file called an-scéal.wav comes back as an-scÃ©al.wav, which
+   on a course taught through Irish is most of the filenames. Re-reading the same
+   bytes as UTF-8 puts the fada back.
+
+   Only when it round-trips: a name that really was latin1 must be left alone
+   rather than turned into something worse. */
+export function originalName(file) {
+  const raw = String(file?.originalname || '');
+  if (!raw) return '';
+  try {
+    const bytes = Buffer.from(raw, 'latin1');
+    const utf8 = bytes.toString('utf8');
+    return Buffer.from(utf8, 'utf8').equals(bytes) ? utf8 : raw;
+  } catch {
+    return raw;
+  }
+}
+
 export function audioTypeFor(file) {
   const declared = String(file?.mimetype || '').split(';')[0].trim().toLowerCase();
   if (VOICE_MIME_TYPES.has(declared)) return declared;
   /* application/octet-stream is what a browser sends when it has given up, and
      it is not a claim about the contents, so the name is worth more. */
   if (!declared || declared === 'application/octet-stream' || declared === 'audio/') {
-    const name = String(file?.originalname || '').toLowerCase();
+    const name = originalName(file).toLowerCase();
     const dot = name.lastIndexOf('.');
     if (dot > -1) return EXTENSION_TYPES[name.slice(dot)] || null;
   }

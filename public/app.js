@@ -6963,8 +6963,8 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
         Show the text straight away, rather than making them listen first</label>
     </section>
     <section class="form-block listening-only" ${assignment?.kind === 'listening' ? '' : 'hidden'}>
-      <div class="form-block-head"><span class="form-step">2</span><div><strong>The recordings</strong>
-        <span class="muted small">One per dialect. Students pick which to listen to.</span></div></div>
+      <div class="form-block-head"><span class="form-step">2</span><div><strong>The recording</strong>
+        <span class="muted small">What students hear. One is usually all you need.</span></div></div>
       <div id="listening-render" class="listen-render"></div>
     </section>
     <div class="form-field"><label>Instructions</label><textarea name="instructions">${escapeHtml(assignment?.instructions || '')}</textarea></div>
@@ -7365,45 +7365,76 @@ async function renderListeningPanel(assignment) {
   try { data = await api(`/api/admin/assignments/${assignment.id}/listening`); }
   catch (error) { host.innerHTML = `<p class="csv-bad">${escapeHtml(error.message)}</p>`; return; }
 
-  host.innerHTML = `
-    <div class="listen-render-rows">${data.dialects.map((dialect) => {
-      const has = dialect.state === 'ready';
-      const state = {
-        none: '<span class="muted small">Nothing yet</span>',
-        pending: '<span class="muted small">Working…</span>',
-        ready: dialect.stale
-          ? '<span class="csv-bad">Read from an older version of the story</span>'
-          : `<span class="csv-ok">${dialect.source === 'upload' ? 'Uploaded' : 'Synthesised'}${dialect.sizeBytes ? ` · ${escapeHtml(fmtBytes(dialect.sizeBytes))}` : ''}${dialect.originalName ? ` · ${escapeHtml(dialect.originalName)}` : ''}</span>`,
-        failed: `<span class="csv-bad">${escapeHtml(dialect.error || 'Failed')}</span>`,
-      }[dialect.state] || '';
+  /* One recording is the normal case.
+     ------------------------------------------------------------------
+     Most stories are read once, by one person, and that is the whole job. Four
+     empty rows headed Connacht, Munster, Ulster and Standard made it look like
+     four recordings were expected, and asked a teacher holding a single file to
+     first decide which dialect it counted as.
 
-      return `<div class="listen-render-row">
-        <div class="listen-render-who">
-          <strong>${escapeHtml(dialect.label)}</strong>
-          <span class="muted small">${escapeHtml(dialect.hint)}</span>
-          <div>${state}</div>
-        </div>
-        <div class="listen-render-actions">
-          ${has ? `<audio class="listen-audio" controls preload="none" src="/api/media/listening/${assignment.id}/${dialect.key}"></audio>` : ''}
-          <label class="btn small listen-upload">
-            <input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.webm" hidden data-upload-dialect="${dialect.key}">
-            ${has ? 'Replace' : 'Upload a recording'}
-          </label>
-          ${dialect.synthesisable && data.configured
-            ? `<button type="button" class="btn small" data-render-dialect="${dialect.key}">${has ? 'Read it out instead' : 'Read it out'}</button>` : ''}
-          ${has ? `<button type="button" class="btn small danger" data-remove-dialect="${dialect.key}">Remove</button>` : ''}
-        </div>
-        ${has ? `<div class="listen-render-label">
-          <label>What students see on the tab
-            <input type="text" maxlength="60" placeholder="${escapeHtml(dialect.label)}" value="${escapeHtml(dialect.tag || '')}" data-label-dialect="${dialect.key}">
-          </label>
-          <span class="muted small">Leave it blank to just say ${escapeHtml(dialect.label)}.</span>
-        </div>` : ''}
-      </div>`;
-    }).join('')}</div>
-    <p class="muted small">Upload one recording per dialect. MP3, M4A, WAV, OGG or WebM, up to 60 MB.
-      Students pick which one to listen to and see the tag you give it.</p>
-    <div id="listen-upload-status"></div>`;
+     So the plain upload comes first and asks nothing. Dialects are underneath,
+     for the teacher who does have more than one, and stay out of the way for
+     everybody else. */
+  const done = data.dialects.filter((dialect) => dialect.state === 'ready');
+  const plain = done.length <= 1;
+  const only = done[0] || null;
+
+  const row = (dialect, showDialectName) => {
+    const has = dialect.state === 'ready';
+    const state = {
+      none: '<span class="muted small">Nothing yet</span>',
+      pending: '<span class="muted small">Working…</span>',
+      ready: dialect.stale
+        ? '<span class="csv-bad">Read from an older version of the story</span>'
+        : `<span class="csv-ok">${dialect.source === 'upload' ? 'Uploaded' : 'Synthesised'}${dialect.sizeBytes ? ` · ${escapeHtml(fmtBytes(dialect.sizeBytes))}` : ''}${dialect.originalName ? ` · ${escapeHtml(dialect.originalName)}` : ''}</span>`,
+      failed: `<span class="csv-bad">${escapeHtml(dialect.error || 'Failed')}</span>`,
+    }[dialect.state] || '';
+
+    return `<div class="listen-render-row">
+      <div class="listen-render-who">
+        ${showDialectName ? `<strong>${escapeHtml(dialect.label)}</strong><span class="muted small">${escapeHtml(dialect.hint)}</span>` : '<strong>The recording</strong>'}
+        <div>${state}</div>
+      </div>
+      <div class="listen-render-actions">
+        ${has ? `<audio class="listen-audio" controls preload="none" src="/api/media/listening/${assignment.id}/${dialect.key}"></audio>` : ''}
+        <label class="btn small listen-upload">
+          <input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.webm,.flac,.aac,.aiff" hidden data-upload-dialect="${dialect.key}">
+          ${has ? 'Replace' : 'Upload a recording'}
+        </label>
+        ${dialect.synthesisable && data.configured
+          ? `<button type="button" class="btn small" data-render-dialect="${dialect.key}">${has ? 'Read it out instead' : 'Read it out'}</button>` : ''}
+        ${has ? `<button type="button" class="btn small danger" data-remove-dialect="${dialect.key}">Remove</button>` : ''}
+      </div>
+      ${has ? `<div class="listen-render-label">
+        <label>${showDialectName ? 'What students see on the tab' : 'Say which dialect it is, optional'}
+          <input type="text" maxlength="60" placeholder="${showDialectName ? escapeHtml(dialect.label) : 'Connacht, Corca Dhuibhne…'}" value="${escapeHtml(dialect.tag || '')}" data-label-dialect="${dialect.key}">
+        </label>
+        <span class="muted small">${showDialectName
+          ? `Leave it blank to just say ${escapeHtml(dialect.label)}.`
+          : 'Left blank, students just get the player with no label on it.'}</span>
+      </div>` : ''}
+    </div>`;
+  };
+
+  /* A single recording is filed under standard, which means no particular
+     dialect. The student sees no tag unless the teacher writes one, so nothing
+     claims to be a dialect it was never said to be. */
+  const single = only || data.dialects.find((dialect) => dialect.key === 'standard');
+  const others = data.dialects.filter((dialect) => dialect.key !== single?.key);
+  const moreOpen = done.length > 1;
+
+  host.innerHTML = plain
+    ? `<div class="listen-render-rows">${row(single, false)}</div>
+       <p class="muted small">MP3, M4A, WAV, OGG, FLAC or WebM, up to 60 MB. One recording is all most stories need.</p>
+       <details class="listen-more" ${moreOpen ? 'open' : ''}>
+         <summary>Add more, one per dialect</summary>
+         <p class="muted small">Only if you have separate recordings. Students then choose which to listen to.</p>
+         <div class="listen-render-rows">${others.map((dialect) => row(dialect, true)).join('')}</div>
+       </details>`
+    : `<div class="listen-render-rows">${data.dialects.map((dialect) => row(dialect, true)).join('')}</div>
+       <p class="muted small">One recording per dialect. MP3, M4A, WAV, OGG, FLAC or WebM, up to 60 MB.
+         Students pick which one to listen to and see the tag you give it.</p>`;
+  host.insertAdjacentHTML('beforeend', '<div id="listen-upload-status"></div>');
 
   const status = document.getElementById('listen-upload-status');
   const again = () => renderListeningPanel(assignment);
@@ -9336,10 +9367,16 @@ const DIALECT_LABELS = {
 
 /* What the tab says. The teacher's own label wins, so a recording can be tagged
    "Corca Dhuibhne" or named after the speaker rather than carrying the portal's
-   idea of what the dialect is called. */
+   idea of what the dialect is called.
+
+   A single recording filed under standard means "no particular dialect", so it
+   gets no tag at all unless the teacher wrote one. Calling it Standard would be
+   claiming something nobody said. */
 function dialectTag(entry) {
   if (!entry) return '';
-  return entry.label || DIALECT_LABELS[entry.key] || entry.key;
+  if (entry.label) return entry.label;
+  if (entry.key === 'standard') return '';
+  return DIALECT_LABELS[entry.key] || entry.key;
 }
 
 function listeningPanel(assignment, form) {
@@ -9360,13 +9397,13 @@ function listeningPanel(assignment, form) {
       <strong>${svg.play || svg.video} Listen to the story</strong>
       ${available.length > 1 ? `<div class="listen-dialects" role="group" aria-label="Which dialect to listen in">
         ${available.map((entry) => `<button type="button" class="listen-dialect ${entry.key === listen.dialect ? 'active' : ''}" data-dialect="${escapeHtml(entry.key)}">${escapeHtml(dialectTag(entry))}</button>`).join('')}
-      </div>` : `<span class="listen-tag">${escapeHtml(dialectTag(available[0]))}</span>`}
+      </div>` : dialectTag(available[0]) ? `<span class="listen-tag">${escapeHtml(dialectTag(available[0]))}</span>` : ''}
     </div>
     <audio id="listen-audio" class="listen-audio" controls preload="metadata"
       src="/api/media/listening/${assignment.id}/${encodeURIComponent(listen.dialect)}"></audio>
     <div class="listen-actions">
       <button type="button" class="text-link" id="listen-toggle-text">${listen.textShown ? 'Hide the text' : 'Show the text'}</button>
-      ${available.length > 1 ? `<span class="listen-tag">${escapeHtml(dialectTag(current))}</span>` : ''}
+      ${available.length > 1 && dialectTag(current) ? `<span class="listen-tag">${escapeHtml(dialectTag(current))}</span>` : ''}
       <span class="muted small">${listen.plays ? `Played ${listen.plays} time${listen.plays === 1 ? '' : 's'}` : 'Play it as often as you like'}</span>
     </div>
     <div class="listen-text" id="listen-text" ${listen.textShown ? '' : 'hidden'}>${escapeHtml(assignment.listening_text || '')}</div>

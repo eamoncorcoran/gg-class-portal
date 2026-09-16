@@ -16,7 +16,7 @@ import { sendStudentInvite, sendNudge } from '../email.js';
 import { ensureWeeksForClass, scheduleCheckins, CHECKIN_DEFAULTS } from '../weeks.js';
 import { audit } from '../audit.js';
 import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
-import { VOICE_MIME_TYPES, audioExtension, audioTypeFor, dictate, withVoiceNote, withVoiceNotes } from '../voice.js';
+import { VOICE_MIME_TYPES, audioExtension, audioTypeFor, dictate, originalName, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
 import { formatAddress, hasAddress } from '../address.js';
@@ -91,7 +91,7 @@ const diskUpload = multer({
     const allowed = isCsv || allowedUploads.has(file.mimetype) || Boolean(audioTypeFor(file));
     if (!allowed) {
       return callback(Object.assign(
-        new Error(`${file.originalname || 'That file'} is not a file type the portal takes. PDFs, images, Word, audio and video all work.`),
+        new Error(`${originalName(file) || 'That file'} is not a file type the portal takes. PDFs, images, Word, audio and video all work.`),
         { status: 400 },
       ));
     }
@@ -1014,7 +1014,8 @@ router.post('/attendance/import', diskUpload.single('file'), asyncRoute(async (r
 }));
 
 router.post('/uploads', diskUpload.array('files', 10), asyncRoute(async (req, res) => {
-  const files = (req.files || []).map((file) => ({ fileName: file.originalname, mimeType: file.mimetype, url: `/uploads/${path.basename(file.path)}` }));
+  // Named as it was named, fada and all, rather than as the bytes arrived.
+  const files = (req.files || []).map((file) => ({ fileName: originalName(file), mimeType: file.mimetype, url: `/uploads/${path.basename(file.path)}` }));
   res.status(201).json({ files });
 }));
 
@@ -1508,7 +1509,7 @@ const listeningUpload = multer({
        perfectly good recording is not turned away for arriving unlabelled. */
     const type = audioTypeFor(file);
     if (!type) {
-      return callback(Object.assign(new Error(`${file.originalname || 'That file'} is not an audio format the portal reads. MP3, M4A, WAV, OGG, FLAC and WebM all work.`), { status: 400 }));
+      return callback(Object.assign(new Error(`${originalName(file) || 'That file'} is not an audio format the portal reads. MP3, M4A, WAV, OGG, FLAC and WebM all work.`), { status: 400 }));
     }
     file.resolvedType = type;
     callback(null, true);
@@ -1553,7 +1554,7 @@ router.post('/assignments/:id/listening/upload', listeningUpload.single('file'),
            text_hash=NULL, voice=NULL, error=NULL, updated_at=now()
      RETURNING *`,
     [assignment.id, parsed.data.dialect, parsed.data.label || null, filePath,
-     type, req.file.size, req.file.originalname?.slice(0, 200) || null, req.user.id],
+     type, req.file.size, originalName(req.file).slice(0, 200) || null, req.user.id],
   );
 
   if (previous?.file_path && path.basename(previous.file_path) !== name) {

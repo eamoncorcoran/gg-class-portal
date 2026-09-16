@@ -2042,3 +2042,11 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   .kind-choice{grid-template-columns:1fr}
   .answer-key{grid-template-columns:1fr}
 }
+/* Dialects, for the teacher who has more than one recording. Folded away
+   because most stories are read once, by one person. */
+.listen-more{margin-top:10px;border-top:1px dashed var(--border);padding-top:10px}
+.listen-more summary{cursor:pointer;font-size:11.5px;font-weight:650;color:var(--brand-800);list-style:none}
+.listen-more summary::-webkit-details-marker{display:none}
+.listen-more summary:before{content:"+ ";font-weight:700}
+.listen-more[open] summary:before{content:"− "}
+.listen-more > p{margin:6px 0 9px}

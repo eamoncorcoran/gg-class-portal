@@ -253,7 +253,7 @@ test('the dialect tag is the teacher\'s words, not the portal\'s', () => {
     'the dialect already has a label; one silently overwriting the other put the tag where the heading belongs');
   assert.match(student, /jsonb_build_object\('key',la\.dialect,'label',la\.label\)/);
   assert.match(app, /function dialectTag\(entry\)/);
-  assert.match(app, /return entry\.label \|\| DIALECT_LABELS\[entry\.key\] \|\| entry\.key;/);
+  assert.match(app, /return DIALECT_LABELS\[entry\.key\] \|\| entry\.key;/);
 });
 
 test('standard is offered for upload but never synthesised', () => {
@@ -412,4 +412,46 @@ test('the two pickers say which is which', () => {
   assert.match(app, /Handouts, PDFs, images, anything they need alongside the questions\./);
   assert.match(app, /<b>Not the listening recording\.<\/b>/);
   assert.match(app, /That goes under <b>The recordings<\/b> above/);
+});
+
+test('one recording is the normal case and asks nothing extra', async () => {
+  /* Four empty rows headed Connacht, Munster, Ulster and Standard made it look
+     like four recordings were expected, and asked a teacher holding one file to
+     first decide which dialect it counted as. */
+  const body = app.slice(app.indexOf('async function renderListeningPanel'));
+  const inner = body.slice(0, body.indexOf('\nfunction '));
+  assert.match(inner, /const plain = done\.length <= 1;/);
+  assert.match(inner, /<strong>The recording<\/strong>/);
+  assert.match(inner, /One recording is all most stories need\./);
+  // Dialects are still there, folded away, for anybody who does have several.
+  assert.match(inner, /<details class="listen-more"/);
+  assert.match(inner, /Add more, one per dialect/);
+  assert.match(inner, /Only if you have separate recordings\./);
+});
+
+test('a single recording is not labelled with a dialect nobody named', () => {
+  /* It is filed under standard, which means no particular dialect. Calling it
+     Standard on the student's screen would be claiming something never said. */
+  const body = app.slice(app.indexOf('function dialectTag'));
+  const inner = body.slice(0, body.indexOf('\n}'));
+  assert.match(inner, /if \(entry\.label\) return entry\.label;/);
+  assert.match(inner, /if \(entry\.key === 'standard'\) return '';/);
+  // And an empty tag draws nothing rather than an empty pill.
+  assert.match(app, /dialectTag\(available\[0\]\) \? `<span class="listen-tag">/);
+});
+
+test('a filename keeps its fadas', async () => {
+  /* Multipart form data carries no encoding for a filename, so multer reads the
+     bytes as latin1: an-scéal.wav arrives as an-scÃ©al.wav, which on a course
+     taught through Irish is most of the filenames. */
+  const { originalName } = await import('../src/voice.js');
+  const mangled = Buffer.from('an-scéal-ó-Ghaillimh.wav', 'utf8').toString('latin1');
+  assert.equal(originalName({ originalname: mangled }), 'an-scéal-ó-Ghaillimh.wav');
+  // A name that really was latin1 is left alone rather than turned into worse.
+  assert.equal(originalName({ originalname: 'café.wav' }), 'café.wav');
+  assert.equal(originalName({ originalname: 'take.wav' }), 'take.wav');
+  assert.equal(originalName({ originalname: '' }), '');
+  // And it is used where the name is stored and shown, not just computed.
+  assert.match(admin, /originalName\(req\.file\)\.slice\(0, 200\)/);
+  assert.match(admin, /fileName: originalName\(file\)/);
 });
