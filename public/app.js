@@ -7030,6 +7030,8 @@ function openAssignmentImport() {
         Dates read as ${escapeHtml(classTimezone())} and can be written 25/12/2026 20:00 or 2026-12-25T20:00.
         A deadline with no time on it closes at 11:55pm that night.
         Deadline type is <b>hard</b> (late work refused) or <b>soft</b> (accepted and marked late). Blank means hard.
+        <b>Leave Opens blank</b> and each week's homework appears to students at 10am on the Monday of its own week, so a term
+        imported in one go arrives a week at a time rather than all at once.
         Each assignment is filed against the teaching week its deadline falls in.
         <button type="button" class="text-link" id="hw-template">Download the template</button>.</p>
       <div id="hw-preview"></div>`,
@@ -7105,10 +7107,11 @@ function assignmentPreview(result) {
       <span class="muted small">Times read as ${escapeHtml(result.timezone)}</span>
     </div>
     <div class="table-wrap"><table class="data-table compact">
-      <thead><tr><th>Row</th><th>Title</th><th>Deadline</th><th>Questions</th><th>Week</th><th></th></tr></thead>
+      <thead><tr><th>Row</th><th>Title</th><th>Students see it</th><th>Deadline</th><th>Questions</th><th>Week</th><th></th></tr></thead>
       <tbody>${result.rows.map((row) => `<tr class="${row.problems.length ? 'is-bad' : ''}">
         <td>${row.line}</td>
         <td>${escapeHtml(row.title || '—')}${row.hardDeadline ? '' : ' <span class="pill">Soft</span>'}</td>
+        <td>${escapeHtml(row.localVisible || '—')}${row.opensAssumed ? '<b class="csv-note">Monday of that week</b>' : ''}</td>
         <td>${escapeHtml(row.localDeadline || '—')}${row.past && !row.problems.length ? '<b class="csv-note">already passed</b>' : ''}</td>
         <td>${row.questions.length}</td>
         <td>${row.weekLabel ? escapeHtml(fmtWeek(row.weekLabel)) : '<span class="muted small">no matching week</span>'}</td>

@@ -130,7 +130,8 @@ test('a homework deadline with no time closes at the end of that day', () => {
   assert.match(inner, /\\d\{1,2\}:\\d\{2\}/, 'a row that does name a time keeps it');
   // Only the deadline. An opening date at the start of its day is correct.
   assert.match(admin, /const deadline = endOfDayForDeadline\(deadlineText/);
-  assert.match(admin, /const visible = visibleText \? parseScheduleDate\(visibleText/);
+  assert.doesNotMatch(admin, /endOfDayForDeadline\(visibleText/,
+    'an opening date at the start of its day is correct and must not be moved');
   const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /A deadline with no time on it closes at 11:55pm that night\./,
     'and the import screen has to say so');
@@ -155,4 +156,39 @@ test('a deadline type that is not understood is refused, not guessed at', () => 
     'an empty cell must not be flagged as a problem');
   const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /Deadline type is <b>hard<\/b>/, 'and the import screen has to say what to write');
+});
+
+test("a week's homework appears on the Monday of its own week", () => {
+  /* A term imported in one go used to arrive all at once, because a blank Opens
+     column meant "visible now". A student opening the calendar in September saw
+     twelve weeks of homework stacked in front of them, when what they should see
+     is this week's. */
+  const admin = fs.readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
+  assert.match(admin, /const HOMEWORK_OPENS_HOUR = 10;/);
+  const body = admin.slice(admin.indexOf('function defaultOpensFor'));
+  const inner = body.slice(0, body.indexOf('\n}'));
+  assert.match(inner, /startOf\('week'\)/, 'the Monday of the week the deadline falls in');
+  assert.match(inner, /hour: HOMEWORK_OPENS_HOUR/);
+  /* A Monday deadline earlier than ten in the morning would otherwise open after
+     it closes, and the row would be refused for a reason nobody wrote. */
+  assert.match(inner, /monday < deadline \? monday : null/);
+  // Only when the sheet is silent. A date in the column is somebody's decision.
+  assert.match(admin, /visibleText\s*\n\s*\? parseScheduleDate\(visibleText, timezone\)\s*\n\s*: defaultOpensFor\(deadline, timezone\)/);
+});
+
+test('the import says when students will see each row', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const body = app.slice(app.indexOf('function assignmentPreview'));
+  const inner = body.slice(0, body.indexOf('\n}'));
+  assert.match(inner, /<th>Students see it<\/th>/,
+    'the column that decides whether a term lands all at once has to be on screen');
+  assert.match(inner, /row\.opensAssumed/, 'and say when the date was chosen rather than given');
+  assert.match(app, /appears to students at 10am on the Monday of its own week/);
+});
+
+test('a student is not sent homework that has not opened', () => {
+  /* The guarantee is in the query, not in the drawing: an assignment that has
+     not opened never reaches the browser, so no view can leak it. */
+  const student = fs.readFileSync(new URL('../src/routes/student.js', import.meta.url), 'utf8');
+  assert.match(student, /a\.status='published' AND a\.visible_at<=now\(\)/);
 });

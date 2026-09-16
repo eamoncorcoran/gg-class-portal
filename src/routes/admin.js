@@ -1170,6 +1170,26 @@ const SOFT_DEADLINE_WORDS = ['soft', 'soft deadline', 'late', 'allow late', 'acc
   'accept late', 'flexible', 'open', 'no', 'n'];
 const HARD_DEADLINE_WORDS = ['hard', 'hard deadline', 'strict', 'firm', 'closed', 'yes', 'y'];
 
+/* When a week's homework appears, if the sheet does not say.
+   ------------------------------------------------------------------
+   A term imported in one go used to arrive all at once: every assignment was
+   visible the moment it was created, so a student opening the calendar in
+   September saw twelve weeks of homework stacked up in front of them. What they
+   should see is this week's.
+
+   Monday at 10:00 of the week the deadline falls in. A row that names its own
+   opening date keeps it, because that is somebody's decision. */
+const HOMEWORK_OPENS_HOUR = 10;
+
+function defaultOpensFor(deadline, timezone) {
+  if (!deadline) return null;
+  const monday = deadline.setZone(timezone).startOf('week')
+    .set({ hour: HOMEWORK_OPENS_HOUR, minute: 0, second: 0, millisecond: 0 });
+  /* A deadline early on the Monday itself would otherwise open after it closes,
+     which the import would then refuse for a reason the teacher never wrote. */
+  return monday < deadline ? monday : null;
+}
+
 /* A date on its own means the end of that day, for a deadline.
    ------------------------------------------------------------------
    "11/10/2026" parses to midnight, which is the first second of the Sunday
@@ -1196,7 +1216,9 @@ function readAssignmentCsv(content, { weeks, timezone }) {
     const questions = questionsFrom(row);
 
     const deadline = endOfDayForDeadline(deadlineText, parseScheduleDate(deadlineText, timezone));
-    const visible = visibleText ? parseScheduleDate(visibleText, timezone) : null;
+    const visible = visibleText
+      ? parseScheduleDate(visibleText, timezone)
+      : defaultOpensFor(deadline, timezone);
 
     /* Homework belongs to the teaching week its deadline falls in, which is what
        puts it in the right column of the tracker. Working it out from the date
@@ -1225,6 +1247,8 @@ function readAssignmentCsv(content, { weeks, timezone }) {
       visibleAt: visible ? visible.toUTC().toISO() : null,
       localDeadline: deadline ? deadline.toFormat('ccc d LLL yyyy, HH:mm') : deadlineText,
       localVisible: visible ? visible.toFormat('ccc d LLL yyyy, HH:mm') : (visibleText || null),
+      // So the preview can say "we chose this" rather than showing it as given.
+      opensAssumed: Boolean(!visibleText && visible),
       hardDeadline: !SOFT_DEADLINE_WORDS.includes(hardText),
       weekId: week?.id || null,
       weekLabel: week ? String(week.week_start).slice(0, 10) : null,
