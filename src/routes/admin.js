@@ -1113,6 +1113,28 @@ router.post('/calendar-feed/rotate', asyncRoute(async (req, res) => {
   res.json({ url: `${config.appUrl}/calendar/${token}.ics`, token });
 }));
 
+/* A file attached to an assignment.
+   ------------------------------------------------------------------
+   The upload route has answered with `url` since the portal shipped, and this
+   schema has demanded `fileUrl` for exactly as long, so a handout attached
+   through "files students can use" was refused on every save since 16 August.
+   The old error blamed the title, the deadline and the questions, so nobody
+   could tell.
+
+   Either spelling is taken now, and normalised on the way in, so a browser
+   still holding yesterday's app.js works the moment this is deployed rather
+   than an hour later when its cache expires. */
+const resourceSchema = z.object({
+  fileName: z.string().min(1),
+  fileUrl: z.string().min(1).optional(),
+  url: z.string().min(1).optional(),
+  mimeType: z.string().optional(),
+}).transform((item) => ({
+  fileName: item.fileName,
+  fileUrl: item.fileUrl || item.url,
+  mimeType: item.mimeType,
+})).refine((item) => Boolean(item.fileUrl), { message: 'has no address', path: ['fileUrl'] });
+
 /* Why the assignment would not save.
    ------------------------------------------------------------------
    "Complete the assignment title, deadline and at least one question" was said
@@ -1134,6 +1156,7 @@ const ASSIGNMENT_FIELD_NAMES = {
   listeningText: 'the story',
   kind: 'the kind of assignment',
   questions: 'the questions',
+  resources: 'the attached files',
   maxFiles: 'the number of files',
 };
 
@@ -1150,6 +1173,9 @@ function assignmentProblem(error) {
     return `${which} is not complete.`;
   }
   if (head === 'questions') return 'Add at least one question.';
+  if (head === 'resources' && typeof index === 'number') {
+    return `Attached file ${index + 1} did not upload properly. Remove it and attach it again.`;
+  }
 
   const name = ASSIGNMENT_FIELD_NAMES[head] || String(head || 'Something');
   if (issue.code === 'too_small') {
@@ -1178,7 +1204,7 @@ router.post('/assignments', asyncRoute(async (req, res) => {
     kind: z.enum(['written', 'listening']).default('written'),
     listeningText: z.string().max(40000).default(''),
     listeningTextShown: z.boolean().default(false),
-    resources: z.array(z.object({ fileName: z.string(), fileUrl: z.string(), mimeType: z.string().optional() })).default([]),
+    resources: z.array(resourceSchema).default([]),
     allowUploads: z.boolean().default(false),
     uploadsRequired: z.boolean().default(false),
     acceptedFileTypes: z.array(z.enum(Object.keys(FILE_TYPE_GROUPS))).default(['image', 'pdf']),
@@ -1775,7 +1801,7 @@ router.put('/assignments/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ title: z.string().min(2), instructions: z.string(), loomUrl: z.string().url().nullable().optional(), visibleAt: z.string().datetime(), deadlineAt: z.string().datetime(), hardDeadline: z.boolean(), remindersEnabled: z.boolean(), status: z.enum(['draft','published','archived']), questions: z.array(z.object({ prompt: z.string().min(1), imageUrl: z.string().nullable().optional(), required: z.boolean(), expectedAnswer: z.string().max(4000).default(''), marks: z.coerce.number().int().min(0).max(100).default(1) })).min(1),
     kind: z.enum(['written', 'listening']).default('written'),
     listeningText: z.string().max(40000).default(''),
-    listeningTextShown: z.boolean().default(false), resources: z.array(z.object({ fileName: z.string(), fileUrl: z.string(), mimeType: z.string().optional() })).default([]),
+    listeningTextShown: z.boolean().default(false), resources: z.array(resourceSchema).default([]),
     allowUploads: z.boolean().default(false),
     uploadsRequired: z.boolean().default(false),
     acceptedFileTypes: z.array(z.enum(Object.keys(FILE_TYPE_GROUPS))).default(['image', 'pdf']),

@@ -501,3 +501,32 @@ test('a pasted link gets its https back', () => {
   assert.match(inner, /if \(!raw\) return null;/, 'an empty box still means no link');
   assert.match(app, /loomUrl: tidyUrl\(fd\.get\('loomUrl'\)\)/);
 });
+
+/* Files attached to an assignment.
+   ------------------------------------------------------------------
+   Broken from the day the portal shipped, and invisible for a month because the
+   error blamed the title, the deadline and the questions. */
+
+test('an attached file is accepted whichever key names its address', async () => {
+  /* The upload route answers with `url`; the assignment schema demanded
+     `fileUrl`. The client spread the answer straight into the body, so every
+     handout attached through "files students can use" was refused on save. */
+  assert.match(admin, /const resourceSchema = z\.object\(\{/);
+  const body = admin.slice(admin.indexOf('const resourceSchema'));
+  const inner = body.slice(0, body.indexOf('\n\n'));
+  assert.match(inner, /fileUrl: z\.string\(\)\.min\(1\)\.optional\(\)/);
+  assert.match(inner, /url: z\.string\(\)\.min\(1\)\.optional\(\)/);
+  assert.match(inner, /fileUrl: item\.fileUrl \|\| item\.url/, 'normalised on the way in');
+  assert.match(inner, /\.refine\(\(item\) => Boolean\(item\.fileUrl\)/, 'but one of them has to be there');
+  // Both routes use it, so editing an assignment with a handout works too.
+  const uses = admin.match(/resources: z\.array\(resourceSchema\)\.default\(\[\]\)/g) || [];
+  assert.equal(uses.length, 2, 'create and update');
+  // And the client now sends the right key at source rather than relying on the alias.
+  assert.match(app, /fileName: file\.fileName, fileUrl: file\.url, mimeType: file\.mimeType \|\| ''/);
+  assert.doesNotMatch(app, /resources\.push\(\.\.\.uploaded\.files\);/, 'the raw spread is what sent the wrong key');
+});
+
+test('a broken attachment is named by number, not blamed on the title', () => {
+  assert.match(admin, /resources: 'the attached files'/);
+  assert.match(admin, /Attached file \$\{index \+ 1\} did not upload properly\. Remove it and attach it again\./);
+});

@@ -7289,7 +7289,13 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
             const upload = new FormData();
             [...filesInput.files].forEach((file) => upload.append('files', file));
             const uploaded = await api('/api/admin/uploads', { method: 'POST', body: upload });
-            resources.push(...uploaded.files);
+            /* The upload answers with `url`; the assignment wants `fileUrl`.
+               Spreading the answer straight in sent the wrong key, and every
+               attached handout was refused on save from the day the portal
+               shipped, behind an error that blamed the title. */
+            resources.push(...uploaded.files.map((file) => ({
+              fileName: file.fileName, fileUrl: file.url, mimeType: file.mimeType || '',
+            })));
           }
           const fd = new FormData(form);
           const questionElements = [...document.querySelectorAll('[data-question]')];
