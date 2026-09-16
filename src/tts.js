@@ -64,6 +64,11 @@ export function providerName() {
    Never reached in production, where TTS_PROVIDER is unset and the absence of a
    key means the honest refusal above. */
 export function isStandIn() {
+  /* Refused outright in production rather than merely not configured there.
+     TTS_PROVIDER is not in the blueprint, and `say` does not exist on Linux, so
+     this is the third lock on a door that is already shut: an English voice
+     reading Irish to a class would be a hard thing to explain. */
+  if (process.env.NODE_ENV === 'production') return false;
   return providerName() === 'say';
 }
 

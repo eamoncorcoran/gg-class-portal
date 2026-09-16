@@ -274,3 +274,15 @@ test('a recording can be relabelled or removed without touching the story', () =
   assert.match(body.slice(0, body.indexOf('\n}));')), /fs\.unlink\(row\.file_path\)/,
     'the file goes with the row rather than being left behind on the disk');
 });
+
+test('the stand-in voice cannot run in production', () => {
+  /* It reads Irish with an English voice. It exists so the feature can be tested
+     without an API key, and an English voice reading Irish to a class would be a
+     hard thing to explain. */
+  const tts = fs.readFileSync(new URL('../src/tts.js', import.meta.url), 'utf8');
+  const body = tts.slice(tts.indexOf('export function isStandIn'));
+  assert.match(body.slice(0, body.indexOf('\n}')), /if \(process\.env\.NODE_ENV === 'production'\) return false;/);
+  // And it is not something the blueprint can switch on.
+  const blueprint = fs.readFileSync(new URL('../render.yaml', import.meta.url), 'utf8');
+  assert.doesNotMatch(blueprint, /TTS_PROVIDER/);
+});

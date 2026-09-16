@@ -114,11 +114,20 @@ const FEEDBACK_COLUMNS = [
   'teacher_feedback', 'teacher_corrections', 'teacher_general_feedback',
   'teacher_marks', 'teacher_score', 'teacher_max',
   'teacher_audio_path', 'teacher_audio_mime', 'teacher_audio_seconds', 'teacher_audio_recorded_at',
+  /* withVoiceNote runs before this and turns the path into a player, so the
+     player has to go as well: otherwise an unreturned voice note shows up as
+     something to press, even though the media route refuses to serve it. */
+  'voice_note',
 ];
 
 function forStudent(row) {
   if (!row) return row;
-  const returned = row.feedback_state === 'returned';
+  /* Either flag is enough. They are written together when feedback is returned,
+     but redrafting afterwards moves feedback_state back to ai_drafted while the
+     status stays returned, and a student who has already read their feedback
+     must not have it taken off them while the teacher rewrites it. Reading it
+     this way can only ever show what was already shown. */
+  const returned = row.feedback_state === 'returned' || row.status === 'returned';
   const out = { ...row, feedback_state: returned ? 'returned' : 'pending' };
 
   /* Held back until the teacher returns it, and held back by deleting it rather
