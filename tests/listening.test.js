@@ -455,3 +455,49 @@ test('a filename keeps its fadas', async () => {
   assert.match(admin, /originalName\(req\.file\)\.slice\(0, 200\)/);
   assert.match(admin, /fileName: originalName\(file\)/);
 });
+
+/* Why it would not save.
+   ------------------------------------------------------------------
+   "Complete the assignment title, deadline and at least one question" was said
+   for every failure, including several with nothing to do with any of those, so
+   a teacher who had filled all three in was told to fill them in. */
+
+test('a refused assignment says which field and why', () => {
+  assert.match(admin, /function assignmentProblem\(error\)/);
+  const body = admin.slice(admin.indexOf('function assignmentProblem'));
+  const inner = body.slice(0, body.indexOf('\n}\n'));
+  // The question that is actually empty is named by its number.
+  assert.match(inner, /`Question \$\{index \+ 1\}`/);
+  assert.match(inner, /has no text in it/);
+  assert.match(inner, /a full web address starting with https:\/\//);
+  assert.match(inner, /is not a valid date and time/);
+  assert.match(inner, /is too long/);
+  // Both routes use it, so editing gets the same courtesy as creating.
+  const uses = admin.match(/assignmentProblem\(parsed\.error\)/g) || [];
+  assert.equal(uses.length, 2, 'create and update both');
+  /* Checked as code rather than as prose: the old wording is quoted in the
+     comment that explains why it went, and that should stay. */
+  assert.doesNotMatch(admin, /error: 'Complete the assignment title/);
+  assert.doesNotMatch(admin, /error: 'Invalid assignment update\.'/);
+});
+
+test('a question block added and left empty is dropped, not refused', () => {
+  /* Pressing Add question and changing your mind should not be an error message
+     about a question you did not ask for. */
+  const body = app.slice(app.indexOf('for (const element of questionElements)'));
+  const inner = body.slice(0, body.indexOf('\n          }'));
+  assert.match(inner, /if \(!prompt && !expectedAnswer && !imageUrl\) continue;/);
+  // A block with anything in it is still sent, so nothing written is lost.
+  assert.match(inner, /questions\.push\(\{/);
+});
+
+test('a pasted link gets its https back', () => {
+  /* A link copied out of a browser bar often arrives without its scheme and the
+     server quite reasonably refuses it. There is nothing else it could mean. */
+  assert.match(app, /function tidyUrl\(value\)/);
+  const body = app.slice(app.indexOf('function tidyUrl'));
+  const inner = body.slice(0, body.indexOf('\n}'));
+  assert.match(inner, /\/\^https\?:\\\/\\\/\/i\.test\(raw\) \? raw : `https:\/\/\$\{raw\}`/);
+  assert.match(inner, /if \(!raw\) return null;/, 'an empty box still means no link');
+  assert.match(app, /loomUrl: tidyUrl\(fd\.get\('loomUrl'\)\)/);
+});

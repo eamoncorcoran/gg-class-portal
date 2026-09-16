@@ -1113,6 +1113,60 @@ router.post('/calendar-feed/rotate', asyncRoute(async (req, res) => {
   res.json({ url: `${config.appUrl}/calendar/${token}.ics`, token });
 }));
 
+/* Why the assignment would not save.
+   ------------------------------------------------------------------
+   "Complete the assignment title, deadline and at least one question" was said
+   for every failure, including four that have nothing to do with any of those:
+   a second question added and left blank, a title of one character, a Loom
+   address typed without https, and a story over the length limit. A teacher who
+   has filled all three in is then told to fill them in.
+
+   Zod already knows which field failed and why. This says it.
+*/
+const ASSIGNMENT_FIELD_NAMES = {
+  title: 'the title',
+  instructions: 'the instructions',
+  deadlineAt: 'the deadline',
+  visibleAt: 'the date it becomes visible',
+  loomUrl: 'the Loom address',
+  classId: 'the class',
+  weekId: 'the teaching week',
+  listeningText: 'the story',
+  kind: 'the kind of assignment',
+  questions: 'the questions',
+  maxFiles: 'the number of files',
+};
+
+function assignmentProblem(error) {
+  const issue = error?.issues?.[0];
+  if (!issue) return 'Something in this assignment could not be saved.';
+
+  const [head, index, field] = issue.path;
+  if (head === 'questions' && typeof index === 'number') {
+    const which = `Question ${index + 1}`;
+    if (field === 'prompt') return `${which} has no text in it. Write it, or remove it with the Remove link.`;
+    if (field === 'expectedAnswer') return `${which}: the expected answer is too long.`;
+    if (field === 'marks') return `${which}: the marks should be a whole number between 0 and 100.`;
+    return `${which} is not complete.`;
+  }
+  if (head === 'questions') return 'Add at least one question.';
+
+  const name = ASSIGNMENT_FIELD_NAMES[head] || String(head || 'Something');
+  if (issue.code === 'too_small') {
+    return head === 'title'
+      ? 'The title needs at least two characters.'
+      : `Fill in ${name}.`;
+  }
+  if (issue.code === 'too_big') return `${name.charAt(0).toUpperCase()}${name.slice(1)} is too long.`;
+  if (issue.code === 'invalid_string' && issue.validation === 'url') {
+    return `${name.charAt(0).toUpperCase()}${name.slice(1)} has to be a full web address starting with https://`;
+  }
+  if (issue.code === 'invalid_string' && issue.validation === 'datetime') {
+    return `${name.charAt(0).toUpperCase()}${name.slice(1)} is not a valid date and time.`;
+  }
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} is not right: ${issue.message}`;
+}
+
 router.post('/assignments', asyncRoute(async (req, res) => {
   const parsed = z.object({
     classId: z.string().uuid(), weekId: z.string().uuid().nullable().optional(), title: z.string().min(2), instructions: z.string().default(''), loomUrl: z.string().url().nullable().optional(), visibleAt: z.string().datetime().optional(), deadlineAt: z.string().datetime(), hardDeadline: z.boolean().default(true), remindersEnabled: z.boolean().default(true),
@@ -1130,7 +1184,7 @@ router.post('/assignments', asyncRoute(async (req, res) => {
     acceptedFileTypes: z.array(z.enum(Object.keys(FILE_TYPE_GROUPS))).default(['image', 'pdf']),
     maxFiles: z.coerce.number().int().min(1).max(10).default(3),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Complete the assignment title, deadline and at least one question.' });
+  if (!parsed.success) return res.status(400).json({ error: assignmentProblem(parsed.error) });
   const a = parsed.data;
   const assignment = await transaction(async (client) => {
     const inserted = await client.query(
@@ -1727,7 +1781,7 @@ router.put('/assignments/:id', asyncRoute(async (req, res) => {
     acceptedFileTypes: z.array(z.enum(Object.keys(FILE_TYPE_GROUPS))).default(['image', 'pdf']),
     maxFiles: z.coerce.number().int().min(1).max(10).default(3),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid assignment update.' });
+  if (!parsed.success) return res.status(400).json({ error: assignmentProblem(parsed.error) });
   const a = parsed.data;
   await transaction(async (client) => {
     await client.query(`UPDATE assignments SET title=$1,instructions=$2,loom_url=$3,visible_at=$4,deadline_at=$5,hard_deadline=$6,reminders_enabled=$7,status=$8,

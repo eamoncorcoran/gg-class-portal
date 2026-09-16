@@ -10863,6 +10863,17 @@ function markAssignmentSaved(saved, payload) {
   }
 }
 
+/* A web address as somebody pasted it.
+   ------------------------------------------------------------------
+   A link copied out of a browser bar often arrives without its scheme, and the
+   server quite reasonably refuses it as not a URL. Adding the https back is not
+   a guess: there is nothing else it could have meant. */
+function tidyUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
 function openAssignmentModal(assignment = null, defaultClassId = null, prefillDeadline = null) {
   /* What the recordings attach to.
      ------------------------------------------------------------------
@@ -10923,17 +10934,24 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
               const uploadedImage = await api('/api/admin/uploads', { method: 'POST', body: imageUpload });
               imageUrl = uploadedImage.files[0]?.url || imageUrl;
             }
+            const prompt = element.querySelector('[data-question-prompt]').value.trim();
+            const expectedAnswer = element.querySelector('[data-question-expected]')?.value.trim() || '';
+            /* A block added with the Add question button and then left entirely
+               empty carries no intent, so it is dropped rather than refused.
+               Pressing a button and changing your mind should not be an error
+               message about a question you did not ask. */
+            if (!prompt && !expectedAnswer && !imageUrl) continue;
             questions.push({
-              prompt: element.querySelector('[data-question-prompt]').value,
+              prompt,
               imageUrl,
               required: element.querySelector('[data-question-required]').checked,
-              expectedAnswer: element.querySelector('[data-question-expected]')?.value || '',
+              expectedAnswer,
               marks: Number(element.querySelector('[data-question-marks]')?.value) || 1,
             });
           }
           const payload = {
             classId: assignment?.class_id || fd.get('classId'), weekId: fd.get('weekId') || null,
-            title: fd.get('title'), instructions: fd.get('instructions'), loomUrl: fd.get('loomUrl') || null,
+            title: fd.get('title'), instructions: fd.get('instructions'), loomUrl: tidyUrl(fd.get('loomUrl')),
             visibleAt: fromZonedInput(fd.get('visibleAt')), deadlineAt: fromZonedInput(fd.get('deadlineAt')),
             hardDeadline: form.deadlineKind.value === 'hard', remindersEnabled: form.remindersEnabled.checked,
             allowUploads: form.allowUploads.checked,
