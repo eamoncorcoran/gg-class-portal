@@ -1153,17 +1153,41 @@ const ASSIGNMENT_COLUMNS = {
   deadline: ['deadline', 'due', 'due date', 'closes', 'deadline at'],
   visible: ['opens', 'visible', 'visible from', 'release', 'opens at'],
   hard: ['deadline type', 'hard', 'hard deadline', 'type'],
+  /* A listening activity is a row with a story in it. No Kind column to
+     remember: pasting a story is the thing that makes it one, which is also how
+     somebody describes it out loud. The column is still accepted for anybody
+     who would rather be explicit. */
+  story: ['story', 'text', 'listening', 'listening text', 'passage', 'script'],
+  showText: ['show text', 'show the text', 'transcript', 'text shown'],
+  kind: ['kind', 'activity', 'assignment type'],
 };
 
 /** Q1, Q2, Q3… in order, however they are capitalised or spaced. */
-function questionsFrom(row) {
+/** Numbered columns of one family, in order: Q1 Q2 Q3, or A1 A2 A3. */
+function numberedColumns(row, pattern) {
   return Object.keys(row)
-    .map((key) => ({ key, match: /^q\s*(\d+)$|^question\s*(\d+)$/i.exec(key.trim()) }))
+    .map((key) => ({ key, match: pattern.exec(key.trim()) }))
     .filter((entry) => entry.match)
-    .map((entry) => ({ key: entry.key, index: Number(entry.match[1] || entry.match[2]) }))
+    .map((entry) => ({ key: entry.key, index: Number(entry.match.slice(1).find(Boolean)) }))
     .sort((a, b) => a.index - b.index)
-    .map((entry) => String(row[entry.key] ?? '').trim())
-    .filter(Boolean);
+    .map((entry) => String(row[entry.key] ?? '').trim());
+}
+
+function questionsFrom(row) {
+  return numberedColumns(row, /^q\s*(\d+)$|^question\s*(\d+)$/i).filter(Boolean);
+}
+
+/* What a right answer to each question looks like, and what it is worth.
+   ------------------------------------------------------------------
+   Their own columns rather than interleaved with the questions, so an existing
+   sheet with Q1 Q2 Q3 keeps working untouched and a listening sheet is the same
+   sheet with A and M columns added to the end of it. */
+function expectedFrom(row) {
+  return numberedColumns(row, /^a\s*(\d+)$|^answer\s*(\d+)$|^expected\s*(\d+)$/i);
+}
+
+function marksFrom(row) {
+  return numberedColumns(row, /^m\s*(\d+)$|^marks?\s*(\d+)$/i);
 }
 
 /* What the Deadline type column is allowed to say.
@@ -1223,6 +1247,15 @@ function readAssignmentCsv(content, { weeks, timezone }) {
     const visibleText = columnFrom(row, ASSIGNMENT_COLUMNS.visible);
     const hardText = columnFrom(row, ASSIGNMENT_COLUMNS.hard).toLowerCase();
     const questions = questionsFrom(row);
+    const story = columnFrom(row, ASSIGNMENT_COLUMNS.story);
+    const kindText = columnFrom(row, ASSIGNMENT_COLUMNS.kind).toLowerCase();
+    // A story makes it a listening activity; the column only has to disagree.
+    const kind = kindText ? (kindText.startsWith('listen') ? 'listening' : 'written')
+      : (story ? 'listening' : 'written');
+    const expected = expectedFrom(row);
+    const marks = marksFrom(row);
+    const showText = ['yes', 'y', 'true', 'shown', 'show'].includes(
+      columnFrom(row, ASSIGNMENT_COLUMNS.showText).toLowerCase());
 
     const deadline = endOfDayForDeadline(deadlineText, parseScheduleDate(deadlineText, timezone));
     const visible = visibleText
@@ -1246,12 +1279,29 @@ function readAssignmentCsv(content, { weeks, timezone }) {
     if (visibleText && !visible) problems.push(`the opening date “${visibleText}” could not be read`);
     if (visible && deadline && visible >= deadline) problems.push('it opens after it closes');
     if (!questions.length) problems.push('no questions — add a Q1 column');
+    if (kind === 'listening') {
+      if (!story) problems.push('a listening activity needs a story — add a Story column');
+      /* Marked against what the teacher wrote, so a listening row with no
+         expected answers would be handed to the model with nothing to mark
+         against and come back as full marks for everybody. */
+      const answered = expected.filter(Boolean).length;
+      if (!answered) problems.push('no expected answers — add A1, A2, A3 beside the questions');
+      else if (answered < questions.length) {
+        problems.push(`${questions.length - answered} question${questions.length - answered === 1 ? ' has' : 's have'} no expected answer`);
+      }
+      const bad = marks.slice(0, questions.length).find((value) => value && !/^\d+$/.test(value));
+      if (bad) problems.push(`the marks “${bad}” should be a whole number`);
+    }
     if (hardText && !SOFT_DEADLINE_WORDS.includes(hardText) && !HARD_DEADLINE_WORDS.includes(hardText)) {
       problems.push(`the deadline type “${hardText}” is not one I know — write hard or soft`);
     }
 
     return {
-      line, title, instructions, questions,
+      line, title, instructions, questions, kind, story, showText,
+      /* Lined up with the questions rather than left ragged, so row three of the
+         sheet and question three of the assignment are the same thing. */
+      expected: questions.map((_, index) => expected[index] || ''),
+      marks: questions.map((_, index) => Number(marks[index]) || 1),
       deadlineAt: deadline ? deadline.toUTC().toISO() : null,
       visibleAt: visible ? visible.toUTC().toISO() : null,
       localDeadline: deadline ? deadline.toFormat('ccc d LLL yyyy, HH:mm') : deadlineText,
@@ -1279,11 +1329,23 @@ router.get('/classes/:id/assignment-template', asyncRoute(async (req, res) => {
     `${first.plus({ weeks: offset }).minus({ days: 6 }).toFormat('dd/MM/yyyy HH:mm')}`,
     'hard',
   ];
+  /* The listening row is in the template rather than only in the instructions.
+     A teacher who has never made one can see what the columns do by reading
+     across a filled-in line, which is how a spreadsheet is learned. */
   const lines = [
-    'Deadline,Title,Instructions,Opens,Deadline type,Q1,Q2,Q3',
-    [...row(0, 'Week 1: An aimsir chaite'), '"Write five sentences in the past tense."', '"Which verbs are irregular?"', '"Translate: I went to the shop."'].join(','),
-    [...row(1, 'Week 2: An aimsir láithreach'), '"Write five sentences in the present tense."', '"When do you use tá and when is?"', ''].join(','),
-    [...row(2, 'Week 3: Classroom phrases'), '"List ten phrases you used this week."', '', ''].join(','),
+    'Deadline,Title,Instructions,Opens,Deadline type,Story,Show text,Q1,Q2,Q3,A1,A2,A3,M1,M2,M3',
+    [...row(0, 'Week 1: An aimsir chaite'), '', '',
+      '"Write five sentences in the past tense."', '"Which verbs are irregular?"', '"Translate: I went to the shop."',
+      '', '', '', '', '', ''].join(','),
+    [...row(1, 'Week 2: An aimsir láithreach'), '', '',
+      '"Write five sentences in the present tense."', '"When do you use tá and when is?"', '',
+      '', '', '', '', '', ''].join(','),
+    [...row(2, 'Week 3: Cluastuiscint'),
+      '"Bhí Máire ina cónaí i dteach beag cois farraige i gConamara. Gach maidin, shiúil sí síos go dtí an trá lena madra, Bran."',
+      'no',
+      '"Cá raibh Máire ina cónaí?"', '"Cad é ainm an mhadra?"', '"Cathain a shiúil sí go dtí an trá?"',
+      '"I dteach beag cois farraige i gConamara"', '"Bran"', '"Gach maidin"',
+      '2', '1', '2'].join(','),
   ];
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="assignments-template.csv"');
@@ -1317,6 +1379,8 @@ router.post('/classes/:id/assignment-preview', diskUpload.single('file'), asyncR
     rows: result.rows,
     ready: result.rows.filter((row) => !row.problems.length).length,
     problems: result.rows.filter((row) => row.problems.length).length,
+    // How many stories will still need reading aloud once these are created.
+    listening: result.rows.filter((row) => !row.problems.length && row.kind === 'listening').length,
   });
 }));
 
@@ -1333,15 +1397,17 @@ router.post('/classes/:id/assignment-import', diskUpload.single('file'), asyncRo
     for (const row of usable) {
       const inserted = await client.query(
         `INSERT INTO assignments(class_id,week_id,title,instructions,visible_at,deadline_at,
-           hard_deadline,reminders_enabled,created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8) RETURNING id,title`,
+           hard_deadline,reminders_enabled,created_by,kind,listening_text,listening_text_shown)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8,$9,$10,$11) RETURNING id,title`,
         [result.klass.id, row.weekId, row.title, row.instructions,
-         row.visibleAt || new Date().toISOString(), row.deadlineAt, row.hardDeadline, req.user.id],
+         row.visibleAt || new Date().toISOString(), row.deadlineAt, row.hardDeadline, req.user.id,
+         row.kind, row.kind === 'listening' ? row.story : null, row.showText],
       );
       for (const [position, prompt] of row.questions.entries()) {
         await client.query(
-          'INSERT INTO assignment_questions(assignment_id,position,prompt,required) VALUES ($1,$2,$3,true)',
-          [inserted.rows[0].id, position, prompt],
+          `INSERT INTO assignment_questions(assignment_id,position,prompt,required,expected_answer,marks)
+           VALUES ($1,$2,$3,true,$4,$5)`,
+          [inserted.rows[0].id, position, prompt, row.expected[position] || null, row.marks[position]],
         );
       }
       created.push(inserted.rows[0]);
@@ -1350,7 +1416,12 @@ router.post('/classes/:id/assignment-import', diskUpload.single('file'), asyncRo
 
   await audit({ actorId: req.user.id, action: 'assignment.bulk_imported', entityType: 'class',
     entityId: result.klass.id, metadata: { created: created.length, skipped: result.rows.length - usable.length }, ip: req.ip });
-  res.status(201).json({ created: created.length, skipped: result.rows.filter((row) => row.problems.length) });
+  res.status(201).json({
+    created: created.length,
+    // Imported without audio: the stories still have to be read aloud.
+    listening: usable.filter((row) => row.kind === 'listening').length,
+    skipped: result.rows.filter((row) => row.problems.length),
+  });
 }));
 
 /* Building a listening activity.
@@ -1389,6 +1460,73 @@ router.get('/assignments/:id/listening', asyncRoute(async (req, res) => {
         stale: Boolean(row && row.state === 'ready' && row.text_hash !== current),
       };
     }),
+  });
+}));
+
+/* Every story in a class that has not been read aloud yet.
+   ------------------------------------------------------------------
+   A term imported from a spreadsheet arrives as twelve listening activities
+   with no audio, and rendering them one at a time through twelve dialogs is the
+   work the import was supposed to remove. */
+router.post('/classes/:id/listening/render-all', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    dialects: z.array(z.enum(DIALECT_KEYS)).min(1).max(DIALECT_KEYS.length),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose at least one dialect.' });
+  if (!ttsConfigured()) {
+    return res.status(503).json({ error: 'No speech service is set up yet, so nothing can be read aloud.' });
+  }
+
+  const pending = (await query(
+    `SELECT a.id, a.title, a.listening_text FROM assignments a
+     WHERE a.class_id=$1 AND a.kind='listening' AND a.status<>'archived'
+       AND COALESCE(a.listening_text,'') <> ''
+     ORDER BY a.deadline_at`,
+    [req.params.id],
+  )).rows;
+
+  const done = [];
+  for (const assignment of pending) {
+    for (const dialect of parsed.data.dialects) {
+      /* Skipped when it is already made from this exact story, so running it
+         again after adding one row does not re-read the other eleven. */
+      const existing = await one(
+        'SELECT state, text_hash FROM listening_audio WHERE assignment_id=$1 AND dialect=$2',
+        [assignment.id, dialect],
+      );
+      if (existing?.state === 'ready' && existing.text_hash === hashText(assignment.listening_text)) continue;
+
+      await query(
+        `INSERT INTO listening_audio(assignment_id,dialect,state) VALUES ($1,$2,'pending')
+         ON CONFLICT (assignment_id,dialect) DO UPDATE SET state='pending', error=NULL, updated_at=now()`,
+        [assignment.id, dialect],
+      );
+      try {
+        const made = await renderStory({ assignmentId: assignment.id, dialect, text: assignment.listening_text });
+        await query(
+          `UPDATE listening_audio SET state='ready', error=NULL, voice=$1, file_path=$2,
+             mime_type=$3, size_bytes=$4, text_hash=$5, updated_at=now()
+           WHERE assignment_id=$6 AND dialect=$7`,
+          [made.voice, made.filePath, made.mimeType, made.sizeBytes, made.textHash, assignment.id, dialect],
+        );
+        done.push({ title: assignment.title, dialect, state: 'ready' });
+      } catch (error) {
+        await query(
+          `UPDATE listening_audio SET state='failed', error=$1, updated_at=now()
+           WHERE assignment_id=$2 AND dialect=$3`,
+          [String(error.message).slice(0, 400), assignment.id, dialect],
+        );
+        done.push({ title: assignment.title, dialect, state: 'failed', error: error.message });
+      }
+    }
+  }
+
+  await audit({ actorId: req.user.id, action: 'listening.rendered_all', entityType: 'class',
+    entityId: req.params.id, metadata: { made: done.length }, ip: req.ip });
+  res.json({
+    stories: pending.length,
+    made: done.filter((item) => item.state === 'ready').length,
+    failed: done.filter((item) => item.state === 'failed'),
   });
 }));
 

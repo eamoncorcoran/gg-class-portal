@@ -145,3 +145,69 @@ test('a mark belongs to the assignment it was given for', () => {
   assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS listening_audio_unique/);
   assert.match(migration, /ON DELETE CASCADE/);
 });
+
+/* A listening activity from the spreadsheet.
+   ------------------------------------------------------------------
+   The import is how a term gets built, so an activity that could only be made
+   through the form would not get made. */
+
+test('a row with a story in it is a listening activity', () => {
+  /* No Kind column to remember. Pasting a story is the thing that makes it one,
+     which is also how somebody describes it out loud. */
+  assert.match(admin, /story: \['story', 'text', 'listening', 'listening text', 'passage', 'script'\]/);
+  assert.match(admin, /const kind = kindText \? \(kindText\.startsWith\('listen'\) \? 'listening' : 'written'\)\s*\n\s*: \(story \? 'listening' : 'written'\)/);
+});
+
+test('the expected answers sit beside the questions in the sheet', () => {
+  assert.match(admin, /function expectedFrom\(row\)/);
+  assert.match(admin, /\^a\\s\*\(\\d\+\)\$\|\^answer\\s\*\(\\d\+\)\$\|\^expected\\s\*\(\\d\+\)\$/);
+  assert.match(admin, /function marksFrom\(row\)/);
+  /* Lined up against the questions rather than left ragged, so row three of the
+     sheet and question three of the assignment are the same thing. */
+  assert.match(admin, /expected: questions\.map\(\(_, index\) => expected\[index\] \|\| ''\)/);
+  assert.match(admin, /marks: questions\.map\(\(_, index\) => Number\(marks\[index\]\) \|\| 1\)/);
+});
+
+test('a listening row with no expected answers is refused', () => {
+  /* Marked against what the teacher wrote, so a row with nothing to mark
+     against would come back as full marks for everybody. */
+  /* The condition, not just the words. A guard rewritten to never fire still
+     contains its own message, so matching the message proves nothing. */
+  assert.match(admin, /const answered = expected\.filter\(Boolean\)\.length;/);
+  assert.match(admin, /if \(!answered\) problems\.push\('no expected answers/);
+  assert.match(admin, /else if \(answered < questions\.length\) \{/);
+  assert.match(admin, /if \(!story\) problems\.push\('a listening activity needs a story/);
+  assert.match(admin, /const bad = marks\.slice\(0, questions\.length\)\.find\(\(value\) => value && !\/\^\\d\+\$\/\.test\(value\)\);/);
+  // And all of it only for a listening row.
+  assert.match(admin, /if \(kind === 'listening'\) \{/);
+});
+
+test('an existing written sheet still imports unchanged', () => {
+  /* The new columns are additions at the end. A sheet with Deadline, Title and
+     Q1 and nothing else has no Story, so it is written, which is what it was
+     before any of this existed. */
+  const body = admin.slice(admin.indexOf('function readAssignmentCsv'));
+  const inner = body.slice(0, body.indexOf('\n}\n'));
+  assert.match(inner, /const kind = kindText/);
+  assert.doesNotMatch(inner, /problems\.push\('no story'\)/,
+    'a written row must never be asked for a story');
+});
+
+test('the template shows a listening row rather than describing one', () => {
+  const body = admin.slice(admin.indexOf("router.get('/classes/:id/assignment-template'"));
+  const inner = body.slice(0, body.indexOf('\n}));'));
+  assert.match(inner, /Deadline,Title,Instructions,Opens,Deadline type,Story,Show text,Q1,Q2,Q3,A1,A2,A3,M1,M2,M3/);
+  assert.match(inner, /Cluastuiscint/, 'a filled-in listening line is how the columns are learned');
+});
+
+test('a term of stories can be read aloud in one go', () => {
+  const body = admin.slice(admin.indexOf("router.post('/classes/:id/listening/render-all'"));
+  const inner = body.slice(0, body.indexOf('\n}));'));
+  /* Running it again after adding one row must not re-read the other eleven. */
+  assert.match(inner, /existing\?\.state === 'ready' && existing\.text_hash === hashText\(assignment\.listening_text\)/);
+  assert.match(inner, /continue;/);
+  assert.match(inner, /kind='listening'/);
+  // Asked rather than done: thirty six trips to a speech service is a decision.
+  assert.match(app, /function offerBulkRender\(classId, count\)/);
+  assert.match(app, /if \(result\.listening\) offerBulkRender\(classId, result\.listening\)/);
+});

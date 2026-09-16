@@ -7038,14 +7038,18 @@ function openAssignmentImport() {
         <input class="fu-input" type="file" id="hw-input" accept=".csv,text/csv">
         <span class="fu-icon">${svg.cloudUp}</span>
         <span class="fu-lead"><b>Click to upload</b> or drag a CSV here</span>
-        <span class="fu-hint">Deadline, Title, Instructions, Opens, Deadline type, Q1, Q2, Q3…</span>
+        <span class="fu-hint">Deadline, Title, Instructions, Opens, Deadline type, Story, Q1, Q2, Q3…</span>
       </label>
       <p class="muted small">Put each question in its own column — <b>Q1</b>, <b>Q2</b>, <b>Q3</b>, as many as you need.
         Dates read as ${escapeHtml(classTimezone())} and can be written 25/12/2026 20:00 or 2026-12-25T20:00.
         A deadline with no time on it closes at 11:55pm that night.
         Deadline type is <b>hard</b> (late work refused) or <b>soft</b> (accepted and marked late). Blank means hard.
         <b>Leave Opens blank</b> and each week's homework appears to students at 10am on the Monday of its own week, so a term
-        imported in one go arrives a week at a time rather than all at once.
+        imported in one go arrives a week at a time rather than all at once.</p>
+      <p class="muted small"><b>For a listening activity</b>, paste the story into a <b>Story</b> column. That is all it takes: a row with a story
+        in it becomes a listening activity. Put what a right answer looks like in <b>A1, A2, A3</b> beside each question, and what it is
+        worth in <b>M1, M2, M3</b>. Add <b>Show text</b> with <b>yes</b> if the transcript should start visible; left blank they listen first
+        and can press "Show the text" themselves.
         Each assignment is filed against the teaching week its deadline falls in.
         <button type="button" class="text-link" id="hw-template">Download the template</button>.</p>
       <div id="hw-preview"></div>`,
@@ -7101,11 +7105,15 @@ function openAssignmentImport() {
         form.append('file', chosenFile);
         importButton.disabled = true;
         try {
-          const result = await api(`/api/admin/classes/${chosen()}/assignment-import`, { method: 'POST', body: form });
+          const classId = chosen();
+          const result = await api(`/api/admin/classes/${classId}/assignment-import`, { method: 'POST', body: form });
           closeModal();
           state.assignments = await api('/api/admin/assignments');
           renderAdmin();
           showToast(`${result.created} assignment${result.created === 1 ? '' : 's'} created${result.skipped.length ? `, ${result.skipped.length} skipped` : ''}`);
+          /* A term of listening activities arrives with no audio, and rendering
+             them one dialog at a time is the work the import just removed. */
+          if (result.listening) offerBulkRender(classId, result.listening);
         } catch (error) { importButton.disabled = false; showToast(error.message, 'error'); }
       });
     },
@@ -7114,17 +7122,61 @@ function openAssignmentImport() {
 
 /* Every row, in file order, with its problems named — a count alone leaves
    somebody guessing which nine of their twelve made it. */
+/* Offered straight after an import that brought in stories.
+   ------------------------------------------------------------------
+   Asked rather than done: reading twelve stories aloud in three dialects is
+   thirty six trips to a speech service, which is a decision and not a side
+   effect of pressing Import. */
+function offerBulkRender(classId, count) {
+  modal({
+    title: `Read ${count} stor${count === 1 ? 'y' : 'ies'} aloud?`,
+    subtitle: 'They are imported. The recordings are a separate step.',
+    body: `<p class="muted small">Until a story has been read aloud there is nothing for a student to play.
+        Choose the dialects you want and they will all be made now, or leave it and do them one at a time
+        from each assignment later.</p>
+      <div class="form-field"><label>Dialects</label>
+        <div class="dl-choice">
+          ${['connacht', 'munster', 'ulster'].map((key) => `<label><input type="checkbox" data-bulk-dialect="${key}" checked> ${DIALECT_LABELS[key]}</label>`).join('')}
+        </div>
+      </div>
+      <div id="bulk-render-status"></div>`,
+    footer: `<button class="btn" data-close-modal>Not now</button><button class="btn primary" id="bulk-render-go">Read them aloud</button>`,
+    onOpen() {
+      document.getElementById('bulk-render-go').addEventListener('click', async (event) => {
+        const dialects = [...document.querySelectorAll('[data-bulk-dialect]:checked')].map((box) => box.dataset.bulkDialect);
+        if (!dialects.length) return showToast('Choose at least one dialect', 'error');
+        const button = event.currentTarget;
+        button.disabled = true; button.textContent = 'Reading…';
+        const status = document.getElementById('bulk-render-status');
+        status.innerHTML = `<p class="muted small">Making ${count * dialects.length} recordings. This takes a moment each.</p>`;
+        try {
+          const result = await api(`/api/admin/classes/${classId}/listening/render-all`, { method: 'POST', body: { dialects } });
+          closeModal();
+          showToast(result.failed.length
+            ? `${result.made} made, ${result.failed.length} failed: ${result.failed[0].error}`
+            : `${result.made} recording${result.made === 1 ? '' : 's'} made`,
+          result.failed.length ? 'error' : undefined);
+        } catch (error) {
+          button.disabled = false; button.textContent = 'Read them aloud';
+          status.innerHTML = `<p class="csv-bad">${escapeHtml(error.message)}</p>`;
+        }
+      });
+    },
+  });
+}
+
 function assignmentPreview(result) {
   return `<div class="csv-summary">
       <span class="csv-ok">${result.ready} ready</span>
       ${result.problems ? `<span class="csv-bad">${result.problems} with problems</span>` : ''}
       <span class="muted small">Times read as ${escapeHtml(result.timezone)}</span>
+      ${result.listening ? `<span class="muted small">${result.listening} listening activit${result.listening === 1 ? 'y' : 'ies'}, still to be read aloud</span>` : ''}
     </div>
     <div class="table-wrap"><table class="data-table compact">
       <thead><tr><th>Row</th><th>Title</th><th>Students see it</th><th>Deadline</th><th>Questions</th><th>Week</th><th></th></tr></thead>
       <tbody>${result.rows.map((row) => `<tr class="${row.problems.length ? 'is-bad' : ''}">
         <td>${row.line}</td>
-        <td>${escapeHtml(row.title || '—')}${row.hardDeadline ? '' : ' <span class="pill">Soft</span>'}</td>
+        <td>${escapeHtml(row.title || '—')}${row.hardDeadline ? '' : ' <span class="pill">Soft</span>'}${row.kind === 'listening' ? ' <span class="pill green">Listening</span>' : ''}</td>
         <td>${escapeHtml(row.localVisible || '—')}${row.opensAssumed ? '<b class="csv-note">Monday of that week</b>' : ''}</td>
         <td>${escapeHtml(row.localDeadline || '—')}${row.past && !row.problems.length ? '<b class="csv-note">already passed</b>' : ''}</td>
         <td>${row.questions.length}</td>
