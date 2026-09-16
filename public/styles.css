@@ -64,7 +64,21 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:inherit;
 
 .form-field{display:grid;gap:7px;margin-bottom:16px}.form-field label,.field-label{color:var(--text-secondary);font-size:12px;font-weight:650}
 .input-row{display:flex;justify-content:space-between;align-items:center}
+/* Hidden means hidden.
+   ------------------------------------------------------------------
+   Every layout rule in here sets a display, and each one of them beats the
+   browser's own [hidden] rule, so a field switched off in script stayed on
+   screen. It showed up as the story box sitting under a written assignment. */
+[hidden]{display:none !important}
+
 .form-field input,.form-field select,.form-field textarea,input,select,textarea{width:100%;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--white);color:var(--text);padding:10px 12px;outline:0;box-shadow:var(--shadow-xs);transition:border-color .15s,box-shadow .15s}
+/* A tick or a radio is not a text box and must not be stretched to the width of
+   one. The rule above is written for inputs you type in, and carries the same
+   specificity as this, so this has to sit after it: without it the dot floats at
+   the far end of its own label, which is what made the choices in the assignment
+   form so hard to read. */
+.form-field input[type="radio"],.form-field input[type="checkbox"],
+input[type="radio"],input[type="checkbox"]{width:auto;flex:0 0 auto;padding:0;box-shadow:none}
 textarea{min-height:110px;resize:vertical;line-height:1.5}input::placeholder,textarea::placeholder{color:var(--text-quaternary)}
 input:focus,select:focus,textarea:focus{border-color:var(--brand-400);box-shadow:0 0 0 4px rgba(80,175,55,.11)}
 .text-link{border:0;background:transparent;padding:0;color:var(--brand-700);font-size:12px;font-weight:650}.text-link:hover{color:var(--brand-800);text-decoration:underline}
@@ -1987,3 +2001,44 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .listen-tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;
   background:var(--brand-50);color:var(--brand-800);border:1px solid var(--brand-200,#cfe8c2);
   font-size:10.5px;font-weight:650}
+
+/* Choosing what kind of assignment this is.
+   Two cards rather than two radio rows: the choice changes what the rest of the
+   form asks for, so it should read as a decision and not as a setting. */
+.kind-choice{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.kind-card{display:flex;align-items:flex-start;gap:10px;margin:0;padding:11px 13px;cursor:pointer;
+  border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--white);
+  transition:border-color .12s,background .12s,box-shadow .12s}
+.kind-card:hover{border-color:var(--brand-400)}
+.kind-card.is-on{border-color:var(--brand-500);background:var(--brand-25,#f6faf4);box-shadow:var(--shadow-xs)}
+.kind-card input{margin:3px 0 0}
+.kind-card-body{display:grid;gap:2px}
+.kind-card-body strong{font-size:13px}
+.kind-card-body span{font-size:11.5px;line-height:1.45;color:var(--text-secondary)}
+
+/* A numbered step inside the form, for a listening activity where the order
+   actually matters: write it, then record it. */
+.form-block{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--gray-50);
+  padding:14px 16px;margin-bottom:16px;display:grid;gap:10px}
+.form-block-head{display:flex;align-items:flex-start;gap:10px}
+.form-block-head strong{display:block;font-size:13px}
+.form-block-head .muted{display:block;line-height:1.45}
+.form-step{width:21px;height:21px;flex:0 0 auto;display:grid;place-items:center;border-radius:50%;
+  background:var(--brand-500);color:#fff;font-size:11px;font-weight:700}
+.form-block .toggle-row{margin:0}
+.listen-wait{display:flex;align-items:flex-start;gap:9px;margin:0;font-size:11.5px;line-height:1.55;
+  color:var(--text-secondary);background:var(--white);border:1px dashed var(--border-strong);
+  border-radius:var(--radius-sm);padding:11px 13px}
+.listen-wait svg{width:15px;height:15px;flex:0 0 auto;margin-top:1px}
+
+/* The answer key on a question: what a right answer looks like, and what it is
+   worth, side by side because they are one thought. */
+.answer-key{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:10px;align-items:start;
+  padding:10px 12px;margin-top:2px;border-radius:var(--radius-sm);background:var(--brand-25,#f6faf4);
+  border:1px solid var(--brand-200,#cfe8c2)}
+.answer-key .form-field{margin:0}
+.answer-key textarea{min-height:56px}
+@media (max-width:640px){
+  .kind-choice{grid-template-columns:1fr}
+  .answer-key{grid-template-columns:1fr}
+}

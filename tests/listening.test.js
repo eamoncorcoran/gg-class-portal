@@ -286,3 +286,58 @@ test('the stand-in voice cannot run in production', () => {
   const blueprint = fs.readFileSync(new URL('../render.yaml', import.meta.url), 'utf8');
   assert.doesNotMatch(blueprint, /TTS_PROVIDER/);
 });
+
+/* Making one, on one screen.
+   ------------------------------------------------------------------
+   A recording belongs to an assignment, so there was nothing to upload against
+   until one existed, and the form said so by telling the teacher to save and
+   come back. That is a fine sentence and a bad way to spend a Tuesday. */
+
+test('hidden fields are actually hidden', () => {
+  /* Every layout rule in the stylesheet sets a display, and each one beats the
+     browser's own [hidden] rule. So a field switched off in script stayed on
+     screen: the story box sat under written assignments for anyone who looked. */
+  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\[hidden\]\{display:none !important\}/);
+});
+
+test('a tick is not stretched to the width of a text box', () => {
+  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+  const global = css.indexOf('.form-field input,.form-field select,.form-field textarea,input,select,textarea{width:100%');
+  const fix = css.indexOf('input[type="radio"],input[type="checkbox"]{width:auto');
+  assert.ok(global > -1 && fix > -1, 'both rules have to be there');
+  /* Same specificity, so source order decides it. Written before, the dot floats
+     at the far end of its own label. */
+  assert.ok(fix > global, 'the correction has to come after the rule it corrects');
+});
+
+test('the first save turns creating into editing, in place', () => {
+  const body = app.slice(app.indexOf('function openAssignmentModal'));
+  const inner = body.slice(0, body.indexOf('\nfunction '));
+  assert.match(inner, /let saved = assignment;/);
+  assert.match(inner, /saved \? `\/api\/admin\/assignments\/\$\{saved\.id\}` : '\/api\/admin\/assignments'/);
+  /* A listening activity is not finished until it has something to play, so the
+     dialog stays open on the recordings rather than closing on a story nobody
+     can hear. A written one closes, which is what it always did. */
+  assert.match(inner, /if \(payload\.kind === 'listening'\) \{/);
+  assert.match(inner, /Published\. Now add the recordings\./);
+  assert.match(inner, /await renderListeningPanel\(saved\)/);
+  assert.match(inner, /scrollIntoView/);
+});
+
+test('the recordings step says what is about to happen, not where to go', () => {
+  assert.match(app, /The upload buttons appear here straight afterwards, without leaving this screen\./);
+  assert.doesNotMatch(app, /Save the assignment and reopen it/,
+    'sending somebody away and back is the thing being fixed');
+});
+
+test('the kind of assignment reads as a decision', () => {
+  /* Two cards rather than two radio rows, because the choice changes what the
+     rest of the form asks for. */
+  assert.match(app, /class="kind-choice"/);
+  assert.match(app, /class="kind-card /);
+  assert.match(app, /card\.classList\.toggle\('is-on', card\.querySelector\('input'\)\.checked\)/);
+  // And the listening fields are numbered, because the order matters.
+  assert.match(app, /<span class="form-step">1<\/span>/);
+  assert.match(app, /<span class="form-step">2<\/span>/);
+});

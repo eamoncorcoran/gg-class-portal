@@ -6944,19 +6944,29 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
     <div class="form-field"><label>Teaching week, optional</label><select name="weekId" id="assignment-week"><option value="">No weekly tracker column</option></select></div>
     <div class="form-field"><label>Title</label><input name="title" value="${escapeHtml(assignment?.title || '')}" required></div>
     <div class="form-field"><label>What kind of assignment</label>
-      <div class="dl-choice">
-        <label><input type="radio" name="kind" value="written" ${assignment?.kind === 'listening' ? '' : 'checked'}> Written</label>
-        <label><input type="radio" name="kind" value="listening" ${assignment?.kind === 'listening' ? 'checked' : ''}> Listening comprehension</label>
+      <div class="kind-choice">
+        <label class="kind-card ${assignment?.kind === 'listening' ? '' : 'is-on'}">
+          <input type="radio" name="kind" value="written" ${assignment?.kind === 'listening' ? '' : 'checked'}>
+          <span class="kind-card-body"><strong>Written</strong><span>Questions they answer in writing.</span></span>
+        </label>
+        <label class="kind-card ${assignment?.kind === 'listening' ? 'is-on' : ''}">
+          <input type="radio" name="kind" value="listening" ${assignment?.kind === 'listening' ? 'checked' : ''}>
+          <span class="kind-card-body"><strong>Listening</strong><span>A story they listen to, then questions about it.</span></span>
+        </label>
       </div>
     </div>
-    <div class="form-field listening-only" ${assignment?.kind === 'listening' ? '' : 'hidden'}>
-      <label>The story</label>
-      <textarea name="listeningText" rows="8" placeholder="Paste the story here. It is read aloud, so write it as it should be heard.">${escapeHtml(assignment?.listening_text || '')}</textarea>
-      <div class="muted small">Plain text. Save the assignment first, then have it read out in each dialect from the button that appears here.</div>
-      <label class="toggle-row" style="margin-top:9px"><span class="toggle"><input name="listeningTextShown" type="checkbox" ${assignment?.listening_text_shown ? 'checked' : ''}><span></span></span>Show the text to students straight away</label>
-      <div class="muted small">Left off, they listen first and can press "Show the text" when they want it.</div>
+    <section class="form-block listening-only" ${assignment?.kind === 'listening' ? '' : 'hidden'}>
+      <div class="form-block-head"><span class="form-step">1</span><div><strong>The story</strong>
+        <span class="muted small">What they will hear. Plain text, written the way it should be read out.</span></div></div>
+      <textarea name="listeningText" rows="8" placeholder="Paste the story here.">${escapeHtml(assignment?.listening_text || '')}</textarea>
+      <label class="toggle-row"><span class="toggle"><input name="listeningTextShown" type="checkbox" ${assignment?.listening_text_shown ? 'checked' : ''}><span></span></span>
+        Show the text straight away, rather than making them listen first</label>
+    </section>
+    <section class="form-block listening-only" ${assignment?.kind === 'listening' ? '' : 'hidden'}>
+      <div class="form-block-head"><span class="form-step">2</span><div><strong>The recordings</strong>
+        <span class="muted small">One per dialect. Students pick which to listen to.</span></div></div>
       <div id="listening-render" class="listen-render"></div>
-    </div>
+    </section>
     <div class="form-field"><label>Instructions</label><textarea name="instructions">${escapeHtml(assignment?.instructions || '')}</textarea></div>
     <div class="form-field"><label>Loom share or embed URL</label><input name="loomUrl" type="url" value="${escapeHtml(assignment?.loom_url || '')}" placeholder="https://www.loom.com/share/..."></div>
     <div class="form-field"><label>Visible from</label><input name="visibleAt" type="datetime-local" value="${toZonedInput(assignment?.visible_at || new Date())}" required><div class="muted small">Times are ${escapeHtml(classTimezone())} (${escapeHtml(timezoneAbbreviation())}).</div></div>
@@ -7005,7 +7015,7 @@ function uploadSettingsBlock(assignment) {
 }
 
 function questionBuilder(question, index, hidden = true) {
-  return `<div class="question-builder" data-question><div class="question-builder-head"><strong>Question <span data-question-number>${index + 1}</span></strong><button type="button" class="text-link" data-remove-question>Remove</button></div><div class="form-field"><label>Question</label><textarea data-question-prompt required>${escapeHtml(question.prompt || '')}</textarea></div><div class="form-field"><label>Embedded image, optional</label><input data-question-image type="url" value="${escapeHtml(question.imageUrl || question.image_url || '')}" placeholder="Existing image URL"><input data-question-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-top:7px"></div><div class="form-field listening-only" ${hidden ? 'hidden' : ''}><label>What a right answer looks like</label><textarea data-question-expected rows="2" placeholder="The marking is against this. A different wording that means the same thing still gets the marks.">${escapeHtml(question.expectedAnswer || question.expected_answer || '')}</textarea></div><div class="form-field listening-only" ${hidden ? 'hidden' : ''}><label>Marks</label><input data-question-marks type="number" min="0" max="100" value="${Number(question.marks ?? 1)}"></div><label class="toggle-row"><span class="toggle"><input data-question-required type="checkbox" ${question.required !== false ? 'checked' : ''}><span></span></span>Required</label></div>`;
+  return `<div class="question-builder" data-question><div class="question-builder-head"><strong>Question <span data-question-number>${index + 1}</span></strong><button type="button" class="text-link" data-remove-question>Remove</button></div><div class="form-field"><label>Question</label><textarea data-question-prompt required>${escapeHtml(question.prompt || '')}</textarea></div><div class="form-field"><label>Embedded image, optional</label><input data-question-image type="url" value="${escapeHtml(question.imageUrl || question.image_url || '')}" placeholder="Existing image URL"><input data-question-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-top:7px"></div><div class="answer-key listening-only" ${hidden ? 'hidden' : ''}><div class="form-field"><label>What a right answer looks like</label><textarea data-question-expected rows="2" placeholder="Marking is against this. Different wording that means the same thing still gets the marks.">${escapeHtml(question.expectedAnswer || question.expected_answer || '')}</textarea></div><div class="form-field marks-field"><label>Marks</label><input data-question-marks type="number" min="0" max="100" value="${Number(question.marks ?? 1)}"></div></div><label class="toggle-row"><span class="toggle"><input data-question-required type="checkbox" ${question.required !== false ? 'checked' : ''}><span></span></span>Required</label></div>`;
 }
 
 
@@ -7189,6 +7199,14 @@ function assignmentPreview(result) {
 }
 
 function openAssignmentModal(assignment = null, defaultClassId = null, prefillDeadline = null) {
+  /* What the recordings attach to.
+     ------------------------------------------------------------------
+     A recording belongs to an assignment, so there is nothing to upload against
+     until one exists. Rather than sending the teacher away to save and come
+     back, the first save turns this from a create into an edit in place: the
+     recordings block goes live underneath them and they carry on. */
+  let saved = assignment;
+
   modal({
     title: assignment ? 'Edit assignment' : 'Create assignment', subtitle: 'Students complete multiple questions one at a time. Drafts save automatically.', wide: true,
     body: assignmentForm(assignment, defaultClassId, prefillDeadline),
@@ -7198,7 +7216,10 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
       const showListening = () => {
         const on = form.kind.value === 'listening';
         document.querySelectorAll('.listening-only').forEach((field) => { field.hidden = !on; });
-        if (on) renderListeningPanel(assignment);
+        document.querySelectorAll('.kind-card').forEach((card) => {
+          card.classList.toggle('is-on', card.querySelector('input').checked);
+        });
+        if (on) renderListeningPanel(saved);
       };
       form.querySelectorAll('[name="kind"]').forEach((radio) => radio.addEventListener('change', showListening));
       showListening();
@@ -7259,8 +7280,26 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
             listeningText: fd.get('listeningText') || '',
             listeningTextShown: form.listeningTextShown.checked,
           };
-          await api(assignment ? `/api/admin/assignments/${assignment.id}` : '/api/admin/assignments', { method: assignment ? 'PUT' : 'POST', body: payload });
-          closeModal(); await renderAdmin(); showToast(assignment ? 'Assignment updated' : 'Assignment published');
+          const written = await api(saved ? `/api/admin/assignments/${saved.id}` : '/api/admin/assignments',
+            { method: saved ? 'PUT' : 'POST', body: payload });
+          const wasNew = !saved;
+          if (wasNew) saved = { ...written, ...payload };
+          state.assignments = await api('/api/admin/assignments');
+
+          /* A listening activity is not finished until it has something to
+             play, so the dialog stays open on the recordings rather than
+             closing on a story nobody can hear. Everything else closes, which
+             is what it did before and what a written assignment wants. */
+          if (payload.kind === 'listening') {
+            showToast(wasNew ? 'Published. Now add the recordings.' : 'Assignment updated');
+            document.getElementById('save-assignment').textContent = 'Save changes';
+            await renderListeningPanel(saved);
+            document.getElementById('listening-render')?.closest('.form-block')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            renderAdmin();
+            return;
+          }
+          closeModal(); await renderAdmin(); showToast(wasNew ? 'Assignment published' : 'Assignment updated');
         } catch (error) { showToast(error.message, 'error'); }
       });
     },
@@ -7279,7 +7318,8 @@ async function renderListeningPanel(assignment) {
   const host = document.getElementById('listening-render');
   if (!host) return;
   if (!assignment) {
-    host.innerHTML = '<p class="muted small">Save the assignment and reopen it to add the recordings.</p>';
+    host.innerHTML = `<p class="listen-wait">${svg.upload} Write the story and the questions first, then press
+      <b>Publish assignment</b>. The upload buttons appear here straight afterwards, without leaving this screen.</p>`;
     return;
   }
   host.innerHTML = '<p class="muted small">Checking the recordings…</p>';
