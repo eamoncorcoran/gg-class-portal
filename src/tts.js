@@ -25,6 +25,10 @@ export const DIALECTS = Object.freeze([
   { key: 'connacht', label: 'Connacht', hint: 'Conamara and Ráth Chairn' },
   { key: 'munster', label: 'Munster', hint: 'Corca Dhuibhne and Múscraí' },
   { key: 'ulster', label: 'Ulster', hint: 'Tír Chonaill' },
+  /* For a recording that is not in any one dialect: an exam tape, a newsreader,
+     the Caighdeán as it is read out in a classroom. Synthesis has no voice for
+     it, so it is only ever an upload. */
+  { key: 'standard', label: 'Standard', hint: 'An Caighdeán, no particular dialect' },
 ]);
 
 export const DIALECT_KEYS = DIALECTS.map((item) => item.key);
@@ -34,6 +38,16 @@ export const DIALECT_KEYS = DIALECTS.map((item) => item.key);
    rather than the whole id means a voice being retired and replaced does not
    need a code change. */
 const DIALECT_CODES = { ulster: 'UL', connacht: 'CO', munster: 'MU' };
+
+/* Which dialects a synthesiser can be asked for. Standard is not one of them:
+   ABAIR has no neutral voice, and picking a dialect voice and calling it
+   standard would be a lie told to a student learning to tell them apart. */
+export const SYNTHESISABLE = Object.freeze(['connacht', 'munster', 'ulster']);
+
+/* What a browser may hand up as a recording. Deliberately the same set the
+   voice notes accept, because it is the same question: what can be played back
+   without converting it. */
+export const AUDIO_UPLOAD_MB = 60;
 
 export function providerName() {
   return process.env.TTS_PROVIDER || (process.env.ABAIR_API_KEY ? 'abair' : 'none');
@@ -167,8 +181,8 @@ async function synthesiseWithAbair({ text, dialect }) {
  * not a reason the other two should not play.
  */
 export async function renderStory({ assignmentId, dialect, text }) {
-  if (!DIALECT_KEYS.includes(dialect)) {
-    throw Object.assign(new Error('That is not a dialect the portal offers.'), { status: 400 });
+  if (!SYNTHESISABLE.includes(dialect)) {
+    throw Object.assign(new Error(`There is no synthesised voice for ${dialect}. Upload a recording instead.`), { status: 400 });
   }
   if (!String(text || '').trim()) {
     throw Object.assign(new Error('There is no story to read out.'), { status: 400 });

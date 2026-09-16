@@ -81,10 +81,11 @@ async function accessibleAssignment(studentId, assignmentId) {
       COALESCE((SELECT json_agg(jsonb_build_object(
         'id',r.id,'fileName',r.file_name,'fileUrl',r.file_url,'mimeType',r.mime_type
       ) ORDER BY r.created_at) FROM assignment_resources r WHERE r.assignment_id=a.id),'[]'::json) resources,
-      /* Which dialects actually have a recording. Only the ready ones: a
-         student offered a dialect that failed to render would press play and
-         get nothing, which on a listening exercise reads as their fault. */
-      COALESCE((SELECT json_agg(la.dialect ORDER BY la.dialect)
+      /* Which dialects actually have a recording, and what each one is called.
+         Only the ready ones: a student offered a dialect that failed would press
+         play and get nothing, which on a listening exercise reads as their own
+         fault rather than the recording's. */
+      COALESCE((SELECT json_agg(jsonb_build_object('key',la.dialect,'label',la.label) ORDER BY la.dialect)
         FROM listening_audio la WHERE la.assignment_id=a.id AND la.state='ready'),'[]'::json) dialects
      FROM assignments a
      JOIN classes c ON c.id=a.class_id

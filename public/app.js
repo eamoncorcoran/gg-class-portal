@@ -7279,7 +7279,7 @@ async function renderListeningPanel(assignment) {
   const host = document.getElementById('listening-render');
   if (!host) return;
   if (!assignment) {
-    host.innerHTML = '<p class="muted small">Save the assignment and reopen it to have the story read aloud.</p>';
+    host.innerHTML = '<p class="muted small">Save the assignment and reopen it to add the recordings.</p>';
     return;
   }
   host.innerHTML = '<p class="muted small">Checking the recordings…</p>';
@@ -7287,49 +7287,104 @@ async function renderListeningPanel(assignment) {
   try { data = await api(`/api/admin/assignments/${assignment.id}/listening`); }
   catch (error) { host.innerHTML = `<p class="csv-bad">${escapeHtml(error.message)}</p>`; return; }
 
-  const note = data.standIn
-    ? '<p class="csv-note-block">Using this machine\'s own voice so the activity can be tested. It does not speak Irish, so the reading will be wrong. Set ABAIR_API_KEY for the real dialect voices.</p>'
-    : data.configured
-      ? ''
-      : '<p class="csv-bad">No speech service is set up, so the story cannot be read aloud yet. Add ABAIR_API_KEY and restart the app.</p>';
-
-  host.innerHTML = `${note}
+  host.innerHTML = `
     <div class="listen-render-rows">${data.dialects.map((dialect) => {
-      const label = {
-        none: '<span class="muted small">Not made yet</span>',
-        pending: '<span class="muted small">Making…</span>',
+      const has = dialect.state === 'ready';
+      const state = {
+        none: '<span class="muted small">Nothing yet</span>',
+        pending: '<span class="muted small">Working…</span>',
         ready: dialect.stale
-          ? '<span class="csv-bad">Made from an older version of the story</span>'
-          : `<span class="csv-ok">Ready${dialect.voice ? ` · ${escapeHtml(dialect.voice)}` : ''}</span>`,
+          ? '<span class="csv-bad">Read from an older version of the story</span>'
+          : `<span class="csv-ok">${dialect.source === 'upload' ? 'Uploaded' : 'Synthesised'}${dialect.sizeBytes ? ` · ${escapeHtml(fmtBytes(dialect.sizeBytes))}` : ''}${dialect.originalName ? ` · ${escapeHtml(dialect.originalName)}` : ''}</span>`,
         failed: `<span class="csv-bad">${escapeHtml(dialect.error || 'Failed')}</span>`,
       }[dialect.state] || '';
+
       return `<div class="listen-render-row">
-        <div><strong>${escapeHtml(dialect.label)}</strong> <span class="muted small">${escapeHtml(dialect.hint)}</span><div>${label}</div></div>
-        <div class="listen-render-actions">
-          ${dialect.state === 'ready' ? `<audio class="listen-audio" controls preload="none" src="/api/media/listening/${assignment.id}/${dialect.key}"></audio>` : ''}
-          <button type="button" class="btn small" data-render-dialect="${dialect.key}" ${data.configured ? '' : 'disabled'}>${dialect.state === 'ready' ? 'Make again' : 'Read it out'}</button>
+        <div class="listen-render-who">
+          <strong>${escapeHtml(dialect.label)}</strong>
+          <span class="muted small">${escapeHtml(dialect.hint)}</span>
+          <div>${state}</div>
         </div>
+        <div class="listen-render-actions">
+          ${has ? `<audio class="listen-audio" controls preload="none" src="/api/media/listening/${assignment.id}/${dialect.key}"></audio>` : ''}
+          <label class="btn small listen-upload">
+            <input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.webm" hidden data-upload-dialect="${dialect.key}">
+            ${has ? 'Replace' : 'Upload a recording'}
+          </label>
+          ${dialect.synthesisable && data.configured
+            ? `<button type="button" class="btn small" data-render-dialect="${dialect.key}">${has ? 'Read it out instead' : 'Read it out'}</button>` : ''}
+          ${has ? `<button type="button" class="btn small danger" data-remove-dialect="${dialect.key}">Remove</button>` : ''}
+        </div>
+        ${has ? `<div class="listen-render-label">
+          <label>What students see on the tab
+            <input type="text" maxlength="60" placeholder="${escapeHtml(dialect.label)}" value="${escapeHtml(dialect.tag || '')}" data-label-dialect="${dialect.key}">
+          </label>
+          <span class="muted small">Leave it blank to just say ${escapeHtml(dialect.label)}.</span>
+        </div>` : ''}
       </div>`;
     }).join('')}</div>
-    <button type="button" class="btn small" id="render-all" ${data.configured ? '' : 'disabled'}>Read it out in all three</button>`;
+    <p class="muted small">Upload one recording per dialect. MP3, M4A, WAV, OGG or WebM, up to 60 MB.
+      Students pick which one to listen to and see the tag you give it.</p>
+    <div id="listen-upload-status"></div>`;
 
-  const run = async (dialects, button) => {
+  const status = document.getElementById('listen-upload-status');
+  const again = () => renderListeningPanel(assignment);
+
+  host.querySelectorAll('[data-upload-dialect]').forEach((input) => input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    status.innerHTML = `<p class="muted small">Uploading ${escapeHtml(file.name)}…</p>`;
+    const body = new FormData();
+    body.append('file', file);
+    body.append('dialect', input.dataset.uploadDialect);
+    try {
+      await api(`/api/admin/assignments/${assignment.id}/listening/upload`, { method: 'POST', body });
+      status.innerHTML = '';
+      showToast('Recording uploaded');
+      again();
+    } catch (error) {
+      status.innerHTML = `<p class="csv-bad">${escapeHtml(error.message)}</p>`;
+    }
+  }));
+
+  /* Saved as it is typed rather than behind a button. It is one short field and
+     a teacher who typed a tag and closed the dialog would reasonably expect it
+     to be there when they came back. */
+  host.querySelectorAll('[data-label-dialect]').forEach((input) => input.addEventListener('change', async () => {
+    try {
+      await api(`/api/admin/assignments/${assignment.id}/listening/${input.dataset.labelDialect}`,
+        { method: 'PATCH', body: { label: input.value.trim() } });
+      showToast('Tag saved');
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+
+  host.querySelectorAll('[data-remove-dialect]').forEach((button) => button.addEventListener('click', async () => {
+    const dialect = button.dataset.removeDialect;
+    const sure = await askConfirm({
+      title: `Remove the ${dialect} recording?`,
+      message: 'Students will no longer be offered it. The story and the questions stay as they are.',
+      confirmLabel: 'Remove it', danger: true,
+    });
+    if (!sure) return;
+    try {
+      await api(`/api/admin/assignments/${assignment.id}/listening/${dialect}`, { method: 'DELETE' });
+      showToast('Recording removed');
+      again();
+    } catch (error) { showToast(error.message, 'error'); }
+  }));
+
+  host.querySelectorAll('[data-render-dialect]').forEach((button) => button.addEventListener('click', async () => {
     const label = button.textContent;
     button.disabled = true; button.textContent = 'Reading…';
     try {
-      const result = await api(`/api/admin/assignments/${assignment.id}/listening/render`, { method: 'POST', body: { dialects } });
+      const result = await api(`/api/admin/assignments/${assignment.id}/listening/render`,
+        { method: 'POST', body: { dialects: [button.dataset.renderDialect] } });
       const failed = result.results.filter((item) => item.state === 'failed');
-      showToast(failed.length ? `${failed.length} could not be made: ${failed[0].error}` : 'Recording ready',
-        failed.length ? 'error' : undefined);
+      showToast(failed.length ? failed[0].error : 'Recording ready', failed.length ? 'error' : undefined);
     } catch (error) { showToast(error.message, 'error'); }
     button.disabled = false; button.textContent = label;
-    renderListeningPanel(assignment);
-  };
-
-  host.querySelectorAll('[data-render-dialect]').forEach((button) => button.addEventListener('click',
-    () => run([button.dataset.renderDialect], button)));
-  document.getElementById('render-all')?.addEventListener('click', (event) =>
-    run(data.dialects.map((dialect) => dialect.key), event.currentTarget));
+    again();
+  }));
 }
 
 function bindQuestionRemoval() {
@@ -9146,7 +9201,8 @@ async function openHomeworkForm(assignment, submission) {
        questions do not come back from the server, and offering an empty form
        behind a refusal would be worse than saying so. */
     if (!data.assignment.open) return closedAssignmentNotice(data.assignment, data.submission);
-    const dialects = Array.isArray(data.assignment.dialects) ? data.assignment.dialects : [];
+    const dialects = (Array.isArray(data.assignment.dialects) ? data.assignment.dialects : [])
+      .map((entry) => (typeof entry === 'string' ? entry : entry.key));
     state.homeworkForm = { assignment: data.assignment, submission: data.submission, step: data.submission?.current_question || 0, answers: Array.isArray(data.submission?.answers) ? [...data.submission.answers] : data.assignment.questions.map(() => ''), files: data.submission?.files || [],
       listening: {
         dialect: dialects[0] || 'connacht',
@@ -9200,10 +9256,21 @@ const DIALECT_LABELS = {
   connacht: 'Connacht', munster: 'Munster', ulster: 'Ulster', standard: 'Standard',
 };
 
+/* What the tab says. The teacher's own label wins, so a recording can be tagged
+   "Corca Dhuibhne" or named after the speaker rather than carrying the portal's
+   idea of what the dialect is called. */
+function dialectTag(entry) {
+  if (!entry) return '';
+  return entry.label || DIALECT_LABELS[entry.key] || entry.key;
+}
+
 function listeningPanel(assignment, form) {
   if (assignment.kind !== 'listening') return '';
-  const available = Array.isArray(assignment.dialects) ? assignment.dialects : [];
+  const available = (Array.isArray(assignment.dialects) ? assignment.dialects : [])
+    // Older payloads sent bare keys; both shapes read the same way.
+    .map((entry) => (typeof entry === 'string' ? { key: entry, label: null } : entry));
   const listen = form.listening;
+  const current = available.find((entry) => entry.key === listen.dialect) || available[0];
 
   if (!available.length) {
     return `<div class="listen-panel"><p class="muted small">The recording for this story is not ready yet. Tell your teacher.</p>
@@ -9214,13 +9281,14 @@ function listeningPanel(assignment, form) {
     <div class="listen-head">
       <strong>${svg.play || svg.video} Listen to the story</strong>
       ${available.length > 1 ? `<div class="listen-dialects" role="group" aria-label="Which dialect to listen in">
-        ${available.map((key) => `<button type="button" class="listen-dialect ${key === listen.dialect ? 'active' : ''}" data-dialect="${escapeHtml(key)}">${escapeHtml(DIALECT_LABELS[key] || key)}</button>`).join('')}
-      </div>` : `<span class="muted small">${escapeHtml(DIALECT_LABELS[available[0]] || available[0])}</span>`}
+        ${available.map((entry) => `<button type="button" class="listen-dialect ${entry.key === listen.dialect ? 'active' : ''}" data-dialect="${escapeHtml(entry.key)}">${escapeHtml(dialectTag(entry))}</button>`).join('')}
+      </div>` : `<span class="listen-tag">${escapeHtml(dialectTag(available[0]))}</span>`}
     </div>
     <audio id="listen-audio" class="listen-audio" controls preload="metadata"
       src="/api/media/listening/${assignment.id}/${encodeURIComponent(listen.dialect)}"></audio>
     <div class="listen-actions">
       <button type="button" class="text-link" id="listen-toggle-text">${listen.textShown ? 'Hide the text' : 'Show the text'}</button>
+      ${available.length > 1 ? `<span class="listen-tag">${escapeHtml(dialectTag(current))}</span>` : ''}
       <span class="muted small">${listen.plays ? `Played ${listen.plays} time${listen.plays === 1 ? '' : 's'}` : 'Play it as often as you like'}</span>
     </div>
     <div class="listen-text" id="listen-text" ${listen.textShown ? '' : 'hidden'}>${escapeHtml(assignment.listening_text || '')}</div>

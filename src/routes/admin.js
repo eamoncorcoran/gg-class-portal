@@ -28,7 +28,8 @@ import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, cours
 import { addTopic, coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, removeTopic,
   reorderWeek, scheduleTopic, setItemDone, setTopicGroup, topicCost, unscheduleItem } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
-import { DIALECTS, DIALECT_KEYS, hashText, isStandIn, providerName, renderStory, ttsConfigured } from '../tts.js';
+import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashText, isStandIn,
+  providerName, renderStory, ttsConfigured } from '../tts.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
@@ -1456,11 +1457,115 @@ router.get('/assignments/:id/listening', asyncRoute(async (req, res) => {
         voice: row?.voice || null,
         seconds: row?.seconds || null,
         sizeBytes: row?.size_bytes || null,
-        // Made from a story that has since been edited.
-        stale: Boolean(row && row.state === 'ready' && row.text_hash !== current),
+        source: row?.source || null,
+        /* The words on the tab the student presses, when they are not the plain
+           dialect name. Called tag rather than label because the dialect already
+           has a label and one silently overwriting the other would put "Corca
+           Dhuibhne" where the heading "Munster" belongs. */
+        tag: row?.label || null,
+        originalName: row?.original_name || null,
+        // Only synthesis can be synthesised; standard has no voice.
+        synthesisable: SYNTHESISABLE.includes(dialect.key),
+        /* Made from a story that has since been edited. An upload is not derived
+           from the story, so editing the story does not make it wrong the way it
+           makes a synthesised reading wrong. */
+        stale: Boolean(row && row.state === 'ready' && row.source !== 'upload' && row.text_hash !== current),
       };
     }),
   });
+}));
+
+/* A recording the teacher made.
+   ------------------------------------------------------------------
+   The better answer most of the time, and the cheaper one: a real speaker in a
+   real dialect beats a synthesiser, and a file recorded once costs nothing every
+   time it is played. Synthesis stays for anybody without a recording to hand.
+
+   Written under a random name into the private store, and served only through
+   the authenticated media route, the same as every other recording here. */
+const listeningUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: AUDIO_UPLOAD_MB * 1024 * 1024, files: 1 },
+  fileFilter(_req, file, callback) {
+    if (!VOICE_MIME_TYPES.has(String(file.mimetype).split(';')[0])) {
+      return callback(Object.assign(new Error('That audio format is not supported. MP3, M4A, WAV, OGG and WebM all work.'), { status: 400 }));
+    }
+    callback(null, true);
+  },
+});
+
+router.post('/assignments/:id/listening/upload', listeningUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose an audio file.' });
+  const parsed = z.object({
+    dialect: z.enum(DIALECT_KEYS),
+    // What the student is told they are listening to, if not the plain dialect.
+    label: z.string().trim().max(60).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Say which dialect this recording is in.' });
+
+  const assignment = await one('SELECT id FROM assignments WHERE id=$1', [req.params.id]);
+  if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
+
+  await fs.mkdir(audioDir(), { recursive: true });
+  const extension = audioExtension(req.file.mimetype) || '.mp3';
+  const name = `${crypto.randomUUID()}${extension}`;
+  const filePath = path.join(audioDir(), name);
+  await fs.writeFile(filePath, req.file.buffer);
+
+  /* The old file goes only once the new one is safely written, and only if it
+     is a different file: a failed write must not leave the week with nothing to
+     play. */
+  const previous = await one(
+    'SELECT file_path FROM listening_audio WHERE assignment_id=$1 AND dialect=$2',
+    [assignment.id, parsed.data.dialect],
+  );
+
+  const row = await one(
+    `INSERT INTO listening_audio(assignment_id,dialect,state,source,label,file_path,mime_type,
+       size_bytes,original_name,uploaded_by,text_hash,voice,error)
+     VALUES ($1,$2,'ready','upload',$3,$4,$5,$6,$7,$8,NULL,NULL,NULL)
+     ON CONFLICT (assignment_id,dialect) DO UPDATE
+       SET state='ready', source='upload', label=EXCLUDED.label, file_path=EXCLUDED.file_path,
+           mime_type=EXCLUDED.mime_type, size_bytes=EXCLUDED.size_bytes,
+           original_name=EXCLUDED.original_name, uploaded_by=EXCLUDED.uploaded_by,
+           text_hash=NULL, voice=NULL, error=NULL, updated_at=now()
+     RETURNING *`,
+    [assignment.id, parsed.data.dialect, parsed.data.label || null, filePath,
+     req.file.mimetype, req.file.size, req.file.originalname?.slice(0, 200) || null, req.user.id],
+  );
+
+  if (previous?.file_path && path.basename(previous.file_path) !== name) {
+    await fs.unlink(previous.file_path).catch(() => {});
+  }
+
+  await audit({ actorId: req.user.id, action: 'listening.uploaded', entityType: 'assignment',
+    entityId: assignment.id, metadata: { dialect: parsed.data.dialect, bytes: req.file.size }, ip: req.ip });
+  res.status(201).json({ dialect: row.dialect, label: row.label, sizeBytes: row.size_bytes });
+}));
+
+/* Renaming the tag without re-uploading the file. */
+router.patch('/assignments/:id/listening/:dialect', asyncRoute(async (req, res) => {
+  const parsed = z.object({ label: z.string().trim().max(60) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'That label is too long.' });
+  const row = await one(
+    `UPDATE listening_audio SET label=$1, updated_at=now()
+     WHERE assignment_id=$2 AND dialect=$3 RETURNING dialect, label`,
+    [parsed.data.label || null, req.params.id, req.params.dialect],
+  );
+  if (!row) return res.status(404).json({ error: 'There is no recording for that dialect yet.' });
+  res.json(row);
+}));
+
+router.delete('/assignments/:id/listening/:dialect', asyncRoute(async (req, res) => {
+  const row = await one(
+    'DELETE FROM listening_audio WHERE assignment_id=$1 AND dialect=$2 RETURNING file_path',
+    [req.params.id, req.params.dialect],
+  );
+  if (!row) return res.status(404).json({ error: 'There is no recording for that dialect.' });
+  if (row.file_path) await fs.unlink(row.file_path).catch(() => {});
+  await audit({ actorId: req.user.id, action: 'listening.removed', entityType: 'assignment',
+    entityId: req.params.id, metadata: { dialect: req.params.dialect }, ip: req.ip });
+  res.json({ ok: true });
 }));
 
 /* Every story in a class that has not been read aloud yet.
@@ -1470,7 +1575,7 @@ router.get('/assignments/:id/listening', asyncRoute(async (req, res) => {
    work the import was supposed to remove. */
 router.post('/classes/:id/listening/render-all', asyncRoute(async (req, res) => {
   const parsed = z.object({
-    dialects: z.array(z.enum(DIALECT_KEYS)).min(1).max(DIALECT_KEYS.length),
+    dialects: z.array(z.enum(SYNTHESISABLE)).min(1).max(SYNTHESISABLE.length),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Choose at least one dialect.' });
   if (!ttsConfigured()) {
@@ -1494,6 +1599,9 @@ router.post('/classes/:id/listening/render-all', asyncRoute(async (req, res) => 
         'SELECT state, text_hash FROM listening_audio WHERE assignment_id=$1 AND dialect=$2',
         [assignment.id, dialect],
       );
+      /* An upload is never replaced by a synthesised reading. Somebody who
+         recorded their own voice did so on purpose. */
+      if (existing?.source === 'upload') continue;
       if (existing?.state === 'ready' && existing.text_hash === hashText(assignment.listening_text)) continue;
 
       await query(
@@ -1532,7 +1640,7 @@ router.post('/classes/:id/listening/render-all', asyncRoute(async (req, res) => 
 
 router.post('/assignments/:id/listening/render', asyncRoute(async (req, res) => {
   const parsed = z.object({
-    dialects: z.array(z.enum(DIALECT_KEYS)).min(1).max(DIALECT_KEYS.length),
+    dialects: z.array(z.enum(SYNTHESISABLE)).min(1).max(SYNTHESISABLE.length),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Choose at least one dialect.' });
 

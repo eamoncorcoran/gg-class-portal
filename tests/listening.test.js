@@ -20,8 +20,10 @@ const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'
 const migration = fs.readFileSync(
   new URL('../migrations/045_listening_activities.sql', import.meta.url), 'utf8');
 
-test('the dialects offered are the ones ABAIR speaks', () => {
-  assert.deepEqual(DIALECT_KEYS, ['connacht', 'munster', 'ulster']);
+test('the dialects a recording can be filed under', () => {
+  /* Standard is here for an upload that is not in any one dialect: an exam
+     tape, a newsreader, the Caighdeán as it is read out in a classroom. */
+  assert.deepEqual(DIALECT_KEYS, ['connacht', 'munster', 'ulster', 'standard']);
   for (const dialect of DIALECTS) {
     assert.ok(dialect.label && dialect.hint, `${dialect.key} needs a label and a hint`);
   }
@@ -32,16 +34,18 @@ test('no speech key means a clear refusal, not a broken button', () => {
   assert.match(tts, /providerName\(\) === 'none'/);
   assert.match(tts, /Set ABAIR_API_KEY/);
   assert.match(tts, /status: 503/);
-  // And the screen says so before the button is pressed rather than after.
-  assert.match(app, /No speech service is set up/);
+  /* With no key the button is simply not drawn, rather than drawn and refused.
+     Uploading is the main path now, so there is nothing missing from the screen
+     when synthesis is unavailable. */
+  assert.match(app, /dialect\.synthesisable && data\.configured/);
   assert.equal(providerName(), process.env.ABAIR_API_KEY ? 'abair' : 'none');
 });
 
 test('a story edited after it was read aloud is marked as out of step', () => {
   assert.notEqual(hashText('Bhí fear ann.'), hashText('Bhí bean ann.'));
   assert.equal(hashText('Bhí fear ann.'), hashText('Bhí fear ann.'));
-  assert.match(admin, /stale: Boolean\(row && row\.state === 'ready' && row\.text_hash !== current\)/);
-  assert.match(app, /Made from an older version of the story/);
+  assert.match(admin, /row\.state === 'ready' && row\.source !== 'upload' && row\.text_hash !== current/);
+  assert.match(app, /Read from an older version of the story/);
 });
 
 test('one dialect failing does not take the others with it', () => {
@@ -210,4 +214,63 @@ test('a term of stories can be read aloud in one go', () => {
   // Asked rather than done: thirty six trips to a speech service is a decision.
   assert.match(app, /function offerBulkRender\(classId, count\)/);
   assert.match(app, /if \(result\.listening\) offerBulkRender\(classId, result\.listening\)/);
+});
+
+/* Recordings the teacher made.
+   ------------------------------------------------------------------
+   The better answer most of the time and the cheaper one: a real speaker in a
+   real dialect beats a synthesiser, and a file recorded once costs nothing every
+   time it is played. */
+
+test('a recording can be uploaded instead of synthesised', () => {
+  const body = admin.slice(admin.indexOf("router.post('/assignments/:id/listening/upload'"));
+  const inner = body.slice(0, body.indexOf("router.patch('/assignments/:id/listening/:dialect'"));
+  assert.match(admin, /VOICE_MIME_TYPES\.has\(String\(file\.mimetype\)/,
+    'anything that is not audio has to be refused');
+  assert.match(inner, /audioDir\(\)/, 'it goes in the private store, not the public one');
+  assert.match(inner, /source='upload'/);
+  /* The old file goes only once the new one is safely written. A failed write
+     must not leave the week with nothing to play. */
+  assert.match(inner, /const previous = await one\(/);
+  assert.match(inner, /if \(previous\?\.file_path && path\.basename\(previous\.file_path\) !== name\)/);
+  assert.match(admin, /const listeningUpload = multer\(\{/);
+  assert.match(admin, /fileSize: AUDIO_UPLOAD_MB \* 1024 \* 1024/);
+});
+
+test('an upload is never treated as out of step with the story', () => {
+  /* A synthesised reading is derived from the text, so editing the text makes it
+     wrong. An upload is not, so it does not. */
+  assert.match(admin, /row\.source !== 'upload' && row\.text_hash !== current/);
+  assert.match(admin, /if \(existing\?\.source === 'upload'\) continue;/,
+    'and reading a term aloud must not overwrite one somebody recorded on purpose');
+});
+
+test('the dialect tag is the teacher\'s words, not the portal\'s', () => {
+  /* So a recording can say Corca Dhuibhne, or name the speaker, rather than
+     carrying the portal's idea of what the dialect is called. */
+  assert.match(admin, /tag: row\?\.label \|\| null/);
+  assert.doesNotMatch(admin, /\n        label: row\?\.label/,
+    'the dialect already has a label; one silently overwriting the other put the tag where the heading belongs');
+  assert.match(student, /jsonb_build_object\('key',la\.dialect,'label',la\.label\)/);
+  assert.match(app, /function dialectTag\(entry\)/);
+  assert.match(app, /return entry\.label \|\| DIALECT_LABELS\[entry\.key\] \|\| entry\.key;/);
+});
+
+test('standard is offered for upload but never synthesised', () => {
+  const tts = fs.readFileSync(new URL('../src/tts.js', import.meta.url), 'utf8');
+  assert.match(tts, /export const SYNTHESISABLE = Object\.freeze\(\['connacht', 'munster', 'ulster'\]\)/);
+  assert.ok(DIALECT_KEYS.includes('standard'), 'standard is a dialect a recording can be filed under');
+  /* Picking a dialect voice and calling it standard would be a lie told to a
+     student who is learning to tell them apart. */
+  assert.match(tts, /if \(!SYNTHESISABLE\.includes\(dialect\)\)/);
+  assert.match(tts, /There is no synthesised voice for/);
+  assert.match(admin, /synthesisable: SYNTHESISABLE\.includes\(dialect\.key\)/);
+});
+
+test('a recording can be relabelled or removed without touching the story', () => {
+  assert.match(admin, /router\.patch\('\/assignments\/:id\/listening\/:dialect'/);
+  assert.match(admin, /router\.delete\('\/assignments\/:id\/listening\/:dialect'/);
+  const body = admin.slice(admin.indexOf("router.delete('/assignments/:id/listening/:dialect'"));
+  assert.match(body.slice(0, body.indexOf('\n}));')), /fs\.unlink\(row\.file_path\)/,
+    'the file goes with the row rather than being left behind on the disk');
 });
