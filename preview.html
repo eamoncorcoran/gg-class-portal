@@ -1938,6 +1938,51 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   font-size:12.5px;line-height:1.6;color:var(--text-secondary)}
 .plan-homework strong{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
   color:var(--text-quaternary,var(--text-secondary));margin-bottom:4px}
+
+/* A listening activity: the story read aloud, above the questions.
+   The player stays put across the questions, because a comprehension is
+   answered while listening rather than after it. */
+.listen-panel{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--gray-50);
+  padding:12px 14px;margin-bottom:14px;display:grid;gap:10px}
+.listen-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.listen-head strong{display:inline-flex;align-items:center;gap:7px;font-size:13px}
+.listen-head svg{width:15px;height:15px}
+.listen-dialects{display:inline-flex;padding:3px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--white)}
+.listen-dialect{border:0;background:transparent;border-radius:6px;padding:5px 11px;min-height:28px;
+  font-size:11px;font-weight:650;color:var(--text-tertiary)}
+.listen-dialect:hover{color:var(--text-secondary)}
+.listen-dialect.active{background:var(--brand-50);color:var(--brand-800);box-shadow:var(--shadow-xs)}
+.listen-audio{width:100%;height:38px}
+.listen-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+/* Hidden by default on most activities: reading the story defeats the exercise,
+   so it is a deliberate press rather than something already on screen. */
+.listen-text{white-space:pre-wrap;font-size:13px;line-height:1.7;color:var(--text-secondary);
+  background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;
+  max-height:340px;overflow:auto}
+.listen-render{margin-top:12px;display:grid;gap:9px}
+.listen-render-rows{display:grid;gap:7px}
+.listen-render-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;background:var(--white)}
+.listen-render-actions{display:flex;align-items:center;gap:9px}
+.listen-render-actions .listen-audio{width:210px;height:32px}
+
+/* The machine's marking, for the teacher to agree with or change. */
+.mark-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 12px;padding:7px 11px;
+  border:1px solid var(--border);border-left:3px solid var(--brand-400);border-radius:var(--radius-sm);background:var(--gray-50)}
+.mark-row label{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:650;color:var(--text-secondary)}
+.mark-row input{width:62px;text-align:center;padding:5px 7px;min-height:30px}
+.mark-summary{margin:14px 0;padding:11px 13px;border-radius:var(--radius-sm);background:var(--brand-25,#f6faf4);
+  border:1px solid var(--brand-200,#cfe8c2);display:grid;gap:4px}
+.mark-summary strong{font-size:15px}
+.mark-summary.is-none{background:var(--warning-50);border-color:var(--warning-100)}
+.student-score{border:1px solid var(--brand-200,#cfe8c2);background:var(--brand-25,#f6faf4);
+  border-radius:var(--radius-sm);padding:13px 15px;margin-bottom:14px;display:grid;gap:8px}
+.student-score-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.student-score-head strong{font-size:18px}
+.student-score-list{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:3px}
+.student-score-list li{display:flex;justify-content:space-between;gap:10px;font-size:12px}
+.csv-note-block{font-size:11.5px;line-height:1.55;color:var(--warning-700);background:var(--warning-50);
+  border:1px solid var(--warning-100);border-radius:var(--radius-sm);padding:8px 11px;margin:0}
 </style>
 </head>
 <body>
@@ -10453,6 +10498,20 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
     <div class="form-field"><label>Class</label><select name="classId" ${assignment ? 'disabled' : ''}>${state.classes.map((klass) => `<option value="${klass.id}" ${(assignment?.class_id || defaultClassId) === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div>
     <div class="form-field"><label>Teaching week, optional</label><select name="weekId" id="assignment-week"><option value="">No weekly tracker column</option></select></div>
     <div class="form-field"><label>Title</label><input name="title" value="${escapeHtml(assignment?.title || '')}" required></div>
+    <div class="form-field"><label>What kind of assignment</label>
+      <div class="dl-choice">
+        <label><input type="radio" name="kind" value="written" ${assignment?.kind === 'listening' ? '' : 'checked'}> Written</label>
+        <label><input type="radio" name="kind" value="listening" ${assignment?.kind === 'listening' ? 'checked' : ''}> Listening comprehension</label>
+      </div>
+    </div>
+    <div class="form-field listening-only" ${assignment?.kind === 'listening' ? '' : 'hidden'}>
+      <label>The story</label>
+      <textarea name="listeningText" rows="8" placeholder="Paste the story here. It is read aloud, so write it as it should be heard.">${escapeHtml(assignment?.listening_text || '')}</textarea>
+      <div class="muted small">Plain text. Save the assignment first, then have it read out in each dialect from the button that appears here.</div>
+      <label class="toggle-row" style="margin-top:9px"><span class="toggle"><input name="listeningTextShown" type="checkbox" ${assignment?.listening_text_shown ? 'checked' : ''}><span></span></span>Show the text to students straight away</label>
+      <div class="muted small">Left off, they listen first and can press "Show the text" when they want it.</div>
+      <div id="listening-render" class="listen-render"></div>
+    </div>
     <div class="form-field"><label>Instructions</label><textarea name="instructions">${escapeHtml(assignment?.instructions || '')}</textarea></div>
     <div class="form-field"><label>Loom share or embed URL</label><input name="loomUrl" type="url" value="${escapeHtml(assignment?.loom_url || '')}" placeholder="https://www.loom.com/share/..."></div>
     <div class="form-field"><label>Visible from</label><input name="visibleAt" type="datetime-local" value="${toZonedInput(assignment?.visible_at || new Date())}" required><div class="muted small">Times are ${escapeHtml(classTimezone())} (${escapeHtml(timezoneAbbreviation())}).</div></div>
@@ -10500,8 +10559,8 @@ function uploadSettingsBlock(assignment) {
   </div>`;
 }
 
-function questionBuilder(question, index) {
-  return `<div class="question-builder" data-question><div class="question-builder-head"><strong>Question <span data-question-number>${index + 1}</span></strong><button type="button" class="text-link" data-remove-question>Remove</button></div><div class="form-field"><label>Question</label><textarea data-question-prompt required>${escapeHtml(question.prompt || '')}</textarea></div><div class="form-field"><label>Embedded image, optional</label><input data-question-image type="url" value="${escapeHtml(question.imageUrl || question.image_url || '')}" placeholder="Existing image URL"><input data-question-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-top:7px"></div><label class="toggle-row"><span class="toggle"><input data-question-required type="checkbox" ${question.required !== false ? 'checked' : ''}><span></span></span>Required</label></div>`;
+function questionBuilder(question, index, hidden = true) {
+  return `<div class="question-builder" data-question><div class="question-builder-head"><strong>Question <span data-question-number>${index + 1}</span></strong><button type="button" class="text-link" data-remove-question>Remove</button></div><div class="form-field"><label>Question</label><textarea data-question-prompt required>${escapeHtml(question.prompt || '')}</textarea></div><div class="form-field"><label>Embedded image, optional</label><input data-question-image type="url" value="${escapeHtml(question.imageUrl || question.image_url || '')}" placeholder="Existing image URL"><input data-question-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-top:7px"></div><div class="form-field listening-only" ${hidden ? 'hidden' : ''}><label>What a right answer looks like</label><textarea data-question-expected rows="2" placeholder="The marking is against this. A different wording that means the same thing still gets the marks.">${escapeHtml(question.expectedAnswer || question.expected_answer || '')}</textarea></div><div class="form-field listening-only" ${hidden ? 'hidden' : ''}><label>Marks</label><input data-question-marks type="number" min="0" max="100" value="${Number(question.marks ?? 1)}"></div><label class="toggle-row"><span class="toggle"><input data-question-required type="checkbox" ${question.required !== false ? 'checked' : ''}><span></span></span>Required</label></div>`;
 }
 
 
@@ -10639,10 +10698,17 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
     footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-assignment">${assignment ? 'Save changes' : 'Publish assignment'}</button>`,
     onOpen() {
       const form = document.getElementById('assignment-form');
+      const showListening = () => {
+        const on = form.kind.value === 'listening';
+        document.querySelectorAll('.listening-only').forEach((field) => { field.hidden = !on; });
+        if (on) renderListeningPanel(assignment);
+      };
+      form.querySelectorAll('[name="kind"]').forEach((radio) => radio.addEventListener('change', showListening));
+      showListening();
       loadAssignmentWeeks(assignment?.class_id || defaultClassId || form.classId.value, assignment?.week_id || '');
       form.classId?.addEventListener('change', () => loadAssignmentWeeks(form.classId.value));
       document.getElementById('add-question').addEventListener('click', () => {
-        document.getElementById('question-list').insertAdjacentHTML('beforeend', questionBuilder({}, document.querySelectorAll('[data-question]').length));
+        document.getElementById('question-list').insertAdjacentHTML('beforeend', questionBuilder({}, document.querySelectorAll('[data-question]').length, form.kind.value !== 'listening'));
         bindQuestionRemoval();
       });
       bindQuestionRemoval();
@@ -10678,6 +10744,8 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
               prompt: element.querySelector('[data-question-prompt]').value,
               imageUrl,
               required: element.querySelector('[data-question-required]').checked,
+              expectedAnswer: element.querySelector('[data-question-expected]')?.value || '',
+              marks: Number(element.querySelector('[data-question-marks]')?.value) || 1,
             });
           }
           const payload = {
@@ -10690,6 +10758,9 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
             acceptedFileTypes: [...document.querySelectorAll('[data-file-type]:checked')].map((box) => box.dataset.fileType),
             maxFiles: Number(form.maxFiles.value) || 3,
             status: assignment?.status || 'published', questions, resources,
+            kind: form.kind.value,
+            listeningText: fd.get('listeningText') || '',
+            listeningTextShown: form.listeningTextShown.checked,
           };
           await api(assignment ? `/api/admin/assignments/${assignment.id}` : '/api/admin/assignments', { method: assignment ? 'PUT' : 'POST', body: payload });
           closeModal(); await renderAdmin(); showToast(assignment ? 'Assignment updated' : 'Assignment published');
@@ -10697,6 +10768,71 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
       });
     },
   });
+}
+
+/* Having the story read aloud.
+   ------------------------------------------------------------------
+   A separate step from saving the text, because ABAIR takes a few seconds per
+   dialect and a teacher fixing a typo should not wait for three recordings to
+   find out whether the typo is fixed.
+
+   Only offered on a saved assignment: there is nothing to attach a recording to
+   until the story has an id. */
+async function renderListeningPanel(assignment) {
+  const host = document.getElementById('listening-render');
+  if (!host) return;
+  if (!assignment) {
+    host.innerHTML = '<p class="muted small">Save the assignment and reopen it to have the story read aloud.</p>';
+    return;
+  }
+  host.innerHTML = '<p class="muted small">Checking the recordings…</p>';
+  let data;
+  try { data = await api(`/api/admin/assignments/${assignment.id}/listening`); }
+  catch (error) { host.innerHTML = `<p class="csv-bad">${escapeHtml(error.message)}</p>`; return; }
+
+  const note = data.standIn
+    ? '<p class="csv-note-block">Using this machine\'s own voice so the activity can be tested. It does not speak Irish, so the reading will be wrong. Set ABAIR_API_KEY for the real dialect voices.</p>'
+    : data.configured
+      ? ''
+      : '<p class="csv-bad">No speech service is set up, so the story cannot be read aloud yet. Add ABAIR_API_KEY and restart the app.</p>';
+
+  host.innerHTML = `${note}
+    <div class="listen-render-rows">${data.dialects.map((dialect) => {
+      const label = {
+        none: '<span class="muted small">Not made yet</span>',
+        pending: '<span class="muted small">Making…</span>',
+        ready: dialect.stale
+          ? '<span class="csv-bad">Made from an older version of the story</span>'
+          : `<span class="csv-ok">Ready${dialect.voice ? ` · ${escapeHtml(dialect.voice)}` : ''}</span>`,
+        failed: `<span class="csv-bad">${escapeHtml(dialect.error || 'Failed')}</span>`,
+      }[dialect.state] || '';
+      return `<div class="listen-render-row">
+        <div><strong>${escapeHtml(dialect.label)}</strong> <span class="muted small">${escapeHtml(dialect.hint)}</span><div>${label}</div></div>
+        <div class="listen-render-actions">
+          ${dialect.state === 'ready' ? `<audio class="listen-audio" controls preload="none" src="/api/media/listening/${assignment.id}/${dialect.key}"></audio>` : ''}
+          <button type="button" class="btn small" data-render-dialect="${dialect.key}" ${data.configured ? '' : 'disabled'}>${dialect.state === 'ready' ? 'Make again' : 'Read it out'}</button>
+        </div>
+      </div>`;
+    }).join('')}</div>
+    <button type="button" class="btn small" id="render-all" ${data.configured ? '' : 'disabled'}>Read it out in all three</button>`;
+
+  const run = async (dialects, button) => {
+    const label = button.textContent;
+    button.disabled = true; button.textContent = 'Reading…';
+    try {
+      const result = await api(`/api/admin/assignments/${assignment.id}/listening/render`, { method: 'POST', body: { dialects } });
+      const failed = result.results.filter((item) => item.state === 'failed');
+      showToast(failed.length ? `${failed.length} could not be made: ${failed[0].error}` : 'Recording ready',
+        failed.length ? 'error' : undefined);
+    } catch (error) { showToast(error.message, 'error'); }
+    button.disabled = false; button.textContent = label;
+    renderListeningPanel(assignment);
+  };
+
+  host.querySelectorAll('[data-render-dialect]').forEach((button) => button.addEventListener('click',
+    () => run([button.dataset.renderDialect], button)));
+  document.getElementById('render-all')?.addEventListener('click', (event) =>
+    run(data.dialects.map((dialect) => dialect.key), event.currentTarget));
 }
 
 function bindQuestionRemoval() {
@@ -11274,7 +11410,8 @@ function renderReviewDrawer() {
     } else {
       const answers = Array.isArray(row.answers) ? row.answers : [];
       body = `<div class="detail-grid"><div class="detail"><small>Assignment</small><strong>${escapeHtml(record.assignment.title)}</strong></div><div class="detail"><small>Questions answered</small><strong>${answers.filter((answer) => String(answer).trim()).length}/${record.assignment.questions.length}</strong></div></div>
-        ${record.assignment.questions.map((question, index) => `<div class="section-title">Question ${index + 1}</div><div class="answer-box"><strong>${escapeHtml(question.prompt)}</strong><br><br>${escapeHtml(answers[index] || 'No answer submitted.')}</div>`).join('')}
+        ${record.assignment.questions.map((question, index) => `<div class="section-title">Question ${index + 1}</div><div class="answer-box"><strong>${escapeHtml(question.prompt)}</strong><br><br>${escapeHtml(answers[index] || 'No answer submitted.')}</div>${markRow(record, row, index)}`).join('')}
+        ${markSummary(record, row)}
         ${submittedFilesBlock(row.files)}
         ${lifecycle(row.feedback_state)}
         <div class="form-field"><div class="input-row"><label for="homework-corrections">1. Irish corrections</label>${formatBar('homework-corrections')}${dictateButton('homework-corrections', 'light')}</div><textarea class="corrections" id="homework-corrections">${escapeHtml(row.teacher_corrections || row.ai_corrections || '')}</textarea><div class="muted small">If there are no genuine errors, this should say “No Irish corrections needed.” Dictation here only adds punctuation, so your Irish is never rewritten.</div></div>
@@ -11474,6 +11611,61 @@ async function saveHomeworkFeedback() {
   } catch (error) { showToast(error.message, 'error'); }
 }
 
+/* The machine's mark on one question, for the teacher to agree with or not.
+   ------------------------------------------------------------------
+   Shown under the answer it belongs to rather than in a table of its own, so
+   the mark is read beside the thing it was given for. The number is an input,
+   not a label: a mark that cannot be changed is not a review, and the whole
+   point is that the student receives the teacher's judgement rather than the
+   model's. */
+function markRow(record, row, index) {
+  if (record.assignment.kind !== 'listening') return '';
+  const marks = Array.isArray(row.teacher_marks) ? row.teacher_marks
+    : Array.isArray(row.ai_marks) ? row.ai_marks : [];
+  const mark = marks.find((item) => Number(item.position) === index) || marks[index];
+  if (!mark) return '';
+  return `<div class="mark-row" data-mark="${index}">
+    <label>Marks <input type="number" min="0" max="${Number(mark.available) || 0}" value="${Number(mark.awarded) || 0}" data-mark-awarded="${index}"> of ${Number(mark.available) || 0}</label>
+    <span class="muted small">${escapeHtml(mark.note || '')}</span>
+  </div>`;
+}
+
+function markSummary(record, row) {
+  if (record.assignment.kind !== 'listening') return '';
+  const score = row.teacher_score ?? row.ai_score;
+  const max = row.teacher_max ?? row.ai_max;
+  if (score === null || score === undefined) {
+    return '<div class="mark-summary is-none">This was not marked automatically. Mark it yourself and it will go out with your feedback.</div>';
+  }
+  const dialect = row.listening_dialect ? DIALECT_LABELS[row.listening_dialect] || row.listening_dialect : null;
+  return `<div class="mark-summary">
+    <strong id="mark-total">${score} out of ${max}</strong>
+    <span class="muted small">Marked automatically when it was submitted${dialect ? `, listened in ${escapeHtml(dialect)}` : ''}${row.listening_plays ? `, played ${row.listening_plays} time${row.listening_plays === 1 ? '' : 's'}` : ''}.
+    The student sees nothing until you submit your feedback.</span>
+  </div>`;
+}
+
+/** The marks as they stand on screen, which is what gets returned. */
+function marksFromScreen() {
+  const record = state.activeReview;
+  if (!record || record.assignment?.kind !== 'listening') return undefined;
+  const row = record.homework;
+  const source = Array.isArray(row?.teacher_marks) ? row.teacher_marks
+    : Array.isArray(row?.ai_marks) ? row.ai_marks : [];
+  const inputs = [...document.querySelectorAll('[data-mark-awarded]')];
+  if (!inputs.length) return undefined;
+  return inputs.map((input) => {
+    const index = Number(input.dataset.markAwarded);
+    const mark = source.find((item) => Number(item.position) === index) || source[index] || {};
+    return {
+      position: index,
+      awarded: Number(input.value) || 0,
+      available: Number(mark.available) || 0,
+      note: mark.note || '',
+    };
+  });
+}
+
 async function submitReview(type) {
   try {
     if (type === 'checkin') {
@@ -11487,7 +11679,7 @@ async function submitReview(type) {
       const generalFeedback = document.getElementById('homework-general').value.trim();
       const hasVoiceNote = Boolean(state.activeReview.homework.voice_note);
       if ((!corrections || !generalFeedback) && !hasVoiceNote) throw new Error('Complete both feedback sections, or record a voice note.');
-      const row = await api(`/api/admin/homework/${state.activeReview.homework.id}/return`, { method: 'POST', body: { corrections, generalFeedback } });
+      const row = await api(`/api/admin/homework/${state.activeReview.homework.id}/return`, { method: 'POST', body: { corrections, generalFeedback, marks: marksFromScreen() } });
       Object.assign(state.activeReview.homework, row);
     }
     showToast('Feedback submitted to student');
@@ -12457,7 +12649,14 @@ async function openHomeworkForm(assignment, submission) {
        questions do not come back from the server, and offering an empty form
        behind a refusal would be worse than saying so. */
     if (!data.assignment.open) return closedAssignmentNotice(data.assignment, data.submission);
-    state.homeworkForm = { assignment: data.assignment, submission: data.submission, step: data.submission?.current_question || 0, answers: Array.isArray(data.submission?.answers) ? [...data.submission.answers] : data.assignment.questions.map(() => ''), files: data.submission?.files || [] };
+    const dialects = Array.isArray(data.assignment.dialects) ? data.assignment.dialects : [];
+    state.homeworkForm = { assignment: data.assignment, submission: data.submission, step: data.submission?.current_question || 0, answers: Array.isArray(data.submission?.answers) ? [...data.submission.answers] : data.assignment.questions.map(() => ''), files: data.submission?.files || [],
+      listening: {
+        dialect: dialects[0] || 'connacht',
+        // Where the teacher set the toggle to start. The student owns it after that.
+        textShown: Boolean(data.assignment.listening_text_shown),
+        at: 0, plays: 0,
+      } };
     renderHomeworkStep();
   } catch (error) { showToast(error.message, 'error'); }
 }
@@ -12490,14 +12689,93 @@ function loomEmbed(url) {
   return `<iframe title="Assignment video" src="https://www.loom.com/embed/${match[1]}" style="width:100%;aspect-ratio:16/9;border:0;border-radius:10px;margin-bottom:14px" allowfullscreen></iframe>`;
 }
 
+/* A listening activity, above the questions.
+   ------------------------------------------------------------------
+   Persistent across the questions rather than living on the first one: a
+   comprehension is answered while listening, and a player that disappeared at
+   question two would make the exercise impossible.
+
+   The rolling form rebuilds its body on every step, so the audio element is
+   rebuilt with it. Where the student had got to is kept in form state and put
+   back afterwards, otherwise moving to question two would start the story
+   again from the beginning. */
+const DIALECT_LABELS = {
+  connacht: 'Connacht', munster: 'Munster', ulster: 'Ulster', standard: 'Standard',
+};
+
+function listeningPanel(assignment, form) {
+  if (assignment.kind !== 'listening') return '';
+  const available = Array.isArray(assignment.dialects) ? assignment.dialects : [];
+  const listen = form.listening;
+
+  if (!available.length) {
+    return `<div class="listen-panel"><p class="muted small">The recording for this story is not ready yet. Tell your teacher.</p>
+      ${assignment.listening_text ? `<div class="listen-text">${escapeHtml(assignment.listening_text)}</div>` : ''}</div>`;
+  }
+
+  return `<div class="listen-panel">
+    <div class="listen-head">
+      <strong>${svg.play || svg.video} Listen to the story</strong>
+      ${available.length > 1 ? `<div class="listen-dialects" role="group" aria-label="Which dialect to listen in">
+        ${available.map((key) => `<button type="button" class="listen-dialect ${key === listen.dialect ? 'active' : ''}" data-dialect="${escapeHtml(key)}">${escapeHtml(DIALECT_LABELS[key] || key)}</button>`).join('')}
+      </div>` : `<span class="muted small">${escapeHtml(DIALECT_LABELS[available[0]] || available[0])}</span>`}
+    </div>
+    <audio id="listen-audio" class="listen-audio" controls preload="metadata"
+      src="/api/media/listening/${assignment.id}/${encodeURIComponent(listen.dialect)}"></audio>
+    <div class="listen-actions">
+      <button type="button" class="text-link" id="listen-toggle-text">${listen.textShown ? 'Hide the text' : 'Show the text'}</button>
+      <span class="muted small">${listen.plays ? `Played ${listen.plays} time${listen.plays === 1 ? '' : 's'}` : 'Play it as often as you like'}</span>
+    </div>
+    <div class="listen-text" id="listen-text" ${listen.textShown ? '' : 'hidden'}>${escapeHtml(assignment.listening_text || '')}</div>
+  </div>`;
+}
+
+function bindListeningPanel() {
+  const form = state.homeworkForm;
+  if (!form || form.assignment.kind !== 'listening') return;
+  const audio = document.getElementById('listen-audio');
+  if (!audio) return;
+  const listen = form.listening;
+
+  /* Put the student back where they were before the step changed, and only
+     then start following the position again. */
+  if (listen.at > 0) {
+    audio.addEventListener('loadedmetadata', () => { audio.currentTime = Math.min(listen.at, audio.duration || listen.at); }, { once: true });
+  }
+  audio.addEventListener('timeupdate', () => { listen.at = audio.currentTime; });
+  audio.addEventListener('play', () => {
+    /* Counted per press rather than per second, and only when it starts from
+       somewhere near the beginning, so scrubbing back over a sentence does not
+       read as playing the whole story again. */
+    if (audio.currentTime < 1) listen.plays += 1;
+  });
+
+  document.querySelectorAll('[data-dialect]').forEach((button) => button.addEventListener('click', () => {
+    if (button.dataset.dialect === listen.dialect) return;
+    // A different voice is a different recording, so it starts at the beginning.
+    listen.dialect = button.dataset.dialect;
+    listen.at = 0;
+    renderHomeworkStep();
+  }));
+
+  document.getElementById('listen-toggle-text')?.addEventListener('click', () => {
+    listen.textShown = !listen.textShown;
+    const text = document.getElementById('listen-text');
+    if (text) text.hidden = !listen.textShown;
+    const button = document.getElementById('listen-toggle-text');
+    if (button) button.textContent = listen.textShown ? 'Hide the text' : 'Show the text';
+  });
+}
+
 function renderHomeworkStep() {
   const form = state.homeworkForm, assignment = form.assignment, question = assignment.questions[form.step];
   modal({
     title: assignment.title, subtitle: `Due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true })}`, wide: true,
-    body: `<div class="rolling-form"><div class="progress"><span style="width:${((form.step + 1) / assignment.questions.length) * 100}%"></span></div><div class="rolling-stage">${form.step === 0 ? loomEmbed(assignment.loom_url) : ''}${form.step === 0 && assignment.resources.length ? `<div style="margin-bottom:14px">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}<div class="rolling-kicker">Question ${form.step + 1} of ${assignment.questions.length}</div><div class="rolling-question">${escapeHtml(question.prompt)}</div>${question.imageUrl ? `<img src="${escapeHtml(question.imageUrl)}" alt="" style="max-width:100%;max-height:260px;border-radius:10px;margin-bottom:13px">` : ''}<div class="required-note">${question.required ? 'Required' : 'Optional'}</div><textarea id="homework-answer" placeholder="Type your answer">${escapeHtml(form.answers[form.step] || '')}</textarea>${form.step === assignment.questions.length - 1 ? homeworkUploadPanel(assignment, form) : ''}<div id="rolling-error"></div></div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div><button class="btn" id="homework-back" ${form.step === 0 ? 'disabled' : ''}>Previous</button> <button class="btn primary" id="homework-next">${form.step === assignment.questions.length - 1 ? 'Submit homework' : 'Save and continue'}</button></div></div></div>`,
+    body: `<div class="rolling-form"><div class="progress"><span style="width:${((form.step + 1) / assignment.questions.length) * 100}%"></span></div><div class="rolling-stage">${listeningPanel(assignment, form)}${form.step === 0 ? loomEmbed(assignment.loom_url) : ''}${form.step === 0 && assignment.resources.length ? `<div style="margin-bottom:14px">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}<div class="rolling-kicker">Question ${form.step + 1} of ${assignment.questions.length}</div><div class="rolling-question">${escapeHtml(question.prompt)}</div>${question.imageUrl ? `<img src="${escapeHtml(question.imageUrl)}" alt="" style="max-width:100%;max-height:260px;border-radius:10px;margin-bottom:13px">` : ''}<div class="required-note">${question.required ? 'Required' : 'Optional'}</div><textarea id="homework-answer" placeholder="Type your answer">${escapeHtml(form.answers[form.step] || '')}</textarea>${form.step === assignment.questions.length - 1 ? homeworkUploadPanel(assignment, form) : ''}<div id="rolling-error"></div></div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div><button class="btn" id="homework-back" ${form.step === 0 ? 'disabled' : ''}>Previous</button> <button class="btn primary" id="homework-next">${form.step === assignment.questions.length - 1 ? 'Submit homework' : 'Save and continue'}</button></div></div></div>`,
     onOpen() {
       const answer = document.getElementById('homework-answer');
       bindHomeworkUploads();
+      bindListeningPanel();
       answer.addEventListener('input', debounce(() => { form.answers[form.step] = answer.value; saveHomeworkDraft(); }, 500));
       document.getElementById('homework-exit').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); closeModal(); });
       document.getElementById('homework-back').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); if (form.step > 0) { form.step -= 1; renderHomeworkStep(); } });
@@ -12603,7 +12881,12 @@ async function submitHomework() {
   if (button) { button.disabled = true; button.textContent = 'Sending…'; }
 
   try {
-    await api(`/api/student/assignments/${form.assignment.id}/submit`, { method: 'POST', body: { answers: form.answers } });
+    await api(`/api/student/assignments/${form.assignment.id}/submit`, { method: 'POST', body: {
+      answers: form.answers,
+      ...(form.assignment.kind === 'listening'
+        ? { listeningDialect: form.listening.dialect, listeningPlays: form.listening.plays }
+        : {}),
+    } });
   } catch (error) {
     if (button) { button.disabled = false; button.textContent = label; }
     return showToast(error.message, 'error');
@@ -12640,6 +12923,30 @@ async function showCheckinFeedback(checkin, week) {
   });
 }
 
+/* A mark, once the teacher has released it.
+   ------------------------------------------------------------------
+   Only ever drawn from the teacher's columns. The machine's are not sent to a
+   student at all, so there is nothing here to fall back to and nothing to
+   accidentally show early. */
+function studentScoreBlock(assignment, submission) {
+  if (assignment.kind !== 'listening') return '';
+  const score = submission.teacher_score;
+  const max = submission.teacher_max;
+  if (score === null || score === undefined || !max) return '';
+  const marks = Array.isArray(submission.teacher_marks) ? submission.teacher_marks : [];
+  const pct = Math.round((score / max) * 100);
+  return `<div class="student-score">
+    <div class="student-score-head">
+      <strong>${score} out of ${max}</strong>
+      <span class="muted small">${pct}%</span>
+    </div>
+    <div class="plan-bar"><i style="width:${pct}%"></i></div>
+    ${marks.length ? `<ul class="student-score-list">${marks.map((mark, index) => `
+      <li><span>Question ${Number(mark.position ?? index) + 1}</span>
+        <span class="muted small">${Number(mark.awarded) || 0} of ${Number(mark.available) || 0}</span></li>`).join('')}</ul>` : ''}
+  </div>`;
+}
+
 async function showHomeworkFeedback(submission, assignment) {
   const wasUnread = !submission.feedback_read_at;
   await api(`/api/student/homework/${submission.id}/read-feedback`, { method: 'POST' }).catch(() => {});
@@ -12654,7 +12961,8 @@ async function showHomeworkFeedback(submission, assignment) {
     title: assignment.title,
     subtitle: 'Feedback from your teacher',
     wide: true,
-    body: `${studentVoiceNote(submission.voice_note)}
+    body: `${studentScoreBlock(assignment, submission)}
+      ${studentVoiceNote(submission.voice_note)}
       ${corrections ? `<div class="section-title">Irish corrections</div><div class="answer-box corrections">${richText(corrections)}</div>` : ''}
       ${general ? `<div class="section-title">General feedback</div><div class="feedback-box"><h3>✓ Feedback returned</h3><p>${richText(general)}</p></div>` : ''}
       ${submittedHomeworkBlock(assignment, submission)}`,

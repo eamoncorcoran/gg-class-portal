@@ -129,3 +129,69 @@ export async function draftCommunityReply(payload) {
   });
   return inEamonsVoice(reply);
 }
+
+/* Marking a listening comprehension.
+   ------------------------------------------------------------------
+   Different work from drafting feedback, and kept apart from it. Feedback is a
+   register; this is a judgement against an answer the teacher wrote, and it
+   produces a number. The number never reaches the student on its own: it lands
+   in the held-back columns beside the AI's prose and waits for the teacher, the
+   same as everything else.
+
+   Effort is high. A comprehension answer in Irish can be right in a way the
+   expected answer did not anticipate — a synonym, a different tense that is
+   still correct, the right fact in the wrong order — and marking that wrong is
+   worse than marking it slowly. */
+const MARKING_SYSTEM = `You are marking a listening comprehension for a Leaving Certificate Irish class.
+
+The student listened to a story in Irish and answered questions about it. For each question you are given the question, what the teacher considers a correct answer, the marks available, and what the student wrote.
+
+Award marks for each question and say briefly why.
+
+How to mark:
+- Mark the content, not the spelling. A right answer spelled badly is a right answer.
+- Accept a synonym, a paraphrase, or the same fact in different words. The expected answer is one way of putting it, not the only way.
+- Accept an answer in English if the question did not require Irish, unless the teacher's expected answer shows the point was to answer in Irish.
+- Partial marks where a question carries more than one mark and the student got part of it.
+- An empty answer gets zero.
+- Do not invent a reason to take marks off. If it is right, it is right.
+
+Write the note on each question to the teacher, not to the student: it is a working note that helps them check your marking quickly. One short sentence. Never use an em dash or an en dash.`;
+
+const MARKING_SCHEMA = {
+  type: 'object',
+  properties: {
+    marks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          position: { type: 'integer' },
+          awarded: { type: 'integer' },
+          available: { type: 'integer' },
+          note: { type: 'string' },
+        },
+        required: ['position', 'awarded', 'available', 'note'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['marks'],
+  additionalProperties: false,
+};
+
+export async function markListening(payload) {
+  const { marks } = await draft({
+    system: MARKING_SYSTEM,
+    payload,
+    effort: 'high',
+    schema: MARKING_SCHEMA,
+  });
+  /* Clamped here rather than trusted. A model that awards four out of two makes
+     a percentage that is wrong in the teacher's favour and nobody notices. */
+  return marks.map((mark) => ({
+    ...mark,
+    note: inEamonsVoice(mark.note),
+    awarded: Math.max(0, Math.min(Number(mark.awarded) || 0, Number(mark.available) || 0)),
+  }));
+}

@@ -5,7 +5,7 @@ import { asyncRoute } from '../middleware.js';
 import { requireStudent } from '../session.js';
 import { studentProgress } from '../status.js';
 import { one, query, transaction } from '../db.js';
-import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
+import { draftCheckinFeedback, draftHomeworkFeedback, markListening } from '../ai.js';
 import { audit } from '../audit.js';
 import { COUNTIES, normaliseCounty, normaliseEircode, hasAddress } from '../address.js';
 import { notifyNewComment, notifyNewPost } from '../boardnotify.js';
@@ -80,7 +80,12 @@ async function accessibleAssignment(studentId, assignmentId) {
       ) ORDER BY q.position) FROM assignment_questions q WHERE q.assignment_id=a.id),'[]'::json) questions,
       COALESCE((SELECT json_agg(jsonb_build_object(
         'id',r.id,'fileName',r.file_name,'fileUrl',r.file_url,'mimeType',r.mime_type
-      ) ORDER BY r.created_at) FROM assignment_resources r WHERE r.assignment_id=a.id),'[]'::json) resources
+      ) ORDER BY r.created_at) FROM assignment_resources r WHERE r.assignment_id=a.id),'[]'::json) resources,
+      /* Which dialects actually have a recording. Only the ready ones: a
+         student offered a dialect that failed to render would press play and
+         get nothing, which on a listening exercise reads as their fault. */
+      COALESCE((SELECT json_agg(la.dialect ORDER BY la.dialect)
+        FROM listening_audio la WHERE la.assignment_id=a.id AND la.state='ready'),'[]'::json) dialects
      FROM assignments a
      JOIN classes c ON c.id=a.class_id
      JOIN class_students cs ON cs.class_id=a.class_id AND cs.student_id=$1 AND cs.active=true
@@ -101,13 +106,34 @@ async function accessibleAssignment(studentId, assignmentId) {
  * the network tab reveals nothing the screen does not. `feedback_state` collapses
  * to the only two states that mean anything from this side.
  */
+/* Every column that carries feedback, drafted or approved. */
+const FEEDBACK_COLUMNS = [
+  'ai_feedback', 'ai_corrections', 'ai_general_feedback',
+  'ai_marks', 'ai_score', 'ai_max', 'ai_marked_at',
+  'teacher_feedback', 'teacher_corrections', 'teacher_general_feedback',
+  'teacher_marks', 'teacher_score', 'teacher_max',
+  'teacher_audio_path', 'teacher_audio_mime', 'teacher_audio_seconds', 'teacher_audio_recorded_at',
+];
+
 function forStudent(row) {
   if (!row) return row;
-  const {
-    ai_feedback: _f, ai_corrections: _c, ai_general_feedback: _g,
-    feedback_state: state, ...rest
-  } = row;
-  return { ...rest, feedback_state: state === 'returned' ? 'returned' : 'pending' };
+  const returned = row.feedback_state === 'returned';
+  const out = { ...row, feedback_state: returned ? 'returned' : 'pending' };
+
+  /* Held back until the teacher returns it, and held back by deleting it rather
+     than by not drawing it: the network tab must reveal nothing the screen does
+     not.
+     
+     The ai_* columns were already stripped. The teacher_* ones were not, and
+     they are seeded with the model's draft the moment the work is submitted, so
+     a student reloading the page a second later was being sent the machine's
+     corrections, its general feedback and, for a listening comprehension, its
+     marks and their score. Everything now goes together and comes back together
+     when it has actually been read and approved. */
+  if (!returned) for (const column of FEEDBACK_COLUMNS) delete out[column];
+  else for (const column of FEEDBACK_COLUMNS) if (column.startsWith('ai_')) delete out[column];
+
+  return out;
 }
 
 const allForStudent = (rows = []) => rows.map(forStudent);
@@ -409,7 +435,13 @@ router.put('/assignments/:id/draft', asyncRoute(async (req, res) => {
 
 router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
   if (await refuseIfWithdrawn(req, res)) return;
-  const parsed = z.object({ answers: z.array(z.string().max(20000)) }).safeParse(req.body);
+  const parsed = z.object({
+    answers: z.array(z.string().max(20000)),
+    // Which dialect they listened in, and how often. Worth knowing, and nothing
+    // is refused on the strength of it: a player is not evidence.
+    listeningDialect: z.string().max(40).optional(),
+    listeningPlays: z.coerce.number().int().min(0).max(999).optional(),
+  }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid homework submission.' });
   const assignment = await accessibleAssignment(req.user.id, req.params.id);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
@@ -447,6 +479,13 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
      RETURNING *`,
     [assignment.id, req.user.id, JSON.stringify(parsed.data.answers), Math.max(0, questions.length - 1), late],
   );
+
+  if (assignment.kind === 'listening') {
+    await query(
+      'UPDATE homework_submissions SET listening_dialect=$1, listening_plays=$2 WHERE id=$3',
+      [parsed.data.listeningDialect || null, parsed.data.listeningPlays || 0, row.id],
+    );
+  }
   let feedbackState = 'generating';
   try {
     const feedback = await draftHomeworkFeedback({
@@ -478,6 +517,48 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
     await query(`UPDATE homework_submissions SET feedback_state='failed',updated_at=now() WHERE id=$1`, [row.id]);
     feedbackState = 'failed';
   }
+  /* A listening comprehension is marked as well as commented on.
+     ------------------------------------------------------------------
+     The expected answers are fetched here rather than coming through
+     accessibleAssignment, which deliberately does not carry them: the query a
+     student's request runs must not be able to return the answer sheet, however
+     carefully the interface avoids drawing it.
+
+     The marks go into the same held-back columns as the prose and are stripped
+     by forStudent on the way out, so a submitted listening tells the student
+     nothing except that it was submitted. */
+  if (assignment.kind === 'listening') {
+    try {
+      const sheet = (await query(
+        'SELECT position, prompt, expected_answer, marks FROM assignment_questions WHERE assignment_id=$1 ORDER BY position',
+        [assignment.id],
+      )).rows;
+      const marked = await markListening({
+        story: assignment.listening_text || '',
+        questions: sheet.map((question, index) => ({
+          position: question.position ?? index,
+          question: question.prompt,
+          expectedAnswer: question.expected_answer || '',
+          available: question.marks ?? 1,
+          studentAnswer: parsed.data.answers[index] || '',
+        })),
+      });
+      const score = marked.reduce((total, mark) => total + mark.awarded, 0);
+      const max = sheet.reduce((total, question) => total + (question.marks ?? 1), 0);
+      await query(
+        `UPDATE homework_submissions SET ai_marks=$1::jsonb, ai_score=$2, ai_max=$3,
+           teacher_marks=$1::jsonb, teacher_score=$2, teacher_max=$3,
+           ai_marked_at=now(), updated_at=now() WHERE id=$4`,
+        [JSON.stringify(marked), score, max, row.id],
+      );
+    } catch (error) {
+      /* Marking failing is not a failed submission. The work is saved either
+         way and the teacher marks it themselves, which is what they would be
+         doing if none of this existed. */
+      console.error('Listening marking failed', error);
+    }
+  }
+
   await audit({ actorId: req.user.id, action: 'homework.submitted', entityType: 'homework_submission', entityId: row.id, ip: req.ip });
   res.json(forStudent({ ...row, feedback_state: feedbackState }));
 }));

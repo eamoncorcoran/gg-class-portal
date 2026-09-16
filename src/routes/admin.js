@@ -28,6 +28,7 @@ import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, cours
 import { addTopic, coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, removeTopic,
   reorderWeek, scheduleTopic, setItemDone, setTopicGroup, topicCost, unscheduleItem } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
+import { DIALECTS, DIALECT_KEYS, hashText, isStandIn, providerName, renderStory, ttsConfigured } from '../tts.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
@@ -1096,7 +1097,14 @@ router.post('/calendar-feed/rotate', asyncRoute(async (req, res) => {
 router.post('/assignments', asyncRoute(async (req, res) => {
   const parsed = z.object({
     classId: z.string().uuid(), weekId: z.string().uuid().nullable().optional(), title: z.string().min(2), instructions: z.string().default(''), loomUrl: z.string().url().nullable().optional(), visibleAt: z.string().datetime().optional(), deadlineAt: z.string().datetime(), hardDeadline: z.boolean().default(true), remindersEnabled: z.boolean().default(true),
-    questions: z.array(z.object({ prompt: z.string().min(1), imageUrl: z.string().nullable().optional(), required: z.boolean().default(true) })).min(1),
+    questions: z.array(z.object({ prompt: z.string().min(1), imageUrl: z.string().nullable().optional(), required: z.boolean().default(true),
+      /* What a right answer looks like, and what the question is worth. Only a
+         listening activity uses them, and neither ever leaves the server on a
+         student's request. */
+      expectedAnswer: z.string().max(4000).default(''), marks: z.coerce.number().int().min(0).max(100).default(1) })).min(1),
+    kind: z.enum(['written', 'listening']).default('written'),
+    listeningText: z.string().max(40000).default(''),
+    listeningTextShown: z.boolean().default(false),
     resources: z.array(z.object({ fileName: z.string(), fileUrl: z.string(), mimeType: z.string().optional() })).default([]),
     allowUploads: z.boolean().default(false),
     uploadsRequired: z.boolean().default(false),
@@ -1108,13 +1116,14 @@ router.post('/assignments', asyncRoute(async (req, res) => {
   const assignment = await transaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO assignments(class_id,week_id,title,instructions,loom_url,visible_at,deadline_at,hard_deadline,reminders_enabled,created_by,
-         allow_uploads,uploads_required,accepted_file_types,max_files)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14) RETURNING *`,
+         allow_uploads,uploads_required,accepted_file_types,max_files,kind,listening_text,listening_text_shown)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17) RETURNING *`,
       [a.classId, a.weekId || null, a.title, a.instructions, a.loomUrl || null, a.visibleAt || new Date().toISOString(), a.deadlineAt, a.hardDeadline, a.remindersEnabled, req.user.id,
-       a.allowUploads, a.allowUploads && a.uploadsRequired, JSON.stringify(a.acceptedFileTypes), a.maxFiles],
+       a.allowUploads, a.allowUploads && a.uploadsRequired, JSON.stringify(a.acceptedFileTypes), a.maxFiles,
+       a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown],
     );
     for (const [position, question] of a.questions.entries()) {
-      await client.query(`INSERT INTO assignment_questions(assignment_id,position,prompt,image_url,required) VALUES ($1,$2,$3,$4,$5)`, [inserted.rows[0].id, position, question.prompt, question.imageUrl || null, question.required]);
+      await client.query(`INSERT INTO assignment_questions(assignment_id,position,prompt,image_url,required,expected_answer,marks) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [inserted.rows[0].id, position, question.prompt, question.imageUrl || null, question.required, question.expectedAnswer || null, question.marks]);
     }
     for (const resource of a.resources) {
       await client.query(`INSERT INTO assignment_resources(assignment_id,file_name,file_url,mime_type) VALUES ($1,$2,$3,$4)`, [inserted.rows[0].id, resource.fileName, resource.fileUrl, resource.mimeType || null]);
@@ -1344,10 +1353,106 @@ router.post('/classes/:id/assignment-import', diskUpload.single('file'), asyncRo
   res.status(201).json({ created: created.length, skipped: result.rows.filter((row) => row.problems.length) });
 }));
 
+/* Building a listening activity.
+   ------------------------------------------------------------------
+   The story is typed or pasted once and read aloud as many times as there are
+   dialects. Rendering is a separate step from saving the text, deliberately:
+   ABAIR takes a few seconds per dialect, and a teacher who has just fixed a
+   typo should not have to wait for three recordings to find out whether the
+   typo is fixed.
+
+   A story edited after it was read aloud leaves the recordings out of step, so
+   each row remembers the text it was made from and the screen says which are
+   stale rather than playing last week's story under this week's questions. */
+router.get('/assignments/:id/listening', asyncRoute(async (req, res) => {
+  const assignment = await one('SELECT id, listening_text FROM assignments WHERE id=$1', [req.params.id]);
+  if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
+  const current = hashText(assignment.listening_text);
+  const rows = (await query(
+    'SELECT * FROM listening_audio WHERE assignment_id=$1 ORDER BY dialect', [req.params.id])).rows;
+
+  res.json({
+    provider: providerName(),
+    configured: ttsConfigured(),
+    // True on a machine using the local stand-in voice, which is not Irish.
+    standIn: isStandIn(),
+    dialects: DIALECTS.map((dialect) => {
+      const row = rows.find((item) => item.dialect === dialect.key);
+      return {
+        ...dialect,
+        state: row?.state || 'none',
+        error: row?.error || null,
+        voice: row?.voice || null,
+        seconds: row?.seconds || null,
+        sizeBytes: row?.size_bytes || null,
+        // Made from a story that has since been edited.
+        stale: Boolean(row && row.state === 'ready' && row.text_hash !== current),
+      };
+    }),
+  });
+}));
+
+router.post('/assignments/:id/listening/render', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    dialects: z.array(z.enum(DIALECT_KEYS)).min(1).max(DIALECT_KEYS.length),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose at least one dialect.' });
+
+  const assignment = await one(
+    'SELECT id, listening_text FROM assignments WHERE id=$1', [req.params.id]);
+  if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
+  if (!String(assignment.listening_text || '').trim()) {
+    return res.status(400).json({ error: 'Write the story first, then have it read out.' });
+  }
+  if (!ttsConfigured()) {
+    return res.status(503).json({
+      error: 'No speech service is set up yet, so the story cannot be read aloud. Add ABAIR_API_KEY and restart.',
+    });
+  }
+
+  /* One at a time, and one failing does not stop the others: a teacher with two
+     working dialects and a broken one should get the two. */
+  const results = [];
+  for (const dialect of parsed.data.dialects) {
+    await query(
+      `INSERT INTO listening_audio(assignment_id,dialect,state)
+       VALUES ($1,$2,'pending')
+       ON CONFLICT (assignment_id,dialect) DO UPDATE SET state='pending', error=NULL, updated_at=now()`,
+      [assignment.id, dialect],
+    );
+    try {
+      const made = await renderStory({
+        assignmentId: assignment.id, dialect, text: assignment.listening_text,
+      });
+      await query(
+        `UPDATE listening_audio SET state='ready', error=NULL, voice=$1, file_path=$2,
+           mime_type=$3, size_bytes=$4, text_hash=$5, updated_at=now()
+         WHERE assignment_id=$6 AND dialect=$7`,
+        [made.voice, made.filePath, made.mimeType, made.sizeBytes, made.textHash, assignment.id, dialect],
+      );
+      results.push({ dialect, state: 'ready' });
+    } catch (error) {
+      await query(
+        `UPDATE listening_audio SET state='failed', error=$1, updated_at=now()
+         WHERE assignment_id=$2 AND dialect=$3`,
+        [String(error.message).slice(0, 400), assignment.id, dialect],
+      );
+      results.push({ dialect, state: 'failed', error: error.message });
+    }
+  }
+
+  await audit({ actorId: req.user.id, action: 'listening.rendered', entityType: 'assignment',
+    entityId: assignment.id, metadata: { results }, ip: req.ip });
+  res.json({ results });
+}));
+
 router.put('/assignments/:id', asyncRoute(async (req, res) => {
   const assignment = await one('SELECT * FROM assignments WHERE id=$1', [req.params.id]);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
-  const parsed = z.object({ title: z.string().min(2), instructions: z.string(), loomUrl: z.string().url().nullable().optional(), visibleAt: z.string().datetime(), deadlineAt: z.string().datetime(), hardDeadline: z.boolean(), remindersEnabled: z.boolean(), status: z.enum(['draft','published','archived']), questions: z.array(z.object({ prompt: z.string().min(1), imageUrl: z.string().nullable().optional(), required: z.boolean() })).min(1), resources: z.array(z.object({ fileName: z.string(), fileUrl: z.string(), mimeType: z.string().optional() })).default([]),
+  const parsed = z.object({ title: z.string().min(2), instructions: z.string(), loomUrl: z.string().url().nullable().optional(), visibleAt: z.string().datetime(), deadlineAt: z.string().datetime(), hardDeadline: z.boolean(), remindersEnabled: z.boolean(), status: z.enum(['draft','published','archived']), questions: z.array(z.object({ prompt: z.string().min(1), imageUrl: z.string().nullable().optional(), required: z.boolean(), expectedAnswer: z.string().max(4000).default(''), marks: z.coerce.number().int().min(0).max(100).default(1) })).min(1),
+    kind: z.enum(['written', 'listening']).default('written'),
+    listeningText: z.string().max(40000).default(''),
+    listeningTextShown: z.boolean().default(false), resources: z.array(z.object({ fileName: z.string(), fileUrl: z.string(), mimeType: z.string().optional() })).default([]),
     allowUploads: z.boolean().default(false),
     uploadsRequired: z.boolean().default(false),
     acceptedFileTypes: z.array(z.enum(Object.keys(FILE_TYPE_GROUPS))).default(['image', 'pdf']),
@@ -1357,12 +1462,13 @@ router.put('/assignments/:id', asyncRoute(async (req, res) => {
   const a = parsed.data;
   await transaction(async (client) => {
     await client.query(`UPDATE assignments SET title=$1,instructions=$2,loom_url=$3,visible_at=$4,deadline_at=$5,hard_deadline=$6,reminders_enabled=$7,status=$8,
-       allow_uploads=$9,uploads_required=$10,accepted_file_types=$11::jsonb,max_files=$12,updated_at=now() WHERE id=$13`,
+       allow_uploads=$9,uploads_required=$10,accepted_file_types=$11::jsonb,max_files=$12,kind=$13,listening_text=$14,listening_text_shown=$15,updated_at=now() WHERE id=$16`,
       [a.title, a.instructions, a.loomUrl || null, a.visibleAt, a.deadlineAt, a.hardDeadline, a.remindersEnabled, a.status,
-       a.allowUploads, a.allowUploads && a.uploadsRequired, JSON.stringify(a.acceptedFileTypes), a.maxFiles, assignment.id]);
+       a.allowUploads, a.allowUploads && a.uploadsRequired, JSON.stringify(a.acceptedFileTypes), a.maxFiles,
+       a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown, assignment.id]);
     await client.query('DELETE FROM assignment_questions WHERE assignment_id=$1', [assignment.id]);
     await client.query('DELETE FROM assignment_resources WHERE assignment_id=$1', [assignment.id]);
-    for (const [position, question] of a.questions.entries()) await client.query(`INSERT INTO assignment_questions(assignment_id,position,prompt,image_url,required) VALUES ($1,$2,$3,$4,$5)`, [assignment.id, position, question.prompt, question.imageUrl || null, question.required]);
+    for (const [position, question] of a.questions.entries()) await client.query(`INSERT INTO assignment_questions(assignment_id,position,prompt,image_url,required,expected_answer,marks) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [assignment.id, position, question.prompt, question.imageUrl || null, question.required, question.expectedAnswer || null, question.marks]);
     for (const resource of a.resources) await client.query(`INSERT INTO assignment_resources(assignment_id,file_name,file_url,mime_type) VALUES ($1,$2,$3,$4)`, [assignment.id, resource.fileName, resource.fileUrl, resource.mimeType || null]);
   });
   await audit({ actorId: req.user.id, action: 'assignment.updated', entityType: 'assignment', entityId: assignment.id, ip: req.ip });
@@ -1658,13 +1764,34 @@ router.post('/checkins/:id/redraft', asyncRoute(async (req, res) => {
 }));
 
 router.post('/homework/:id/return', asyncRoute(async (req, res) => {
-  const parsed = z.object({ corrections: z.string().max(20000).default(''), generalFeedback: z.string().max(12000).default('') }).safeParse(req.body);
+  const parsed = z.object({
+    corrections: z.string().max(20000).default(''),
+    generalFeedback: z.string().max(12000).default(''),
+    /* The marks as the teacher is returning them. Sent back from the screen
+       rather than left as they were found, because the point of the review is
+       that they can be changed: a mark the teacher disagreed with and corrected
+       must not be quietly replaced by the machine's on the way out. */
+    marks: z.array(z.object({
+      position: z.coerce.number().int().min(0).max(200),
+      awarded: z.coerce.number().int().min(0).max(100),
+      available: z.coerce.number().int().min(0).max(100),
+      note: z.string().max(2000).default(''),
+    })).max(200).optional(),
+  }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid feedback.' });
   const current = await one('SELECT id, teacher_audio_path FROM homework_submissions WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Homework submission not found.' });
   const hasText = parsed.data.corrections.trim() && parsed.data.generalFeedback.trim();
   if (!hasText && !current.teacher_audio_path) {
     return res.status(400).json({ error: 'Complete both feedback sections, or record a voice note.' });
+  }
+  if (parsed.data.marks) {
+    const awarded = parsed.data.marks.reduce((total, mark) => total + Math.min(mark.awarded, mark.available), 0);
+    const available = parsed.data.marks.reduce((total, mark) => total + mark.available, 0);
+    await query(
+      'UPDATE homework_submissions SET teacher_marks=$1::jsonb, teacher_score=$2, teacher_max=$3 WHERE id=$4',
+      [JSON.stringify(parsed.data.marks), awarded, available, current.id],
+    );
   }
   const row = await one(`UPDATE homework_submissions SET teacher_corrections=$1,teacher_general_feedback=$2,status='returned',feedback_state='returned',feedback_returned_at=now(),feedback_read_at=NULL,updated_at=now() WHERE id=$3 RETURNING *`, [parsed.data.corrections, parsed.data.generalFeedback, current.id]);
   await audit({ actorId: req.user.id, action: 'homework.returned', entityType: 'homework_submission', entityId: row.id, metadata: { voiceNote: Boolean(current.teacher_audio_path) }, ip: req.ip });
