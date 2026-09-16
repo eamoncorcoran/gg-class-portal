@@ -28,15 +28,17 @@ test('forStudent removes the drafting columns and the ai_drafted state', async (
   /* Exercised directly by lifting the function out of the module, which avoids
      needing a database to prove the shape of what it returns. */
   const source = studentRoutes.slice(
-    studentRoutes.indexOf('function forStudent(row)'),
+    studentRoutes.indexOf('const FEEDBACK_COLUMNS'),
     studentRoutes.indexOf('const allForStudent'),
   );
   assert.ok(source.length > 0, 'forStudent is no longer where this test expects it');
   const forStudent = new Function(`${source}; return forStudent;`)();
 
+  /* Submitted and drafted, not yet returned: the state a student is in for the
+     minute between handing up and the teacher opening it. */
   const row = forStudent({
     id: 'x',
-    status: 'returned',
+    status: 'submitted',
     teacher_feedback: 'Well done.',
     ai_feedback: 'model text',
     ai_corrections: 'model corrections',
@@ -48,11 +50,35 @@ test('forStudent removes the drafting columns and the ai_drafted state', async (
   assert.equal('ai_corrections' in row, false);
   assert.equal('ai_general_feedback' in row, false);
   assert.equal(row.feedback_state, 'pending');
-  // What the teacher actually approved still goes through untouched.
-  assert.equal(row.teacher_feedback, 'Well done.');
+  /* And the teacher's columns go too while it is still a draft. They are seeded
+     with the model's text the moment the work is submitted, so leaving them in
+     handed the student the machine's draft a second after they pressed send. */
+  assert.equal('teacher_feedback' in row, false);
+
+  // What the teacher actually approved goes through once it has been returned.
+  const out = forStudent({
+    id: 'x', status: 'returned', feedback_state: 'returned',
+    teacher_feedback: 'Well done.', teacher_score: 7, teacher_max: 10,
+    ai_feedback: 'model text', ai_score: 9,
+  });
+  assert.equal(out.teacher_feedback, 'Well done.');
+  assert.equal(out.teacher_score, 7);
+  assert.equal('ai_feedback' in out, false, 'the draft never goes, returned or not');
+  assert.equal('ai_score' in out, false, "and neither does the machine's own mark");
+
+  /* An unreturned voice note must not arrive as something to press. */
+  const held = forStudent({ feedback_state: 'ai_drafted', voice_note: { url: '/x' } });
+  assert.equal('voice_note' in held, false);
+
+  /* Redrafting after returning leaves status='returned' with feedback_state back
+     at ai_drafted. A student who has already read their feedback must not have
+     it taken off them while the teacher rewrites it. */
+  const redrafted = forStudent({ status: 'returned', feedback_state: 'ai_drafted', teacher_feedback: 'Well done.' });
+  assert.equal(redrafted.teacher_feedback, 'Well done.');
 
   assert.equal(forStudent({ feedback_state: 'returned' }).feedback_state, 'returned');
   assert.equal(forStudent({ feedback_state: 'generating' }).feedback_state, 'pending');
+  assert.equal(forStudent({ status: 'submitted', feedback_state: 'ai_drafted' }).feedback_state, 'pending');
   assert.equal(forStudent({ feedback_state: 'failed' }).feedback_state, 'pending');
   assert.equal(forStudent(null), null);
 });

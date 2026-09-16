@@ -37,7 +37,11 @@ router.get('/avatar/:userId', asyncRoute(async (req, res) => {
 function resolveStored(storedName) {
   if (!storedName) return null;
   const name = path.basename(storedName);
-  for (const directory of [config.privateUploadDir, config.uploadDir]) {
+  /* Listening audio lives in a subdirectory of the private store rather than
+     loose among student work, so it is searched too. The basename is still what
+     is used, so a stored name that tries to climb out goes nowhere. */
+  for (const directory of [config.privateUploadDir,
+    path.join(config.privateUploadDir, 'listening'), config.uploadDir]) {
     const candidate = path.join(directory, name);
     if (fs.existsSync(candidate)) return candidate;
   }
@@ -184,6 +188,70 @@ router.get('/voice-note/:type/:id', asyncRoute(async (req, res) => {
     return fs.createReadStream(filePath, { start, end }).pipe(res);
   }
 
+  res.setHeader('Content-Length', size);
+  return fs.createReadStream(filePath).pipe(res);
+}));
+
+/* A story read aloud, in one dialect.
+   ------------------------------------------------------------------
+   Streamed rather than handed over as a link, for the same reason student work
+   is: it is course material behind a class, not something to be passed around.
+   Range requests are supported so a player can scrub back to the sentence
+   somebody missed, which on a listening comprehension is the whole exercise.
+
+   The transcript is deliberately not here. A student who is meant to be
+   listening should not be able to read the story out of the network tab, so the
+   text travels only when the assignment says it may. */
+router.get('/listening/:assignmentId/:dialect', asyncRoute(async (req, res) => {
+  const row = await one(
+    `SELECT la.file_path, la.mime_type, la.state, a.id assignment_id, a.class_id,
+            a.status, a.visible_at, a.archived_at
+     FROM listening_audio la JOIN assignments a ON a.id=la.assignment_id
+     WHERE la.assignment_id=$1 AND la.dialect=$2`,
+    [req.params.assignmentId, req.params.dialect],
+  );
+  if (!row || row.state !== 'ready' || !row.file_path) {
+    return res.status(404).json({ error: 'That recording is not ready.' });
+  }
+
+  if (req.user.role !== 'admin') {
+    /* The same three tests the bootstrap applies, asked again here. A route that
+       trusted the interface not to link to it would hand out next week's
+       listening to anybody who guessed the id. */
+    const open = row.status === 'published'
+      && !row.archived_at
+      && new Date(row.visible_at).getTime() <= Date.now();
+    if (!open) return res.status(404).json({ error: 'That recording is not ready.' });
+    const enrolled = await one(
+      'SELECT 1 FROM class_students WHERE class_id=$1 AND student_id=$2 AND active=true',
+      [row.class_id, req.user.id],
+    );
+    if (!enrolled) return res.status(403).json({ error: 'That is not your class.' });
+  }
+
+  const filePath = resolveStored(row.file_path);
+  if (!filePath) return res.status(404).json({ error: 'That recording is no longer available.' });
+
+  res.setHeader('Content-Type', row.mime_type || 'audio/mpeg');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Disposition', 'inline');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  const { size } = fs.statSync(filePath);
+  const match = req.headers.range && /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
+  if (match) {
+    const start = match[1] ? Number(match[1]) : 0;
+    const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+    if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= size) {
+      res.setHeader('Content-Range', `bytes */${size}`);
+      return res.status(416).end();
+    }
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+    res.setHeader('Content-Length', end - start + 1);
+    return fs.createReadStream(filePath, { start, end }).pipe(res);
+  }
   res.setHeader('Content-Length', size);
   return fs.createReadStream(filePath).pipe(res);
 }));

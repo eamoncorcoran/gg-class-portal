@@ -1929,3 +1929,61 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   font-size:12.5px;line-height:1.6;color:var(--text-secondary)}
 .plan-homework strong{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
   color:var(--text-quaternary,var(--text-secondary));margin-bottom:4px}
+
+/* A listening activity: the story read aloud, above the questions.
+   The player stays put across the questions, because a comprehension is
+   answered while listening rather than after it. */
+.listen-panel{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--gray-50);
+  padding:12px 14px;margin-bottom:14px;display:grid;gap:10px}
+.listen-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.listen-head strong{display:inline-flex;align-items:center;gap:7px;font-size:13px}
+.listen-head svg{width:15px;height:15px}
+.listen-dialects{display:inline-flex;padding:3px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--white)}
+.listen-dialect{border:0;background:transparent;border-radius:6px;padding:5px 11px;min-height:28px;
+  font-size:11px;font-weight:650;color:var(--text-tertiary)}
+.listen-dialect:hover{color:var(--text-secondary)}
+.listen-dialect.active{background:var(--brand-50);color:var(--brand-800);box-shadow:var(--shadow-xs)}
+.listen-audio{width:100%;height:38px}
+.listen-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+/* Hidden by default on most activities: reading the story defeats the exercise,
+   so it is a deliberate press rather than something already on screen. */
+.listen-text{white-space:pre-wrap;font-size:13px;line-height:1.7;color:var(--text-secondary);
+  background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;
+  max-height:340px;overflow:auto}
+.listen-render{margin-top:12px;display:grid;gap:9px}
+.listen-render-rows{display:grid;gap:7px}
+.listen-render-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;background:var(--white)}
+.listen-render-actions{display:flex;align-items:center;gap:9px}
+.listen-render-actions .listen-audio{width:210px;height:32px}
+
+/* The machine's marking, for the teacher to agree with or change. */
+.mark-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 12px;padding:7px 11px;
+  border:1px solid var(--border);border-left:3px solid var(--brand-400);border-radius:var(--radius-sm);background:var(--gray-50)}
+.mark-row label{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:650;color:var(--text-secondary)}
+.mark-row input{width:62px;text-align:center;padding:5px 7px;min-height:30px}
+.mark-summary{margin:14px 0;padding:11px 13px;border-radius:var(--radius-sm);background:var(--brand-25,#f6faf4);
+  border:1px solid var(--brand-200,#cfe8c2);display:grid;gap:4px}
+.mark-summary strong{font-size:15px}
+.mark-summary.is-none{background:var(--warning-50);border-color:var(--warning-100)}
+.student-score{border:1px solid var(--brand-200,#cfe8c2);background:var(--brand-25,#f6faf4);
+  border-radius:var(--radius-sm);padding:13px 15px;margin-bottom:14px;display:grid;gap:8px}
+.student-score-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.student-score-head strong{font-size:18px}
+.student-score-list{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:3px}
+.student-score-list li{display:flex;justify-content:space-between;gap:10px;font-size:12px}
+.csv-note-block{font-size:11.5px;line-height:1.55;color:var(--warning-700);background:var(--warning-50);
+  border:1px solid var(--warning-100);border-radius:var(--radius-sm);padding:8px 11px;margin:0}
+.listen-render-row{flex-wrap:wrap}
+.listen-render-who{display:grid;gap:2px;min-width:170px}
+.listen-render-who strong{font-size:13px}
+.listen-upload{cursor:pointer;margin:0}
+.listen-render-label{flex:1 1 100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding-top:9px;margin-top:2px;border-top:1px dashed var(--border)}
+.listen-render-label label{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;
+  font-weight:650;color:var(--text-secondary)}
+.listen-render-label input{width:190px;min-height:30px;padding:5px 9px;font-size:11.5px}
+/* The tag a student reads, under the player and on the tab they press. */
+.listen-tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;
+  background:var(--brand-50);color:var(--brand-800);border:1px solid var(--brand-200,#cfe8c2);
+  font-size:10.5px;font-weight:650}

@@ -448,6 +448,115 @@ try {
       { method: 'POST', body: { title: `Audit course ${stamp} copy` } }));
   }
 
+  /* ------------------------------------------------------- listening */
+  section('Listening activities');
+  {
+    const deadline = new Date(Date.now() + 5 * 86400000).toISOString();
+    const created = expectOk('a listening activity can be made', await admin.call('/api/admin/assignments', {
+      method: 'POST',
+      body: {
+        classId: made.classId, title: `Audit listening ${stamp}`, instructions: 'Éist.',
+        deadlineAt: deadline, hardDeadline: true, remindersEnabled: false,
+        kind: 'listening', listeningText: 'Bhí fear ann fadó. Chuaigh sé go dtí an baile mór.',
+        listeningTextShown: false,
+        questions: [
+          { prompt: 'Cé a bhí ann?', required: true, expectedAnswer: 'Fear', marks: 2 },
+          { prompt: 'Cá ndeachaigh sé?', required: true, expectedAnswer: 'Go dtí an baile mór', marks: 1 },
+        ],
+      },
+    }), (d) => d?.kind === 'listening' && d?.listening_text);
+
+    const status = expectOk('and reports what it has to play with',
+      await admin.call(`/api/admin/assignments/${created?.id}/listening`),
+      (d) => Array.isArray(d?.dialects) && d.dialects.length === 4);
+    expect('with standard offered for upload only',
+      status?.dialects?.find((item) => item.key === 'standard')?.synthesisable === false,
+      'standard must not be synthesisable');
+    expect('and nothing recorded yet',
+      status?.dialects?.every((item) => item.state === 'none'),
+      JSON.stringify(status?.dialects?.map((item) => item.state)));
+
+    /* The upload is multipart, so it is sent directly rather than through the
+       actor, which speaks JSON. Called through the actor afterwards as well so
+       the route counts as exercised. */
+    const wav = Buffer.concat([
+      Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVEfmt '), Buffer.alloc(40),
+    ]);
+    const form = new FormData();
+    form.append('file', new Blob([wav], { type: 'audio/wav' }), 'audit.wav');
+    form.append('dialect', 'munster');
+    form.append('label', 'Corca Dhuibhne');
+    const uploaded = await fetch(`${BASE}/api/admin/assignments/${created?.id}/listening/upload`, {
+      method: 'POST', body: form,
+      headers: { cookie: [...admin.jar].map(([k, v]) => `${k}=${v}`).join('; ') },
+    });
+    expect('a recording can be uploaded', uploaded.status === 201, `status ${uploaded.status}`);
+    // Through the actor too, so the route is counted rather than only used.
+    expectStatus('and an upload with no file is refused', await admin.call(
+      `/api/admin/assignments/${created?.id}/listening/upload`, { method: 'POST', body: {} }), 400);
+
+    expectOk('and the tag reaches the listing',
+      await admin.call(`/api/admin/assignments/${created?.id}/listening`),
+      (d) => d.dialects.find((item) => item.key === 'munster')?.tag === 'Corca Dhuibhne');
+    expectOk('the tag can be changed without a new file', await admin.call(
+      `/api/admin/assignments/${created?.id}/listening/munster`,
+      { method: 'PATCH', body: { label: 'Múscraí' } }), (d) => d?.label === 'Múscraí');
+    expectStatus('a dialect with no recording cannot be relabelled', await admin.call(
+      `/api/admin/assignments/${created?.id}/listening/ulster`,
+      { method: 'PATCH', body: { label: 'x' } }), 404);
+
+    /* An upload is not derived from the story, so editing the story must not
+       mark it as out of step. */
+    await admin.call(`/api/admin/assignments/${created?.id}`, {
+      method: 'PUT',
+      body: {
+        title: `Audit listening ${stamp}`, instructions: 'Éist.', visibleAt: new Date().toISOString(),
+        deadlineAt: deadline, hardDeadline: true, remindersEnabled: false, status: 'published',
+        kind: 'listening', listeningText: 'A completely different story now.', listeningTextShown: true,
+        questions: [
+          { prompt: 'Cé a bhí ann?', required: true, expectedAnswer: 'Fear', marks: 2 },
+          { prompt: 'Cá ndeachaigh sé?', required: true, expectedAnswer: 'Go dtí an baile mór', marks: 1 },
+        ],
+      },
+    });
+    expectOk('an upload is not stale when the story changes',
+      await admin.call(`/api/admin/assignments/${created?.id}/listening`),
+      (d) => d.dialects.find((item) => item.key === 'munster')?.stale === false);
+
+    expectStatus('reading a term aloud needs a speech service', await admin.call(
+      `/api/admin/classes/${made.classId}/listening/render-all`,
+      { method: 'POST', body: { dialects: ['connacht'] } }), 503);
+    expectStatus('and so does one story', await admin.call(
+      `/api/admin/assignments/${created?.id}/listening/render`,
+      { method: 'POST', body: { dialects: ['connacht'] } }), 503);
+    expectStatus('standard cannot be synthesised at all', await admin.call(
+      `/api/admin/assignments/${created?.id}/listening/render`,
+      { method: 'POST', body: { dialects: ['standard'] } }), 400);
+
+    /* What a student is actually served, which is the point of all of it.
+       Fetched directly because it is audio rather than JSON. */
+    const play = await fetch(`${BASE}/api/media/listening/${created?.id}/munster`, {
+      headers: { cookie: [...admin.jar].map(([k, v]) => `${k}=${v}`).join('; ') },
+    });
+    expect('the recording streams back', play.status === 200, `status ${play.status}`);
+    expect('as audio', String(play.headers.get('content-type')).startsWith('audio/'),
+      String(play.headers.get('content-type')));
+    expect('and can be scrubbed', play.headers.get('accept-ranges') === 'bytes',
+      'a listening comprehension is answered by going back over a sentence');
+    await play.arrayBuffer();
+    // Through the actor as well, so the route counts as exercised.
+    await admin.call(`/api/media/listening/${created?.id}/munster`);
+    expectStatus('a dialect with no recording is not found',
+      await admin.call(`/api/media/listening/${created?.id}/connacht`), 404);
+
+    expectOk('a recording can be taken off again', await admin.call(
+      `/api/admin/assignments/${created?.id}/listening/munster`, { method: 'DELETE' }));
+    expectStatus('and taking it off twice says so', await admin.call(
+      `/api/admin/assignments/${created?.id}/listening/munster`, { method: 'DELETE' }), 404);
+
+    await admin.call(`/api/admin/assignments/${created?.id}`, { method: 'DELETE' });
+  }
+
   /* ----------------------------------------------------------- community */
   section('The community board');
   const category = expectOk('add a category', await admin.call(`/api/admin/community/${made.classId}/categories`,
