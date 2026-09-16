@@ -7198,6 +7198,33 @@ function assignmentPreview(result) {
     </table></div>`;
 }
 
+/* What the dialog says once the assignment is actually live.
+   ------------------------------------------------------------------
+   A listening activity keeps the dialog open so the recordings can be added
+   without leaving, which means the usual signal that something worked, the
+   dialog closing, is not available. Saying so on the page is what replaces it.
+
+   The footer changes too. Until it is saved the way out is Cancel, which is
+   right. Afterwards the work is on the server and Cancel is a lie, so the way
+   out becomes Done. */
+function markAssignmentSaved(saved, payload) {
+  /* Relabelled rather than rebuilt. Replacing the footer would throw away the
+     save button's listener along with the button, and leave something that
+     looks like a button and does nothing. */
+  const leave = document.querySelector('.modal-footer [data-close-modal]');
+  if (leave) leave.textContent = 'Done';
+  const save = document.getElementById('save-assignment');
+  if (save) save.textContent = 'Save changes';
+
+  const head = document.querySelector('.modal-body');
+  if (head && !document.getElementById('assignment-live')) {
+    const when = payload.visibleAt ? fmtDate(payload.visibleAt, { weekday: true, time: true, dateStyle: 'medium' }) : null;
+    head.insertAdjacentHTML('afterbegin', `<div class="success-banner" id="assignment-live">
+      <strong>Published.</strong> ${when ? `Students see it from ${escapeHtml(when)}.` : 'Students can see it now.'}
+      Add the recordings below, then press Done.</div>`);
+  }
+}
+
 function openAssignmentModal(assignment = null, defaultClassId = null, prefillDeadline = null) {
   /* What the recordings attach to.
      ------------------------------------------------------------------
@@ -7292,7 +7319,11 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
              is what it did before and what a written assignment wants. */
           if (payload.kind === 'listening') {
             showToast(wasNew ? 'Published. Now add the recordings.' : 'Assignment updated');
-            document.getElementById('save-assignment').textContent = 'Save changes';
+            /* Said on the page rather than only in a toast that is gone in three
+               seconds. The dialog staying open is the right thing for a
+               listening activity, but without this it reads as nothing having
+               happened, and the only way out said Cancel. */
+            markAssignmentSaved(saved, payload);
             await renderListeningPanel(saved);
             document.getElementById('listening-render')?.closest('.form-block')
               ?.scrollIntoView({ behavior: 'smooth', block: 'center' });

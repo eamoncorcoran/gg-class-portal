@@ -25,8 +25,38 @@ const CLEANUP_TIMEOUT_MS = 12_000;
 const MAX_AUDIO_SECONDS = 15 * 60;
 
 export const VOICE_MIME_TYPES = new Set([
-  'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/aac', 'audio/flac',
+  'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/aac', 'audio/flac',
+  /* WAV has four spellings in the wild and browsers disagree about which to
+     send. A teacher whose recorder writes audio/wave was being told their WAV
+     was not a supported format, which is a hard thing to argue with. */
+  'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave', 'audio/x-pn-wav',
+  'audio/mp3', 'audio/m4a', 'audio/x-m4a', 'audio/aiff', 'audio/x-aiff', 'audio/opus',
 ]);
+
+/* What the file is, when the browser will not say.
+   ------------------------------------------------------------------
+   A file dragged from some applications, or picked on some versions of Windows,
+   arrives with an empty type. Refusing it means a recording that plays perfectly
+   well is turned away for having no label on it, so the extension is read
+   instead. It is only ever consulted when there is nothing better. */
+const EXTENSION_TYPES = {
+  '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4',
+  '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.opus': 'audio/opus', '.webm': 'audio/webm',
+  '.aac': 'audio/aac', '.flac': 'audio/flac', '.aif': 'audio/aiff', '.aiff': 'audio/aiff',
+};
+
+export function audioTypeFor(file) {
+  const declared = String(file?.mimetype || '').split(';')[0].trim().toLowerCase();
+  if (VOICE_MIME_TYPES.has(declared)) return declared;
+  /* application/octet-stream is what a browser sends when it has given up, and
+     it is not a claim about the contents, so the name is worth more. */
+  if (!declared || declared === 'application/octet-stream' || declared === 'audio/') {
+    const name = String(file?.originalname || '').toLowerCase();
+    const dot = name.lastIndexOf('.');
+    if (dot > -1) return EXTENSION_TYPES[name.slice(dot)] || null;
+  }
+  return null;
+}
 
 /** Extension the OpenAI audio endpoint will accept for a given browser MIME type. */
 export function audioExtension(mimeType = '') {
@@ -38,6 +68,15 @@ export function audioExtension(mimeType = '') {
     'audio/mpeg': '.mp3',
     'audio/wav': '.wav',
     'audio/x-wav': '.wav',
+    'audio/wave': '.wav',
+    'audio/vnd.wave': '.wav',
+    'audio/x-pn-wav': '.wav',
+    'audio/mp3': '.mp3',
+    'audio/m4a': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'audio/aiff': '.aiff',
+    'audio/x-aiff': '.aiff',
+    'audio/opus': '.opus',
     'audio/aac': '.m4a',
     'audio/flac': '.flac',
   }[base] || '.webm';

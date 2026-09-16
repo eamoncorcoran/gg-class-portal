@@ -341,3 +341,50 @@ test('the kind of assignment reads as a decision', () => {
   assert.match(app, /<span class="form-step">1<\/span>/);
   assert.match(app, /<span class="form-step">2<\/span>/);
 });
+
+test('a WAV is a WAV whatever the browser calls it', async () => {
+  /* WAV has four spellings in the wild and browsers disagree about which to
+     send, so a teacher whose recorder writes audio/wave was told their WAV was
+     not a supported format. */
+  const { VOICE_MIME_TYPES, audioTypeFor } = await import('../src/voice.js');
+  for (const spelling of ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave', 'audio/x-pn-wav']) {
+    assert.ok(VOICE_MIME_TYPES.has(spelling), `${spelling} has to be accepted`);
+  }
+  /* A file dragged from some applications arrives with no type at all, and
+     octet-stream is a browser giving up rather than a claim about the contents.
+     Both fall back to the name. */
+  assert.equal(audioTypeFor({ mimetype: '', originalname: 'take.wav' }), 'audio/wav');
+  assert.equal(audioTypeFor({ mimetype: 'application/octet-stream', originalname: 'take.wav' }), 'audio/wav');
+  assert.equal(audioTypeFor({ mimetype: '', originalname: 'take.m4a' }), 'audio/mp4');
+  // And the fallback is not a way in for anything at all.
+  assert.equal(audioTypeFor({ mimetype: '', originalname: 'notes.txt' }), null);
+  assert.equal(audioTypeFor({ mimetype: 'text/plain', originalname: 'notes.txt' }), null);
+  assert.equal(audioTypeFor({ mimetype: '', originalname: 'noextension' }), null);
+});
+
+test('every accepted audio type has an extension to be stored under', async () => {
+  const { VOICE_MIME_TYPES, audioExtension } = await import('../src/voice.js');
+  for (const type of VOICE_MIME_TYPES) {
+    /* .webm is the fallback, so a type landing on it by accident would be
+       written to disk under a name that lies about what is in it. */
+    if (type === 'audio/webm') continue;
+    assert.notEqual(audioExtension(type), '.webm', `${type} has no extension of its own`);
+  }
+});
+
+test('a published assignment says so, and the way out stops saying Cancel', () => {
+  /* A listening activity keeps the dialog open so the recordings can be added
+     without leaving, which means the usual signal that something worked, the
+     dialog closing, is not available. It read as nothing having happened, and
+     the only way out said Cancel, which after publishing is a lie. */
+  assert.match(app, /function markAssignmentSaved\(saved, payload\)/);
+  const body = app.slice(app.indexOf('function markAssignmentSaved'));
+  const inner = body.slice(0, body.indexOf('\nfunction '));
+  assert.match(inner, /leave\.textContent = 'Done'/);
+  assert.match(inner, /id="assignment-live"/);
+  assert.match(inner, /<strong>Published\.<\/strong>/);
+  /* Relabelled rather than rebuilt: replacing the footer throws away the save
+     button's listener and leaves something that looks like a button and is not. */
+  assert.doesNotMatch(inner, /footer\.innerHTML =/);
+  assert.match(app, /markAssignmentSaved\(saved, payload\)/);
+});

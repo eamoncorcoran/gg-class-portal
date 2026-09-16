@@ -16,7 +16,7 @@ import { sendStudentInvite, sendNudge } from '../email.js';
 import { ensureWeeksForClass, scheduleCheckins, CHECKIN_DEFAULTS } from '../weeks.js';
 import { audit } from '../audit.js';
 import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
-import { VOICE_MIME_TYPES, audioExtension, dictate, withVoiceNote, withVoiceNotes } from '../voice.js';
+import { VOICE_MIME_TYPES, audioExtension, audioTypeFor, dictate, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
 import { formatAddress, hasAddress } from '../address.js';
@@ -1487,9 +1487,13 @@ const listeningUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: AUDIO_UPLOAD_MB * 1024 * 1024, files: 1 },
   fileFilter(_req, file, callback) {
-    if (!VOICE_MIME_TYPES.has(String(file.mimetype).split(';')[0])) {
-      return callback(Object.assign(new Error('That audio format is not supported. MP3, M4A, WAV, OGG and WebM all work.'), { status: 400 }));
+    /* Read from the name when the browser will not say what it is, so a
+       perfectly good recording is not turned away for arriving unlabelled. */
+    const type = audioTypeFor(file);
+    if (!type) {
+      return callback(Object.assign(new Error(`${file.originalname || 'That file'} is not an audio format the portal reads. MP3, M4A, WAV, OGG, FLAC and WebM all work.`), { status: 400 }));
     }
+    file.resolvedType = type;
     callback(null, true);
   },
 });
@@ -1507,7 +1511,8 @@ router.post('/assignments/:id/listening/upload', listeningUpload.single('file'),
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
 
   await fs.mkdir(audioDir(), { recursive: true });
-  const extension = audioExtension(req.file.mimetype) || '.mp3';
+  const type = req.file.resolvedType || audioTypeFor(req.file) || 'audio/mpeg';
+  const extension = audioExtension(type) || '.mp3';
   const name = `${crypto.randomUUID()}${extension}`;
   const filePath = path.join(audioDir(), name);
   await fs.writeFile(filePath, req.file.buffer);
@@ -1531,7 +1536,7 @@ router.post('/assignments/:id/listening/upload', listeningUpload.single('file'),
            text_hash=NULL, voice=NULL, error=NULL, updated_at=now()
      RETURNING *`,
     [assignment.id, parsed.data.dialect, parsed.data.label || null, filePath,
-     req.file.mimetype, req.file.size, req.file.originalname?.slice(0, 200) || null, req.user.id],
+     type, req.file.size, req.file.originalname?.slice(0, 200) || null, req.user.id],
   );
 
   if (previous?.file_path && path.basename(previous.file_path) !== name) {
