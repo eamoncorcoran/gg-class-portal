@@ -7258,7 +7258,8 @@ function bindAssignmentDrag() {
   document.querySelectorAll('[data-drag-assignment]').forEach((chip) => {
     chip.addEventListener('dragstart', (event) => {
       event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', `assignment:${chip.dataset.dragAssignment}`);
+      // The day it is being dragged from, as drawn, travels with it.
+      event.dataTransfer.setData('text/plain', `assignment:${chip.dataset.dragAssignment}:${chip.closest('.calendar-day')?.dataset.dropOn || ''}`);
       chip.classList.add('is-dragging');
     });
     chip.addEventListener('dragend', () => {
@@ -7282,14 +7283,16 @@ function bindAssignmentDrag() {
       if (!payload.startsWith('assignment:')) return;
       event.preventDefault();
       day.classList.remove('is-over');
-      await moveAssignment(payload.slice('assignment:'.length), day.dataset.dropOn);
+      const [, assignmentId, fromDate] = payload.split(':');
+      if (fromDate === day.dataset.dropOn) return;
+      await moveAssignment(assignmentId, day.dataset.dropOn, { fromDate });
     });
   });
 }
 
-async function moveAssignment(assignmentId, onDate, { undoing = false } = {}) {
+async function moveAssignment(assignmentId, onDate, { undoing = false, fromDate = null } = {}) {
   try {
-    const result = await api(`/api/admin/assignments/${assignmentId}/move`, { method: 'PATCH', body: { onDate } });
+    const result = await api(`/api/admin/assignments/${assignmentId}/move`, { method: 'PATCH', body: { onDate, ...(fromDate ? { fromDate } : {}) } });
     if (!result.moved) return;
     state.assignments = await api('/api/admin/assignments');
     await renderAdmin();
@@ -7297,7 +7300,7 @@ async function moveAssignment(assignmentId, onDate, { undoing = false } = {}) {
     showToast(
       undoing ? `Put back to ${when}` : `Moved to ${when}`,
       '',
-      undoing ? null : { label: 'Undo', action: () => moveAssignment(assignmentId, result.previousDay, { undoing: true }) },
+      undoing ? null : { label: 'Undo', action: () => moveAssignment(assignmentId, result.previousDay, { undoing: true, fromDate: onDate }) },
     );
   } catch (error) {
     showToast(error.message, 'error');

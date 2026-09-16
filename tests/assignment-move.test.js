@@ -35,11 +35,18 @@ test('a move is whole days in the class timezone, not hours in UTC', () => {
 });
 
 test('the route shifts in the zone and only ever by whole days', () => {
-  assert.match(body, /const zone = assignment\.timezone \|\| config\.defaultTimezone;/);
+  assert.match(body, /const wanted = assignment\.timezone \|\| config\.defaultTimezone;/);
   assert.match(body, /const delta = Math\.round\(target\.diff\(plotted, 'days'\)\.days\);/);
+  /* Both ends arrive as plain dates from the calendar the teacher was looking
+     at, so the number of days never depends on which zone drew the chip. A
+     nonsense timezone on the class falls back rather than failing every drag. */
+  assert.match(body, /fromDate: day\.optional\(\)/);
+  assert.match(body, /const zone = DateTime\.now\(\)\.setZone\(wanted\)\.isValid \? wanted : config\.defaultTimezone;/);
+  assert.match(app, /if \(fromDate === day\.dataset\.dropOn\) return;/, 'a drop on the cell it came from is a no-op before any request');
   assert.match(body, /inZone\(value\)\.plus\(\{ days: delta \}\)/, 'plus({ days }) in the zone is what keeps the wall clock');
   // A day-only date arrives, so nothing about the time can change from here.
-  assert.match(body, /onDate: z\.string\(\)\.regex\(\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\)/);
+  assert.match(body, /const day = z\.string\(\)\.regex\(\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\);/);
+  assert.match(body, /onDate: day,/);
 });
 
 test('the deadline, the visible date and a reopened date all move together', () => {
@@ -48,7 +55,8 @@ test('the deadline, the visible date and a reopened date all move together', () 
   assert.match(body, /const reopenedUntil = shift\(assignment\.reopened_until\);/);
   /* The chip is drawn on the reopened date when there is one, so that is the
      date that has to land where it was dropped. */
-  assert.match(body, /const plotted = inZone\(assignment\.reopened_until \|\| assignment\.deadline_at\)\.startOf\('day'\);/);
+  assert.match(body, /: inZone\(assignment\.reopened_until \|\| assignment\.deadline_at\)\.startOf\('day'\);/,
+    'and when the browser does not say which day it dragged from, the reopened date is the plotted one');
 });
 
 test('the teaching week follows the deadline, and only if it was filed at all', () => {
@@ -67,11 +75,12 @@ test('an archived assignment cannot be moved, and a same-day drop is a no-op', (
 });
 
 test('every drag can be undone from the toast, by the same move back', () => {
-  assert.match(app, /async function moveAssignment\(assignmentId, onDate, \{ undoing = false \} = \{\}\)/);
+  assert.match(app, /async function moveAssignment\(assignmentId, onDate, \{ undoing = false, fromDate = null \} = \{\}\)/);
   const client = app.slice(app.indexOf('async function moveAssignment'));
   const inner = client.slice(0, client.indexOf('\n}'));
   assert.match(inner, /if \(!result\.moved\) return;/, 'a same-day drop says nothing');
-  assert.match(inner, /label: 'Undo', action: \(\) => moveAssignment\(assignmentId, result\.previousDay, \{ undoing: true \}\)/);
+  assert.match(inner, /label: 'Undo', action: \(\) => moveAssignment\(assignmentId, result\.previousDay, \{ undoing: true, fromDate: onDate \}\)/,
+    'undo is the same move back, and says which day it is coming from');
   assert.match(inner, /undoing \? null :/, 'and the undo toast does not offer to undo the undo');
   // Only live assignments are draggable; an archived chip stays put.
   assert.match(app, /const draggable = assignment\.status !== 'archived';/);

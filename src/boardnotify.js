@@ -166,6 +166,11 @@ export async function notifyNewPost(threadId) {
     [threadId],
   );
   if (!thread) return { sent: 0, skipped: 'the post is gone' };
+  /* The teacher unticked "email the class". Both the immediate announcement and
+     the sweep come through here, so one check covers a post published now and
+     a post that appears later by the clock. notified_at is already set by the
+     caller either way, so it will not be picked up again. */
+  if (thread.notify_email === false) return { sent: 0, skipped: 'the teacher chose not to email' };
   // A scheduled post is announced when it appears, by the sweep, not now.
   if (new Date(thread.published_at).getTime() > Date.now()) {
     return { sent: 0, skipped: 'not published yet' };

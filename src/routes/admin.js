@@ -740,7 +740,11 @@ router.get('/tracker/:classId', asyncRoute(async (req, res) => {
            WHERE cs.class_id=$1 AND cs.active=true AND u.active=true
            ORDER BY u.withdrawn_at NULLS FIRST, u.name`, [klass.id]),
     query(`SELECT a.*,
-      COALESCE((SELECT json_agg(jsonb_build_object('id',q.id,'position',q.position,'prompt',q.prompt,'imageUrl',q.image_url,'required',q.required) ORDER BY q.position)
+      COALESCE((SELECT json_agg(jsonb_build_object('id',q.id,'position',q.position,'prompt',q.prompt,'imageUrl',q.image_url,'required',q.required,
+        /* The answer key travels to the teacher and only the teacher. Without it
+           the edit form opened blank, and saving a fixed typo in the story
+           re-wrote every question with no expected answer and one mark. */
+        'expectedAnswer',q.expected_answer,'marks',q.marks) ORDER BY q.position)
         FROM assignment_questions q WHERE q.assignment_id=a.id),'[]'::json) questions
       FROM assignments a WHERE a.class_id=$1 AND a.status<>'archived' ORDER BY a.deadline_at`, [klass.id]),
   ]);
@@ -1028,7 +1032,11 @@ router.get('/assignments', asyncRoute(async (req, res) => {
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   const result = await query(
     `SELECT a.*,c.programme_name,c.day_of_week,c.start_time,c.timezone,
-      COALESCE((SELECT json_agg(jsonb_build_object('id',q.id,'position',q.position,'prompt',q.prompt,'imageUrl',q.image_url,'required',q.required) ORDER BY q.position)
+      COALESCE((SELECT json_agg(jsonb_build_object('id',q.id,'position',q.position,'prompt',q.prompt,'imageUrl',q.image_url,'required',q.required,
+        /* The answer key travels to the teacher and only the teacher. Without it
+           the edit form opened blank, and saving a fixed typo in the story
+           re-wrote every question with no expected answer and one mark. */
+        'expectedAnswer',q.expected_answer,'marks',q.marks) ORDER BY q.position)
         FROM assignment_questions q WHERE q.assignment_id=a.id),'[]'::json) questions,
       COALESCE((SELECT json_agg(jsonb_build_object('id',r.id,'fileName',r.file_name,'fileUrl',r.file_url,'mimeType',r.mime_type) ORDER BY r.created_at)
         FROM assignment_resources r WHERE r.assignment_id=a.id),'[]'::json) resources
@@ -1798,7 +1806,9 @@ router.post('/assignments/:id/listening/render', asyncRoute(async (req, res) => 
 router.put('/assignments/:id', asyncRoute(async (req, res) => {
   const assignment = await one('SELECT * FROM assignments WHERE id=$1', [req.params.id]);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
-  const parsed = z.object({ title: z.string().min(2), instructions: z.string(), loomUrl: z.string().url().nullable().optional(), visibleAt: z.string().datetime(), deadlineAt: z.string().datetime(), hardDeadline: z.boolean(), remindersEnabled: z.boolean(), status: z.enum(['draft','published','archived']), questions: z.array(z.object({ prompt: z.string().min(1), imageUrl: z.string().nullable().optional(), required: z.boolean(), expectedAnswer: z.string().max(4000).default(''), marks: z.coerce.number().int().min(0).max(100).default(1) })).min(1),
+  const parsed = z.object({ title: z.string().min(2), instructions: z.string(), loomUrl: z.string().url().nullable().optional(), visibleAt: z.string().datetime(), deadlineAt: z.string().datetime(), hardDeadline: z.boolean(), remindersEnabled: z.boolean(), status: z.enum(['draft','published','archived']),
+    // Sent by the edit form since the day it was built, and silently stripped here until now.
+    weekId: z.string().uuid().nullable().optional(), questions: z.array(z.object({ prompt: z.string().min(1), imageUrl: z.string().nullable().optional(), required: z.boolean(), expectedAnswer: z.string().max(4000).default(''), marks: z.coerce.number().int().min(0).max(100).default(1) })).min(1),
     kind: z.enum(['written', 'listening']).default('written'),
     listeningText: z.string().max(40000).default(''),
     listeningTextShown: z.boolean().default(false), resources: z.array(resourceSchema).default([]),
@@ -1811,10 +1821,13 @@ router.put('/assignments/:id', asyncRoute(async (req, res) => {
   const a = parsed.data;
   await transaction(async (client) => {
     await client.query(`UPDATE assignments SET title=$1,instructions=$2,loom_url=$3,visible_at=$4,deadline_at=$5,hard_deadline=$6,reminders_enabled=$7,status=$8,
-       allow_uploads=$9,uploads_required=$10,accepted_file_types=$11::jsonb,max_files=$12,kind=$13,listening_text=$14,listening_text_shown=$15,updated_at=now() WHERE id=$16`,
+       allow_uploads=$9,uploads_required=$10,accepted_file_types=$11::jsonb,max_files=$12,kind=$13,listening_text=$14,listening_text_shown=$15,
+       week_id=$16,updated_at=now() WHERE id=$17`,
       [a.title, a.instructions, a.loomUrl || null, a.visibleAt, a.deadlineAt, a.hardDeadline, a.remindersEnabled, a.status,
        a.allowUploads, a.allowUploads && a.uploadsRequired, JSON.stringify(a.acceptedFileTypes), a.maxFiles,
-       a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown, assignment.id]);
+       a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown,
+       /* Omitted means untouched; sent as null means "no weekly tracker column". */
+       a.weekId === undefined ? assignment.week_id : a.weekId, assignment.id]);
     await client.query('DELETE FROM assignment_questions WHERE assignment_id=$1', [assignment.id]);
     await client.query('DELETE FROM assignment_resources WHERE assignment_id=$1', [assignment.id]);
     for (const [position, question] of a.questions.entries()) await client.query(`INSERT INTO assignment_questions(assignment_id,position,prompt,image_url,required,expected_answer,marks) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [assignment.id, position, question.prompt, question.imageUrl || null, question.required, question.expectedAnswer || null, question.marks]);
@@ -1861,7 +1874,16 @@ router.get('/assignments/:id/impact', asyncRoute(async (req, res) => {
    follows the drag. A day-only date arrives, never a time, so nothing about the
    time can be changed by accident from here. */
 router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
-  const parsed = z.object({ onDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.body);
+  const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+  const parsed = z.object({
+    onDate: day,
+    /* The day the chip was dragged from, as the calendar drew it. With both
+       ends as plain dates the number of days is arithmetic on the calendar the
+       teacher was looking at, and nothing depends on which zone drew the chip
+       and which zone did the sum. Older callers send only onDate and get the
+       plotted day worked out here instead. */
+    fromDate: day.optional(),
+  }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Say which day to move it to.' });
 
   const assignment = await one(
@@ -1873,11 +1895,16 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
     return res.status(409).json({ error: 'Restore this assignment before moving it.' });
   }
 
-  const zone = assignment.timezone || config.defaultTimezone;
+  /* A class whose timezone column holds nonsense would otherwise turn every
+     drag into "that is not a real date", which blames the wrong thing. */
+  const wanted = assignment.timezone || config.defaultTimezone;
+  const zone = DateTime.now().setZone(wanted).isValid ? wanted : config.defaultTimezone;
   const inZone = (value) => DateTime.fromJSDate(new Date(value)).setZone(zone);
-  const plotted = inZone(assignment.reopened_until || assignment.deadline_at).startOf('day');
+  const plotted = parsed.data.fromDate
+    ? DateTime.fromISO(parsed.data.fromDate, { zone }).startOf('day')
+    : inZone(assignment.reopened_until || assignment.deadline_at).startOf('day');
   const target = DateTime.fromISO(parsed.data.onDate, { zone }).startOf('day');
-  if (!target.isValid) return res.status(400).json({ error: 'That is not a real date.' });
+  if (!target.isValid || !plotted.isValid) return res.status(400).json({ error: 'That is not a real date.' });
 
   const delta = Math.round(target.diff(plotted, 'days').days);
   if (delta === 0) return res.json({ ...assignment, moved: 0 });
@@ -2683,6 +2710,10 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
     body: z.string().trim().min(1).max(20000),
     categoryId: z.string().uuid().nullable().optional(),
     pinned: z.boolean().optional().default(false),
+    /* The "email the class" tick. Sent by the composer since the box was
+       drawn, and stripped here until now, so every post emailed the class
+       whatever the box said. Absent means yes, which is what always happened. */
+    notifyEmail: z.boolean().optional().default(true),
     // Absent or past means publish now. The clock does the rest of the work.
     publishedAt: z.string().datetime().nullable().optional(),
     attachments: z.array(attachmentInput).max(6).optional().default([]),
@@ -2713,7 +2744,8 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
     attachments: [...parsed.data.attachments, ...video.attachments],
   });
   if (parsed.data.pinned) await query('UPDATE discussion_threads SET pinned=true WHERE id=$1', [row.id]);
-  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, metadata: { scheduled: Boolean(parsed.data.publishedAt) }, ip: req.ip });
+  if (!parsed.data.notifyEmail) await query('UPDATE discussion_threads SET notify_email=false WHERE id=$1', [row.id]);
+  await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, metadata: { scheduled: Boolean(parsed.data.publishedAt), notifyEmail: parsed.data.notifyEmail }, ip: req.ip });
   res.status(201).json({ ...row, pinned: parsed.data.pinned });
 
   /* After the answer, because the post is saved either way and a class of thirty

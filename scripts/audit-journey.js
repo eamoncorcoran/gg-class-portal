@@ -568,8 +568,33 @@ try {
         questions: [{ prompt: 'Cé a bhí ann?', required: true, expectedAnswer: 'Fear', marks: 1 }],
       },
     });
+    /* The edit round-trip that used to wipe the answer key: read it back the
+       way the edit form does, save it as the form does, and look. */
+    const listed = expectOk('the answer key comes back to the teacher',
+      await admin.call('/api/admin/assignments'),
+      (rows) => rows.find((row) => row.id === created?.id)?.questions?.[0]?.expectedAnswer === 'Fear');
+    const asListed = listed?.find((row) => row.id === created?.id);
+    expect('and never to a student', !JSON.stringify(await student.call('/api/student/bootstrap')).includes('expectedAnswer'),
+      'the answer key leaked into a student payload');
+    await admin.call(`/api/admin/assignments/${created?.id}`, {
+      method: 'PUT',
+      body: {
+        title: asListed?.title, instructions: asListed?.instructions, visibleAt: asListed?.visible_at,
+        deadlineAt: asListed?.deadline_at, hardDeadline: true, remindersEnabled: false, status: 'published',
+        kind: 'listening', listeningText: asListed?.listening_text, listeningTextShown: false,
+        weekId: made.weekId || null,
+        questions: (asListed?.questions || []).map((q) => ({ prompt: q.prompt, required: q.required, expectedAnswer: q.expectedAnswer || '', marks: q.marks || 1 })),
+      },
+    });
+    expectOk('and survives being saved from the edit form',
+      await admin.call('/api/admin/assignments'),
+      (rows) => rows.find((row) => row.id === created?.id)?.questions?.[0]?.expectedAnswer === 'Fear');
+    expectOk('and the teaching week can be changed on edit',
+      await admin.call('/api/admin/assignments'),
+      (rows) => rows.find((row) => row.id === created?.id)?.week_id === (made.weekId || null));
+
     const moved = expectOk('an assignment can be dragged to another day', await admin.call(
-      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: '2026-11-05' } }),
+      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: '2026-11-05', fromDate: '2026-10-22' } }),
     (d) => d?.moved === 14 && d?.previousDay === '2026-10-22');
     expect('and keeps its time of day across the clock change',
       moved?.deadline_at === '2026-11-05T20:00:00.000Z',
@@ -591,6 +616,20 @@ try {
 
   /* ----------------------------------------------------------- community */
   section('The community board');
+  {
+    const quiet = expectOk('a post can be made without emailing the class', await admin.call(
+      `/api/admin/community/${made.classId}/threads`,
+      { method: 'POST', body: { title: `Quiet post ${stamp}`, body: 'Nobody gets an email about this.', notifyEmail: false } }));
+    const loud = expectOk('and one that does email is the default', await admin.call(
+      `/api/admin/community/${made.classId}/threads`,
+      { method: 'POST', body: { title: `Loud post ${stamp}`, body: 'This one goes out.' } }));
+    const flags = await query('SELECT id, notify_email FROM discussion_threads WHERE id = ANY($1::uuid[])', [[quiet?.id, loud?.id].filter(Boolean)]);
+    expect('with the tick stored as it was sent',
+      flags.rows.find((r) => r.id === quiet?.id)?.notify_email === false
+        && flags.rows.find((r) => r.id === loud?.id)?.notify_email === true,
+      JSON.stringify(flags.rows));
+    for (const id of [quiet?.id, loud?.id].filter(Boolean)) await admin.call(`/api/admin/community/threads/${id}`, { method: 'DELETE' });
+  }
   const category = expectOk('add a category', await admin.call(`/api/admin/community/${made.classId}/categories`,
     { method: 'POST', body: { name: 'Questions' } }));
   made.categoryId = category?.id;

@@ -530,3 +530,46 @@ test('a broken attachment is named by number, not blamed on the title', () => {
   assert.match(admin, /resources: 'the attached files'/);
   assert.match(admin, /Attached file \$\{index \+ 1\} did not upload properly\. Remove it and attach it again\./);
 });
+
+/* Three things the sweep found the day after the feature shipped.
+   ------------------------------------------------------------------ */
+
+test('the answer key reaches the teacher, and only the teacher', () => {
+  /* Both admin question builders omitted expected_answer and marks. The edit
+     form is opened from that payload, so it rendered blank, and saving a fixed
+     typo in the story re-wrote every question with no expected answer and one
+     mark. The student builders live in student.js and are guarded separately. */
+  const builders = admin.match(/'expectedAnswer',q\.expected_answer,'marks',q\.marks/g) || [];
+  assert.equal(builders.length, 2, 'the tracker payload and the assignment list');
+  assert.doesNotMatch(student, /q\.expected_answer/, 'still never on a student request');
+});
+
+test('editing an assignment can change its teaching week', () => {
+  /* The edit form sent weekId from the day it was built; the PUT schema had no
+     such key and zod dropped it without a word. */
+  const body = admin.slice(admin.indexOf("router.put('/assignments/:id'"));
+  const inner = body.slice(0, body.indexOf('\n}));'));
+  assert.match(inner, /weekId: z\.string\(\)\.uuid\(\)\.nullable\(\)\.optional\(\)/);
+  assert.match(inner, /week_id=\$16/);
+  // Omitted means untouched; sent as null means "no weekly tracker column".
+  assert.match(inner, /a\.weekId === undefined \? assignment\.week_id : a\.weekId/);
+});
+
+test('"email the class" on a post is a real tick', () => {
+  /* The composer sent notifyEmail from the day the box was drawn; the thread
+     schema stripped it, so every teacher post emailed the class whatever the
+     box said. The column existed since 028 and nothing ever wrote it. */
+  assert.match(admin, /notifyEmail: z\.boolean\(\)\.optional\(\)\.default\(true\)/);
+  assert.match(admin, /UPDATE discussion_threads SET notify_email=false WHERE id=\$1/);
+  const notify = fs.readFileSync(new URL('../src/boardnotify.js', import.meta.url), 'utf8');
+  const body = notify.slice(notify.indexOf('export async function notifyNewPost'));
+  const inner = body.slice(0, body.indexOf('\n}'));
+  /* One guard, before the published check, so a post published now and a post
+     the sweep announces later both pass through it. */
+  assert.ok(inner.indexOf("thread.notify_email === false") < inner.indexOf("not published yet"),
+    'the tick is checked before anything else decides to send');
+  const migration = fs.readFileSync(new URL('../migrations/047_board_notify_email_default.sql', import.meta.url), 'utf8');
+  assert.match(migration, /ALTER COLUMN notify_email SET DEFAULT true/);
+  assert.match(migration, /UPDATE discussion_threads SET notify_email = true/,
+    'every existing post keeps doing what it always did');
+});
