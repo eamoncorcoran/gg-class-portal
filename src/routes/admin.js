@@ -47,6 +47,14 @@ const allowedUploads = new Set([
   'application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/plain',
+  /* Audio and video, because a class resource is whatever the teacher wants the
+     class to have. This refused every recording, and the picker it sits behind
+     is the obvious place to attach one: it is beside the questions, it takes any
+     file, and it is called "files students can use". Somebody reaching for it
+     with an MP3 was told "this file type is not allowed" and had no reason to
+     look anywhere else. */
+  ...VOICE_MIME_TYPES,
+  'video/mp4','video/quicktime','video/webm',
 ]);
 
 /* Recordings never touch the public uploads path. Dictation is held in memory just
@@ -77,7 +85,16 @@ const diskUpload = multer({
        application/octet-stream. The file is parsed as CSV straight afterwards
        and refused if it is not one, so the extension is the better gate here. */
     const isCsv = path.extname(file.originalname).toLowerCase() === '.csv';
-    if (!isCsv && !allowedUploads.has(file.mimetype)) return callback(Object.assign(new Error('This file type is not allowed.'), { status: 400 }));
+    /* The same fallback the recordings use: a file that arrives with no type, or
+       as octet-stream, is a browser giving up rather than a claim about the
+       contents, so the name is worth more than the label. */
+    const allowed = isCsv || allowedUploads.has(file.mimetype) || Boolean(audioTypeFor(file));
+    if (!allowed) {
+      return callback(Object.assign(
+        new Error(`${file.originalname || 'That file'} is not a file type the portal takes. PDFs, images, Word, audio and video all work.`),
+        { status: 400 },
+      ));
+    }
     callback(null, true);
   },
 });

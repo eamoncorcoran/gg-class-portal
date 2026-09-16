@@ -388,3 +388,28 @@ test('a published assignment says so, and the way out stops saying Cancel', () =
   assert.doesNotMatch(inner, /footer\.innerHTML =/);
   assert.match(app, /markAssignmentSaved\(saved, payload\)/);
 });
+
+test('the resources picker takes audio, because it is the obvious place to try', () => {
+  /* This is what "the audio file type is not loading" actually was. The
+     recordings block is one thing; beside it sits a picker called "files
+     students can use" that takes any file and has no accept list, and it
+     refused every recording with "this file type is not allowed". Somebody
+     reaching for it with an MP3 had no reason to look anywhere else. */
+  assert.match(admin, /\.\.\.VOICE_MIME_TYPES,/, 'a class resource can be a recording');
+  assert.match(admin, /'video\/mp4','video\/quicktime','video\/webm'/);
+  const body = admin.slice(admin.indexOf('const diskUpload = multer'));
+  const inner = body.slice(0, body.indexOf('\n});'));
+  assert.match(inner, /Boolean\(audioTypeFor\(file\)\)/,
+    'and the same name fallback the recordings use');
+  assert.match(inner, /is not a file type the portal takes/);
+  // It still has to refuse what it should.
+  assert.match(inner, /if \(!allowed\)/);
+});
+
+test('the two pickers say which is which', () => {
+  /* One takes handouts, the other takes the recording, and they sit in the same
+     form. On a listening activity the resources field says so outright. */
+  assert.match(app, /Handouts, PDFs, images, anything they need alongside the questions\./);
+  assert.match(app, /<b>Not the listening recording\.<\/b>/);
+  assert.match(app, /That goes under <b>The recordings<\/b> above/);
+});

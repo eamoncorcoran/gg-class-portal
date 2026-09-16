@@ -10604,7 +10604,14 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
     </div>
     <div class="input-row"><label class="toggle-row"><span class="toggle"><input name="remindersEnabled" type="checkbox" ${assignment?.reminders_enabled !== false ? 'checked' : ''}><span></span></span>Email reminders</label></div>
     ${uploadSettingsBlock(assignment)}
-    <div class="section-title">Files students can use</div><div class="form-field"><input id="assignment-files" type="file" multiple></div><div id="resource-list">${resources.map((resource) => `<span class="resource-chip" data-existing-resource='${escapeHtml(JSON.stringify({ fileName: resource.fileName || resource.filename, fileUrl: resource.fileUrl || resource.fileurl, mimeType: resource.mimeType || resource.mimetype || '' }))}'>${escapeHtml(resource.fileName || resource.filename)}</span>`).join('')}</div>
+    <div class="section-title">Files students can use</div>
+    <div class="form-field">
+      <input id="assignment-files" type="file" multiple>
+      <div class="muted small">Handouts, PDFs, images, anything they need alongside the questions.</div>
+      <div class="muted small listening-only" ${assignment?.kind === 'listening' ? '' : 'hidden'}>
+        <b>Not the listening recording.</b> That goes under <b>The recordings</b> above, one per dialect, so students can choose which to hear.
+      </div>
+    </div><div id="resource-list">${resources.map((resource) => `<span class="resource-chip" data-existing-resource='${escapeHtml(JSON.stringify({ fileName: resource.fileName || resource.filename, fileUrl: resource.fileUrl || resource.fileurl, mimeType: resource.mimeType || resource.mimetype || '' }))}'>${escapeHtml(resource.fileName || resource.filename)}</span>`).join('')}</div>
     <div class="section-title">Rolling questions</div><div id="question-list">${questions.map((question, index) => questionBuilder(question, index)).join('')}</div><button class="btn small" type="button" id="add-question">Add question</button>
   </form>`;
 }
