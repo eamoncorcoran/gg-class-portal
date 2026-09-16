@@ -135,3 +135,24 @@ test('a homework deadline with no time closes at the end of that day', () => {
   assert.match(app, /A deadline with no time on it closes at 11:55pm that night\./,
     'and the import screen has to say so');
 });
+
+test('a deadline type that is not understood is refused, not guessed at', () => {
+  /* The rule was "soft, late or no means soft, anything else means hard", so
+     "soft deadline", "flexible" and "allow late" all became hard deadlines:
+     the opposite of what the person wrote, with nothing on screen to say so. */
+  const admin = fs.readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
+  assert.match(admin, /const SOFT_DEADLINE_WORDS = /);
+  assert.match(admin, /const HARD_DEADLINE_WORDS = /);
+  for (const word of ['soft', 'soft deadline', 'flexible', 'allow late', 'late']) {
+    assert.ok(admin.includes(`'${word}'`), `"${word}" has to mean soft`);
+  }
+  assert.match(admin, /is not one I know — write hard or soft/,
+    'an unknown word has to become a problem on that row');
+  assert.match(admin, /hardDeadline: !SOFT_DEADLINE_WORDS\.includes\(hardText\)/);
+  /* Blank is the exception and stays hard. It is the documented default and the
+     one that cannot lose work by surprise. */
+  assert.match(admin, /if \(hardText && !SOFT_DEADLINE_WORDS/,
+    'an empty cell must not be flagged as a problem');
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /Deadline type is <b>hard<\/b>/, 'and the import screen has to say what to write');
+});

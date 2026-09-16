@@ -1157,6 +1157,19 @@ function questionsFrom(row) {
     .filter(Boolean);
 }
 
+/* What the Deadline type column is allowed to say.
+   ------------------------------------------------------------------
+   The rule used to be "soft, late or no means soft, anything else means hard",
+   which quietly turned "soft deadline", "flexible" and "allow late" into hard
+   deadlines: the opposite of what was written, with nothing on screen to say so.
+   A word that is not understood is a problem on that row now, not a guess.
+
+   Blank still means hard. That is the documented default and it is the one that
+   cannot lose a student's work by surprise. */
+const SOFT_DEADLINE_WORDS = ['soft', 'soft deadline', 'late', 'allow late', 'accepts late',
+  'accept late', 'flexible', 'open', 'no', 'n'];
+const HARD_DEADLINE_WORDS = ['hard', 'hard deadline', 'strict', 'firm', 'closed', 'yes', 'y'];
+
 /* A date on its own means the end of that day, for a deadline.
    ------------------------------------------------------------------
    "11/10/2026" parses to midnight, which is the first second of the Sunday
@@ -1202,6 +1215,9 @@ function readAssignmentCsv(content, { weeks, timezone }) {
     if (visibleText && !visible) problems.push(`the opening date “${visibleText}” could not be read`);
     if (visible && deadline && visible >= deadline) problems.push('it opens after it closes');
     if (!questions.length) problems.push('no questions — add a Q1 column');
+    if (hardText && !SOFT_DEADLINE_WORDS.includes(hardText) && !HARD_DEADLINE_WORDS.includes(hardText)) {
+      problems.push(`the deadline type “${hardText}” is not one I know — write hard or soft`);
+    }
 
     return {
       line, title, instructions, questions,
@@ -1209,7 +1225,7 @@ function readAssignmentCsv(content, { weeks, timezone }) {
       visibleAt: visible ? visible.toUTC().toISO() : null,
       localDeadline: deadline ? deadline.toFormat('ccc d LLL yyyy, HH:mm') : deadlineText,
       localVisible: visible ? visible.toFormat('ccc d LLL yyyy, HH:mm') : (visibleText || null),
-      hardDeadline: !['soft', 'late', 'no'].includes(hardText),
+      hardDeadline: !SOFT_DEADLINE_WORDS.includes(hardText),
       weekId: week?.id || null,
       weekLabel: week ? String(week.week_start).slice(0, 10) : null,
       past: Boolean(deadline && deadline < DateTime.now().setZone(timezone)),
