@@ -1842,6 +1842,77 @@ router.get('/assignments/:id/impact', asyncRoute(async (req, res) => {
   res.json({ assignment, ...counts });
 }));
 
+/* Dragging an assignment to another day on the calendar.
+   ------------------------------------------------------------------
+   The whole thing shifts by a number of days. The deadline lands on the day it
+   was dropped on at the time it already had; the date it becomes visible moves
+   by the same number of days, so it stays as many days before the deadline as
+   it was; and if it has been reopened, the reopened date moves with it, because
+   that is the date the chip was drawn on and the chip should land where it was
+   dropped.
+
+   Done here rather than in the browser, in the class's own timezone, because
+   "the time stays the same" means eight o'clock in Dublin. A move from October
+   to November crosses the clock change, and shifting a UTC instant by
+   twenty-four hours a day would land it at seven. Luxon's plus({ days }) in the
+   zone keeps the wall clock.
+
+   The teaching week is re-derived from the new deadline, so the tracker column
+   follows the drag. A day-only date arrives, never a time, so nothing about the
+   time can be changed by accident from here. */
+router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
+  const parsed = z.object({ onDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Say which day to move it to.' });
+
+  const assignment = await one(
+    `SELECT a.*, c.timezone FROM assignments a JOIN classes c ON c.id=a.class_id WHERE a.id=$1`,
+    [req.params.id],
+  );
+  if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
+  if (assignment.status === 'archived') {
+    return res.status(409).json({ error: 'Restore this assignment before moving it.' });
+  }
+
+  const zone = assignment.timezone || config.defaultTimezone;
+  const inZone = (value) => DateTime.fromJSDate(new Date(value)).setZone(zone);
+  const plotted = inZone(assignment.reopened_until || assignment.deadline_at).startOf('day');
+  const target = DateTime.fromISO(parsed.data.onDate, { zone }).startOf('day');
+  if (!target.isValid) return res.status(400).json({ error: 'That is not a real date.' });
+
+  const delta = Math.round(target.diff(plotted, 'days').days);
+  if (delta === 0) return res.json({ ...assignment, moved: 0 });
+
+  const shift = (value) => (value ? inZone(value).plus({ days: delta }).toUTC().toISO() : null);
+  const deadlineAt = shift(assignment.deadline_at);
+  const visibleAt = shift(assignment.visible_at);
+  const reopenedUntil = shift(assignment.reopened_until);
+
+  /* Which teaching week the new deadline falls in. Only re-filed when it was
+     filed at all: "no weekly tracker column" is a choice and stays one. */
+  let weekId = assignment.week_id;
+  if (weekId) {
+    const newDeadline = DateTime.fromISO(deadlineAt).setZone(zone);
+    const week = await one(
+      `SELECT id FROM weeks WHERE class_id=$1
+         AND week_start <= $2::date AND week_start > ($2::date - interval '7 days')
+       ORDER BY week_start DESC LIMIT 1`,
+      [assignment.class_id, newDeadline.toISODate()],
+    );
+    weekId = week?.id || null;
+  }
+
+  const row = await one(
+    `UPDATE assignments SET deadline_at=$1, visible_at=$2, reopened_until=$3, week_id=$4, updated_at=now()
+     WHERE id=$5 RETURNING *`,
+    [deadlineAt, visibleAt, reopenedUntil, weekId, assignment.id],
+  );
+  await audit({
+    actorId: req.user.id, action: 'assignment.moved', entityType: 'assignment', entityId: row.id,
+    metadata: { days: delta, from: assignment.deadline_at, to: deadlineAt }, ip: req.ip,
+  });
+  res.json({ ...row, moved: delta, previousDay: plotted.toISODate() });
+}));
+
 router.delete('/assignments/:id', asyncRoute(async (req, res) => {
   const assignment = await one('SELECT id,title,class_id FROM assignments WHERE id=$1', [req.params.id]);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });

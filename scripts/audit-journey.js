@@ -554,6 +554,38 @@ try {
     expectStatus('and taking it off twice says so', await admin.call(
       `/api/admin/assignments/${created?.id}/listening/munster`, { method: 'DELETE' }), 404);
 
+    /* Dragging it to another day on the calendar. The deadline lands on that
+       day at the time it had; everything else shifts by the same number of
+       days. Checked across the clock change, because that is where "the time
+       stays the same" is easiest to get wrong. */
+    const octoberDue = '2026-10-22T19:00:00.000Z'; // Thu 22 Oct, 20:00 Dublin (BST)
+    await admin.call(`/api/admin/assignments/${created?.id}`, {
+      method: 'PUT',
+      body: {
+        title: `Audit listening ${stamp}`, instructions: 'Éist.', visibleAt: '2026-10-17T19:00:00.000Z',
+        deadlineAt: octoberDue, hardDeadline: true, remindersEnabled: false, status: 'published',
+        kind: 'listening', listeningText: 'Scéal.', listeningTextShown: false,
+        questions: [{ prompt: 'Cé a bhí ann?', required: true, expectedAnswer: 'Fear', marks: 1 }],
+      },
+    });
+    const moved = expectOk('an assignment can be dragged to another day', await admin.call(
+      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: '2026-11-05' } }),
+    (d) => d?.moved === 14 && d?.previousDay === '2026-10-22');
+    expect('and keeps its time of day across the clock change',
+      moved?.deadline_at === '2026-11-05T20:00:00.000Z',
+      `deadline became ${moved?.deadline_at}, wanted 20:00 Dublin which is 20:00Z in November`);
+    expect('with the visible date the same number of days before',
+      moved?.visible_at === '2026-10-31T20:00:00.000Z', `visible became ${moved?.visible_at}`);
+    expectOk('dropping it on the same day changes nothing', await admin.call(
+      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: '2026-11-05' } }),
+    (d) => d?.moved === 0);
+    expectStatus('a day that is not a date is refused', await admin.call(
+      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: 'Thursday' } }), 400);
+    const back = expectOk('and it can be put back', await admin.call(
+      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: moved?.previousDay } }),
+    (d) => d?.moved === -14);
+    expect('to the exact minute it started at', back?.deadline_at === octoberDue, `came back as ${back?.deadline_at}`);
+
     await admin.call(`/api/admin/assignments/${created?.id}`, { method: 'DELETE' });
   }
 

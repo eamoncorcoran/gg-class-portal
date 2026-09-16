@@ -2050,3 +2050,8 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .listen-more summary:before{content:"+ ";font-weight:700}
 .listen-more[open] summary:before{content:"− "}
 .listen-more > p{margin:6px 0 9px}
+
+/* Dragging an assignment to another day on the teacher's calendar. */
+.calendar-event.assignment[draggable="true"]{cursor:grab}
+.calendar-event.assignment.is-dragging{opacity:.45;cursor:grabbing}
+.calendar-day.is-over{outline:2px dashed var(--brand-500);outline-offset:-3px;background:var(--brand-25,#f6faf4)}

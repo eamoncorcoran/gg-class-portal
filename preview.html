@@ -2059,6 +2059,11 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .listen-more summary:before{content:"+ ";font-weight:700}
 .listen-more[open] summary:before{content:"− "}
 .listen-more > p{margin:6px 0 9px}
+
+/* Dragging an assignment to another day on the teacher's calendar. */
+.calendar-event.assignment[draggable="true"]{cursor:grab}
+.calendar-event.assignment.is-dragging{opacity:.45;cursor:grabbing}
+.calendar-day.is-over{outline:2px dashed var(--brand-500);outline-offset:-3px;background:var(--brand-25,#f6faf4)}
 </style>
 </head>
 <body>
@@ -5568,7 +5573,8 @@ function assignmentCalendarView(assignments) {
     if (when.year !== year || when.month !== month) return;
     const closed = assignmentClosed(assignment);
     const tone = assignment.status === 'archived' ? 'archived' : closed ? 'closed' : 'open';
-    add(when.day, `<button class="calendar-event assignment ${tone}" data-edit-assignment="${assignment.id}" title="${escapeHtml(`${assignment.title} — due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, weekday: true, dateStyle: 'short' })}`)}">
+    const draggable = assignment.status !== 'archived';
+    add(when.day, `<button class="calendar-event assignment ${tone}" data-edit-assignment="${assignment.id}" ${draggable ? `draggable="true" data-drag-assignment="${assignment.id}"` : ''} title="${escapeHtml(`${assignment.title} — due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, weekday: true, dateStyle: 'short' })}${draggable ? '. Drag to another day to move it.' : ''}`)}">
       <span class="event-time">${escapeHtml(fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true, timeOnly: true }))}</span>
       <span class="event-title">${escapeHtml(assignment.title)}</span>
     </button>`);
@@ -5580,7 +5586,7 @@ function assignmentCalendarView(assignments) {
     const teaching = weekDays.get(day);
     const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const isToday = today.year === year && today.month === month && today.day === day;
-    cells.push(`<div class="calendar-day ${isToday ? 'is-today' : ''} ${teaching ? 'is-teaching' : ''}">
+    cells.push(`<div class="calendar-day ${isToday ? 'is-today' : ''} ${teaching ? 'is-teaching' : ''}" data-drop-on="${iso}">
       <div class="calendar-day-head"><span class="calendar-number">${day}</span>
         <button class="day-add" data-add-on="${iso}" title="Set homework due ${escapeHtml(fmtDate(`${iso}T12:00:00Z`, { timeZone: 'UTC' }))}" aria-label="Set homework due on ${day}">+</button>
       </div>
@@ -10443,6 +10449,7 @@ function bindAdminView() {
   document.querySelectorAll('[data-reset-student]').forEach((button) => button.addEventListener('click', () => studentAccessAction(button.dataset.resetStudent, 'reset-password')));
   document.querySelectorAll('[data-remove-student]').forEach((button) => button.addEventListener('click', () => confirmRemoveStudent(button.dataset.removeStudent)));
   document.querySelectorAll('[data-edit-assignment]').forEach((button) => button.addEventListener('click', () => openAssignmentModal(state.assignments.find((item) => item.id === button.dataset.editAssignment))));
+  bindAssignmentDrag();
   document.querySelectorAll('[data-class-sitting]').forEach((button) => button.addEventListener('click',
     () => openAdminClassInfo(button.dataset.classId, button.dataset.classSitting)));
   /* A check-in on the calendar goes to the screen where its dates are set,
@@ -10872,6 +10879,65 @@ function tidyUrl(value) {
   const raw = String(value || '').trim();
   if (!raw) return null;
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+/* Dragging an assignment to another day.
+   ------------------------------------------------------------------
+   The deadline lands on the day it was dropped on, at the time it already had.
+   The date it becomes visible moves by the same number of days. The maths is
+   the server's, in the class's timezone, so a drag across the clock change
+   keeps eight o'clock as eight o'clock; the browser only says which day.
+
+   A drag is easy to do by accident, so the toast that confirms it carries an
+   Undo, which is the same move back to the day it came from. */
+function bindAssignmentDrag() {
+  document.querySelectorAll('[data-drag-assignment]').forEach((chip) => {
+    chip.addEventListener('dragstart', (event) => {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', `assignment:${chip.dataset.dragAssignment}`);
+      chip.classList.add('is-dragging');
+    });
+    chip.addEventListener('dragend', () => {
+      chip.classList.remove('is-dragging');
+      document.querySelectorAll('.calendar-day.is-over').forEach((day) => day.classList.remove('is-over'));
+    });
+  });
+
+  document.querySelectorAll('.calendar-day[data-drop-on]').forEach((day) => {
+    day.addEventListener('dragover', (event) => {
+      if (!document.querySelector('[data-drag-assignment].is-dragging')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      day.classList.add('is-over');
+    });
+    day.addEventListener('dragleave', (event) => {
+      if (!day.contains(event.relatedTarget)) day.classList.remove('is-over');
+    });
+    day.addEventListener('drop', async (event) => {
+      const payload = event.dataTransfer.getData('text/plain') || '';
+      if (!payload.startsWith('assignment:')) return;
+      event.preventDefault();
+      day.classList.remove('is-over');
+      await moveAssignment(payload.slice('assignment:'.length), day.dataset.dropOn);
+    });
+  });
+}
+
+async function moveAssignment(assignmentId, onDate, { undoing = false } = {}) {
+  try {
+    const result = await api(`/api/admin/assignments/${assignmentId}/move`, { method: 'PATCH', body: { onDate } });
+    if (!result.moved) return;
+    state.assignments = await api('/api/admin/assignments');
+    await renderAdmin();
+    const when = fmtDate(result.reopened_until || result.deadline_at, { weekday: true, time: true, dateStyle: 'short' });
+    showToast(
+      undoing ? `Put back to ${when}` : `Moved to ${when}`,
+      '',
+      undoing ? null : { label: 'Undo', action: () => moveAssignment(assignmentId, result.previousDay, { undoing: true }) },
+    );
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 }
 
 function openAssignmentModal(assignment = null, defaultClassId = null, prefillDeadline = null) {
