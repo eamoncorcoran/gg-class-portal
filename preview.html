@@ -5569,7 +5569,8 @@ function assignmentCalendarView(assignments) {
   });
 
   assignments.forEach((assignment) => {
-    const when = zonedDateParts(assignment.reopened_until || assignment.deadline_at);
+    // In the assignment's own class zone, not whichever class was last opened.
+    const when = zonedDateParts(assignment.reopened_until || assignment.deadline_at, assignment.timezone || classTimezone());
     if (when.year !== year || when.month !== month) return;
     const closed = assignmentClosed(assignment);
     const tone = assignment.status === 'archived' ? 'archived' : closed ? 'closed' : 'open';
@@ -10983,6 +10984,16 @@ function bindAssignmentDrag() {
   });
 }
 
+/* Undo is the exact instants the move started from, written back verbatim. */
+async function undoMove(assignmentId, previous) {
+  try {
+    const result = await api(`/api/admin/assignments/${assignmentId}/move`, { method: 'PATCH', body: { restore: previous } });
+    state.assignments = await api('/api/admin/assignments');
+    await renderAdmin();
+    showToast(`Put back to ${fmtDate(result.reopened_until || result.deadline_at, { weekday: true, time: true, dateStyle: 'short' })}`);
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
 async function moveAssignment(assignmentId, onDate, { undoing = false, fromDate = null } = {}) {
   try {
     const result = await api(`/api/admin/assignments/${assignmentId}/move`, { method: 'PATCH', body: { onDate, ...(fromDate ? { fromDate } : {}) } });
@@ -10991,9 +11002,9 @@ async function moveAssignment(assignmentId, onDate, { undoing = false, fromDate 
     await renderAdmin();
     const when = fmtDate(result.reopened_until || result.deadline_at, { weekday: true, time: true, dateStyle: 'short' });
     showToast(
-      undoing ? `Put back to ${when}` : `Moved to ${when}`,
+      undoing ? `Put back to ${when}` : `Moved to ${when}${result.keptVisible ? '. Students could already see it, so it stays visible' : ''}`,
       '',
-      undoing ? null : { label: 'Undo', action: () => moveAssignment(assignmentId, result.previousDay, { undoing: true, fromDate: onDate }) },
+      undoing ? null : { label: 'Undo', action: () => undoMove(assignmentId, result.previous) },
     );
   } catch (error) {
     showToast(error.message, 'error');
@@ -12073,7 +12084,7 @@ function markRow(record, row, index) {
   const mark = marks.find((item) => Number(item.position) === index) || marks[index];
   if (!mark) return '';
   return `<div class="mark-row" data-mark="${index}">
-    <label>Marks <input type="number" min="0" max="${Number(mark.available) || 0}" value="${Number(mark.awarded) || 0}" data-mark-awarded="${index}"> of ${Number(mark.available) || 0}</label>
+    <label>Marks <input type="number" min="0" step="1" max="${Number(mark.available) || 0}" value="${Number(mark.awarded) || 0}" data-mark-awarded="${index}"> of ${Number(mark.available) || 0}</label>
     <span class="muted small">${escapeHtml(mark.note || '')}</span>
   </div>`;
 }

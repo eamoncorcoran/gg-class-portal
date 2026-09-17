@@ -1915,6 +1915,7 @@ router.put('/assignments/:id', asyncRoute(async (req, res) => {
        a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown,
        /* Omitted means untouched; sent as null means "no weekly tracker column". */
        a.weekId === undefined ? assignment.week_id : a.weekId, assignment.id]);
+    await deadlineMoved(assignment.id, assignment.deadline_at, a.deadlineAt);
     await client.query('DELETE FROM assignment_questions WHERE assignment_id=$1', [assignment.id]);
     await client.query('DELETE FROM assignment_resources WHERE assignment_id=$1', [assignment.id]);
     for (const [position, question] of a.questions.entries()) await client.query(`INSERT INTO assignment_questions(assignment_id,position,prompt,image_url,required,expected_answer,marks) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [assignment.id, position, question.prompt, question.imageUrl || null, question.required, question.expectedAnswer || null, question.marks]);
@@ -1960,10 +1961,40 @@ router.get('/assignments/:id/impact', asyncRoute(async (req, res) => {
    The teaching week is re-derived from the new deadline, so the tracker column
    follows the drag. A day-only date arrives, never a time, so nothing about the
    time can be changed by accident from here. */
+/* What follows a deadline that has moved.
+   ------------------------------------------------------------------
+   Reminders are logged per (student, assignment, template) with no date in the
+   key, so once "tomorrow" had gone out for the old date nothing ever went out
+   for the new one. A teacher who extended a deadline by a week was, without
+   knowing it, switching the reminders off. The three deadline reminders are
+   cleared so the new date gets its own; nothing else keyed on the assignment is
+   touched. Only when the instant really changed, so a save that leaves the
+   deadline alone does not re-arm reminders that already went out.
+
+   A student who had dismissed the old overdue card is un-dismissed for the
+   same reason: the thing they dismissed is not the thing that is due now. */
+async function deadlineMoved(assignmentId, from, to) {
+  if (new Date(from).getTime() === new Date(to).getTime()) return;
+  await query(
+    `DELETE FROM email_deliveries WHERE assignment_id=$1 AND template_key IN ('tomorrow','twoHours','thirtyMinutes')`,
+    [assignmentId],
+  );
+  await query(`DELETE FROM dismissed_deadlines WHERE kind='homework' AND ref_id=$1`, [assignmentId]);
+}
+
 router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
   const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+  const instant = z.string().datetime().nullable();
   const parsed = z.object({
-    onDate: day,
+    onDate: day.optional(),
+    /* Undo. The exact instants the move started from, written back verbatim,
+       rather than the same sum run in reverse: a sum in reverse lands an hour
+       out when either end fell in the spring clock change, and lands on a day
+       nobody chose if the assignment was reopened in between. */
+    restore: z.object({
+      deadlineAt: z.string().datetime(), visibleAt: instant, reopenedUntil: instant,
+      weekId: z.string().uuid().nullable(),
+    }).optional(),
     /* The day the chip was dragged from, as the calendar drew it. With both
        ends as plain dates the number of days is arithmetic on the calendar the
        teacher was looking at, and nothing depends on which zone drew the chip
@@ -1971,7 +2002,9 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
        plotted day worked out here instead. */
     fromDate: day.optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Say which day to move it to.' });
+  if (!parsed.success || (!parsed.data.onDate && !parsed.data.restore)) {
+    return res.status(400).json({ error: 'Say which day to move it to.' });
+  }
 
   const assignment = await one(
     `SELECT a.*, c.timezone FROM assignments a JOIN classes c ON c.id=a.class_id WHERE a.id=$1`,
@@ -1980,6 +2013,23 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
   if (assignment.status === 'archived') {
     return res.status(409).json({ error: 'Restore this assignment before moving it.' });
+  }
+  const previous = {
+    deadlineAt: assignment.deadline_at, visibleAt: assignment.visible_at,
+    reopenedUntil: assignment.reopened_until, weekId: assignment.week_id,
+  };
+
+  if (parsed.data.restore) {
+    const r = parsed.data.restore;
+    const row = await one(
+      `UPDATE assignments SET deadline_at=$1, visible_at=$2, reopened_until=$3, week_id=$4, updated_at=now()
+       WHERE id=$5 RETURNING *`,
+      [r.deadlineAt, r.visibleAt, r.reopenedUntil, r.weekId, assignment.id],
+    );
+    await deadlineMoved(assignment.id, assignment.deadline_at, r.deadlineAt);
+    await audit({ actorId: req.user.id, action: 'assignment.move_undone', entityType: 'assignment', entityId: row.id,
+      metadata: { to: r.deadlineAt }, ip: req.ip });
+    return res.json({ ...row, moved: -1, restored: true, previous });
   }
 
   /* A class whose timezone column holds nonsense would otherwise turn every
@@ -1998,7 +2048,11 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
 
   const shift = (value) => (value ? inZone(value).plus({ days: delta }).toUTC().toISO() : null);
   const deadlineAt = shift(assignment.deadline_at);
-  const visibleAt = shift(assignment.visible_at);
+  /* Keep the same number of days before the deadline, unless students can
+     already see it. Shifting a live assignment's visible date into the future
+     would take it off their screens mid-work, which no drag was meant to do. */
+  const alreadyVisible = assignment.visible_at && new Date(assignment.visible_at).getTime() <= Date.now();
+  const visibleAt = alreadyVisible ? assignment.visible_at : shift(assignment.visible_at);
   const reopenedUntil = shift(assignment.reopened_until);
 
   /* Which teaching week the new deadline falls in. Only re-filed when it was
@@ -2020,11 +2074,12 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
      WHERE id=$5 RETURNING *`,
     [deadlineAt, visibleAt, reopenedUntil, weekId, assignment.id],
   );
+  await deadlineMoved(assignment.id, assignment.deadline_at, deadlineAt);
   await audit({
     actorId: req.user.id, action: 'assignment.moved', entityType: 'assignment', entityId: row.id,
     metadata: { days: delta, from: assignment.deadline_at, to: deadlineAt }, ip: req.ip,
   });
-  res.json({ ...row, moved: delta, previousDay: plotted.toISODate() });
+  res.json({ ...row, moved: delta, previousDay: plotted.toISODate(), previous, keptVisible: Boolean(alreadyVisible) });
 }));
 
 router.delete('/assignments/:id', asyncRoute(async (req, res) => {
@@ -2312,7 +2367,12 @@ router.post('/homework/:id/return', asyncRoute(async (req, res) => {
       note: z.string().max(2000).default(''),
     })).max(200).optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid feedback.' });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return res.status(400).json({ error: issue?.path?.[0] === 'marks'
+      ? `Question ${Number(issue.path[1]) + 1}: marks have to be a whole number between 0 and what the question is worth.`
+      : 'Invalid feedback.' });
+  }
   const current = await one('SELECT id, teacher_audio_path FROM homework_submissions WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Homework submission not found.' });
   const hasText = parsed.data.corrections.trim() && parsed.data.generalFeedback.trim();
@@ -3498,7 +3558,11 @@ function resolveVideo(data, current = {}) {
   if (data.videoProvider === undefined && data.video === undefined) {
     return { provider: current.video_provider ?? null, ref: current.video_ref ?? null };
   }
-  const raw = data.video ?? current.video_ref;
+  /* undefined means the field was not on the form; null means the box was
+     emptied. `??` treated them the same and fell back to the stored link, so
+     clearing a recording kept it, and the lesson saved happily with the video
+     the teacher had just deleted. */
+  const raw = data.video === undefined ? current.video_ref : data.video;
   const link = String(raw || '').trim();
   // No link is how a recording is removed, and how a lesson written before it is
   // taught sits waiting for one.

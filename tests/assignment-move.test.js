@@ -46,12 +46,14 @@ test('the route shifts in the zone and only ever by whole days', () => {
   assert.match(body, /inZone\(value\)\.plus\(\{ days: delta \}\)/, 'plus({ days }) in the zone is what keeps the wall clock');
   // A day-only date arrives, so nothing about the time can change from here.
   assert.match(body, /const day = z\.string\(\)\.regex\(\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\);/);
-  assert.match(body, /onDate: day,/);
+  assert.match(body, /onDate: day\.optional\(\),/, 'optional because an Undo sends a restore instead');
 });
 
 test('the deadline, the visible date and a reopened date all move together', () => {
   assert.match(body, /const deadlineAt = shift\(assignment\.deadline_at\);/);
-  assert.match(body, /const visibleAt = shift\(assignment\.visible_at\);/);
+  /* The visible date shifts with the deadline only while it is still to come;
+     a live assignment keeps its date so it stays on students' screens. */
+  assert.match(body, /const visibleAt = alreadyVisible \? assignment\.visible_at : shift\(assignment\.visible_at\);/);
   assert.match(body, /const reopenedUntil = shift\(assignment\.reopened_until\);/);
   /* The chip is drawn on the reopened date when there is one, so that is the
      date that has to land where it was dropped. */
@@ -74,14 +76,19 @@ test('an archived assignment cannot be moved, and a same-day drop is a no-op', (
   assert.match(body, /previousDay: plotted\.toISODate\(\)/);
 });
 
-test('every drag can be undone from the toast, by the same move back', () => {
+test('every drag can be undone from the toast, to the exact instants it started from', () => {
+  /* Undo used to be the same move run in reverse. That lands an hour out when
+     either end fell in the spring clock change, so it is now the instants the
+     move started from, handed to the browser and handed straight back. */
   assert.match(app, /async function moveAssignment\(assignmentId, onDate, \{ undoing = false, fromDate = null \} = \{\}\)/);
   const client = app.slice(app.indexOf('async function moveAssignment'));
   const inner = client.slice(0, client.indexOf('\n}'));
   assert.match(inner, /if \(!result\.moved\) return;/, 'a same-day drop says nothing');
-  assert.match(inner, /label: 'Undo', action: \(\) => moveAssignment\(assignmentId, result\.previousDay, \{ undoing: true, fromDate: onDate \}\)/,
-    'undo is the same move back, and says which day it is coming from');
-  assert.match(inner, /undoing \? null :/, 'and the undo toast does not offer to undo the undo');
+  assert.match(inner, /label: 'Undo', action: \(\) => undoMove\(assignmentId, result\.previous\)/);
+  assert.match(app, /async function undoMove\(assignmentId, previous\)/);
+  // The undo toast carries no undo of its own; undoMove shows a plain one.
+  const undo = app.slice(app.indexOf('async function undoMove'));
+  assert.doesNotMatch(undo.slice(0, undo.indexOf('\n}')), /label: 'Undo'/);
   // Only live assignments are draggable; an archived chip stays put.
   assert.match(app, /const draggable = assignment\.status !== 'archived';/);
   assert.match(app, /\.calendar-day\[data-drop-on\]/);

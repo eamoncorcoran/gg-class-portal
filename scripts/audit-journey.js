@@ -607,12 +607,64 @@ try {
     (d) => d?.moved === 0);
     expectStatus('a day that is not a date is refused', await admin.call(
       `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: 'Thursday' } }), 400);
+    /* Moving a deadline re-arms its reminders: a "tomorrow" already logged for
+       the old date must not stop one going out for the new one. */
+    await query(`INSERT INTO email_deliveries(user_id,assignment_id,template_key,recipient,status,sent_at)
+      VALUES ($1,$2,'tomorrow','audit@example.com','sent',now()) ON CONFLICT DO NOTHING`, [made.studentId, created?.id]);
+    await query(`INSERT INTO dismissed_deadlines(student_id,kind,ref_id) VALUES ($1,'homework',$2) ON CONFLICT DO NOTHING`, [made.studentId, created?.id]);
+    const nudged = expectOk('a drag that changes the deadline re-arms its reminders', await admin.call(
+      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: '2026-11-12', fromDate: '2026-11-05' } }),
+    (d) => d?.moved === 7);
+    const logged = await one(`SELECT count(*)::int n FROM email_deliveries WHERE assignment_id=$1 AND template_key='tomorrow'`, [created?.id]);
+    const dismissed = await one(`SELECT count(*)::int n FROM dismissed_deadlines WHERE kind='homework' AND ref_id=$1`, [created?.id]);
+    expect('by clearing the reminder already sent for the old date', logged?.n === 0, `${logged?.n} still logged`);
+    expect('and un-dismissing it for anyone who had dismissed the old one', dismissed?.n === 0, `${dismissed?.n} still dismissed`);
+
+    /* Undo is the exact instants the move started from, written back verbatim. */
     const back = expectOk('and it can be put back', await admin.call(
-      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: moved?.previousDay } }),
-    (d) => d?.moved === -14);
+      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { restore: moved?.previous } }),
+    (d) => d?.restored === true);
     expect('to the exact minute it started at', back?.deadline_at === octoberDue, `came back as ${back?.deadline_at}`);
+    expect('with the visible date restored too', back?.visible_at === '2026-10-17T19:00:00.000Z', `visible came back as ${back?.visible_at}`);
+
+    /* A live assignment keeps its visible date when dragged, so it stays on
+       students' screens. */
+    await admin.call(`/api/admin/assignments/${created?.id}`, {
+      method: 'PUT',
+      body: {
+        title: `Audit listening ${stamp}`, instructions: 'Éist.', visibleAt: new Date(Date.now() - 3600000).toISOString(),
+        deadlineAt: '2026-12-03T20:00:00.000Z', hardDeadline: true, remindersEnabled: false, status: 'published',
+        kind: 'listening', listeningText: 'Scéal.', listeningTextShown: false,
+        questions: [{ prompt: 'Cé a bhí ann?', required: true, expectedAnswer: 'Fear', marks: 1 }],
+      },
+    });
+    const live = expectOk('a drag never hides an assignment students can already see', await admin.call(
+      `/api/admin/assignments/${created?.id}/move`, { method: 'PATCH', body: { onDate: '2026-12-10', fromDate: '2026-12-03' } }),
+    (d) => d?.keptVisible === true && new Date(d.visible_at).getTime() < Date.now());
 
     await admin.call(`/api/admin/assignments/${created?.id}`, { method: 'DELETE' });
+  }
+
+  /* --------------------------------------------------- lesson recording */
+  section('Clearing a recording from a lesson');
+  {
+    const mod = await one('SELECT id FROM course_modules LIMIT 1').catch(() => null);
+    if (mod) {
+      const lesson = expectOk('a lesson takes a recording', await admin.call(`/api/admin/modules/${mod.id}/lessons`,
+        { method: 'POST', body: { title: `Audit lesson ${stamp}`, videoProvider: 'youtube', video: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } }),
+      (d) => Boolean(d?.id));
+      expectOk('and clearing the box removes it', await admin.call(`/api/admin/lessons/${lesson?.id}`,
+        { method: 'PATCH', body: { title: `Audit lesson ${stamp}`, videoProvider: null, video: null } }));
+      const cleared = await one('SELECT video_ref FROM course_lessons WHERE id=$1', [lesson?.id]);
+      expect('rather than keeping the one the teacher just deleted', cleared?.video_ref === null, `still ${cleared?.video_ref}`);
+      await admin.call(`/api/admin/lessons/${lesson?.id}`, { method: 'PATCH', body: { video: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } });
+      await admin.call(`/api/admin/lessons/${lesson?.id}`, { method: 'PATCH', body: { title: `Audit lesson ${stamp} renamed` } });
+      const kept = await one('SELECT video_ref FROM course_lessons WHERE id=$1', [lesson?.id]);
+      expect('while a save that leaves the field off leaves the recording alone', Boolean(kept?.video_ref), 'the link was lost on a rename');
+      await query('DELETE FROM course_lessons WHERE id=$1', [lesson?.id]);
+    } else {
+      log('no course module to hang a lesson on; skipped');
+    }
   }
 
   /* ------------------------------------------------------ phone numbers */
