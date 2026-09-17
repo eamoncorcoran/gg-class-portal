@@ -60,9 +60,14 @@
 .vrow.sel .tick{border-color:var(--brand-600);background:var(--brand-600);box-shadow:inset 0 0 0 3px #fff}
 /* Inside the portal the page is a player, not a site: no sidebar, no crumbs,
    no second set of navigation around the one the portal already has. */
-body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb{display:none !important}
-body.embed .app-main{padding:14px 16px 24px;max-width:none}
+body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb,body.embed .page-header,body.embed .tabs,
+body.embed #panel-ovr,body.embed #panel-how,body.embed .layout>div:nth-child(2){display:none !important}
 body.embed .app-shell{display:block}
+body.embed .app-main{padding:0;max-width:none}
+body.embed #content{position:absolute;inset:0}
+body.embed .layout{display:block;position:absolute;inset:0}
+body.embed .layout>div:first-child{position:absolute;inset:0}
+body.embed .videowrap{position:absolute;inset:0;aspect-ratio:auto;border:0;border-radius:0;box-shadow:none}
 .emptyst{max-width:440px;margin:70px auto;text-align:center}
 .emptyst .fox{width:56px;height:56px;border-radius:15px;background:var(--brand-600);display:grid;place-items:center;font-size:28px;margin:0 auto 14px}
 </style>
@@ -123,7 +128,6 @@ body.embed .app-shell{display:block}
             <div class="card-header"><div><h2>Phrases in this lesson</h2><p id="contentsSub">Tap any phrase to practise it</p></div></div>
             <div class="plist" id="plist"></div>
           </div>
-          <div class="card"><div class="author"><div class="aav"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5 12 4l9.5 4.5L12 13 2.5 8.5Z" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M6.5 10.7v4.6c0 .6.3 1.1.8 1.4 1.2.7 2.9 1.3 4.7 1.3s3.5-.6 4.7-1.3c.5-.3.8-.8.8-1.4v-4.6M21 9v5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div><div><div class="an">Gaeilgeoir Guides</div><div class="ar">Your Irish teacher</div></div></div></div>
         </div>
       </div>
     </div>
@@ -175,7 +179,7 @@ function updateProgress(){
   const n = lesson.phrases.length, d = done.size;
   $('#progFill').style.width = (n ? (d/n*100) : 0) + '%';
   $('#progTxt').textContent = d + ' / ' + n + ' done';
-  tellPortal({ type: 'progress', done: d, total: n, complete: n > 0 && d >= n });
+  tellPortal({ type: 'progress', done: d, total: n, complete: n > 0 && d >= n, doneIds: [...done], activeId: activePhrase ? activePhrase.id : null });
 }
 function rowState(p){ return activePhrase && activePhrase.id===p.id ? 'active' : done.has(p.id) ? 'done' : ''; }
 function renderList(){
@@ -224,6 +228,17 @@ video.addEventListener('timeupdate', () => {
 video.addEventListener('seeked', () => { prevT = video.currentTime; });
 video.addEventListener('ended', () => { playgate.hidden = false; playgate.querySelector('.cap').textContent = 'Lesson complete · press to watch again'; });
 playgate.addEventListener('click', () => { playgate.hidden = true; video.play().catch(()=>{}); });
+/* A phrase on screen means the video waits. The native controls can still be
+   pressed, so pressing play while a card is up pauses it again. */
+video.addEventListener('play', () => { if (practice.active) video.pause(); });
+/* The portal shows the phrase list beside the player and asks for one by id. */
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin || !e.data || e.data.source !== 'gg-portal') return;
+  if (e.data.type === 'practise' && lesson) {
+    const p = lesson.phrases.find((x) => x.id === e.data.phraseId);
+    if (p) { playgate.hidden = true; practisePhrase(p); }
+  }
+});
 
 // Fullscreen the WRAPPER (video + practice overlay), not the bare <video>, so
 // the phrase card and glass stay visible in fullscreen. The native video

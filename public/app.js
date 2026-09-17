@@ -1249,7 +1249,7 @@ function adminNav() {
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.calendar, 'Calendar')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
-      <a class="nav-button" href="/live/teacher.html" target="_blank" rel="noopener"><span class="nav-icon">${svg.video}</span>Live classroom</a>
+      ${adminNavButton('live', svg.video, 'Live classroom')}
       ${adminNavButton('plans', svg.grid, 'Plans')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
       ${adminNavButton('community', svg.board, 'Community')}
@@ -1264,7 +1264,25 @@ function adminNavButton(view, icon, label) {
   return `<button class="nav-button ${state.view === view ? 'active' : ''}" data-admin-view="${view}"><span class="nav-icon">${icon}</span>${label}</button>`;
 }
 
+/* The teacher's live classroom: the console for running a class, and the
+   studio for building lessons, each its own page shown in a frame. */
+function liveAdminView() {
+  const tab = state.liveTab === 'studio' ? 'studio' : 'console';
+  const src = tab === 'studio'
+    ? '/live/studio.html?embed=1'
+    : `/live/teacher.html?embed=1${state.liveClassId ? `&classId=${encodeURIComponent(state.liveClassId)}` : ''}`;
+  return `${pageHeader('Live classroom', tab === 'studio' ? 'Studio' : 'Console',
+    tab === 'studio' ? 'Build a lesson: a video with the phrases to say aloud, or a deck to step through in class.' : 'Run the class: put phrases on screen, see who has said them, answer questions privately.',
+    `<div class="tab-group"><button class="tab ${tab === 'console' ? 'active' : ''}" data-live-tab="console">Console</button><button class="tab ${tab === 'studio' ? 'active' : ''}" data-live-tab="studio">Studio</button></div>`)}
+  <div class="live-embed admin"><iframe src="${src}" title="Live classroom ${tab}"
+    allow="camera; microphone; autoplay; fullscreen; display-capture" allowfullscreen></iframe></div>`;
+}
+
 function bindShellNavigation() {
+  document.querySelectorAll('[data-live-tab]').forEach((button) => button.addEventListener('click', async () => {
+    state.liveTab = button.dataset.liveTab;
+    await renderAdmin();
+  }));
   document.querySelectorAll('[data-admin-view]').forEach((button) => button.addEventListener('click', async () => {
     /* Pressing Courses in the sidebar means "show me the courses", not "stay
        where I am" — so the one being viewed is let go of first. */
@@ -1357,6 +1375,8 @@ async function renderAdmin() {
       state.communityClassId ||= state.activeClassId || state.classes[0]?.id || null;
       state.community = state.communityClassId ? await api(`/api/admin/community/${state.communityClassId}`) : null;
       title = 'Community'; content = communityView();
+    } else if (state.view === 'live') {
+      title = 'Live classroom'; content = liveAdminView();
     } else if (state.view === 'admins') {
       /* Guarded on the server as well: the navigation item being hidden is a
          courtesy, not the control. */
@@ -1853,9 +1873,11 @@ function openAdminClassInfo(classId, at) {
     onOpen() {
       /* The live classroom's console, for this class, opened with a signed
          hand-off so the teacher is already identified there. */
-      document.getElementById('open-teacher-console')?.addEventListener('click', () => {
-          window.open(`/live/teacher.html?classId=${encodeURIComponent(classId)}`, '_blank', 'noopener');
-        });
+      document.getElementById('open-teacher-console')?.addEventListener('click', async () => {
+        closeModal();
+        state.liveClassId = classId; state.liveTab = 'console'; state.view = 'live';
+        await renderAdmin();
+      });
       document.getElementById('class-info-setup').addEventListener('click', () => {
         closeModal();
         openClassSetupModal(classId);
@@ -2569,10 +2591,13 @@ function renderCourseView() {
       roleLabel: 'Administrator',
     });
     bindAdminView();
+    bindCourse();
   } else {
+    /* renderStudent binds the course page itself. Binding again here made
+       every handler fire twice: a section fold that undid itself, a lesson
+       opened twice, the practice player asked for twice. */
     renderStudent();
   }
-  bindCourse();
 }
 
 const allLessons = (course) => (course?.modules || []).flatMap((module) => module.lessons);
@@ -3317,7 +3342,7 @@ function lessonPlayer(lesson) {
      viewer; the frame gets its src from bindCourse. */
   if (lesson.video.type === 'practice') {
     return `<div class="lp-frame lp-practice">
-      <iframe id="practice-frame" data-lesson="${lesson.id}" title="${escapeHtml(lesson.title)}"
+      <iframe id="practice-frame" data-lesson="${lesson.id}" data-ref="${escapeHtml(lesson.video.ref)}" title="${escapeHtml(lesson.title)}"
         allow="microphone; autoplay; fullscreen" allowfullscreen></iframe>
       <div class="lp-practice-wait" id="practice-wait">Opening the practice lesson</div>
     </div>`;
@@ -3360,8 +3385,10 @@ function courseContents() {
       ${isAdmin() ? '' : `<span>${course.completedCount} of ${course.lessonCount} done</span>
         <div class="cc-bar"><span style="width:${course.percent}%"></span></div>`}
     </div>
-    ${course.modules.map((module, moduleIndex) => `<section class="lc-mod">
+    ${course.modules.map((module, moduleIndex) => `<section class="lc-mod ${closedModules().has(module.id) ? 'closed' : ''}" data-module="${module.id}">
       <h4>
+        <button type="button" class="lc-toggle" data-toggle-module="${module.id}" aria-expanded="${!closedModules().has(module.id)}"
+          aria-label="${closedModules().has(module.id) ? 'Expand' : 'Collapse'} ${escapeHtml(module.title)}">${svg.chevronLeft}</button>
         <span class="lc-mod-title">${escapeHtml(module.title)}</span>
         ${isAdmin() ? `<span class="lc-mod-tools">
           <button class="lc-add" data-add-lesson="${module.id}" title="Add a lesson" aria-label="Add a lesson to ${escapeHtml(module.title)}">+</button>
@@ -3376,7 +3403,69 @@ function courseContents() {
         || '<p class="lc-empty">No lessons in this section yet.</p>'}
     </section>`).join('')}
     ${isAdmin() ? '<button class="btn small lc-newmod" id="add-module">Add a section</button>' : ''}
+    ${currentLesson()?.video?.type === 'practice' ? '<section class="pp" id="practice-phrases"><div class="pp-head"><strong>Phrases in this lesson</strong><span>Loading</span></div></section>' : ''}
   </aside>`;
+}
+
+/* Which sections are folded away, remembered on this device. */
+function closedModules() {
+  if (!state.closedModules) {
+    let saved = [];
+    try { saved = JSON.parse(localStorage.getItem('gg-closed-modules') || '[]'); } catch { saved = []; }
+    state.closedModules = new Set(Array.isArray(saved) ? saved : []);
+  }
+  return state.closedModules;
+}
+function rememberClosedModules() {
+  try { localStorage.setItem('gg-closed-modules', JSON.stringify([...closedModules()])); } catch { /* private window */ }
+}
+
+/* The phrases of a practice lesson, beside the player rather than under it.
+   Tapping one asks the player (which is its own page in a frame) to practise
+   it; the player reports back which are done, and the ticks follow. */
+function practicePhrasesCard() {
+  const data = state.practiceLesson;
+  if (!data) return '';
+  const done = new Set(state.practiceProgress?.doneIds || []);
+  const active = state.practiceProgress?.activeId || null;
+  const fmt = (t) => { const n = Math.max(0, Math.round(Number(t) || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
+  return `<div class="pp-head"><strong>Phrases in this lesson</strong><span>${done.size} of ${data.phrases.length} said</span></div>
+    <div class="pp-voice"><label>Voice <select id="practice-voice">${(state.practiceVoices || []).map((v) =>
+      `<option value="${escapeHtml(v.id)}" ${v.id === (state.practiceVoice || '') ? 'selected' : ''}>${escapeHtml(v.name)}</option>`).join('')}</select></label></div>
+    <div class="pp-list">${data.phrases.map((p, i) => `<button type="button" class="pp-row ${done.has(p.id) ? 'done' : ''} ${p.id === active ? 'on' : ''}" data-practise="${escapeHtml(p.id)}">
+        <span class="pp-num">${done.has(p.id) ? svg.tick : i + 1}</span>
+        <span class="pp-copy"><strong>${escapeHtml(p.irish)}</strong>${p.english ? `<span>${escapeHtml(p.english)}</span>` : ''}</span>
+        <span class="pp-time">${fmt(p.at)}</span>
+      </button>`).join('')}</div>`;
+}
+function paintPracticePhrases() {
+  const card = document.getElementById('practice-phrases');
+  if (!card) return;
+  card.innerHTML = practicePhrasesCard();
+  card.querySelectorAll('[data-practise]').forEach((button) => button.addEventListener('click', () => {
+    const frame = document.getElementById('practice-frame');
+    frame?.contentWindow?.postMessage({ source: 'gg-portal', type: 'practise', phraseId: button.dataset.practise }, location.origin);
+  }));
+  document.getElementById('practice-voice')?.addEventListener('change', (event) => {
+    state.practiceVoice = event.target.value;
+    // The player reads the voice from this same origin's storage on each replay.
+    try { localStorage.setItem('gglive_voice', state.practiceVoice); } catch { /* private window */ }
+    const voice = (state.practiceVoices || []).find((v) => v.id === state.practiceVoice);
+    if (voice) { try { new Audio(`/api/live/tts?text=${encodeURIComponent(voice.sample)}&voice=${encodeURIComponent(voice.id)}`).play(); } catch { /* no audio */ } }
+  });
+}
+async function loadPracticePhrases(ref) {
+  state.practiceProgress = null;
+  try {
+    state.practiceVoices ||= await api('/api/live/voices');
+    try { state.practiceVoice = localStorage.getItem('gglive_voice') || ''; } catch { state.practiceVoice = ''; }
+    state.practiceLesson = await api(`/api/live/lessons/${encodeURIComponent(ref)}`);
+  } catch (error) {
+    const card = document.getElementById('practice-phrases');
+    if (card) card.innerHTML = `<div class="pp-head"><strong>Phrases in this lesson</strong><span>${escapeHtml(error.message)}</span></div>`;
+    return;
+  }
+  paintPracticePhrases();
 }
 
 function coursePage() {
@@ -3435,7 +3524,10 @@ function listenToPractice() {
   window.addEventListener('message', async (event) => {
     if (!state.practiceOrigin || event.origin !== state.practiceOrigin) return;
     const msg = event.data;
-    if (!msg || msg.source !== 'gglive' || msg.type !== 'progress' || !msg.complete) return;
+    if (!msg || msg.source !== 'gglive' || msg.type !== 'progress') return;
+    state.practiceProgress = { doneIds: msg.doneIds || [], activeId: msg.activeId || null };
+    if (state.practiceLesson) paintPracticePhrases();
+    if (!msg.complete) return;
     const lesson = currentLesson();
     if (!lesson || lesson.completed || isAdmin() || !document.getElementById('practice-frame')) return;
     try {
@@ -3486,8 +3578,19 @@ function bindCourse() {
     showToast(done ? 'Marked as not complete' : 'Marked as complete');
   });
 
+  document.querySelectorAll('[data-toggle-module]').forEach((button) => button.addEventListener('click', () => {
+    const section = button.closest('.lc-mod');
+    const id = button.dataset.toggleModule;
+    const closed = section.classList.toggle('closed');
+    if (closed) closedModules().add(id); else closedModules().delete(id);
+    button.setAttribute('aria-expanded', String(!closed));
+    rememberClosedModules();
+  }));
+
   const frame = document.getElementById('practice-frame');
   if (frame) {
+    if (state.practiceLesson?.id !== frame.dataset.ref) state.practiceLesson = null;
+    loadPracticePhrases(frame.dataset.ref);
     const wait = document.getElementById('practice-wait');
     const where = isAdmin()
       ? `/api/admin/lessons/${frame.dataset.lesson}/practice`
@@ -4226,8 +4329,10 @@ function openLessonModal(moduleId, lesson = null) {
       };
       providerPick?.addEventListener('change', syncPasscode);
       if (lesson?.videoProvider === 'practice') loadStudio();
-      document.getElementById('open-studio')?.addEventListener('click', () => {
-        window.open('/live/studio.html', '_blank', 'noopener');
+      document.getElementById('open-studio')?.addEventListener('click', async () => {
+        closeModal();
+        state.liveTab = 'studio'; state.view = 'live';
+        await renderAdmin();
       });
 
       /* The host is read off the link as it is pasted, so the dropdown shows
@@ -8652,7 +8757,7 @@ function studentNav() {
     ${studentNavButton('calendar', svg.calendar, 'Calendar')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
-    ${state.studentData?.liveClassroom ? `<a class="nav-button" href="/live/room.html" target="_blank" rel="noopener"><span class="nav-icon">${svg.video}</span>Live class</a>` : ''}
+    ${state.studentData?.liveClassroom ? `<button class="nav-button ${state.view === 'live' ? 'active' : ''}" data-student-view="live"><span class="nav-icon">${svg.video}</span>Live class${state.studentData?.nextClass?.live ? '<span class="live-dot" title="Your class is on now"></span>' : ''}</button>` : ''}
     ${/* A class set up without a board never shows Community at all. */
       state.studentData?.hasCommunity
         ? studentNavButton('community', svg.board, 'Community', state.studentData?.communityUnread || 0)
@@ -8671,7 +8776,7 @@ async function loadStudent() {
   renderStudent();
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message', live: 'Live class' };
 
 /* The one thing we need from a student that the course itself does not produce.
    ------------------------------------------------------------------
@@ -8779,6 +8884,7 @@ function renderStudent() {
   } else if (state.view === 'tracker') content = studentTrackerView();
   else if (state.view === 'courses') content = state.course ? coursePage() : coursesView();
   else if (state.view === 'private') content = privateMessageView();
+  else if (state.view === 'live') content = liveRoomView();
   else if (state.view === 'community') {
     // Reachable by a stale hash after a class loses its board.
     if (state.studentData?.hasCommunity) content = studentCommunityView();
@@ -8885,10 +8991,7 @@ function nextClassBanner() {
       <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(plainHour(next.startsAt, next.timezone))} Irish${next.note ? ` · Passcode: ${escapeHtml(passcodeOnly(next.note))}` : ''}${next.movedFrom ? ' · moved from its usual day' : ''}</span>
     </div>
     ${state.studentData?.liveClassroom
-      ? `<span class="banner-actions">
-          <button class="btn primary" id="join-live-classroom">${next.live ? 'Join now' : 'Join live classroom'}</button>
-          ${next.joinUrl ? `<a class="btn small" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">Open in Zoom instead</a>` : ''}
-        </span>`
+      ? `<button class="btn primary" id="join-live-classroom">${next.live ? 'Join now' : 'Join live classroom'}</button>`
       : next.joinUrl
         ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
         : '<span class="muted small">No link yet</span>'}
@@ -8901,7 +9004,19 @@ const STUDENT_PAGE = {
   courses: { title: 'Courses', line: 'Class recordings, with the notes that go with them.' },
   community: { title: 'Community', line: 'Ask a question, or answer somebody else.' },
   private: { title: 'Private message', line: 'For anything you would rather not put on the board.' },
+  live: { title: 'Live class', line: 'Your class plays here, with each phrase to practise as it comes up.' },
 };
+
+/* The live room, inside the portal. The room is its own page (it carries
+   Zoom's SDK and the mic), shown here in a frame that is allowed the camera,
+   the microphone and full screen. */
+function liveRoomView() {
+  const copy = STUDENT_PAGE.live;
+  return `<header class="sh"><div><h1>${copy.title}</h1><p>${copy.line}</p></div>
+    ${state.studentData?.class ? `<span class="sh-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</header>
+  <div class="live-embed"><iframe src="/live/room.html?embed=1" title="Live class"
+    allow="camera; microphone; autoplay; fullscreen; display-capture; speaker-selection" allowfullscreen></iframe></div>`;
+}
 
 /* A page title, not a greeting.
    ------------------------------------------------------------------
@@ -9460,10 +9575,9 @@ function bindStudentView() {
 /* Into the live classroom.
    The portal signs a short-lived hand-off and sends the student across with
    it, so they arrive in the room already known, in their own class. */
-/* The live room is a page of this site, signed in with the same session, so
-   there is nothing to fetch first: it opens in its own tab beside the portal. */
+/* The live room is a view of the portal like any other. */
 function joinLiveClassroom() {
-  window.open('/live/room.html', '_blank', 'noopener');
+  showStudentView('live');
 }
 
 function openStudentItem(dataset) {

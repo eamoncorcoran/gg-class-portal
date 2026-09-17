@@ -97,6 +97,10 @@
   .steplist{max-height:none}
 }
 .gate .fox{width:56px;height:56px;border-radius:15px;background:var(--brand-600);display:grid;place-items:center;font-size:28px;margin:0 auto 14px}
+/* Inside the portal: its sidebar is around this page. */
+body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb{display:none !important}
+body.embed .app-shell{display:block}
+body.embed .app-main{padding:0 0 18px;max-width:none}
 </style>
 </head>
 <body>
@@ -226,6 +230,7 @@
 
 <script>
 const $ = s => document.querySelector(s);
+if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embed');
 /* The teacher is the portal's signed-in administrator. Nothing to type. */
 const bootQs = new URLSearchParams(location.search);
 const toast = $('#toast');

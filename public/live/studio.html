@@ -68,6 +68,10 @@
 .share .lk{display:flex;gap:8px}
 .share .lk input{flex:1;font-size:12.5px}
 .gate{max-width:420px;margin:12vh auto 0;padding:0 14px}
+/* Inside the portal: its sidebar is around this page. */
+body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb{display:none !important}
+body.embed .app-shell{display:block}
+body.embed .app-main{padding:0 0 18px;max-width:none}
 </style>
 </head>
 <body>
@@ -204,6 +208,7 @@
 
 <script>
 const $ = s => document.querySelector(s);
+if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embed');
 const toast = $('#toast');
 function flash(m, bad){ toast.textContent=m; toast.classList.toggle('error', !!bad); toast.classList.add('on'); setTimeout(()=>toast.classList.remove('on'),1800); }
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));

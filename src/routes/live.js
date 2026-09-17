@@ -10,6 +10,7 @@ import { requireAuth, requireAdmin, requireStudent } from '../session.js';
 import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
 import { liveClasses, liveClass, studentClassIds } from '../live/classes.js';
+import { nextClassWithSessions } from '../classtime.js';
 import { zoom, zoomConfigured, signZoom } from '../live/zoom.js';
 import { speechConfigured } from '../live/speech.js';
 import * as room from '../live/room.js';
@@ -26,16 +27,28 @@ router.get('/me', asyncRoute(async (req, res) => {
   const session = await room.sessionSummary();
   let classId = session.classId;
   let webinar = session.webinar;
-  if (req.user.role !== 'admin' && !classId) {
+  let nextClass = null;
+  if (req.user.role !== 'admin') {
     const [own] = await studentClassIds(req.user.id);
-    if (own) { classId = own; const klass = await liveClass(own); webinar = { webinarId: klass?.webinarId || null, webinarPwd: klass?.webinarPwd || '' }; }
+    if (own && !classId) { classId = own; const klass = await liveClass(own); webinar = { webinarId: klass?.webinarId || null, webinarPwd: klass?.webinarPwd || '' }; }
+    /* When the class next sits, from the same setup the calendar uses: the
+       weekly slot, the term, the date changes and any extra sessions. */
+    if (own) {
+      const row = (await query('SELECT * FROM classes WHERE id=$1', [own])).rows[0];
+      const sessions = (await query(
+        `SELECT id, starts_at, duration_minutes, join_url, label, cancelled
+         FROM class_sessions WHERE class_id=$1 AND starts_at > now() - interval '4 hours' ORDER BY starts_at`, [own])).rows;
+      const changes = (await query('SELECT on_date, kind, moved_to, reason FROM class_date_changes WHERE class_id=$1', [own])).rows;
+      const next = row ? nextClassWithSessions(row, sessions, undefined, changes) : null;
+      nextClass = next ? { startsAt: next.startsAt, timezone: next.timezone, live: Boolean(next.live), soon: Boolean(next.soon), minutesAway: next.minutesAway, label: next.sessionLabel || null } : null;
+    }
   }
   const gate = await room.studentGate(req.user);
   res.set('Cache-Control', 'no-store');
   res.json({
     id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role,
     allowed: gate.ok, reason: gate.ok ? '' : gate.error,
-    session, classId, webinar,
+    session, classId, webinar, nextClass,
     zoomClientId: zoom.clientId, live: zoomConfigured(), mic: speechConfigured(),
   });
 }));

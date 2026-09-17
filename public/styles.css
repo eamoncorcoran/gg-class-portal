@@ -96,6 +96,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--brand-400);box-shadow
 .nav-button.active:before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:99px;background:var(--brand-500)}
 .nav-icon{width:19px;height:19px;display:grid;place-items:center;color:var(--text-quaternary);flex:0 0 auto}.nav-icon svg{width:18px;height:18px;stroke-width:1.8}
 .nav-button.active .nav-icon{color:var(--brand-600)}.nav-button small{color:var(--text-quaternary);font-size:10px;font-weight:500}
+/* The class is on now. */
+.live-dot{margin-left:auto;width:10px;height:10px;border-radius:50%;background:var(--success-500,#12b76a);box-shadow:0 0 0 0 rgba(18,183,106,.55);animation:live-pulse 1.6s ease-out infinite;flex:0 0 auto}
+@keyframes live-pulse{0%{box-shadow:0 0 0 0 rgba(18,183,106,.55)}70%{box-shadow:0 0 0 8px rgba(18,183,106,0)}100%{box-shadow:0 0 0 0 rgba(18,183,106,0)}}
+/* The live room and the teacher's console, framed inside the portal. */
+.live-embed{border-radius:var(--radius-xl);overflow:hidden;background:var(--surface)}
+.live-embed iframe{display:block;width:100%;height:calc(100vh - 150px);min-height:640px;border:0;background:var(--surface)}
+.live-embed.admin iframe{height:calc(100vh - 170px);min-height:720px}
 .nav-badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;display:grid;place-items:center;border-radius:999px;background:var(--error-500);color:#fff;font-size:9px;font-weight:700}
 .avatar{width:36px;height:36px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;color:var(--brand-800);background:var(--brand-50);border:1px solid var(--brand-200);font-size:11px;font-weight:700}
 .icon-button{width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-quaternary)}
@@ -1170,8 +1177,8 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .lp-frame iframe,.lp-frame video{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
 /* The practice player carries its own phrase list beside the video, so it is
    taller than a 16:9 recording and light rather than black. */
-.lp-frame.lp-practice{padding-top:0;height:min(82vh,900px);background:var(--gray-50)}
-.lp-frame.lp-practice iframe{background:var(--gray-50)}
+.lp-frame.lp-practice{background:#000}
+.lp-frame.lp-practice iframe{background:#000}
 .lp-practice-wait{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-tertiary);font-size:13.5px;font-weight:600;pointer-events:none}
 .lp-empty{display:grid;place-items:center;align-content:center;gap:4px;aspect-ratio:16/9;border-radius:var(--radius-lg);
   border:1px dashed var(--border-strong);background:var(--gray-50);color:var(--text-tertiary);text-align:center;padding:20px}
@@ -1191,12 +1198,37 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .lc-head{padding:15px 16px;border-bottom:1px solid var(--border)}
 .lc-head strong{display:block;font-size:13.5px;font-weight:680;letter-spacing:-.02em}
 .lc-head>span{display:block;margin-top:3px;color:var(--text-tertiary);font-size:11.5px}
+/* Sections fold away, and the phrase list of a practice lesson sits under them. */
+.lc-toggle{order:3;margin-left:auto;flex:0 0 auto;width:22px;height:22px;display:grid;place-items:center;border:0;background:transparent;color:var(--text-quaternary);cursor:pointer;border-radius:6px;padding:0}
+.lc-toggle:hover{background:var(--gray-100);color:var(--text)}
+.lc-toggle svg{width:14px;height:14px;transform:rotate(-90deg);transition:transform .15s}
+.lc-mod.closed .lc-toggle svg{transform:rotate(180deg)}
+.lc-mod.closed .ll-row,.lc-mod.closed .lc-empty{display:none}
+.pp{border-top:1px solid var(--border);padding:12px 0 6px}
+.pp-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 16px 8px}
+.pp-head strong{font-size:13px;font-weight:680;letter-spacing:-.02em}
+.pp-head span{color:var(--text-tertiary);font-size:11.5px;white-space:nowrap}
+.pp-voice{padding:0 16px 8px}
+.pp-voice label{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-tertiary);font-weight:600}
+.pp-voice select{flex:1;width:auto;padding:5px 8px;font-size:12px}
+.pp-list{display:flex;flex-direction:column;gap:2px;padding:0 8px}
+.pp-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 8px;border:1.5px solid transparent;border-radius:10px;background:transparent;cursor:pointer;font:inherit;color:inherit}
+.pp-row:hover{background:var(--gray-50)}
+.pp-row.on{background:var(--brand-50);border-color:var(--brand-200,#cfe8c6)}
+.pp-num{width:26px;height:26px;border-radius:8px;background:var(--gray-100);color:var(--text-tertiary);font-weight:800;font-size:12px;display:grid;place-items:center;flex:0 0 auto}
+.pp-num svg{width:14px;height:14px}
+.pp-row.done .pp-num{background:var(--success-50);color:var(--success-700)}
+.pp-row.on .pp-num{background:var(--brand-600);color:#fff}
+.pp-copy{flex:1;min-width:0;display:flex;flex-direction:column}
+.pp-copy strong{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-copy span{font-size:11.5px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-time{font-size:11.5px;color:var(--text-quaternary);font-variant-numeric:tabular-nums}
 .lc-mod{padding:11px 0}
 .lc-mod+.lc-mod{border-top:1px solid var(--gray-100)}
 .lc-mod h4{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 5px;padding:0 16px;
   color:var(--text-quaternary);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
 .lc-mod-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lc-mod-tools{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+.lc-mod-tools{order:2;display:flex;align-items:center;gap:3px;flex:0 0 auto}
 .lc-add{width:20px;height:20px;display:grid;place-items:center;border:0;border-radius:var(--radius-xs);
   background:var(--gray-100);color:var(--text-secondary);font-size:14px;line-height:1;cursor:pointer}
 .lc-add:hover{background:var(--gray-200);color:var(--text-primary)}
