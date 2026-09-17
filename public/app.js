@@ -1844,12 +1844,22 @@ function openAdminClassInfo(classId, at) {
         ${running && !sitting.joinUrl ? '<div><dt>Link</dt><dd>No class link set</dd></div>' : ''}
       </dl>
     </div>`,
-    footer: `<button class="btn" data-close-modal>Close</button>
+    footer: `<button class="btn" id="open-teacher-console">Open teacher console</button><button class="btn" data-close-modal>Close</button>
       <button class="btn" id="class-info-setup">Class setup</button>
       ${running && sitting.joinUrl
         ? `<a class="btn primary" href="${escapeHtml(sitting.joinUrl)}" target="_blank" rel="noopener noreferrer">${svg.video} Open the class</a>`
         : ''}`,
     onOpen() {
+      /* The live classroom's console, for this class, opened with a signed
+         hand-off so the teacher is already identified there. */
+      document.getElementById('open-teacher-console')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget; button.disabled = true;
+        try {
+          const { url } = await api(`/api/admin/live/handoff?classId=${encodeURIComponent(classId)}`);
+          window.open(url, '_blank', 'noopener');
+        } catch (error) { showToast(error.message, 'error'); }
+        button.disabled = false;
+      });
       document.getElementById('class-info-setup').addEventListener('click', () => {
         closeModal();
         openClassSetupModal(classId);
@@ -8773,9 +8783,14 @@ function nextClassBanner() {
       <strong>${escapeHtml(when)}</strong>
       <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(plainHour(next.startsAt, next.timezone))} Irish${next.note ? ` · Passcode: ${escapeHtml(passcodeOnly(next.note))}` : ''}${next.movedFrom ? ' · moved from its usual day' : ''}</span>
     </div>
-    ${next.joinUrl
-      ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
-      : '<span class="muted small">No link yet</span>'}
+    ${state.studentData?.liveClassroom
+      ? `<span class="banner-actions">
+          <button class="btn primary" id="join-live-classroom">${next.live ? 'Join now' : 'Join live classroom'}</button>
+          ${next.joinUrl ? `<a class="btn small" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">Open in Zoom instead</a>` : ''}
+        </span>`
+      : next.joinUrl
+        ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
+        : '<span class="muted small">No link yet</span>'}
   </section>`;
 }
 
@@ -9312,6 +9327,7 @@ function openWithdrawalForm() {
 
 function bindStudentView() {
   document.querySelectorAll('[data-open-student-item]').forEach((button) => button.addEventListener('click', () => openStudentItem(button.dataset)));
+  document.getElementById('join-live-classroom')?.addEventListener('click', (event) => joinLiveClassroom(event.currentTarget));
   document.querySelectorAll('[data-open-class]').forEach((button) =>
     button.addEventListener('click', () => openClassInfo(button.dataset.openClass, button.dataset.classKind)));
   document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', (event) => {
@@ -9338,6 +9354,19 @@ function bindStudentView() {
   document.getElementById('student-logout')?.addEventListener('click', logout);
   document.getElementById('open-withdrawal')?.addEventListener('click', openWithdrawalForm);
   bindFeed();
+}
+
+/* Into the live classroom.
+   The portal signs a short-lived hand-off and sends the student across with
+   it, so they arrive in the room already known, in their own class. */
+async function joinLiveClassroom(button) {
+  const label = button.textContent;
+  button.disabled = true; button.textContent = 'Opening…';
+  try {
+    const { url } = await api('/api/student/live/handoff');
+    window.open(url, '_blank', 'noopener');
+  } catch (error) { showToast(error.message, 'error'); }
+  button.disabled = false; button.textContent = label;
 }
 
 function openStudentItem(dataset) {

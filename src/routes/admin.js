@@ -28,6 +28,7 @@ import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, cours
 import { addTopic, coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, removeTopic,
   reorderWeek, scheduleTopic, setItemDone, setTopicGroup, topicCost, unscheduleItem } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
+import { liveConfig, liveConfigured, signHandoff } from '../live.js';
 import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashText, isStandIn,
   providerName, renderStory, ttsConfigured } from '../tts.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
@@ -2081,6 +2082,18 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
     metadata: { days: delta, from: assignment.deadline_at, to: deadlineAt }, ip: req.ip,
   });
   res.json({ ...row, moved: delta, previousDay: plotted.toISODate(), previous, keptVisible: Boolean(alreadyVisible) });
+}));
+
+/* The teacher console for a class, opened from the portal.
+   The console is told which class it is running and identifies the teacher by
+   this token, rather than by a shared key typed in by hand. Thirty minutes:
+   long enough to open it, short enough that a leaked link goes stale. */
+router.get('/live/handoff', asyncRoute(async (req, res) => {
+  if (!liveConfigured()) return res.status(503).json({ error: 'The live classroom is not switched on for this portal yet.' });
+  const klass = req.query.classId ? await one('SELECT * FROM classes WHERE id=$1', [String(req.query.classId)]) : null;
+  const token = signHandoff({ sub: req.user.email, name: req.user.name, cid: req.user.id, role: 'admin', classId: klass?.id || null }, { minutes: 30 });
+  const page = String(req.query.page || 'teacher') === 'studio' ? 'studio.html' : 'teacher.html';
+  res.json({ url: `${liveConfig.url}/${page}?handoff=${encodeURIComponent(token)}`, classId: klass?.id || null });
 }));
 
 router.delete('/assignments/:id', asyncRoute(async (req, res) => {

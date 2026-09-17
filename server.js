@@ -15,6 +15,7 @@ import adminRoutes from './src/routes/admin.js';
 import studentRoutes from './src/routes/student.js';
 import settingsRoutes from './src/routes/settings.js';
 import mediaRoutes from './src/routes/media.js';
+import liveRoutes from './src/routes/live.js';
 import calendarRoutes from './src/routes/calendar.js';
 import zoomHookRoutes from './src/routes/zoomhook.js';
 import { ensureAllWeeks } from './src/weeks.js';
@@ -144,6 +145,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/media', mediaRoutes);
+// Service to service, bearer token, no cookie: what the live classroom may ask.
+app.use('/api/live', liveRoutes);
 // Calendar apps subscribe with no cookies, so this one authenticates by URL token.
 app.use('/calendar', calendarRoutes);
 

@@ -23,6 +23,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
+import { liveConfig, liveConfigured, signHandoff } from '../live.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 
@@ -275,6 +276,8 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
       : null,
     // Hidden entirely for a class without one, and for anybody with no class.
     hasCommunity: Boolean(klass.has_community),
+    // Whether "Join live classroom" is on offer at all.
+    liveClassroom: liveConfigured(),
     communityUnread: community,
     weeks: weeksResult.rows,
     attendance: attendanceResult.rows,
@@ -586,6 +589,20 @@ router.post('/homework/:id/read-feedback', asyncRoute(async (req, res) => {
 
 /* Students subscribe to their own deadlines. The token is theirs alone and only
    ever reaches the signed-in owner. */
+/* Into the live classroom, already known.
+   ------------------------------------------------------------------
+   The portal signs a hand-off saying who this student is and which class, and
+   the live room takes it at the door. Nobody types a name into a gate, and a
+   student who is not in the class has no way to get a token that says they are. */
+router.get('/live/handoff', asyncRoute(async (req, res) => {
+  if (await refuseIfWithdrawn(req, res)) return;
+  if (!liveConfigured()) return res.status(503).json({ error: 'The live classroom is not switched on for this portal yet.' });
+  const klass = await studentClass(req.user.id);
+  if (!klass) return res.status(404).json({ error: 'You are not in a class yet.' });
+  const token = signHandoff({ sub: req.user.email, name: req.user.name, cid: req.user.id, classId: klass.id, role: 'student' });
+  res.json({ url: `${liveConfig.url}/?handoff=${encodeURIComponent(token)}`, classId: klass.id });
+}));
+
 router.get('/calendar-feed', asyncRoute(async (req, res) => {
   const token = await ensureCalendarToken(req.user.id);
   res.json({ url: `${config.appUrl}/calendar/${token}.ics`, token });

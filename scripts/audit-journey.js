@@ -700,6 +700,36 @@ try {
       JSON.stringify(sheet?.results?.[0]));
   }
 
+  /* -------------------------------------------------------- live classroom */
+  section('The live classroom, from the portal side');
+  {
+    const bearer = process.env.LIVE_ENTITLEMENTS_TOKEN;
+    const ask = (path) => fetch(`${BASE}${path}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} });
+    expect('the entitlements lookup refuses a caller with no bearer',
+      (await fetch(`${BASE}/api/live/entitlements?email=${encodeURIComponent(made.studentEmail)}`)).status === 401, 'it answered without a bearer');
+    if (bearer) {
+      const ent = await ask(`/api/live/entitlements?email=${encodeURIComponent(made.studentEmail)}`).then((r) => r.json());
+      expect('and answers the live room with class ids', Array.isArray(ent.courses) && ent.courses.includes(made.classId), JSON.stringify(ent).slice(0, 160));
+      expect('plus the webinar parsed from the class link', ent.classes?.[0] && 'webinarId' in ent.classes[0], 'no webinar field');
+      const stranger = await ask('/api/live/entitlements?email=nobody-at-all@example.com').then((r) => r.json());
+      expect('and nothing for an email it does not know', stranger.courses?.length === 0, JSON.stringify(stranger));
+      expect('the console can list every class', (await ask('/api/live/classes').then((r) => r.json())).classes?.length >= 1, 'no classes');
+      expect('and the studio every course', Array.isArray((await ask('/api/live/courses').then((r) => r.json())).courses), 'no courses');
+    }
+    /* The teacher's hand-off: a signed doorway into the console, for one class,
+       thirty minutes long. Checked as shape here; the live room verifies it. */
+    const decode = (url) => JSON.parse(Buffer.from(new URL(url).searchParams.get('handoff').split('.')[1], 'base64url').toString());
+    const theirs = await admin.call(`/api/admin/live/handoff?classId=${made.classId}`);
+    if (theirs.status === 503) {
+      expect('the teacher is told plainly when the live room is not switched on', /not switched on/.test(theirs.data?.error || ''), theirs.data?.error);
+    } else {
+      expectOk('a teacher gets a hand-off into the console', theirs, (d) => /teacher\.html/.test(d?.url));
+      const claims = decode(theirs.data.url);
+      expect('as an administrator, for that class, for half an hour',
+        claims?.role === 'admin' && claims?.classId === made.classId && (claims.exp - claims.iat) === 1800, JSON.stringify(claims));
+    }
+  }
+
   /* ----------------------------------------------------------- community */
   section('The community board');
   {
@@ -912,6 +942,19 @@ try {
      merely not shown it. */
   if (made.courseId) {
     const sneak = await student.call(`/api/admin/plans/${made.courseId}`);
+    /* Into the live classroom: a signed doorway naming them and their class,
+       as a student, five minutes long. The live room verifies it on its side. */
+    const decodeHandoff = (url) => JSON.parse(Buffer.from(new URL(url).searchParams.get('handoff').split('.')[1], 'base64url').toString());
+    const mine = await student.call('/api/student/live/handoff');
+    if (mine.status === 503) {
+      expect('the student is told plainly when the live room is not switched on', /not switched on/.test(mine.data?.error || ''), mine.data?.error);
+    } else {
+      expectOk('a student gets a hand-off into the live room', mine, (d) => typeof d?.url === 'string');
+      const claims = mine.data?.url ? decodeHandoff(mine.data.url) : null;
+      expect('naming them and their class, as a student, briefly',
+        claims?.role === 'student' && claims?.classId === made.classId && Boolean(claims?.sub) && (claims.exp - claims.iat) === 300, JSON.stringify(claims));
+      expectStatus('a student cannot mint a teacher hand-off', await student.call(`/api/admin/live/handoff?classId=${made.classId}`), 403);
+    }
     expect('a signed-in student is refused the plan', sneak.status === 401 || sneak.status === 403,
       `status ${sneak.status}`);
   }
