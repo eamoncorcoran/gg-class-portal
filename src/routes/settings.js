@@ -8,6 +8,7 @@ import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAn
 import { draftCheckinFeedback } from '../ai.js';
 import { sendEmail } from '../email.js';
 import { audit } from '../audit.js';
+import { FIELD_NAMES, problemFrom } from '../validation.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -65,7 +66,7 @@ const rejectedCredential = (detail) => /535|invalid login|authentication|unautho
 
 router.put('/anthropic', asyncRoute(async (req, res) => {
   const parsed = z.object({ apiKey: z.string().optional(), model: z.string().min(1).max(100) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Enter a valid model and optional API key.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Enter a valid model and optional API key.') });
   const problem = apiKeyProblem(parsed.data.apiKey);
   if (problem) return res.status(400).json({ error: problem });
   const saved = await saveAnthropicConfig(parsed.data, req.user.id);
@@ -107,7 +108,7 @@ router.post('/anthropic/test', asyncRoute(async (_req, res) => {
 
 router.put('/openai', asyncRoute(async (req, res) => {
   const parsed = z.object({ apiKey: z.string().optional(), model: z.string().min(1).max(100) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Enter a valid model and optional API key.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Enter a valid model and optional API key.') });
   const saved = await saveOpenAIConfig(parsed.data, req.user.id);
   await audit({ actorId: req.user.id, action: 'settings.openai_updated', entityType: 'settings', entityId: 'openai', ip: req.ip });
   res.json(saved);
@@ -130,7 +131,7 @@ function redactSecrets(text) {
 
 router.post('/email/test', asyncRoute(async (req, res) => {
   const parsed = z.object({ to: z.string().email() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Enter a valid test email address.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Enter a valid test email address.') });
   /* The one route whose entire purpose is to explain a failure. Letting it
      throw sent it to the generic handler, which answers "Something went wrong"
      — the least useful sentence available to somebody trying to find out what
@@ -208,7 +209,7 @@ router.put('/email/pause', asyncRoute(async (req, res) => {
     hours: z.coerce.number().min(0).max(168).optional(),
     reason: z.string().max(200).optional().default(''),
   }).safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: 'Say how many hours to hold sending for.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say how many hours to hold sending for.') });
 
   // Zero lifts it, which is the same control rather than a second one.
   const hours = parsed.data.hours ?? 24;
@@ -232,7 +233,7 @@ router.put('/prompts', asyncRoute(async (req, res) => {
     checkinNotes: z.string().max(4000).optional().default(''),
     communityNotes: z.string().max(4000).optional().default(''),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Both homework prompts must contain clear instructions.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Both homework prompts must contain clear instructions.') });
   /* Merge rather than replace, so the retired wording the migration set aside is
      not wiped by the next save from a screen that never knew about it. */
   const current = await getSetting('prompts', {});
@@ -250,7 +251,7 @@ router.put('/dictation', asyncRoute(async (req, res) => {
     cleanupPrompt: z.string().min(20).max(20000),
     lightPrompt: z.string().min(20).max(20000),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Enter both models and both cleanup prompts.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Enter both models and both cleanup prompts.') });
   const { cleanupPrompt, lightPrompt, ...dictation } = parsed.data;
   await setSetting('dictation', dictation, req.user.id);
   await setSetting('voicePrompts', { cleanupPrompt, lightPrompt }, req.user.id);
@@ -266,7 +267,7 @@ router.put('/nudge', asyncRoute(async (req, res) => {
     homeworkSubject: z.string().trim().min(1).max(300),
     homeworkBody: z.string().trim().min(10).max(8000),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Both reminder templates need a subject and a message.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Both reminder templates need a subject and a message.') });
   await setSetting('nudge', parsed.data, req.user.id);
   await audit({ actorId: req.user.id, action: 'settings.nudge_updated', entityType: 'settings', entityId: 'nudge', ip: req.ip });
   res.json(parsed.data);

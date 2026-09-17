@@ -24,6 +24,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { sendEmail } from '../email.js';
+import { FIELD_NAMES, problemFrom } from '../validation.js';
 
 const router = Router();
 router.use(requireStudent);
@@ -300,7 +301,7 @@ router.put('/checkins/:weekId/draft', asyncRoute(async (req, res) => {
       support: z.string().max(4000).optional(),
     }),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid check-in draft.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid check-in draft.') });
   const week = await one(
     `SELECT w.* FROM weeks w
      JOIN class_students cs ON cs.class_id=w.class_id
@@ -334,7 +335,7 @@ router.post('/checkins/:weekId/submit', asyncRoute(async (req, res) => {
       support: z.string().max(4000).optional().default(''),
     }),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Complete every required check-in question.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Complete every required check-in question.') });
   const week = await one(
     `SELECT w.*,c.programme_name,c.timezone FROM weeks w
      JOIN classes c ON c.id=w.class_id
@@ -426,7 +427,7 @@ router.put('/assignments/:id/draft', asyncRoute(async (req, res) => {
     answers: z.array(z.string().max(20000)),
     currentQuestion: z.number().int().min(0),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid homework draft.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid homework draft.') });
   const assignment = await accessibleAssignment(req.user.id, req.params.id);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
   if (!assignmentOpen(assignment)) return res.status(409).json({ error: 'This assignment is closed.' });
@@ -452,7 +453,7 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
     listeningDialect: z.string().max(40).optional(),
     listeningPlays: z.coerce.number().int().min(0).max(999).optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid homework submission.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid homework submission.') });
   const assignment = await accessibleAssignment(req.user.id, req.params.id);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
   if (!assignmentOpen(assignment)) return res.status(409).json({ error: 'This assignment is closed.' });
@@ -683,7 +684,7 @@ router.post('/withdrawal', asyncRoute(async (req, res) => {
     wouldRecommend: z.string().max(60).optional().default(''),
     mayContact: z.boolean().optional().default(false),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Tell us the main reason before submitting.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Tell us the main reason before submitting.') });
 
   const existing = await one('SELECT withdrawn_at FROM users WHERE id=$1', [req.user.id]);
   if (existing?.withdrawn_at) return res.status(409).json({ error: 'You have already withdrawn from this course.' });
@@ -845,7 +846,7 @@ const dismissal = z.object({ kind: z.enum(['checkin', 'homework']), refId: z.str
 
 router.post('/dismissals', asyncRoute(async (req, res) => {
   const parsed = dismissal.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Say which deadline to dismiss.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say which deadline to dismiss.') });
   const { kind, refId } = parsed.data;
 
   /* Only genuinely unreachable work can be cleared. Anything still open, and
@@ -879,7 +880,7 @@ router.post('/dismissals', asyncRoute(async (req, res) => {
 
 router.delete('/dismissals/:kind/:refId', asyncRoute(async (req, res) => {
   const parsed = dismissal.safeParse({ kind: req.params.kind, refId: req.params.refId });
-  if (!parsed.success) return res.status(400).json({ error: 'Say which deadline to restore.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say which deadline to restore.') });
   await query('DELETE FROM dismissed_deadlines WHERE student_id=$1 AND kind=$2 AND ref_id=$3',
     [req.user.id, parsed.data.kind, parsed.data.refId]);
   res.status(204).end();
@@ -909,7 +910,7 @@ router.post('/lessons/:id/progress', asyncRoute(async (req, res) => {
     completed: z.boolean().optional().default(true),
     positionSeconds: z.coerce.number().int().min(0).max(60 * 60 * 12).optional().default(0),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid progress.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid progress.') });
   const klass = await studentClass(req.user.id);
   if (!await studentCanSeeLesson({ lessonId: req.params.id, classId: klass?.id || null })) {
     return res.status(404).json({ error: 'Lesson not found.' });
@@ -1040,7 +1041,7 @@ router.post('/community/react/:type/:id', asyncRoute(async (req, res) => {
   const klass = await boardClass(req, res);
   if (!klass) return;
   const parsed = z.object({ emoji: z.enum(REACTIONS) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'That is not one of the reactions.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'That is not one of the reactions.') });
   const type = req.params.type === 'post' ? 'post' : 'thread';
   const owned = type === 'thread'
     ? await one('SELECT 1 FROM discussion_threads WHERE id=$1 AND class_id=$2 AND deleted_at IS NULL', [req.params.id, klass.id])
@@ -1062,7 +1063,7 @@ router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
     // Present when replying to one comment rather than to the post itself.
     parentId: z.string().uuid().nullable().optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Write a reply before sending.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Write a reply before sending.') });
   const thread = await one(
     'SELECT * FROM discussion_threads WHERE id=$1 AND class_id=$2 AND deleted_at IS NULL',
     [req.params.id, klass.id],

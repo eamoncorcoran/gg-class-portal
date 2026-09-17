@@ -34,6 +34,7 @@ import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
 import { bunnyConfigured, bunnySigning } from '../bunny.js';
+import { FIELD_NAMES, problemFrom } from '../validation.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -182,7 +183,7 @@ router.post('/classes', asyncRoute(async (req, res) => {
     startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Enter a programme name, day, time and timezone.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Enter a programme name, day, time and timezone.') });
   const row = await one(
     `INSERT INTO classes(programme_name,day_of_week,start_time,timezone,has_community,starts_on,ends_on)
      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
@@ -215,7 +216,7 @@ router.patch('/classes/:id', asyncRoute(async (req, res) => {
     startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid class settings. A class link must be a full https:// address.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid class settings. A class link must be a full https:// address.') });
   const current = await one('SELECT * FROM classes WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Class not found.' });
   const data = parsed.data;
@@ -287,7 +288,7 @@ router.put('/classes/:id/date-changes', asyncRoute(async (req, res) => {
       reason: z.string().max(200).optional().default(''),
     })).max(200),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid list of class dates.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid list of class dates.') });
   const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.id]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
 
@@ -324,7 +325,7 @@ router.post('/classes/:id/sessions', asyncRoute(async (req, res) => {
     joinUrl: z.string().url().or(z.literal('')).nullable().optional(),
     label: z.string().max(120).optional().default(''),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the session a date and time. A link must be a full https:// address.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the session a date and time. A link must be a full https:// address.') });
   const when = new Date(parsed.data.startsAt);
   if (Number.isNaN(when.getTime())) return res.status(400).json({ error: 'That date and time could not be read.' });
   const row = await one(
@@ -346,7 +347,7 @@ router.patch('/classes/:id/sessions/:sessionId', asyncRoute(async (req, res) => 
     label: z.string().max(120).optional(),
     cancelled: z.boolean().optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid session.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid session.') });
   const current = await one('SELECT * FROM class_sessions WHERE id=$1 AND class_id=$2', [req.params.sessionId, req.params.id]);
   if (!current) return res.status(404).json({ error: 'Session not found.' });
   const data = parsed.data;
@@ -424,7 +425,7 @@ router.get('/students', asyncRoute(async (req, res) => {
 
 router.post('/students', asyncRoute(async (req, res) => {
   const parsed = z.object({ name: z.string().min(2), email: z.string().email(), classId: z.string().uuid() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Enter a student name, email and class.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Enter a student name, email and class.') });
   const klass = await one('SELECT id FROM classes WHERE id=$1 AND active=true', [parsed.data.classId]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
   const student = await createStudent({ ...parsed.data, actorId: req.user.id, ip: req.ip });
@@ -535,7 +536,7 @@ router.post('/students/import', diskUpload.single('file'), asyncRoute(async (req
 
 router.patch('/students/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ name: z.string().min(2).optional(), email: z.string().email().optional(), classId: z.string().uuid().optional(), active: z.boolean().optional(), phone: z.string().trim().max(40).nullable().optional() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid student update.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid student update.') });
   const student = await one(`SELECT u.*,cs.class_id FROM users u LEFT JOIN class_students cs ON cs.student_id=u.id AND cs.active=true WHERE u.id=$1 AND u.role='student'`, [req.params.id]);
   if (!student) return res.status(404).json({ error: 'Student not found.' });
   await transaction(async (client) => {
@@ -626,7 +627,7 @@ router.post('/students/:id/resend-invite', asyncRoute(async (req, res) => {
 */
 router.post('/students/phone-import', asyncRoute(async (req, res) => {
   const parsed = z.object({ text: z.string().min(1).max(200000), preview: z.boolean().optional().default(false) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Paste the list before importing.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Paste the list before importing.') });
   const preview = parsed.data.preview;
 
   const rows = String(parsed.data.text).split(/\r?\n/)
@@ -750,7 +751,7 @@ router.post('/students/:id/remove-from-class', asyncRoute(async (req, res) => {
   const student = await one(`SELECT id,name FROM users WHERE id=$1 AND role='student'`, [req.params.id]);
   if (!student) return res.status(404).json({ error: 'Student not found.' });
   const parsed = z.object({ classId: z.string().uuid().optional() }).safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid request.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid request.') });
 
   const enrolment = parsed.data.classId
     ? await one('SELECT class_id FROM class_students WHERE student_id=$1 AND class_id=$2 AND active=true', [student.id, parsed.data.classId])
@@ -1054,7 +1055,7 @@ router.put('/attendance/:weekId/:studentId', asyncRoute(async (req, res) => {
     minutes: z.coerce.number().int().min(0).max(1440).default(0),
     notes: z.string().max(4000).optional().default(''),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid attendance record.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid attendance record.') });
   const row = await one(
     `INSERT INTO attendance(week_id,student_id,status,minutes,source,notes,updated_at)
      VALUES ($1,$2,$3,$4,'manual',$5,now())
@@ -1698,7 +1699,7 @@ router.post('/assignments/:id/listening/upload', listeningUpload.single('file'),
     // What the student is told they are listening to, if not the plain dialect.
     label: z.string().trim().max(60).optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Say which dialect this recording is in.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say which dialect this recording is in.') });
 
   const assignment = await one('SELECT id FROM assignments WHERE id=$1', [req.params.id]);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
@@ -1744,7 +1745,7 @@ router.post('/assignments/:id/listening/upload', listeningUpload.single('file'),
 /* Renaming the tag without re-uploading the file. */
 router.patch('/assignments/:id/listening/:dialect', asyncRoute(async (req, res) => {
   const parsed = z.object({ label: z.string().trim().max(60) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'That label is too long.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'That label is too long.') });
   const row = await one(
     `UPDATE listening_audio SET label=$1, updated_at=now()
      WHERE assignment_id=$2 AND dialect=$3 RETURNING dialect, label`,
@@ -1775,7 +1776,7 @@ router.post('/classes/:id/listening/render-all', asyncRoute(async (req, res) => 
   const parsed = z.object({
     dialects: z.array(z.enum(SYNTHESISABLE)).min(1).max(SYNTHESISABLE.length),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Choose at least one dialect.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose at least one dialect.') });
   if (!ttsConfigured()) {
     return res.status(503).json({ error: 'No speech service is set up yet, so nothing can be read aloud.' });
   }
@@ -1840,7 +1841,7 @@ router.post('/assignments/:id/listening/render', asyncRoute(async (req, res) => 
   const parsed = z.object({
     dialects: z.array(z.enum(SYNTHESISABLE)).min(1).max(SYNTHESISABLE.length),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Choose at least one dialect.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose at least one dialect.') });
 
   const assignment = await one(
     'SELECT id, listening_text FROM assignments WHERE id=$1', [req.params.id]);
@@ -2133,7 +2134,7 @@ router.get('/assignments/:id/calendar.ics', asyncRoute(async (req, res) => {
 
 router.post('/assignments/:id/reopen', asyncRoute(async (req, res) => {
   const parsed = z.object({ reopenedUntil: z.string().datetime() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Choose a new closing time.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose a new closing time.') });
   const row = await one(`UPDATE assignments SET reopened_until=$1,updated_at=now() WHERE id=$2 RETURNING *`, [parsed.data.reopenedUntil, req.params.id]);
   if (!row) return res.status(404).json({ error: 'Assignment not found.' });
   await audit({ actorId: req.user.id, action: 'assignment.reopened', entityType: 'assignment', entityId: row.id, metadata: parsed.data, ip: req.ip });
@@ -2151,7 +2152,7 @@ router.put('/weeks/:id/checkin', asyncRoute(async (req, res) => {
     label: z.string().max(120).nullable().optional(),
     notes: z.string().max(2000).nullable().optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid check-in setting.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid check-in setting.') });
   const current = await one('SELECT * FROM weeks WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Week not found.' });
   const data = parsed.data;
@@ -2249,7 +2250,7 @@ router.post('/classes/:id/checkin-schedule', asyncRoute(async (req, res) => {
     dueMinute: z.coerce.number().int().min(0).max(59).default(CHECKIN_DEFAULTS.dueMinute),
     hardDeadline: z.boolean().default(true),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Choose a start date, an end date and the weekly times.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose a start date, an end date and the weekly times.') });
 
   const klass = await one('SELECT * FROM classes WHERE id=$1', [req.params.id]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
@@ -2262,7 +2263,7 @@ router.post('/classes/:id/checkin-schedule', asyncRoute(async (req, res) => {
 /* Turn several weeks on or off in one go — a mid-term break is rarely one week. */
 router.post('/weeks/bulk-checkin', asyncRoute(async (req, res) => {
   const parsed = z.object({ weekIds: z.array(z.string().uuid()).min(1).max(60), enabled: z.boolean() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Choose at least one week.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose at least one week.') });
   const result = await query('UPDATE weeks SET checkin_enabled=$1 WHERE id=ANY($2::uuid[]) RETURNING id', [parsed.data.enabled, parsed.data.weekIds]);
   await audit({ actorId: req.user.id, action: 'week.checkin_bulk_updated', entityType: 'week', metadata: { count: result.rowCount, enabled: parsed.data.enabled }, ip: req.ip });
   res.json({ updated: result.rowCount });
@@ -2279,7 +2280,7 @@ router.post('/nudge', asyncRoute(async (req, res) => {
     subject: z.string().trim().min(1).max(300),
     body: z.string().trim().min(1).max(8000),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Write a subject and a message.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Write a subject and a message.') });
   const { studentId, type, weekId, assignmentId, subject, body } = parsed.data;
 
   const student = await one(`SELECT id,name,email,withdrawn_at FROM users WHERE id=$1 AND role='student' AND active=true`, [studentId]);
@@ -2326,7 +2327,7 @@ router.get('/nudge/history', asyncRoute(async (req, res) => {
 
 router.post('/checkins/:id/return', asyncRoute(async (req, res) => {
   const parsed = z.object({ feedback: z.string().max(12000).default('') }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid feedback.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid feedback.') });
   const current = await one('SELECT id, teacher_audio_path FROM checkins WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Check-in not found.' });
   // A voice note can carry the whole reply, so text is only required without one.
@@ -2411,7 +2412,7 @@ router.post('/homework/:id/redraft', asyncRoute(async (req, res) => {
 
 router.patch('/checkins/:id/feedback-draft', asyncRoute(async (req, res) => {
   const parsed = z.object({ feedback: z.string().max(12000) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid feedback draft.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid feedback draft.') });
   const current = await one('SELECT * FROM checkins WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Check-in not found.' });
   if (current.status === 'draft') return res.status(409).json({ error: 'The student has not submitted this check-in.' });
@@ -2429,7 +2430,7 @@ router.patch('/homework/:id/feedback-draft', asyncRoute(async (req, res) => {
     corrections: z.string().max(20000),
     generalFeedback: z.string().max(12000),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid homework feedback draft.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid homework feedback draft.') });
   const current = await one('SELECT * FROM homework_submissions WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Homework submission not found.' });
   if (current.status === 'draft') return res.status(409).json({ error: 'The student has not submitted this homework.' });
@@ -2491,7 +2492,7 @@ router.get('/students/:id/profile', asyncRoute(async (req, res) => {
 
 router.post('/students/:id/notes', asyncRoute(async (req, res) => {
   const parsed = z.object({ body: z.string().trim().min(1).max(8000), pinned: z.boolean().default(false) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Write a note before saving.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Write a note before saving.') });
   const student = await one(`SELECT id FROM users WHERE id=$1 AND role='student'`, [req.params.id]);
   if (!student) return res.status(404).json({ error: 'Student not found.' });
   const row = await one(
@@ -2504,7 +2505,7 @@ router.post('/students/:id/notes', asyncRoute(async (req, res) => {
 
 router.patch('/notes/:noteId', asyncRoute(async (req, res) => {
   const parsed = z.object({ body: z.string().trim().min(1).max(8000).optional(), pinned: z.boolean().optional() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid note update.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid note update.') });
   const current = await one('SELECT * FROM student_notes WHERE id=$1', [req.params.noteId]);
   if (!current) return res.status(404).json({ error: 'Note not found.' });
   const row = await one(
@@ -2919,7 +2920,7 @@ router.post('/community/:classId/threads', asyncRoute(async (req, res) => {
    stop being filed, which is why the column is ON DELETE SET NULL. */
 router.post('/community/:classId/categories', asyncRoute(async (req, res) => {
   const parsed = z.object({ name: z.string().trim().min(1).max(60) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the category a name.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the category a name.') });
   const klass = await one('SELECT id FROM classes WHERE id=$1', [req.params.classId]);
   if (!klass) return res.status(404).json({ error: 'Class not found.' });
 
@@ -2941,7 +2942,7 @@ router.post('/community/:classId/categories', asyncRoute(async (req, res) => {
 
 router.patch('/community/categories/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ name: z.string().trim().min(1).max(60) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the category a name.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the category a name.') });
   const row = await one('UPDATE discussion_categories SET name=$1 WHERE id=$2 RETURNING *',
     [parsed.data.name, req.params.id]);
   if (!row) return res.status(404).json({ error: 'Category not found.' });
@@ -3016,7 +3017,7 @@ router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
     // Present when replying to one comment rather than to the post itself.
     parentId: z.string().uuid().nullable().optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Write a reply before sending.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Write a reply before sending.') });
   const thread = await one(
     'SELECT * FROM discussion_threads WHERE id=$1 AND deleted_at IS NULL', [req.params.id],
   );
@@ -3037,7 +3038,7 @@ router.post('/community/thread/:id/replies', asyncRoute(async (req, res) => {
 
 router.post('/community/react/:type/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ emoji: z.enum(REACTIONS) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'That is not one of the reactions.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'That is not one of the reactions.') });
   const type = req.params.type === 'post' ? 'post' : 'thread';
   const target = type === 'thread'
     ? await one('SELECT 1 FROM discussion_threads WHERE id=$1 AND deleted_at IS NULL', [req.params.id])
@@ -3067,7 +3068,7 @@ router.post('/community/thread/:id/draft', asyncRoute(async (req, res) => {
 
 router.patch('/community/thread/:id/schedule', asyncRoute(async (req, res) => {
   const parsed = z.object({ publishedAt: z.string().datetime() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Choose when this should go out.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose when this should go out.') });
   const row = await one(
     `UPDATE discussion_threads SET published_at=$1,
        -- A post that has not appeared yet has had no activity, so its sort key
@@ -3142,7 +3143,7 @@ router.post('/community/attachments', documentUpload.single('file'), asyncRoute(
 
 router.patch('/community/thread/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ pinned: z.boolean().optional(), locked: z.boolean().optional() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid thread change.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid thread change.') });
   const current = await one('SELECT * FROM discussion_threads WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Thread not found.' });
   const row = await one(
@@ -3155,7 +3156,7 @@ router.patch('/community/thread/:id', asyncRoute(async (req, res) => {
 
 router.post('/community/thread/:id/removal', asyncRoute(async (req, res) => {
   const parsed = z.object({ removed: z.boolean() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Say whether to remove or restore.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say whether to remove or restore.') });
   const row = await one(
     `UPDATE discussion_threads SET deleted_at=$1,deleted_by=$2,updated_at=now() WHERE id=$3 RETURNING *`,
     [parsed.data.removed ? new Date() : null, parsed.data.removed ? req.user.id : null, req.params.id],
@@ -3176,7 +3177,7 @@ router.post('/community/thread/:id/removal', asyncRoute(async (req, res) => {
    record of what somebody said before they were helped to say it better. */
 router.patch('/community/post/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ body: z.string().trim().min(1).max(20000) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'A comment cannot be empty.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'A comment cannot be empty.') });
   const current = await one('SELECT * FROM discussion_posts WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Comment not found.' });
   if (current.body === parsed.data.body) return res.json(current);
@@ -3194,7 +3195,7 @@ router.patch('/community/post/:id', asyncRoute(async (req, res) => {
 
 router.post('/community/post/:id/removal', asyncRoute(async (req, res) => {
   const parsed = z.object({ removed: z.boolean() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Say whether to remove or restore.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say whether to remove or restore.') });
   const row = await one(
     `UPDATE discussion_posts SET deleted_at=$1,deleted_by=$2,updated_at=now() WHERE id=$3 RETURNING *`,
     [parsed.data.removed ? new Date() : null, parsed.data.removed ? req.user.id : null, req.params.id],
@@ -3284,7 +3285,7 @@ router.delete('/plans/:courseId', asyncRoute(async (req, res) => {
 
 router.patch('/plan-items/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ done: z.boolean() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Say whether it is done.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say whether it is done.') });
   const row = await setItemDone({ itemId: req.params.id, done: parsed.data.done, actorId: req.user.id });
   if (!row) return res.status(404).json({ error: 'That item is no longer in the plan.' });
   res.json(row);
@@ -3303,14 +3304,14 @@ router.get('/plans/:courseId/topics', asyncRoute(async (req, res) => {
 /* Dropping a topic into a week. */
 router.post('/plan-weeks/:weekId/items', asyncRoute(async (req, res) => {
   const parsed = z.object({ topicId: z.string().uuid() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Say which topic to add.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say which topic to add.') });
   res.status(201).json(await scheduleTopic({ weekId: req.params.weekId, topicId: parsed.data.topicId }));
 }));
 
 /* The order of a week after a drag. The whole week arrives, not one move. */
 router.put('/plan-weeks/:weekId/order', asyncRoute(async (req, res) => {
   const parsed = z.object({ itemIds: z.array(z.string().uuid()).max(200) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid order.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid order.') });
   res.json(await reorderWeek({ weekId: req.params.weekId, itemIds: parsed.data.itemIds }));
 }));
 
@@ -3327,7 +3328,7 @@ router.post('/plans/:courseId/topics', asyncRoute(async (req, res) => {
     category: z.string().trim().max(60).optional(),
     examGroup: z.string().trim().max(40).optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'A topic needs a name of at least two characters.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'A topic needs a name of at least two characters.') });
   const row = await addTopic({ courseId: req.params.courseId, ...parsed.data });
   await audit({ actorId: req.user.id, action: 'plan.topic.added', entityType: 'course', entityId: req.params.courseId, metadata: { title: row.title }, ip: req.ip });
   res.status(201).json(row);
@@ -3351,7 +3352,7 @@ router.delete('/plan-topics/:id', asyncRoute(async (req, res) => {
 
 router.patch('/plan-topics/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ examGroup: z.string().max(40) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Say which section it belongs to.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say which section it belongs to.') });
   const row = await setTopicGroup({ topicId: req.params.id, examGroup: parsed.data.examGroup });
   if (!row) return res.status(404).json({ error: 'Topic not found.' });
   res.json(row);
@@ -3392,7 +3393,7 @@ router.get('/plans/:courseId/checklist.csv', asyncRoute(async (req, res) => {
 
 router.post('/courses', asyncRoute(async (req, res) => {
   const parsed = courseInput.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the course a title.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the course a title.') });
   const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM courses');
   const row = await one(
     `INSERT INTO courses(title,description,cover_url,published,position,created_by,open_to_all)
@@ -3408,7 +3409,7 @@ router.post('/courses', asyncRoute(async (req, res) => {
 
 router.patch('/courses/:id', asyncRoute(async (req, res) => {
   const parsed = courseInput.partial().safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid course.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid course.') });
   const current = await one('SELECT * FROM courses WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Course not found.' });
   const data = parsed.data;
@@ -3450,7 +3451,7 @@ router.delete('/courses/:id', asyncRoute(async (req, res) => {
 
 router.post('/courses/:id/modules', asyncRoute(async (req, res) => {
   const parsed = z.object({ title: z.string().trim().min(1).max(200) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the section a title.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the section a title.') });
   const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM course_modules WHERE course_id=$1', [req.params.id]);
   const row = await one(
     'INSERT INTO course_modules(course_id,title,position) VALUES ($1,$2,$3) RETURNING *',
@@ -3461,7 +3462,7 @@ router.post('/courses/:id/modules', asyncRoute(async (req, res) => {
 
 router.patch('/modules/:id', asyncRoute(async (req, res) => {
   const parsed = z.object({ title: z.string().trim().min(1).max(200) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the section a title.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the section a title.') });
   const row = await one('UPDATE course_modules SET title=$1 WHERE id=$2 RETURNING *', [parsed.data.title, req.params.id]);
   if (!row) return res.status(404).json({ error: 'Section not found.' });
   res.json(row);
@@ -3592,7 +3593,7 @@ function resolveVideo(data, current = {}) {
 
 router.post('/modules/:id/lessons', asyncRoute(async (req, res) => {
   const parsed = lessonInput.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the lesson a title.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the lesson a title.') });
   const video = resolveVideo(parsed.data);
   const next = await one('SELECT COALESCE(max(position),-1)+1 position FROM course_lessons WHERE module_id=$1', [req.params.id]);
   const row = await one(
@@ -3608,7 +3609,7 @@ router.post('/modules/:id/lessons', asyncRoute(async (req, res) => {
 
 router.patch('/lessons/:id', asyncRoute(async (req, res) => {
   const parsed = lessonInput.partial().safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid lesson.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid lesson.') });
   const current = await one('SELECT * FROM course_lessons WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Lesson not found.' });
   const data = parsed.data;
@@ -3644,7 +3645,7 @@ router.put('/courses/:id/order', asyncRoute(async (req, res) => {
       lessons: z.array(z.string().uuid()).optional().default([]),
     })),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid order.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid order.') });
   /* The order sent is the whole shape of the course, so a lesson listed under a
      different section than it currently sits in is a move. Scoping the update
      to this course's own modules is what stops an id from another course being
@@ -3735,7 +3736,7 @@ router.post('/zoom/import', asyncRoute(async (req, res) => {
     moduleId: z.string().uuid(),
     title: z.string().trim().max(200).optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Choose a recording and the section it belongs in.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose a recording and the section it belongs in.') });
 
   // Fetched fresh rather than trusted from the browser: the download URL is a
   // credential, and it is not one to accept from a request body.
@@ -3764,7 +3765,7 @@ router.put('/zoom/sources', asyncRoute(async (req, res) => {
     moduleId: z.string().uuid().nullable().optional(),
     autoImport: z.boolean().optional().default(false),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give the webinar id and where its recordings should land.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the webinar id and where its recordings should land.') });
   const row = await one(
     `INSERT INTO zoom_sources(zoom_id,label,module_id,auto_import) VALUES ($1,$2,$3,$4)
      ON CONFLICT (zoom_id) DO UPDATE SET label=EXCLUDED.label, module_id=EXCLUDED.module_id,
@@ -3813,7 +3814,7 @@ router.post('/admins', requireSuperAdmin, asyncRoute(async (req, res) => {
     email: z.string().email(),
     superAdmin: z.boolean().optional().default(false),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Give a name and a valid email address.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give a name and a valid email address.') });
 
   const existing = await one('SELECT id, role FROM users WHERE email=$1', [parsed.data.email.trim()]);
   if (existing) {
@@ -3855,7 +3856,7 @@ router.patch('/admins/:id', requireSuperAdmin, asyncRoute(async (req, res) => {
     active: z.boolean().optional(),
     superAdmin: z.boolean().optional(),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid change.' });
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid change.') });
 
   const target = await one(`SELECT * FROM users WHERE id=$1 AND role='admin'`, [req.params.id]);
   if (!target) return res.status(404).json({ error: 'Administrator not found.' });
