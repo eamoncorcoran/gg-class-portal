@@ -431,29 +431,106 @@ router.post('/students', asyncRoute(async (req, res) => {
   res.status(201).json(student);
 }));
 
+/* A phone number as a person would write it on a form.
+   ------------------------------------------------------------------
+   Exports and spreadsheets carry Irish mobiles as 353877097020: no plus, no
+   spaces. Stored like that the Call link dials a twelve-digit local number and
+   the profile is hard to read. An Irish mobile becomes +353 87 709 7020; any
+   other country keeps its digits behind a plus; anything already typed with a
+   plus or spaces is left as it was, because it was somebody's choice. */
+function tidyPhone(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/[\s+()-]/.test(raw)) return raw.slice(0, 40);
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  // 0871234567 is how an Irish number is written at home.
+  if (/^0[1-9]\d{7,9}$/.test(digits)) return `+353 ${digits.slice(1, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+  if (/^353\d{9}$/.test(digits)) return `+353 ${digits.slice(3, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`;
+  return `+${digits}`;
+}
+
+/* Students from a spreadsheet: new ones created, existing ones brought up to
+   date.
+   ------------------------------------------------------------------
+   Until now this only created, and an email that already existed was reported
+   as an error, so the same sheet could never be uploaded twice and a column
+   of phone numbers for people already on the portal had nowhere to go.
+
+   Now a row whose email exists updates what the sheet carries for them, which
+   for the moment is a phone number, and says "updated" rather than failing. A
+   row for somebody new still needs a name and a class.
+
+   Preview first. The sheet is read and every row reported without anything
+   being written, so "82 matched, 5 not found" is seen before it is true. The
+   same request with preview off does the writing. */
 router.post('/students/import', diskUpload.single('file'), asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose a CSV file.' });
+  const preview = String(req.body?.preview || '') === '1';
   const content = await fs.readFile(req.file.path, 'utf8');
   await fs.unlink(req.file.path).catch(() => {});
-  const rows = parse(content, { columns: true, skip_empty_lines: true, trim: true, bom: true });
+  let rows;
+  try {
+    rows = parse(content, { columns: true, skip_empty_lines: true, trim: true, bom: true });
+  } catch (error) {
+    return res.status(400).json({ error: `That file could not be read as a CSV. ${error.message}` });
+  }
   const classesResult = await query('SELECT * FROM classes WHERE active=true');
   const classes = classesResult.rows;
   const results = [];
+  /* A sheet exported from a phone list often carries the same person twice.
+     The second row is reported as a duplicate rather than written twice or
+     counted as two updates. */
+  const seenEmails = new Set();
+
   for (const row of rows) {
     const name = normalizeHeader(row, ['name','student name','full name']);
-    const email = normalizeHeader(row, ['email','email address']);
+    const email = normalizeHeader(row, ['email','email address']).toLowerCase();
     const classText = normalizeHeader(row, ['class','current class','course']);
-    const classIdFromBody = req.body.classId || '';
-    const klass = classes.find((item) => item.id === classIdFromBody || classLabel(item).toLowerCase() === classText.toLowerCase() || `${item.programme_name} ${item.day_of_week} ${String(item.start_time).slice(0,5)}`.toLowerCase() === classText.toLowerCase());
-    if (!name || !email || !klass) { results.push({ name, email, status: 'error', error: 'Missing name, email or matching class.' }); continue; }
+    const phone = tidyPhone(normalizeHeader(row, ['phone','phone number','mobile','telephone','tel']));
+    if (!email) { results.push({ name, email, phone, status: 'error', error: 'No email on this row.' }); continue; }
+    if (seenEmails.has(email)) { results.push({ name, email, phone, status: 'duplicate', error: 'Same email as an earlier row.' }); continue; }
+    seenEmails.add(email);
+
+    const existing = await one('SELECT id, name, phone FROM users WHERE lower(email)=$1', [email]);
+    if (existing) {
+      if (!phone) { results.push({ name: existing.name, email, phone: existing.phone, status: 'unchanged', error: 'Already on the portal. No phone on this row.' }); continue; }
+      if (existing.phone === phone) { results.push({ name: existing.name, email, phone, status: 'unchanged', error: 'Phone already up to date.' }); continue; }
+      if (!preview) await query('UPDATE users SET phone=$1, updated_at=now() WHERE id=$2', [phone, existing.id]);
+      results.push({ name: existing.name, email, phone, status: 'updated', studentId: existing.id, was: existing.phone });
+      continue;
+    }
+
+    const klass = (req.body.classId && classes.find((item) => item.id === req.body.classId))
+      || classes.find((item) => classLabel(item).toLowerCase() === classText.toLowerCase())
+      || classes.find((item) => classText && classLabel(item).toLowerCase().includes(classText.toLowerCase()));
+    if (!name || !klass) {
+      results.push({ name, email, phone, status: 'not found', error: name
+        ? 'No student with this email. Add a Class column, or pick a default class, to create them.'
+        : 'No student with this email, and no name to create one with.' });
+      continue;
+    }
+    if (preview) { results.push({ name, email, phone, status: 'created', error: `Will be created in ${classLabel(klass)}.` }); continue; }
     try {
       const student = await createStudent({ name, email, classId: klass.id, actorId: req.user.id, ip: req.ip });
-      results.push({ name, email, status: 'created', studentId: student.id, emailStatus: student.emailStatus });
+      if (phone) await query('UPDATE users SET phone=$1 WHERE id=$2', [phone, student.id]);
+      results.push({ name, email, phone, status: 'created', studentId: student.id, emailStatus: student.emailStatus });
     } catch (error) {
-      results.push({ name, email, status: 'error', error: error.message });
+      results.push({ name, email, phone, status: 'error', error: error.message });
     }
   }
-  res.json({ total: rows.length, created: results.filter((item) => item.status === 'created').length, results });
+
+  const count = (status) => results.filter((row) => row.status === status).length;
+  if (!preview) {
+    await audit({ actorId: req.user.id, action: 'students.imported', entityType: 'user',
+      metadata: { total: results.length, created: count('created'), updated: count('updated'), notFound: count('not found') }, ip: req.ip });
+  }
+  res.json({
+    preview, total: results.length,
+    created: count('created'), updated: count('updated'), unchanged: count('unchanged'),
+    notFound: count('not found'), duplicates: count('duplicate'), errors: count('error'),
+    results,
+  });
 }));
 
 router.patch('/students/:id', asyncRoute(async (req, res) => {
@@ -548,8 +625,9 @@ router.post('/students/:id/resend-invite', asyncRoute(async (req, res) => {
    a new account.
 */
 router.post('/students/phone-import', asyncRoute(async (req, res) => {
-  const parsed = z.object({ text: z.string().min(1).max(200000) }).safeParse(req.body);
+  const parsed = z.object({ text: z.string().min(1).max(200000), preview: z.boolean().optional().default(false) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Paste the list before importing.' });
+  const preview = parsed.data.preview;
 
   const rows = String(parsed.data.text).split(/\r?\n/)
     .map((line) => line.trim())
@@ -564,29 +642,38 @@ router.post('/students/phone-import', asyncRoute(async (req, res) => {
          write them with. */
       const phone = parts.find((part) => part !== email && /[0-9]/.test(part)
         && part.replace(/[^0-9]/g, '').length >= 7) || '';
-      return { line, email: email.toLowerCase(), phone };
+      /* Written the way it reads on a form: 353877097020 becomes
+         +353 87 709 7020, so the Call link dials it and the profile shows it. */
+      return { line, email: email.toLowerCase(), phone: tidyPhone(phone) };
     });
 
   const updated = [];
   const noPhone = [];
   const unknown = [];
+  const unchanged = [];
+  /* A list copied out of a phone export often carries the same person twice.
+     The second line is skipped rather than counted as a second update. */
+  const seen = new Set();
   for (const row of rows) {
     if (!row.email) { unknown.push({ line: row.line, why: 'no email on this line' }); continue; }
+    if (seen.has(row.email)) continue;
+    seen.add(row.email);
     if (!row.phone) { noPhone.push({ email: row.email }); continue; }
     const student = await one(
-      `UPDATE users SET phone=$1, updated_at=now()
-       WHERE lower(email)=$2 AND role='student' RETURNING id, name, email`,
-      [row.phone, row.email],
-    );
-    if (student) updated.push({ name: student.name, email: student.email, phone: row.phone });
-    else unknown.push({ line: row.line, why: 'no student with that email' });
+      "SELECT id, name, email, phone FROM users WHERE lower(email)=$1 AND role='student'", [row.email]);
+    if (!student) { unknown.push({ line: row.line, why: 'no student with that email' }); continue; }
+    if (student.phone === row.phone) { unchanged.push({ name: student.name, email: student.email, phone: row.phone }); continue; }
+    if (!preview) await query('UPDATE users SET phone=$1, updated_at=now() WHERE id=$2', [row.phone, student.id]);
+    updated.push({ name: student.name, email: student.email, phone: row.phone, was: student.phone });
   }
 
-  await audit({
-    actorId: req.user.id, action: 'students.phones_imported', entityType: 'user', entityId: null,
-    metadata: { updated: updated.length, unmatched: unknown.length, withoutPhone: noPhone.length }, ip: req.ip,
-  });
-  res.json({ updated, unknown, noPhone, considered: rows.length });
+  if (!preview) {
+    await audit({
+      actorId: req.user.id, action: 'students.phones_imported', entityType: 'user', entityId: null,
+      metadata: { updated: updated.length, unmatched: unknown.length, withoutPhone: noPhone.length }, ip: req.ip,
+    });
+  }
+  res.json({ preview, unchanged, updated, unknown, noPhone, considered: rows.length });
 }));
 
 router.get('/students/addresses.csv', asyncRoute(async (req, res) => {

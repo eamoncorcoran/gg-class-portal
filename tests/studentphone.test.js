@@ -20,7 +20,7 @@ const bodyOf = (source, name) => {
 
 test('students are matched on email, never on name', () => {
   const body = bodyOf(admin, "router.post('/students/phone-import'");
-  assert.match(body, /WHERE lower\(email\)=\$2 AND role='student'/);
+  assert.match(body, /WHERE lower\(email\)=\$1 AND role='student'/);
   /* A name is not unique. The list that prompted this carried the same person
      twice, and matching on a name would have to guess which row was meant. */
   assert.doesNotMatch(body, /WHERE name=/);

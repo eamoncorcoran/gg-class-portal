@@ -175,6 +175,7 @@ try {
   const created = expectOk('create a student', await admin.call('/api/admin/students', { method: 'POST', body: {
     name: 'Audit Student', email: studentEmail, classId: made.classId } }));
   made.studentId = created?.id;
+  made.studentEmail = studentEmail;
   if (made.studentId) {
     expectOk('rename the student', await admin.call(`/api/admin/students/${made.studentId}`,
       { method: 'PATCH', body: { name: 'Audit Student Renamed' } }));
@@ -612,6 +613,39 @@ try {
     expect('to the exact minute it started at', back?.deadline_at === octoberDue, `came back as ${back?.deadline_at}`);
 
     await admin.call(`/api/admin/assignments/${created?.id}`, { method: 'DELETE' });
+  }
+
+  /* ------------------------------------------------------ phone numbers */
+  section('Phone numbers onto profiles');
+  {
+    const line = `Audit Student\t${made.studentEmail}\t353871234567`;
+    const before = await one('SELECT phone FROM users WHERE lower(email)=$1', [made.studentEmail.toLowerCase()]);
+    const looked = expectOk('a pasted list can be checked before anything is written', await admin.call(
+      '/api/admin/students/phone-import', { method: 'POST', body: { text: `${line}\n${line}\nStranger\tnobody-${stamp}@example.com\t353870000000`, preview: true } }),
+    (d) => d?.preview === true && d.updated.length === 1 && d.unknown.length === 1);
+    expect('with the number written the way it reads', looked?.updated?.[0]?.phone === '+353 87 123 4567', looked?.updated?.[0]?.phone);
+    expect('and a repeated line counted once', looked?.considered === 3 && looked.updated.length === 1, `${looked?.considered} lines`);
+    const afterLook = await one('SELECT phone FROM users WHERE lower(email)=$1', [made.studentEmail.toLowerCase()]);
+    expect('and the profile untouched by the check', afterLook?.phone === before?.phone,
+      `phone went from ${before?.phone} to ${afterLook?.phone} on a preview`);
+    expectOk('applying it writes the number', await admin.call(
+      '/api/admin/students/phone-import', { method: 'POST', body: { text: line } }),
+    (d) => d?.preview === false && d.updated.length === 1);
+    const after = await one('SELECT phone FROM users WHERE lower(email)=$1', [made.studentEmail.toLowerCase()]);
+    expect('onto the profile', after?.phone === '+353 87 123 4567', `phone is ${after?.phone}`);
+    expectOk('and applying the same list again changes nothing', await admin.call(
+      '/api/admin/students/phone-import', { method: 'POST', body: { text: line } }),
+    (d) => d.updated.length === 0 && d.unchanged.length === 1);
+
+    /* The spreadsheet route does the same for a row whose email exists. */
+    const csv = new FormData();
+    csv.append('file', new Blob([`Name,Email,Phone\nAudit Student,${made.studentEmail},0871234567\n`], { type: 'text/csv' }), 'phones.csv');
+    csv.append('preview', '1');
+    const sheet = await fetch(`${BASE}/api/admin/students/import`, { method: 'POST', body: csv,
+      headers: { cookie: [...admin.jar].map(([k, v]) => `${k}=${v}`).join('; ') } }).then((r) => r.json());
+    expect('a spreadsheet row for an existing student updates rather than errors',
+      sheet?.preview === true && sheet.results?.[0]?.status === 'unchanged',
+      JSON.stringify(sheet?.results?.[0]));
   }
 
   /* ----------------------------------------------------------- community */

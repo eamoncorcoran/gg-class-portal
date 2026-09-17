@@ -6924,15 +6924,72 @@ function openStudentModal() {
 function openStudentImportModal() {
   modal({
     title: 'Upload students', subtitle: 'CSV headings: Name, Email and Class. Each new student is emailed a temporary password.',
-    body: `<form id="student-import-form"><div class="form-field"><label>Default class, optional</label><select name="classId"><option value="">Use the Class column</option>${state.classes.map((klass) => `<option value="${klass.id}">${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div><div class="form-field"><label>Student CSV</label><input name="file" type="file" accept=".csv,text/csv" required></div></form><div id="import-results"></div>`,
-    footer: `<button class="btn" data-close-modal>Close</button><button class="btn primary" id="run-import">Import and invite</button>`,
+    body: `<form id="student-import-form">
+        <div class="form-field"><label>Default class, optional</label><select name="classId"><option value="">Use the Class column</option>${state.classes.map((klass) => `<option value="${klass.id}">${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div>
+        <div class="form-field"><label>Student CSV</label><input name="file" type="file" accept=".csv,text/csv" required>
+          <div class="muted small">Columns: <b>Name</b>, <b>Email</b>, and either <b>Class</b> or the default above for anybody new.
+            Add a <b>Phone</b> column to put numbers on profiles: a row whose email is already on the portal updates that
+            student's phone instead of creating them, so the same sheet can be uploaded again.</div>
+        </div>
+      </form>
+      <p class="muted small" id="import-hint">Nothing is written until you have seen what the file would do.</p>
+      <div id="import-results"></div>`,
+    footer: `<button class="btn" data-close-modal>Close</button><button class="btn primary" id="run-student-import">Check the file</button>`,
     onOpen() {
-      document.getElementById('run-import').addEventListener('click', async () => {
+      /* Two steps. The first sends the sheet with preview on and draws every
+         row with what would happen to it; only the second writes. Seeing
+         "82 updated, 5 duplicates, 3 not found" before it is true is the point. */
+      const results = document.getElementById('import-results');
+      const hint = document.getElementById('import-hint');
+      const run = async (preview) => {
         const form = new FormData(document.getElementById('student-import-form'));
+        if (!form.get('file')?.size) return showToast('Choose a CSV file first', 'error');
+        if (preview) form.append('preview', '1');
+        const button = document.getElementById('run-student-import');
+        button.disabled = true;
         try {
           const result = await api('/api/admin/students/import', { method: 'POST', body: form });
-          document.getElementById('import-results').innerHTML = `<div class="success-banner">${result.created} of ${result.total} students created.</div><div class="table-wrap"><table class="data-table"><tbody>${result.results.map((row) => `<tr><td>${escapeHtml(row.name || row.email)}</td><td><span class="pill ${row.status === 'created' ? 'green' : 'red'}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.error || row.emailStatus || '')}</td></tr>`).join('')}</tbody></table></div>`;
+          const pill = (row) => ({
+            created: 'green', updated: 'green', unchanged: 'grey', duplicate: 'orange',
+            'not found': 'orange', error: 'red',
+          }[row.status] || 'grey');
+          const line = (row) => row.error || row.emailStatus || (row.was ? `was ${row.was}` : '');
+          const summary = [
+            result.updated ? `${result.updated} phone${result.updated === 1 ? '' : 's'} ${preview ? 'to update' : 'updated'}` : '',
+            result.created ? `${result.created} ${preview ? 'to create' : 'created'}` : '',
+            result.unchanged ? `${result.unchanged} already up to date` : '',
+            result.notFound ? `${result.notFound} not found` : '',
+            result.duplicates ? `${result.duplicates} duplicate row${result.duplicates === 1 ? '' : 's'}` : '',
+            result.errors ? `${result.errors} with problems` : '',
+          ].filter(Boolean).join(' · ');
+          results.innerHTML = `<div class="${preview ? 'csv-summary' : 'success-banner'}">${escapeHtml(summary || 'Nothing to do.')}</div>
+            <div class="table-wrap"><table class="data-table compact"><thead><tr><th>Student</th><th>Email</th><th>Phone</th><th></th><th></th></tr></thead><tbody>${result.results.map((row) => `<tr>
+              <td>${escapeHtml(row.name || '')}</td><td>${escapeHtml(row.email)}</td><td>${escapeHtml(row.phone || '')}</td>
+              <td><span class="pill ${pill(row)}">${escapeHtml(row.status)}</span></td><td class="muted small">${escapeHtml(line(row))}</td>
+            </tr>`).join('')}</tbody></table></div>`;
+          const willWrite = result.updated + result.created;
+          if (preview) {
+            hint.textContent = willWrite
+              ? `That is what the file would do. Press Apply to write it.`
+              : 'Nothing in this file would change anything.';
+            button.textContent = willWrite ? `Apply: ${summary.split(' · ').slice(0, 2).join(', ')}` : 'Check the file';
+            button.dataset.mode = willWrite ? 'apply' : 'preview';
+          } else {
+            hint.textContent = 'Done.';
+            button.textContent = 'Check another file';
+            button.dataset.mode = 'preview';
+            await renderAdmin();
+          }
         } catch (error) { showToast(error.message, 'error'); }
+        button.disabled = false;
+      };
+      const button = document.getElementById('run-student-import');
+      button.dataset.mode = 'preview';
+      button.addEventListener('click', () => run(button.dataset.mode !== 'apply'));
+      // A different file means a fresh look, never a stale Apply.
+      document.querySelector('#student-import-form [name="file"]').addEventListener('change', () => {
+        button.textContent = 'Check the file'; button.dataset.mode = 'preview'; results.innerHTML = '';
+        hint.textContent = 'Nothing is written until you have seen what the file would do.';
       });
     },
   });
@@ -7900,7 +7957,7 @@ function openPhoneImport() {
         <textarea id="phone-paste" rows="10" placeholder="Holly Donnelly&#9;hollydonnelly116@gmail.com&#9;087 123 4567"></textarea>
       </div>
       <div id="phone-import-result"></div>`,
-    footer: '<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="do-phone-import">Import</button>',
+    footer: '<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="do-phone-import" data-mode="preview">Check the list</button>',
     onOpen() {
       const button = document.getElementById('do-phone-import');
       button.addEventListener('click', async () => {
@@ -7908,17 +7965,23 @@ function openPhoneImport() {
         if (!text) return showToast('Paste the list first.', 'error');
         button.disabled = true;
         try {
-          const result = await api('/api/admin/students/phone-import', { method: 'POST', body: { text } });
+          /* Looked at first, written second. The same request with preview on
+             answers with what it would do and touches nothing. */
+          const preview = button.dataset.mode !== 'apply';
+          const result = await api('/api/admin/students/phone-import', { method: 'POST', body: { text, preview } });
+          button.dataset.mode = preview && result.updated.length ? 'apply' : 'preview';
+          button.textContent = preview && result.updated.length
+            ? `Apply: update ${result.updated.length} phone${result.updated.length === 1 ? '' : 's'}`
+            : preview ? 'Check the list' : 'Check another list';
           document.getElementById('phone-import-result').innerHTML = `
             <div class="notice ${result.unknown.length ? 'warning' : ''} stack-top">
-              <strong>${result.updated.length} number${result.updated.length === 1 ? '' : 's'} saved.</strong>
-              <span>${result.noPhone.length ? `${result.noPhone.length} line${result.noPhone.length === 1 ? '' : 's'} had no number on ${result.noPhone.length === 1 ? 'it' : 'them'}. ` : ''}${result.unknown.length ? `${result.unknown.length} did not match a student.` : 'Everything matched.'}</span>
+              <strong>${result.updated.length} number${result.updated.length === 1 ? '' : 's'} ${result.preview ? 'to save' : 'saved'}${result.unchanged?.length ? `, ${result.unchanged.length} already up to date` : ''}.</strong>
+              <span>${result.noPhone.length ? `${result.noPhone.length} line${result.noPhone.length === 1 ? '' : 's'} had no number on ${result.noPhone.length === 1 ? 'it' : 'them'}. ` : ''}${result.unknown.length ? `${result.unknown.length} did not match a student.` : 'Everything matched.'}${result.preview && result.updated.length ? ' Nothing is written yet: press Apply.' : ''}</span>
             </div>
             ${result.unknown.length ? `<div class="card table-wrap stack-top"><table class="data-table compact"><thead><tr><th>Line</th><th>Why</th></tr></thead><tbody>
               ${result.unknown.map((row) => `<tr><td>${escapeHtml(row.line.slice(0, 80))}</td><td>${escapeHtml(row.why)}</td></tr>`).join('')}
             </tbody></table></div>` : ''}`;
           button.disabled = false;
-          button.textContent = 'Import again';
           await loadAdmin();
         } catch (error) {
           button.disabled = false;
