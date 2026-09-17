@@ -76,3 +76,40 @@ test('each side gets a hand-off for its own role only', () => {
   // And the student banner only offers the room when the portal has one.
   assert.match(student, /liveClassroom: liveConfigured\(\)/);
 });
+
+/* Practice lessons: a studio lesson shown as a course lesson. */
+const { detectVideoProvider, parseVideoSource, videoSource, VIDEO_PROVIDERS } = await import('../src/lessonvideo.js');
+
+test('a studio share link is read as a practice lesson, whatever host the live app is on', () => {
+  assert.equal(detectVideoProvider('http://localhost:3211/lesson.html?id=c96313c8a944'), 'practice');
+  assert.equal(detectVideoProvider('https://live.gaeilgeoirguides.com/lesson.html?id=C96313C8A944&embed=1'), 'practice');
+  assert.equal(detectVideoProvider('https://live.gaeilgeoirguides.com/lesson.html'), null);
+  assert.equal(detectVideoProvider('https://zoom.us/rec/share/abc'), 'zoom');
+});
+
+test('a practice ref is the studio lesson id, from a link or bare', () => {
+  assert.deepEqual(parseVideoSource('practice', 'http://localhost:3211/lesson.html?id=c96313c8a944'), { provider: 'practice', ref: 'c96313c8a944' });
+  assert.deepEqual(parseVideoSource('practice', 'C96313C8A944'), { provider: 'practice', ref: 'c96313c8a944' });
+  assert.equal(parseVideoSource('practice', 'not a lesson'), null);
+  assert.equal(parseVideoSource('practice', 'http://localhost:3211/lesson.html'), null);
+});
+
+test('a practice lesson is a player the page has to ask for, not a URL', () => {
+  assert.deepEqual(videoSource({ video_provider: 'practice', video_ref: 'c96313c8a944' }), { type: 'practice', provider: 'practice', ref: 'c96313c8a944' });
+  assert.ok(VIDEO_PROVIDERS.includes('practice'));
+});
+
+test('the migration and the code agree on the list of hosts', () => {
+  const sql = fs.readFileSync(new URL('../migrations/048_practice_lessons.sql', import.meta.url), 'utf8');
+  for (const provider of VIDEO_PROVIDERS) assert.ok(sql.includes(`'${provider}'`), provider);
+});
+
+test('the player address carries the lesson, embed mode and the hand-off', async () => {
+  const { practiceUrl, signHandoff } = await import('../src/live.js');
+  const url = new URL(practiceUrl('c96313c8a944', signHandoff({ sub: 'a@b.ie', role: 'student' })));
+  assert.equal(url.origin, 'http://live.test');
+  assert.equal(url.pathname, '/lesson.html');
+  assert.equal(url.searchParams.get('id'), 'c96313c8a944');
+  assert.equal(url.searchParams.get('embed'), '1');
+  assert.equal(url.searchParams.get('handoff').split('.').length, 3);
+});

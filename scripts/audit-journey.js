@@ -287,6 +287,22 @@ try {
           { method: 'PATCH', body: { title: 'Zoom class, renamed' } }),
           (d) => d?.video_passcode === 'Aud1t?Pass');
       }
+      /* A practice lesson: the studio's player inside the course. The ref is a
+         studio lesson id; the address a viewer gets is signed for them. */
+      const practice = expectOk('add a practice lesson from a studio share link', await admin.call(
+        `/api/admin/modules/${made.moduleId}/lessons`,
+        { method: 'POST', body: { title: 'Say it: greetings', video: 'http://localhost:3211/lesson.html?id=c96313c8a944', published: true } }),
+        (body) => body?.video_provider === 'practice' && body?.video_ref === 'c96313c8a944');
+      made.practiceLessonId = practice?.id;
+      if (made.practiceLessonId) {
+        expectOk('an administrator gets a signed player address for it', await admin.call(`/api/admin/lessons/${made.practiceLessonId}/practice`),
+          (body) => /lesson\.html\?id=c96313c8a944&embed=1&handoff=/.test(body?.url || ''));
+        expectStatus('but not for a lesson that is a recording', await admin.call(`/api/admin/lessons/${lesson.id}/practice`), 404);
+        expectStatus('a practice lesson without a studio id is refused', await admin.call(
+          `/api/admin/modules/${made.moduleId}/lessons`,
+          { method: 'POST', body: { title: 'Nothing', videoProvider: 'practice', video: 'not-a-lesson', published: true } }), 400);
+      }
+      expectGraceful('the studio’s lessons are listed for the editor', await admin.call('/api/admin/live/practice-lessons'));
       made.lessonId = lesson?.id;
       if (made.lessonId) {
         expectOk('edit the lesson', await admin.call(`/api/admin/lessons/${made.lessonId}`,
@@ -945,6 +961,12 @@ try {
     /* Into the live classroom: a signed doorway naming them and their class,
        as a student, five minutes long. The live room verifies it on its side. */
     const decodeHandoff = (url) => JSON.parse(Buffer.from(new URL(url).searchParams.get('handoff').split('.')[1], 'base64url').toString());
+    if (made.practiceLessonId) {
+      expectOk('the student gets their own signed player address for a practice lesson',
+        await student.call(`/api/student/lessons/${made.practiceLessonId}/practice`),
+        (body) => /embed=1&handoff=/.test(body?.url || ''));
+      expectStatus('and not for a recording', await student.call(`/api/student/lessons/${made.lessonId}/practice`), 404);
+    }
     const mine = await student.call('/api/student/live/handoff');
     if (mine.status === 503) {
       expect('the student is told plainly when the live room is not switched on', /not switched on/.test(mine.data?.error || ''), mine.data?.error);

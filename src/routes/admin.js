@@ -28,7 +28,7 @@ import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, cours
 import { addTopic, coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, removeTopic,
   reorderWeek, scheduleTopic, setItemDone, setTopicGroup, topicCost, unscheduleItem } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
-import { liveConfig, liveConfigured, signHandoff } from '../live.js';
+import { liveConfig, liveConfigured, signHandoff, liveFetch, practiceUrl } from '../live.js';
 import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashText, isStandIn,
   providerName, renderStory, ttsConfigured } from '../tts.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
@@ -2094,6 +2094,24 @@ router.get('/live/handoff', asyncRoute(async (req, res) => {
   const token = signHandoff({ sub: req.user.email, name: req.user.name, cid: req.user.id, role: 'admin', classId: klass?.id || null }, { minutes: 30 });
   const page = String(req.query.page || 'teacher') === 'studio' ? 'studio.html' : 'teacher.html';
   res.json({ url: `${liveConfig.url}/${page}?handoff=${encodeURIComponent(token)}`, classId: klass?.id || null });
+}));
+
+/* The studio's lessons, by name, for the lesson editor's picker. */
+router.get('/live/practice-lessons', asyncRoute(async (_req, res) => {
+  const lessons = await liveFetch('/api/portal/lessons');
+  res.json({ lessons: Array.isArray(lessons) ? lessons : [] });
+}));
+
+/* The same player address a student gets, for an administrator previewing a
+   course. Thirty minutes, like the teacher console. */
+router.get('/lessons/:id/practice', asyncRoute(async (req, res) => {
+  if (!liveConfigured()) return res.status(503).json({ error: 'Practice lessons are not switched on for this portal yet.' });
+  const lesson = await one('SELECT video_provider, video_ref FROM course_lessons WHERE id=$1', [req.params.id]);
+  if (lesson?.video_provider !== 'practice' || !lesson.video_ref) {
+    return res.status(404).json({ error: 'This lesson is not a practice lesson.' });
+  }
+  const token = signHandoff({ sub: req.user.email, name: req.user.name, cid: req.user.id, role: 'admin', lessonId: req.params.id }, { minutes: 30 });
+  res.json({ url: practiceUrl(lesson.video_ref, token) });
 }));
 
 router.delete('/assignments/:id', asyncRoute(async (req, res) => {

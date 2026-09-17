@@ -81,3 +81,30 @@ export function classForLive(row) {
     joinUrl: row.join_url || null,
   };
 }
+
+/**
+ * Ask the live app something, server to server, with the shared token.
+ * Six seconds is plenty for a list of lessons and short enough that a live
+ * app that is down does not hold a course page open.
+ */
+export async function liveFetch(pathname) {
+  if (!liveConfigured() || !liveConfig.entitlementsToken) {
+    throw Object.assign(new Error('The live classroom is not switched on for this portal yet.'), { status: 503 });
+  }
+  let res;
+  try {
+    res = await fetch(`${liveConfig.url}${pathname}`, {
+      headers: { authorization: `Bearer ${liveConfig.entitlementsToken}` },
+      signal: AbortSignal.timeout(6000),
+    });
+  } catch {
+    throw Object.assign(new Error('The live classroom did not answer.'), { status: 502 });
+  }
+  if (!res.ok) throw Object.assign(new Error('The live classroom did not answer.'), { status: 502 });
+  return res.json();
+}
+
+/** Where a practice lesson plays: the live app's player, embedded, with a hand-off naming the viewer. */
+export function practiceUrl(ref, token) {
+  return `${liveConfig.url}/lesson.html?id=${encodeURIComponent(ref)}&embed=1&handoff=${encodeURIComponent(token)}`;
+}

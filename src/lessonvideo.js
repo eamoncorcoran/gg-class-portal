@@ -11,7 +11,7 @@
  * into something the browser can play.
  */
 
-export const VIDEO_PROVIDERS = Object.freeze(['bunny', 'youtube', 'loom', 'zoom', 'mp4']);
+export const VIDEO_PROVIDERS = Object.freeze(['bunny', 'youtube', 'loom', 'zoom', 'mp4', 'practice']);
 
 export const PROVIDER_LABELS = Object.freeze({
   bunny: 'Bunny Stream',
@@ -19,7 +19,11 @@ export const PROVIDER_LABELS = Object.freeze({
   loom: 'Loom',
   zoom: 'Zoom recording',
   mp4: 'Uploaded file',
+  practice: 'Practice lesson',
 });
+
+/* A studio lesson id: short hex, as the live classroom app mints them. */
+const PRACTICE_REF = /^[a-f0-9]{6,40}$/i;
 
 /* Bunny embeds are library id + video id. Everything else is a single id or a
    path we serve ourselves. */
@@ -42,6 +46,12 @@ export function detectVideoProvider(value) {
   let host = '';
   try { host = new URL(raw).hostname.toLowerCase(); } catch { host = ''; }
 
+  /* The studio's share link, whatever host the live app is on: what marks it
+     is the player page and its lesson id, not the domain. */
+  try {
+    const url = new URL(raw);
+    if (/\/lesson\.html$/.test(url.pathname) && PRACTICE_REF.test(url.searchParams.get('id') || '')) return 'practice';
+  } catch { /* not a URL */ }
   if (/(^|\.)zoom\.us$/.test(host)) return 'zoom';
   if (/(^|\.)(youtube\.com|youtu\.be)$/.test(host)) return 'youtube';
   if (/(^|\.)loom\.com$/.test(host)) return 'loom';
@@ -60,6 +70,11 @@ export function parseVideoSource(provider, input) {
   const value = String(input || '').trim();
   if (!value || !VIDEO_PROVIDERS.includes(provider)) return null;
 
+  if (provider === 'practice') {
+    let id = value;
+    try { id = new URL(value).searchParams.get('id') || ''; } catch { /* a bare id */ }
+    return PRACTICE_REF.test(id) ? { provider, ref: id.toLowerCase() } : null;
+  }
   if (provider === 'youtube') {
     const id = value.match(/(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1]
       || (/^[a-zA-Z0-9_-]{6,}$/.test(value) ? value : null);
@@ -109,6 +124,10 @@ export function videoSource(lesson, { signBunny = null } = {}) {
   const ref = lesson?.video_ref;
   if (!provider || !ref) return null;
 
+  /* Played by the live classroom app, which needs to know who is watching:
+     the page asks for a signed address at the moment it is shown, so nothing
+     here is a URL yet. */
+  if (provider === 'practice') return { type: 'practice', provider, ref };
   if (provider === 'youtube') {
     // nocookie, so a course page is not setting advertising cookies on students.
     return { type: 'iframe', provider, src: `https://www.youtube-nocookie.com/embed/${ref}` };

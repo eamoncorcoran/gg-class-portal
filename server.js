@@ -66,7 +66,9 @@ app.use(helmet({
       // setting advertising cookies on students.
       frameSrc: ["'self'", 'https://www.loom.com', 'https://loom.com',
         'https://www.youtube-nocookie.com', 'https://www.youtube.com',
-        'https://*.leadconnectorhq.com', 'https://challenges.cloudflare.com'],
+        'https://*.leadconnectorhq.com', 'https://challenges.cloudflare.com',
+        // The live classroom's practice player, inside a course page.
+        ...(process.env.LIVE_URL ? [process.env.LIVE_URL.replace(/\/+$/, '')] : [])],
       mediaSrc: ["'self'", 'blob:', 'https:'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],

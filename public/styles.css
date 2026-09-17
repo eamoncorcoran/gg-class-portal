@@ -1147,6 +1147,8 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .cc-cover span{color:#fff;font-size:27px;font-weight:700;letter-spacing:-.04em;opacity:.9}
 .cc-draft{position:absolute;top:10px;left:10px;padding:3px 8px;border-radius:999px;background:rgba(16,24,40,.72);
   color:#fff;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.cc-tag{position:absolute;bottom:10px;left:10px;padding:3px 8px;border-radius:999px;background:var(--brand-600);
+  color:#fff;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 .cc-body{padding:15px 16px 17px}
 .cc-body h3{margin:0 0 5px;font-size:15.5px;font-weight:680;letter-spacing:-.025em}
 .cc-body p{margin:0;color:var(--text-tertiary);font-size:12.5px;line-height:1.5;
@@ -1166,6 +1168,11 @@ details.leaving summary:hover{color:var(--text-secondary)}
 .lp-frame{position:relative;padding-top:56.25%;border-radius:var(--radius-lg);overflow:hidden;background:#000;
   box-shadow:var(--shadow-md)}
 .lp-frame iframe,.lp-frame video{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+/* The practice player carries its own phrase list beside the video, so it is
+   taller than a 16:9 recording and light rather than black. */
+.lp-frame.lp-practice{padding-top:0;height:min(82vh,900px);background:var(--gray-50)}
+.lp-frame.lp-practice iframe{background:var(--gray-50)}
+.lp-practice-wait{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-tertiary);font-size:13.5px;font-weight:600;pointer-events:none}
 .lp-empty{display:grid;place-items:center;align-content:center;gap:4px;aspect-ratio:16/9;border-radius:var(--radius-lg);
   border:1px dashed var(--border-strong);background:var(--gray-50);color:var(--text-tertiary);text-align:center;padding:20px}
 .lp-empty strong{font-size:14px;font-weight:670;color:var(--text-secondary)}

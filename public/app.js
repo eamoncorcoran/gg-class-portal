@@ -2591,6 +2591,7 @@ function courseCard(course) {
     <div class="cc-cover" ${course.cover_url ? `style="background-image:url('${escapeHtml(course.cover_url)}')"` : ''}>
       ${course.cover_url ? '' : `<span>${escapeHtml(initials(course.title))}</span>`}
       ${course.published === false ? '<b class="cc-draft">Draft</b>' : ''}
+      ${course.on_demand ? '<b class="cc-tag">On-Demand</b>' : ''}
       ${isAdmin() ? `<button type="button" class="cc-menu" data-course-menu="${course.id}"
         aria-label="Manage ${escapeHtml(course.title)}" title="Manage this course">${svg.dots}</button>` : ''}
     </div>
@@ -3315,6 +3316,16 @@ function lessonPlayer(lesson) {
       <a class="btn primary" href="${escapeHtml(lesson.video.src)}" target="_blank" rel="noopener noreferrer">${svg.play} Watch the recording</a>
     </div>`;
   }
+  /* A practice lesson is the live classroom's player inside this page. Its
+     address is asked for when the lesson is opened, because it names the
+     viewer; the frame gets its src from bindCourse. */
+  if (lesson.video.type === 'practice') {
+    return `<div class="lp-frame lp-practice">
+      <iframe id="practice-frame" data-lesson="${lesson.id}" title="${escapeHtml(lesson.title)}"
+        allow="microphone; autoplay; fullscreen" allowfullscreen></iframe>
+      <div class="lp-practice-wait" id="practice-wait">Opening the practice lesson</div>
+    </div>`;
+  }
   if (lesson.video.type === 'iframe') {
     return `<div class="lp-frame"><iframe src="${escapeHtml(lesson.video.src)}"
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
@@ -3335,7 +3346,7 @@ function lessonRow(lesson, index, active, place = null) {
       <span class="ll-tick">${lesson.completed ? svg.tick : `<i>${index}</i>`}</span>
       <span class="ll-copy">
         <strong>${escapeHtml(lesson.title)}</strong>
-        <span>${lesson.durationLabel ? escapeHtml(lesson.durationLabel) : ''}${lesson.published === false ? ' · Draft' : ''}</span>
+        <span>${lesson.durationLabel ? escapeHtml(lesson.durationLabel) : ''}${lesson.practice ? `${lesson.durationLabel ? ' · ' : ''}Practice` : ''}${lesson.published === false ? ' · Draft' : ''}</span>
       </span>
     </button>
     ${admin && place ? `<button class="ll-menu" data-lesson-menu="${lesson.id}"
@@ -3418,6 +3429,39 @@ function coursePage() {
   </div>`;
 }
 
+/* The practice player reports how many phrases are done. Saying all of them is
+   what finishing a practice lesson means, so it ticks itself, the way a
+   recording does at ninety percent. Bound once; the frame comes and goes. */
+let practiceListening = false;
+function listenToPractice() {
+  if (practiceListening) return;
+  practiceListening = true;
+  window.addEventListener('message', async (event) => {
+    if (!state.practiceOrigin || event.origin !== state.practiceOrigin) return;
+    const msg = event.data;
+    if (!msg || msg.source !== 'gglive' || msg.type !== 'progress' || !msg.complete) return;
+    const lesson = currentLesson();
+    if (!lesson || lesson.completed || isAdmin() || !document.getElementById('practice-frame')) return;
+    try {
+      await api(`/api/student/lessons/${lesson.id}/progress`, { method: 'POST', body: { completed: true } });
+    } catch { return; }
+    /* Re-read for the tick in the contents list, without touching the frame:
+       replacing it would restart the video the student has just finished. */
+    const fresh = await api(`/api/student/courses/${state.course.id}`).catch(() => null);
+    if (fresh) {
+      state.course = fresh.course || fresh;
+      document.querySelectorAll('.ll[data-open-lesson]').forEach((row) => {
+        if (row.dataset.openLesson === lesson.id) { row.classList.add('done'); row.querySelector('.ll-tick').innerHTML = svg.tick; }
+      });
+      const button = document.getElementById('toggle-complete');
+      if (button) { button.className = 'btn is-done'; button.dataset.done = 'true'; button.innerHTML = `${svg.tick} Completed`; }
+      const count = document.querySelector('.lc-head span');
+      if (count) count.textContent = `${state.course.completedCount} of ${state.course.lessonCount} done`;
+      showToast('Lesson complete');
+    }
+  });
+}
+
 function bindCourse() {
   document.querySelectorAll('[data-open-course]').forEach((card) =>
     card.addEventListener('click', () => openCourse(card.dataset.openCourse)));
@@ -3445,6 +3489,28 @@ function bindCourse() {
     await openCourse(state.course.id, state.lessonId);
     showToast(done ? 'Marked as not complete' : 'Marked as complete');
   });
+
+  const frame = document.getElementById('practice-frame');
+  if (frame) {
+    const wait = document.getElementById('practice-wait');
+    const where = isAdmin()
+      ? `/api/admin/lessons/${frame.dataset.lesson}/practice`
+      : `/api/student/lessons/${frame.dataset.lesson}/practice`;
+    /* The course page is drawn several times as it opens, and each drawing
+       would otherwise mint a fresh hand-off. One address per lesson, kept for
+       a couple of minutes: well inside the hand-off's life. */
+    state.practiceUrls ||= {};
+    const kept = state.practiceUrls[frame.dataset.lesson];
+    if (!kept || Date.now() - kept.at > 2 * 60 * 1000) {
+      state.practiceUrls[frame.dataset.lesson] = { at: Date.now(), address: api(where) };
+    }
+    state.practiceUrls[frame.dataset.lesson].address.then(({ url }) => {
+      state.practiceOrigin = new URL(url).origin;
+      frame.addEventListener('load', () => wait?.remove(), { once: true });
+      frame.src = url;
+    }).catch((error) => { if (wait) wait.textContent = error.message; });
+    listenToPractice();
+  }
 
   /* Watching most of it is what finishing a lesson means, so it ticks itself.
      The button stays for anybody who wants to mark it early or undo it. */
@@ -4096,6 +4162,7 @@ function openLessonModal(moduleId, lesson = null) {
     ['loom', 'Loom'],
     ['zoom', 'Zoom recording'],
     ['mp4', 'A file on this server'],
+    ['practice', 'Practice lesson, from the studio'],
   ];
   const minutes = lesson?.durationSeconds ? Math.round(lesson.durationSeconds / 60) : '';
   modal({
@@ -4113,8 +4180,13 @@ function openLessonModal(moduleId, lesson = null) {
         <div class="form-field"><label>Length in minutes</label><input name="minutes" type="number" min="0" value="${minutes}"></div>
         <div class="form-field"><label>Recorded on</label><input name="recordedOn" type="date" value="${lesson?.recordedOn ? String(lesson.recordedOn).slice(0, 10) : ''}"></div>
       </div>
-      <div class="form-field"><label>Link or id</label>
-        <input name="video" value="${escapeHtml(lesson?.videoRef || '')}" placeholder="Paste the share link">
+      <div class="form-field" id="lesson-practice-field" ${lesson?.videoProvider === 'practice' ? '' : 'hidden'}>
+        <label>Practice lesson</label>
+        <select name="practiceLesson"><option value="">Looking in the studio</option></select>
+        <p class="muted small">A video with phrases the student says aloud, built in the studio. The student sees it here, in this course, with a mic under the video. <button type="button" class="btn small" id="open-studio">Open the studio</button></p>
+      </div>
+      <div class="form-field" id="lesson-link-field" ${lesson?.videoProvider === 'practice' ? 'hidden' : ''}><label>Link or id</label>
+        <input name="video" value="${escapeHtml(lesson?.videoProvider === 'practice' ? '' : (lesson?.videoRef || ''))}" placeholder="Paste the share link">
         <p class="muted small">A whole link or a bare id, whichever you have. A Zoom recording opens on Zoom rather than playing here — Zoom does not allow its recordings to play inside another site — so students get a button that takes them to it.</p>
       </div>
       <div class="form-field" id="lesson-passcode-field" ${lesson?.videoProvider === 'zoom' ? '' : 'hidden'}>
@@ -4130,8 +4202,40 @@ function openLessonModal(moduleId, lesson = null) {
       const providerPick = document.querySelector('#lesson-form [name="videoProvider"]');
       const linkBox = document.querySelector('#lesson-form [name="video"]');
       const passcodeField = document.getElementById('lesson-passcode-field');
-      const syncPasscode = () => { passcodeField.hidden = providerPick.value !== 'zoom'; };
+      const practiceField = document.getElementById('lesson-practice-field');
+      const linkField = document.getElementById('lesson-link-field');
+      const practicePick = document.querySelector('#lesson-form [name="practiceLesson"]');
+      let studioLoaded = false;
+      /* The studio's lessons, fetched the first time they are wanted rather than
+         for every lesson edited, most of which are recordings. */
+      const loadStudio = async () => {
+        if (studioLoaded) return;
+        studioLoaded = true;
+        try {
+          const { lessons } = await api('/api/admin/live/practice-lessons');
+          const current = lesson?.videoProvider === 'practice' ? lesson.videoRef : '';
+          practicePick.innerHTML = `<option value="">Choose a lesson</option>${(lessons || []).map((item) =>
+            `<option value="${escapeHtml(item.id)}" ${item.id === current ? 'selected' : ''}>${escapeHtml(item.title)}${item.course ? ` (${escapeHtml(item.course)})` : ''} · ${item.phrases} phrase${item.phrases === 1 ? '' : 's'}</option>`).join('')}`;
+          if (!(lessons || []).length) practicePick.innerHTML = '<option value="">Nothing in the studio yet</option>';
+        } catch (error) {
+          practicePick.innerHTML = `<option value="">${escapeHtml(error.message)}</option>`;
+        }
+      };
+      const syncPasscode = () => {
+        passcodeField.hidden = providerPick.value !== 'zoom';
+        const practice = providerPick.value === 'practice';
+        practiceField.hidden = !practice;
+        linkField.hidden = practice;
+        if (practice) loadStudio();
+      };
       providerPick?.addEventListener('change', syncPasscode);
+      if (lesson?.videoProvider === 'practice') loadStudio();
+      document.getElementById('open-studio')?.addEventListener('click', async () => {
+        try {
+          const { url } = await api('/api/admin/live/handoff?page=studio');
+          window.open(url, '_blank', 'noopener');
+        } catch (error) { showToast(error.message, 'error'); }
+      });
 
       /* The host is read off the link as it is pasted, so the dropdown shows
          what will be saved rather than the person having to tell the software
@@ -4155,13 +4259,16 @@ function openLessonModal(moduleId, lesson = null) {
           title: String(data.get('title') || '').trim(),
           notes: String(data.get('notes') || '').trim(),
           videoProvider: data.get('videoProvider') || null,
-          video: String(data.get('video') || '').trim() || null,
+          video: data.get('videoProvider') === 'practice'
+            ? (String(data.get('practiceLesson') || '').trim() || null)
+            : (String(data.get('video') || '').trim() || null),
           durationSeconds: data.get('minutes') ? Number(data.get('minutes')) * 60 : null,
           recordedOn: data.get('recordedOn') || null,
           videoPasscode: String(data.get('videoPasscode') || '').trim() || null,
           published: form.published.checked,
         };
         if (!body.title) return showToast('Give the lesson a title.', 'error');
+        if (body.videoProvider === 'practice' && !body.video) return showToast('Choose which studio lesson this is.', 'error');
         try {
           if (lesson) await api(`/api/admin/lessons/${lesson.id}`, { method: 'PATCH', body });
           else await api(`/api/admin/modules/${moduleId}/lessons`, { method: 'POST', body });

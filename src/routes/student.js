@@ -23,7 +23,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
-import { liveConfig, liveConfigured, signHandoff } from '../live.js';
+import { liveConfig, liveConfigured, signHandoff, practiceUrl } from '../live.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 
@@ -601,6 +601,24 @@ router.get('/live/handoff', asyncRoute(async (req, res) => {
   if (!klass) return res.status(404).json({ error: 'You are not in a class yet.' });
   const token = signHandoff({ sub: req.user.email, name: req.user.name, cid: req.user.id, classId: klass.id, role: 'student' });
   res.json({ url: `${liveConfig.url}/?handoff=${encodeURIComponent(token)}`, classId: klass.id });
+}));
+
+/* Where a practice lesson plays for this student. The course page asks at the
+   moment the lesson is opened, so the hand-off is minted for the viewer and
+   lives minutes, not the life of the page. */
+router.get('/lessons/:id/practice', asyncRoute(async (req, res) => {
+  if (await refuseIfWithdrawn(req, res)) return;
+  if (!liveConfigured()) return res.status(503).json({ error: 'Practice lessons are not switched on for this portal yet.' });
+  const klass = await studentClass(req.user.id);
+  if (!(await studentCanSeeLesson({ lessonId: req.params.id, classId: klass?.id || null }))) {
+    return res.status(404).json({ error: 'Lesson not found.' });
+  }
+  const lesson = await one('SELECT video_provider, video_ref FROM course_lessons WHERE id=$1', [req.params.id]);
+  if (lesson?.video_provider !== 'practice' || !lesson.video_ref) {
+    return res.status(404).json({ error: 'This lesson is not a practice lesson.' });
+  }
+  const token = signHandoff({ sub: req.user.email, name: req.user.name, cid: req.user.id, classId: klass?.id || null, role: 'student', lessonId: req.params.id });
+  res.json({ url: practiceUrl(lesson.video_ref, token) });
 }));
 
 router.get('/calendar-feed', asyncRoute(async (req, res) => {

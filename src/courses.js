@@ -27,7 +27,12 @@ export async function listCoursesForStudent({ studentId, classId }) {
             (SELECT count(*)::int FROM lesson_progress p
                JOIN course_lessons l ON l.id=p.lesson_id
                JOIN course_modules m ON m.id=l.module_id
-              WHERE m.course_id=c.id AND l.published=true AND p.student_id=$1) completed_count
+              WHERE m.course_id=c.id AND l.published=true AND p.student_id=$1) completed_count,
+            /* On demand: at least one practice lesson, a video the student works
+               through with the mic rather than a recording of a class. */
+            EXISTS (SELECT 1 FROM course_lessons l
+               JOIN course_modules m ON m.id=l.module_id
+              WHERE m.course_id=c.id AND l.video_provider='practice' AND l.published=true) on_demand
      FROM courses c
      WHERE c.published=true
        AND (c.open_to_all = true
@@ -45,6 +50,11 @@ export async function listCoursesForAdmin() {
             (SELECT count(*)::int FROM course_lessons l
                JOIN course_modules m ON m.id=l.module_id WHERE m.course_id=c.id) lesson_count,
             (SELECT count(*)::int FROM course_modules m WHERE m.course_id=c.id) module_count,
+            /* On demand: at least one practice lesson, a video the student works
+               through with the mic rather than a recording of a class. */
+            EXISTS (SELECT 1 FROM course_lessons l
+               JOIN course_modules m ON m.id=l.module_id
+              WHERE m.course_id=c.id AND l.video_provider='practice') on_demand,
             COALESCE((SELECT json_agg(jsonb_build_object('id',k.id,
                         'programme_name',k.programme_name,'day_of_week',k.day_of_week,
                         'start_time',k.start_time))
@@ -119,6 +129,7 @@ export async function getCourse({ courseId, viewerId, classId, isAdmin = false }
       completed: Boolean(row.completed),
       lastPositionSeconds: row.last_position_seconds || 0,
       attachments: row.attachments,
+      practice: row.video_provider === 'practice',
       /* Signed here, at read time, so every student gets their own short-lived
          playback URL rather than one shared address sitting in the database. */
       video: videoSource(row, {
