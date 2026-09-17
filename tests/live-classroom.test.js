@@ -3,95 +3,125 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 
-/* The live classroom, from the portal's side.
+/* The live classroom, inside the portal.
    ------------------------------------------------------------------
-   The live room is its own service. Three things cross the gap: a signed
-   hand-off saying who a person is and which class, an entitlements lookup
-   answered in class ids, and the webinar read out of each class's Zoom link.
-   What is guarded here is that each of those is exactly as tight as it looks. */
+   The room, the console and the studio are pages of this site behind the
+   portal's own session. What is guarded here is the shape of the things that
+   matter: the webinar read out of a class's Zoom link, a Zoom signature that
+   is only ever an attendee's, the router being session-only, and a studio
+   lesson filed as a course lesson. */
 
-process.env.LIVE_URL = 'http://live.test';
-process.env.LIVE_HANDOFF_SECRET = 'test-secret';
-process.env.LIVE_ENTITLEMENTS_TOKEN = 'test-bearer';
-const live = await import('../src/live.js');
+process.env.ZOOM_CLIENT_ID = 'test-client';
+process.env.ZOOM_CLIENT_SECRET = 'test-secret';
+const { parseWebinar, classForLive } = await import('../src/live/classes.js');
+const { signZoom, zoomConfigured } = await import('../src/live/zoom.js');
+const routes = fs.readFileSync(new URL('../src/routes/live.js', import.meta.url), 'utf8');
 const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const student = fs.readFileSync(new URL('../src/routes/student.js', import.meta.url), 'utf8');
 const admin = fs.readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
-const routes = fs.readFileSync(new URL('../src/routes/live.js', import.meta.url), 'utf8');
 
 test('the webinar is read out of the class link, whichever way Zoom wrote it', () => {
-  assert.deepEqual(live.parseWebinar('https://us02web.zoom.us/w/84218712491?pwd=abc123'), { webinarId: '84218712491', webinarPwd: 'abc123' });
-  assert.deepEqual(live.parseWebinar('https://zoom.us/j/842 1871 2491'), { webinarId: '84218712491', webinarPwd: '' });
+  assert.deepEqual(parseWebinar('https://us02web.zoom.us/w/84218712491?pwd=abc123'), { webinarId: '84218712491', webinarPwd: 'abc123' });
+  assert.deepEqual(parseWebinar('https://zoom.us/j/842 1871 2491'), { webinarId: '84218712491', webinarPwd: '' });
   // The passcode is often in the note students are shown, not the link.
-  assert.deepEqual(live.parseWebinar('https://zoom.us/w/84218712491', '7pm Irish · Passcode: 975967'), { webinarId: '84218712491', webinarPwd: '975967' });
+  assert.deepEqual(parseWebinar('https://zoom.us/w/84218712491', '7pm Irish · Passcode: 975967'), { webinarId: '84218712491', webinarPwd: '975967' });
   // The link wins over the note when both carry one.
-  assert.equal(live.parseWebinar('https://zoom.us/w/84218712491?pwd=fromlink', 'Passcode: fromnote').webinarPwd, 'fromlink');
-  assert.deepEqual(live.parseWebinar(null), { webinarId: null, webinarPwd: '' });
-  assert.deepEqual(live.parseWebinar('https://example.com/not-zoom'), { webinarId: null, webinarPwd: '' });
+  assert.equal(parseWebinar('https://zoom.us/w/84218712491?pwd=fromlink', 'Passcode: fromnote').webinarPwd, 'fromlink');
+  assert.deepEqual(parseWebinar(null), { webinarId: null, webinarPwd: '' });
+  assert.deepEqual(parseWebinar('https://example.com/not-zoom'), { webinarId: null, webinarPwd: '' });
+  assert.equal(classForLive(null), null);
+  assert.equal(classForLive({ id: 'c', programme_name: 'Irish', day_of_week: 4, start_time: '19:00:00', join_url: 'https://zoom.us/w/84218712491' }).label, 'Irish | Thursday | 19:00');
 });
 
-test('a hand-off is a short HS256 JWT the live room can verify', () => {
-  const token = live.signHandoff({ sub: 'a@b.ie', name: 'Aoife', cid: 'u1', classId: 'c1', role: 'student' });
+test('a Zoom signature is HS256, for that webinar, and never anything but attendee role 0', () => {
+  assert.ok(zoomConfigured());
+  const token = signZoom('842 1871 2491');
   const [h, b, sig] = token.split('.');
   assert.deepEqual(JSON.parse(Buffer.from(h, 'base64url')), { alg: 'HS256', typ: 'JWT' });
   const claims = JSON.parse(Buffer.from(b, 'base64url'));
-  assert.equal(claims.iss, 'gg-portal');
-  assert.equal(claims.exp - claims.iat, 300, 'a doorway, not a session: five minutes');
-  assert.equal(claims.role, 'student');
-  // The same signature jsonwebtoken would compute with the shared secret.
-  const expected = crypto.createHmac('sha256', 'test-secret').update(`${h}.${b}`).digest('base64url');
-  assert.equal(sig, expected);
-  assert.equal(live.signHandoff({ sub: 'x' }, { minutes: 30 }).split('.').length, 3);
+  assert.equal(claims.mn, '84218712491');
+  assert.equal(claims.role, 0);
+  assert.equal(claims.appKey, 'test-client');
+  assert.equal(claims.sdkKey, 'test-client');
+  assert.equal(claims.exp - claims.iat, 3 * 60 * 60);
+  assert.equal(claims.tokenExp, claims.exp);
+  assert.equal(sig, crypto.createHmac('sha256', 'test-secret').update(`${h}.${b}`).digest('base64url'));
+  assert.throws(() => signZoom('12'), /valid webinar/);
+  // The role is not a parameter: there is no way to ask for a host signature.
+  assert.equal(signZoom.length, 1);
 });
 
-test('the bearer check is exact, constant-time, and off when unset', () => {
-  const req = (v) => ({ get: () => v });
-  assert.equal(live.entitlementsBearerOk(req('Bearer test-bearer')), true);
-  assert.equal(live.entitlementsBearerOk(req('Bearer test-bearer2')), false);
-  assert.equal(live.entitlementsBearerOk(req('Bearer test-beare')), false);
-  assert.equal(live.entitlementsBearerOk(req('')), false);
-  assert.match(fs.readFileSync(new URL('../src/live.js', import.meta.url), 'utf8'), /crypto\.timingSafeEqual/);
-  // No token configured means nobody gets in, not everybody.
-  assert.match(fs.readFileSync(new URL('../src/live.js', import.meta.url), 'utf8'), /if \(!liveConfig\.entitlementsToken \|\| !given\) return false;/);
-});
-
-test('the live routes are bearer-only, mounted, and read-only', () => {
+test('the live router is behind the portal session, teacher routes behind the admin role', () => {
   assert.match(server, /app\.use\('\/api\/live', liveRoutes\);/);
-  assert.match(routes, /if \(!entitlementsBearerOk\(req\)\) return res\.status\(401\)/);
-  assert.doesNotMatch(routes, /INSERT|UPDATE|DELETE/, 'nothing the live room asks may write');
-  /* Entitlement is enrolment in an active class by an active, non-withdrawn
-     student. Ids go under `courses` because that is the live room's contract. */
-  assert.match(routes, /cs\.active=true AND c\.active=true/);
-  assert.match(routes, /u\.withdrawn_at IS NULL/);
-  assert.match(routes, /courses: classes\.map\(\(item\) => item\.id\)/);
+  assert.match(routes, /^router\.use\(requireAuth\);/m);
+  for (const path of ['/phrase', '/status', '/chat/reply', '/chat/read', '/chat/broadcast', '/chat/highlight', '/session', '/classes', '/courses', '/lessons', '/lessons/video']) {
+    assert.match(routes, new RegExp(`router\\.(get|post|delete)\\('${path.replace(/\//g, '\\/')}', requireAdmin`), path);
+  }
+  assert.match(routes, /router\.delete\('\/lessons\/:id', requireAdmin/);
+  /* What a student may do is also what the session gate says: the gate is one
+     function, and every student surface asks it. */
+  for (const path of ['/signature', '/phrase-stream', '/phrase-result', '/chat-stream', '/chat']) {
+    const at = routes.indexOf(`'${path}'`);
+    assert.ok(at > 0, path);
+    assert.match(routes.slice(at, at + 400), /room\.studentGate\(req\.user\)/, `${path} is not gated`);
+  }
+  assert.doesNotMatch(routes, /x-teacher-key|handoff|jsonwebtoken/, 'no shared key, no hand-off: the session is the identity');
 });
 
-test('each side gets a hand-off for its own role only', () => {
-  assert.match(student, /router\.get\('\/live\/handoff'/);
-  assert.match(student, /role: 'student'/);
-  assert.match(student, /refuseIfWithdrawn\(req, res\)/, 'a withdrawn student gets no doorway');
-  assert.match(admin, /router\.get\('\/live\/handoff'/);
-  assert.match(admin, /role: 'admin'/);
-  assert.match(admin, /\{ minutes: 30 \}/);
-  // And the student banner only offers the room when the portal has one.
-  assert.match(student, /liveClassroom: liveConfigured\(\)/);
+test('the live classroom pages are on this site and get their own policy', () => {
+  for (const page of ['room', 'teacher', 'studio', 'lesson']) {
+    const html = fs.readFileSync(new URL(`../public/live/${page}.html`, import.meta.url), 'utf8');
+    assert.doesNotMatch(html, /x-teacher-key|gglive_token|\/api\/session\/join|portal\.css|fonts\.googleapis/, page);
+    assert.match(html, /\/api\/live\//, page);
+  }
+  const practice = fs.readFileSync(new URL('../public/live/practice.js', import.meta.url), 'utf8');
+  assert.match(practice, /\/api\/live\/speech/);
+  assert.match(practice, /\/live\/scoring\.js/);
+  // Zoom's SDK, and only for /live: the portal's own policy stays as tight as it was.
+  assert.match(server, /app\.use\('\/live', \(req, res, next\) => \{/);
+  assert.match(server, /https:\/\/source\.zoom\.us/);
+  assert.match(server, /"frame-ancestors 'self'"/, 'the practice player is framed by the course page');
+  assert.doesNotMatch(server, /LIVE_URL/);
+});
+
+test('the practice player is same-origin and the portal asks its own session', () => {
+  assert.match(student, /url: `\/live\/lesson\.html\?id=\$\{encodeURIComponent\(lesson\.video_ref\)\}&embed=1`/);
+  assert.match(admin, /url: `\/live\/lesson\.html\?id=\$\{encodeURIComponent\(lesson\.video_ref\)\}&embed=1`/);
+  assert.match(student, /liveClassroom: zoomConfigured\(\)/);
+  assert.match(admin, /listLiveLessons\(\)/);
+  assert.doesNotMatch(student + admin, /signHandoff|liveFetch|practiceUrl/);
+});
+
+test('the speech socket is the only upgrade taken, and only with a session', () => {
+  const speech = fs.readFileSync(new URL('../src/live/speech.js', import.meta.url), 'utf8');
+  assert.match(speech, /if \(pathname !== SPEECH_PATH\) \{ socket\.destroy\(\); return; \}/);
+  assert.match(speech, /if \(!user\) \{ socket\.write\('HTTP\/1\.1 401 Unauthorized/);
+  assert.match(speech, /sessionTokenFromCookieHeader\(req\.headers\.cookie\)/);
+});
+
+test('a lesson id is short hex, phrases are cleaned and ordered', async () => {
+  const { cleanPhrases } = await import('../src/live/lessons.js');
+  const cleaned = cleanPhrases([{ at: 9, irish: ' Slán ' }, { at: 2, irish: 'Dia duit', english: 'Hello' }, { at: 1, irish: '' }, { at: -4, irish: 'x'.repeat(300) }]);
+  assert.deepEqual(cleaned.map((p) => p.irish), ['x'.repeat(200), 'Dia duit', 'Slán']);
+  assert.deepEqual(cleaned.map((p) => p.at), [0, 2, 9]);
+  assert.ok(cleaned.every((p) => p.id));
 });
 
 /* Practice lessons: a studio lesson shown as a course lesson. */
 const { detectVideoProvider, parseVideoSource, videoSource, VIDEO_PROVIDERS } = await import('../src/lessonvideo.js');
 
-test('a studio share link is read as a practice lesson, whatever host the live app is on', () => {
-  assert.equal(detectVideoProvider('http://localhost:3211/lesson.html?id=c96313c8a944'), 'practice');
-  assert.equal(detectVideoProvider('https://live.gaeilgeoirguides.com/lesson.html?id=C96313C8A944&embed=1'), 'practice');
-  assert.equal(detectVideoProvider('https://live.gaeilgeoirguides.com/lesson.html'), null);
+test('a studio player link is read as a practice lesson', () => {
+  assert.equal(detectVideoProvider('http://localhost:3111/live/lesson.html?id=c96313c8a944'), 'practice');
+  assert.equal(detectVideoProvider('https://hub.gaeilgeoirguides.com/live/lesson.html?id=C96313C8A944&embed=1'), 'practice');
+  assert.equal(detectVideoProvider('https://hub.gaeilgeoirguides.com/live/lesson.html'), null);
   assert.equal(detectVideoProvider('https://zoom.us/rec/share/abc'), 'zoom');
 });
 
 test('a practice ref is the studio lesson id, from a link or bare', () => {
-  assert.deepEqual(parseVideoSource('practice', 'http://localhost:3211/lesson.html?id=c96313c8a944'), { provider: 'practice', ref: 'c96313c8a944' });
+  assert.deepEqual(parseVideoSource('practice', 'http://localhost:3111/live/lesson.html?id=c96313c8a944'), { provider: 'practice', ref: 'c96313c8a944' });
   assert.deepEqual(parseVideoSource('practice', 'C96313C8A944'), { provider: 'practice', ref: 'c96313c8a944' });
   assert.equal(parseVideoSource('practice', 'not a lesson'), null);
-  assert.equal(parseVideoSource('practice', 'http://localhost:3211/lesson.html'), null);
+  assert.equal(parseVideoSource('practice', 'http://localhost:3111/live/lesson.html'), null);
 });
 
 test('a practice lesson is a player the page has to ask for, not a URL', () => {
@@ -99,17 +129,10 @@ test('a practice lesson is a player the page has to ask for, not a URL', () => {
   assert.ok(VIDEO_PROVIDERS.includes('practice'));
 });
 
-test('the migration and the code agree on the list of hosts', () => {
+test('the migrations and the code agree on the list of hosts', () => {
   const sql = fs.readFileSync(new URL('../migrations/048_practice_lessons.sql', import.meta.url), 'utf8');
   for (const provider of VIDEO_PROVIDERS) assert.ok(sql.includes(`'${provider}'`), provider);
-});
-
-test('the player address carries the lesson, embed mode and the hand-off', async () => {
-  const { practiceUrl, signHandoff } = await import('../src/live.js');
-  const url = new URL(practiceUrl('c96313c8a944', signHandoff({ sub: 'a@b.ie', role: 'student' })));
-  assert.equal(url.origin, 'http://live.test');
-  assert.equal(url.pathname, '/lesson.html');
-  assert.equal(url.searchParams.get('id'), 'c96313c8a944');
-  assert.equal(url.searchParams.get('embed'), '1');
-  assert.equal(url.searchParams.get('handoff').split('.').length, 3);
+  const live = fs.readFileSync(new URL('../migrations/049_live_classroom.sql', import.meta.url), 'utf8');
+  assert.match(live, /CREATE TABLE IF NOT EXISTS live_lessons/);
+  assert.match(live, /CREATE TABLE IF NOT EXISTS live_access/);
 });

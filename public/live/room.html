@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gaeilgeoir Guides · Live class</title>
+<link rel="stylesheet" href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800">
+<link rel="stylesheet" href="/live/live.css">
+<link rel="stylesheet" href="/live/practice.css">
+<style>
+.live-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+@media(max-width:1100px){.live-grid{grid-template-columns:1fr}}
+
+.videowrap{position:relative;background:#0b0f14;border-radius:var(--radius-lg);overflow:hidden;aspect-ratio:16/9;border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+#zoomRoot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+#zoomRoot > div{margin:0 auto}
+.stagenote{position:absolute;inset:0;display:grid;place-items:center;color:#5f6b78;font-size:13.5px;font-weight:600;z-index:5;text-align:center;padding:20px}
+
+.gate{position:absolute;inset:0;z-index:90;display:grid;place-items:center;background:rgba(11,15,20,.86);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:16px}
+.gatecard{background:#fff;border-radius:var(--radius-lg);padding:24px;width:min(400px,100%);box-shadow:var(--shadow-lg);text-align:center}
+.gatecard img{height:46px;display:block;margin:0 auto 14px}
+.gatecard h2{margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:-.02em}
+.gatecard p{margin:0 0 16px;color:var(--text-tertiary);font-size:13.5px;font-weight:500}
+.gatecard .err{display:none;margin-top:12px;background:var(--error-50);border:1px solid var(--error-100);color:var(--error-700);border-radius:var(--radius-sm);padding:9px 11px;font-size:12.5px;font-weight:600;text-align:left}
+
+/* Questions panel (always open, beside the video — never over it) */
+.qpanel{display:flex;flex-direction:column;height:min(62vh,560px)}
+@media(max-width:1100px){.qpanel{height:auto;max-height:none}}
+.qfeed{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:11px;background:var(--gray-25);scroll-behavior:smooth}
+@media(max-width:1100px){.qfeed{max-height:44vh}}
+.qempty{flex:1;display:grid;place-items:center;color:var(--text-quaternary);font-size:12.5px;font-weight:600;text-align:center;padding:22px;line-height:1.6}
+.msg{max-width:92%;display:flex;flex-direction:column;animation:msgin .26s cubic-bezier(.2,.8,.2,1) both}
+@keyframes msgin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.msg .who{font-size:10.5px;font-weight:800;margin:0 3px 4px;color:var(--text-tertiary)}
+.msg .bubble{padding:9px 12px;border-radius:12px;font-size:13.5px;line-height:1.45;color:var(--text);word-wrap:break-word}
+.msg.me{align-self:flex-end;align-items:flex-end}
+.msg.me .bubble{background:var(--brand-50);border:1px solid var(--brand-100);border-bottom-right-radius:4px}
+.msg.them{align-self:flex-start}
+.msg.them .who{color:var(--brand-700)}
+.msg.them .bubble{background:#fff;border:1px solid var(--border);border-bottom-left-radius:4px}
+.msg.bcast .bubble{background:var(--blue-50);border-color:var(--blue-100)}
+.pinned{margin:0 0 2px;background:var(--warning-50);border:1px solid var(--warning-100);border-radius:10px;padding:10px 12px;animation:msgin .3s cubic-bezier(.2,.8,.2,1) both}
+.pinned .pl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--warning-700);margin-bottom:4px}
+.pinned .pt{font-size:13.5px;font-weight:650;color:var(--text);line-height:1.45}
+.qcompose{border-top:1px solid var(--border);padding:11px;display:flex;gap:8px}
+.qcompose input{flex:1}
+.qcompose .send{background:var(--brand-600);color:#fff;border:0;border-radius:var(--radius-sm);width:42px;display:grid;place-items:center;cursor:pointer;font-size:15px;transition:background .15s}
+.qcompose .send:hover{background:var(--brand-700)}
+
+/* Settings popover lives in the header, above the video — never over it */
+.hdr-actions{display:flex;align-items:center;gap:10px;position:relative}
+.iconbtn{width:38px;height:38px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:#fff;cursor:pointer;display:grid;place-items:center;color:var(--text-tertiary);box-shadow:var(--shadow-xs);transition:background .15s}
+.iconbtn:hover{background:var(--gray-50)}
+.iconbtn svg{width:19px;height:19px;fill:currentColor}
+.settings-pop{position:absolute;top:46px;right:0;z-index:200;background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:14px;width:262px;animation:msgin .18s ease both}
+.settings-pop .st{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-quaternary);margin-bottom:9px}
+.vrow{display:flex;align-items:center;justify-content:space-between;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:7px;cursor:pointer;font-size:13.5px;font-weight:650;color:var(--text-secondary);transition:border-color .15s,background .15s}
+.vrow:hover{background:var(--gray-50)}
+.vrow .tick{width:17px;height:17px;border-radius:50%;border:2px solid var(--border-strong)}
+.vrow.sel{border-color:var(--brand-500);background:var(--brand-50);color:var(--text)}
+.vrow.sel .tick{border-color:var(--brand-500);background:var(--brand-500);box-shadow:inset 0 0 0 3px #fff}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><img class="brand-mark" src="/logo.webp" alt=""><div class="bt"><strong>Gaeilgeoir Guides</strong><small>Class Portal</small></div></div>
+    <div class="nav-label">My course</div>
+    <nav class="nav">
+      <a class="nav-button active"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none"><path d="m17 9.5 3.223-2.148c.402-.268.603-.402.769-.395a.5.5 0 0 1 .372.195c.103.13.103.372.103.856v7.984c0 .484 0 .726-.103.856a.5.5 0 0 1-.372.195c-.166.007-.367-.127-.769-.395L17 14.5m-11.8 4h7.6c1.12 0 1.68 0 2.108-.218a2 2 0 0 0 .874-.874C16 16.98 16 16.42 16 15.3V8.7c0-1.12 0-1.68-.218-2.108a2 2 0 0 0-.874-.874C14.48 5.5 13.92 5.5 12.8 5.5H5.2c-1.12 0-1.68 0-2.108.218a2 2 0 0 0-.874.874C2 7.02 2 7.58 2 8.7v6.6c0 1.12 0 1.68.218 2.108a2 2 0 0 0 .874.874c.428.218.988.218 2.108.218Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Live class</span></a>
+      <a class="nav-button" href="/"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Back to the portal</span></a>
+    </nav>
+    <div class="side-foot"><div class="avatar" id="sideAv">GG</div><div class="who"><div class="n" id="sideName">Student</div><div class="e">Learning Irish</div></div></div>
+  </aside>
+
+  <main class="app-main">
+    <div class="page-header">
+      <div>
+        <div class="breadcrumb"><a href="/" style="color:inherit;text-decoration:none">Class Portal</a><span class="sep">/</span><span class="here">Live class</span></div>
+        <h1 class="page-title">Live class</h1>
+      </div>
+      <div class="hdr-actions">
+        <span class="pill" id="statusPill"><span class="dot"></span>Not connected</span>
+        <button class="iconbtn" id="gearBtn" title="Voice"><svg viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
+        <div class="settings-pop" id="settingsPop" hidden><div class="st">Voice · Dialect</div><div id="voiceRows"></div><div class="field-hint">Powered by abair.ie and Azure.</div></div>
+      </div>
+    </div>
+
+    <div class="live-grid">
+      <div class="videowrap" id="stage">
+        <div class="stagenote" id="stageNote">The class video appears here once you join.</div>
+        <div id="zoomRoot"></div>
+        <div class="gate" id="gate">
+          <div class="gatecard">
+            <img src="/logo.webp" alt="Gaeilgeoir Guides">
+            <h2>Join the live class</h2>
+            <p>It plays right here. No Zoom app, no Zoom account.</p>
+            <p class="field-hint" style="margin:-6px 0 14px">Joining as <b id="gateName">you</b></p>
+            <button class="btn primary block" id="joinBtn">Join the class</button>
+            <div class="err" id="err"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card qpanel">
+        <div class="card-header"><div><h2>Questions</h2><p>Only your teacher sees what you send</p></div></div>
+        <div class="qfeed" id="qfeed"><div class="qempty">Nothing yet.<br>Ask your teacher a question below.</div></div>
+        <div class="qcompose">
+          <input id="qinput" placeholder="Ask a question…" maxlength="500">
+          <button class="send" id="qsend" title="Send">➤</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <nav class="mobile-nav">
+    <a class="mnav on"><svg viewBox="0 0 24 24"><path d="m17 9.5 3.2-2.1v9.2L17 14.5M5 18.5h8c1.1 0 2-.9 2-2v-9c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v9c0 1.1.9 2 2 2Z"/></svg>Live</a>
+    <a class="mnav" href="/"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>Portal</a>
+  </nav>
+</div>
+
+<script src="https://source.zoom.us/6.2.0/lib/vendor/react.min.js"></script>
+<script src="https://source.zoom.us/6.2.0/lib/vendor/react-dom.min.js"></script>
+<script src="https://source.zoom.us/6.2.0/zoom-meeting-embedded-6.2.0.min.js"></script>
+<script type="module">
+import { createPractice } from '/live/practice.js';
+
+const $ = s => document.querySelector(s);
+const qs = new URLSearchParams(location.search);
+const demo = qs.get('demo') === '1';
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+/* Who is here comes from the portal's own session: no name to type, no token
+   to carry. The server answers every stream and request from the same cookie. */
+let me = null;
+let studentName = '';
+async function whoAmI(){
+  const r = await fetch('/api/live/me', { cache: 'no-store' });
+  if (r.status === 401) { location.href = '/'; return null; }
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'Could not check who you are.');
+  return j;
+}
+
+/* ---------- Practice card over the video ---------- */
+const stage = $('#stage');
+let currentPhraseId = 0;
+async function report(result){
+  if (!currentPhraseId || !me || me.role !== 'student') return;
+  try {
+    await fetch('/api/live/phrase-result', { method:'POST', headers: {'content-type':'application/json'},
+      body: JSON.stringify({ phraseId: currentPhraseId, result }) });
+  } catch {}
+}
+const practice = createPractice({
+  glowEl: stage,
+  onPass: () => report('passed'),
+  onSkip: () => report('skipped'),
+  onFail: () => {}
+});
+stage.appendChild(practice.el);
+
+/* ---------- Phrase stream ---------- */
+function onPhrase(p){
+  currentPhraseId = p && p.id ? p.id : 0;
+  if (p && p.show && p.irish) practice.show({ irish:p.irish, english:p.english||'', phonetic:p.phonetic||'' });
+  else practice.hide();
+}
+let phraseES = null;
+function connectPhrases(){
+  try { if (phraseES) phraseES.close(); } catch {}
+  phraseES = new EventSource('/api/live/phrase-stream');
+  phraseES.onmessage = ev => { try { onPhrase(JSON.parse(ev.data)); } catch {} };
+}
+
+/* ---------- Questions panel ---------- */
+const qfeed = $('#qfeed');
+const seen = new Set();
+function atBottom(){ return qfeed.scrollHeight - qfeed.scrollTop - qfeed.clientHeight < 80; }
+function addMsg(m){
+  if (seen.has(m.id)) return; seen.add(m.id);
+  qfeed.querySelector('.qempty')?.remove();
+  const stick = atBottom();
+  const el = document.createElement('div');
+  const mine = m.from === 'student';
+  el.className = 'msg ' + (mine ? 'me' : 'them') + (m.broadcast ? ' bcast' : '');
+  el.innerHTML = (mine ? '' : `<div class="who">${m.broadcast ? 'Teacher · to the class' : 'Teacher'}</div>`)
+    + `<div class="bubble">${esc(m.text)}</div>`;
+  qfeed.appendChild(el);
+  if (stick) qfeed.scrollTop = qfeed.scrollHeight;
+}
+function addPinned(text, name){
+  qfeed.querySelector('.qempty')?.remove();
+  const el = document.createElement('div');
+  el.className = 'pinned';
+  el.innerHTML = `<div class="pl">📌 Question from ${esc(name || 'the class')}</div><div class="pt">${esc(text)}</div>`;
+  qfeed.appendChild(el);
+  qfeed.scrollTop = qfeed.scrollHeight;
+}
+let chatES = null;
+function connectChat(){
+  try { if (chatES) chatES.close(); } catch {}
+  chatES = new EventSource('/api/live/chat-stream');
+  chatES.onmessage = ev => {
+    let d; try { d = JSON.parse(ev.data); } catch { return; }
+    if (d.type === 'thread'){ qfeed.querySelectorAll('.msg,.pinned').forEach(n=>n.remove()); seen.clear(); (d.messages||[]).forEach(addMsg); }
+    else if (d.type === 'msg') addMsg(d.message);
+    else if (d.type === 'highlight') addPinned(d.text, d.name);
+  };
+}
+async function sendQuestion(){
+  const text = $('#qinput').value.trim(); if (!text) return;
+  $('#qinput').value = '';
+  try { await fetch('/api/live/chat', { method:'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ text }) }); }
+  catch { $('#qinput').value = text; }
+}
+$('#qsend').onclick = sendQuestion;
+$('#qinput').addEventListener('keydown', e => { if (e.key === 'Enter') sendQuestion(); });
+
+/* ---------- Voice settings (in the header, not over the video) ---------- */
+const gearBtn = $('#gearBtn'), settingsPop = $('#settingsPop'), voiceRows = $('#voiceRows');
+let voiceId = localStorage.getItem('gglive_voice') || '', sampleAudio = null;
+async function buildVoices(){
+  let voices = []; try { voices = await fetch('/api/live/voices').then(r=>r.json()); } catch { return; }
+  voiceRows.innerHTML = '';
+  for (const v of voices){
+    const b = document.createElement('div');
+    b.className = 'vrow' + (v.id === voiceId ? ' sel' : '');
+    b.innerHTML = `<span>${esc(v.name)}</span><span class="tick"></span>`;
+    b.onclick = () => {
+      voiceId = v.id; localStorage.setItem('gglive_voice', voiceId);
+      [...voiceRows.children].forEach(x => x.classList.remove('sel')); b.classList.add('sel');
+      try { if (sampleAudio) sampleAudio.pause(); sampleAudio = new Audio('/api/live/tts?text='+encodeURIComponent(v.sample)+'&voice='+encodeURIComponent(v.id)); sampleAudio.play(); } catch {}
+    };
+    voiceRows.appendChild(b);
+  }
+}
+gearBtn.onclick = e => { e.stopPropagation(); settingsPop.hidden = !settingsPop.hidden; if (!settingsPop.hidden && !voiceRows.children.length) buildVoices(); };
+document.addEventListener('click', e => { if (!settingsPop.hidden && !settingsPop.contains(e.target) && !gearBtn.contains(e.target)) settingsPop.hidden = true; });
+
+/* ---------- Join the Zoom webinar ---------- */
+function setStatus(on, text){
+  const pill = $('#statusPill');
+  pill.className = 'pill ' + (on ? 'green dot' : '');
+  pill.textContent = text;
+}
+function showError(msg){ const e = $('#err'); e.textContent = msg; e.style.display = 'block'; }
+
+async function join(){
+  $('#err').style.display = 'none';
+  const btn = $('#joinBtn'); btn.disabled = true; btn.textContent = 'Joining…';
+  try {
+    me = await whoAmI(); if (!me) return;
+    if (!me.allowed) throw new Error(me.reason || 'You do not have access to this session.');
+    const name = studentName || 'Student';
+    const webinarId = (qs.get('webinar') || me.webinar?.webinarId || '').replace(/\D/g,'');
+    const pwd = qs.get('pwd') ?? me.webinar?.webinarPwd ?? '';
+    if (!me.live) throw new Error('The live classroom is not set up on this portal yet.');
+    if (!webinarId) throw new Error('No Zoom link is set for your class yet. Your teacher adds it in Class setup.');
+    const sig = await fetch('/api/live/signature', { method:'POST', headers: {'content-type':'application/json'},
+      body: JSON.stringify({ meetingNumber: webinarId }) }).then(r=>r.json());
+    if (!sig.signature) throw new Error(sig.error || 'Could not get a join signature.');
+    const root = $('#zoomRoot');
+    const client = ZoomMtgEmbedded.createClient();
+    await client.init({
+      zoomAppRoot: root, language: 'en-US', patchJsMedia: true, leaveOnPageUnload: true,
+      customize: { video: { isResizable: false, viewSizes: { default: { width: root.clientWidth, height: root.clientHeight } } } }
+    });
+    await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.email || '' });
+    $('#gate').style.display = 'none';
+    $('#stageNote').style.display = 'none';
+    setStatus(true, 'Live');
+  } catch (e) {
+    const reason = (e && (e.reason || e.message)) ? (e.reason || e.message) : 'Could not join.';
+    showError(/not start/i.test(reason) ? 'The class has not started yet. Keep this page open and try again at class time.' : reason);
+    btn.disabled = false; btn.textContent = 'Join the class';
+  }
+}
+$('#joinBtn').onclick = join;
+
+/* The page opens knowing who you are: the streams connect straight away, so a
+   phrase pushed before you press Join is already on screen when you do. */
+(async () => {
+  try {
+    me = await whoAmI(); if (!me) return;
+    studentName = me.name || 'Student';
+    $('#sideName').textContent = studentName;
+    $('#sideAv').textContent = studentName.trim().slice(0,2).toUpperCase();
+    $('#gateName').textContent = studentName;
+    if (me.session?.classLabel) $('#stageNote').textContent = 'The class video appears here once you join · ' + me.session.classLabel;
+    if (!me.allowed) showError(me.reason || 'This session is for a different class.');
+    connectChat();
+    connectPhrases();
+  } catch (e) { showError(e.message || 'Could not reach the live classroom.'); }
+  if (demo){
+    $('#gate').style.display = 'none';
+    $('#stageNote').textContent = 'Demo mode · the phrase overlay works without a live class';
+    setStatus(true, 'Demo mode');
+  }
+})();
+</script>
+</body>
+</html>

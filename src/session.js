@@ -26,6 +26,34 @@ export async function destroySession(req, res) {
   res.clearCookie(config.sessionCookieName, { path: '/' });
 }
 
+/* The session behind a cookie value, or null. Shared by the HTTP middleware
+   below and by the live classroom's speech socket, which arrives as a raw
+   upgrade request with no Express in front of it. */
+export async function sessionUser(token) {
+  if (!token) return null;
+  const row = await one(
+    `SELECT s.id session_id, s.expires_at, s.last_seen_at, u.id, u.role, u.name, u.email, u.active,
+            u.must_change_password, u.must_set_avatar, u.avatar_path, u.is_super_admin
+     FROM sessions s JOIN users u ON u.id=s.user_id
+     WHERE s.token_hash=$1 AND s.expires_at > now()`,
+    [hashToken(token)],
+  );
+  if (!row || !row.active) return null;
+  return { id: row.id, role: row.role, name: row.name, email: row.email, isSuperAdmin: Boolean(row.is_super_admin) };
+}
+
+/** The session cookie out of a raw Cookie header (no cookie-parser on an upgrade). */
+export function sessionTokenFromCookieHeader(header) {
+  for (const part of String(header || '').split(';')) {
+    const at = part.indexOf('=');
+    if (at < 0) continue;
+    if (part.slice(0, at).trim() === config.sessionCookieName) {
+      try { return decodeURIComponent(part.slice(at + 1).trim()); } catch { return part.slice(at + 1).trim(); }
+    }
+  }
+  return null;
+}
+
 export async function loadSession(req, res, next) {
   const token = req.cookies?.[config.sessionCookieName];
   if (!token) return next();

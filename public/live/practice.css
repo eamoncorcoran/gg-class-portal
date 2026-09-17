@@ -1,0 +1,110 @@
+/* The practice card, scoped under .gg-practice so it drops into any page.
+   Brand green to match the portal (the amber/red word colours stay, because
+   they carry meaning: green = right, amber = close, red = missed). */
+.gg-practice{
+  --gg-green:#50af37; --gg-green-dark:#3f922c; --gg-green-soft:#eaf6e5;
+  --gg-amber:#EE8A26; --gg-red:#e5484d; --gg-ink:#182230; --gg-muted:#667085; --gg-card:#fff;
+  position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:14px;pointer-events:none
+}
+.gg-practice .phrasecard{
+  background:var(--gg-card);border-radius:18px;padding:14px 20px 13px;width:auto;max-width:min(430px,86%);
+  box-shadow:0 18px 50px rgba(16,24,40,.35),0 2px 8px rgba(16,24,40,.18);text-align:center;
+  transform-origin:50% 55%;border:1px solid rgba(255,255,255,.7);pointer-events:auto;
+  transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .28s ease
+}
+.gg-practice .phrasecard.pop{animation:ggpop .42s cubic-bezier(.22,1,.36,1) both}
+.gg-practice .phrasecard.out{animation:ggdrop .22s cubic-bezier(.4,0,1,1) both}
+@keyframes ggpop{from{transform:scale(.94) translateY(10px);opacity:0}to{transform:none;opacity:1}}
+@keyframes ggdrop{from{transform:none;opacity:1}to{transform:scale(.96) translateY(6px);opacity:0}}
+
+/* Verdict pill ALWAYS holds its space, so nothing jumps when it appears. */
+.gg-practice .verdict{
+  display:block;margin:0 auto 9px;min-height:25px;line-height:25px;width:fit-content;min-width:10px;
+  padding:0 13px;border-radius:100px;font-size:12px;font-weight:800;letter-spacing:.2px;
+  background:transparent;color:transparent;opacity:0;transform:translateY(-3px);pointer-events:none;
+  transition:opacity .24s ease,transform .24s cubic-bezier(.2,.8,.2,1),background-color .24s ease,color .24s ease
+}
+.gg-practice .verdict.on{opacity:1;transform:none}
+.gg-practice .verdict.speak{background:var(--gg-green-soft);color:var(--gg-green-dark)}
+.gg-practice .verdict.correct{background:var(--gg-green-soft);color:var(--gg-green-dark)}
+.gg-practice .verdict.goodEffort{background:#fdf0e2;color:#b25e0f}
+.gg-practice .verdict.incorrect{background:#fdecec;color:#b42318}
+
+.gg-practice .irish{display:flex;flex-wrap:wrap;justify-content:center;gap:0 8px;row-gap:2px}
+.gg-practice .irish span{
+  font-size:clamp(17px,2.1vw,24px);font-weight:800;letter-spacing:-.4px;color:var(--gg-ink);line-height:1.3;
+  transition:color .22s ease,transform .22s cubic-bezier(.2,.8,.2,1)
+}
+.gg-practice .irish span.correct{color:var(--gg-green-dark)}
+.gg-practice .irish span.goodEffort{color:var(--gg-amber)}
+.gg-practice .irish span.wrong{color:var(--gg-red)}
+.gg-practice .irish span.hit{animation:ggwordpop .32s cubic-bezier(.22,1,.36,1)}
+@keyframes ggwordpop{40%{transform:translateY(-2px) scale(1.07)}}
+.gg-practice .english{margin-top:6px;font-size:clamp(12.5px,1.4vw,15px);font-weight:600;color:var(--gg-muted);transition:opacity .2s}
+.gg-practice .phonetic{margin-top:5px;font-size:clamp(12px,1.3vw,14px);font-weight:700;color:var(--gg-green-dark);font-style:italic;display:none}
+
+.gg-practice .actions{margin-top:12px;display:flex;justify-content:space-between;gap:7px}
+.gg-practice .abtn{border:0;background:none;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;font-family:inherit;flex:1}
+.gg-practice .abtn .abox{
+  display:grid;place-items:center;padding:10px;border-radius:14px;background:#fff;border:1px solid #e6e9ee;
+  box-shadow:0 1px 2px rgba(16,24,40,.05);transition:transform .16s cubic-bezier(.2,.8,.2,1),background .18s,border-color .18s
+}
+.gg-practice .abtn:hover .abox{background:#f7f8fa}
+.gg-practice .abtn:active .abox{transform:scale(.93)}
+.gg-practice .abtn svg{width:20px;height:20px;fill:#98a2b3;transition:fill .18s}
+.gg-practice .abtn .albl{font-size:11px;font-weight:700;color:#98a2b3;transition:color .18s}
+.gg-practice .abtn.active .abox{background:var(--gg-green-soft);border-color:var(--gg-green);padding:9px;border-width:2px}
+.gg-practice .abtn.active svg{fill:var(--gg-green-dark)}
+.gg-practice .abtn.active .albl{color:var(--gg-green-dark)}
+.gg-practice .abtn.playing svg{fill:var(--gg-green)}
+
+.gg-practice .bigmic{
+  position:relative;width:100%;margin-top:12px;border:1.5px solid transparent;height:48px;border-radius:14px;
+  background:var(--gg-green);cursor:pointer;display:grid;place-items:center;font-family:inherit;
+  transition:transform .14s cubic-bezier(.2,.8,.2,1),background .22s ease,border-color .22s ease
+}
+.gg-practice .bigmic:hover{background:var(--gg-green-dark)}
+.gg-practice .bigmic:active{transform:translateY(2px)}
+.gg-practice .bigmic .mic-ic{width:24px;height:24px;fill:#fff;grid-area:1/1;display:none}
+.gg-practice .bigmic .ic-mic{display:block}
+.gg-practice .bigmic .halo{position:absolute;inset:0;border-radius:14px;background:rgba(80,175,55,.35);opacity:0;pointer-events:none}
+.gg-practice .bigmic.listening{background:var(--gg-green-soft);border-color:var(--gg-green)}
+.gg-practice .bigmic.listening .ic-mic{display:none}
+.gg-practice .bigmic.listening .halo{animation:gghalo 1.4s ease-out infinite}
+@keyframes gghalo{0%{opacity:.55;transform:scale(1)}100%{opacity:0;transform:scale(1.04,1.22)}}
+.gg-practice .bigmic .viz{display:none;gap:4px;align-items:center;grid-area:1/1}
+.gg-practice .bigmic.listening .viz{display:flex}
+.gg-practice .viz i{width:6px;height:10px;border-radius:10px;background:var(--gg-green-dark);transition:height .09s ease-out}
+.gg-practice .bigmic.v-correct{background:var(--gg-green-dark)}
+.gg-practice .bigmic.v-goodEffort{background:var(--gg-amber)}
+.gg-practice .bigmic.v-incorrect{background:var(--gg-red)}
+.gg-practice .bigmic.v-correct .ic-mic,.gg-practice .bigmic.v-goodEffort .ic-mic,.gg-practice .bigmic.v-incorrect .ic-mic{display:none}
+.gg-practice .bigmic.v-correct .ic-check,.gg-practice .bigmic.v-goodEffort .ic-check{display:block}
+.gg-practice .bigmic.v-incorrect .ic-x{display:block}
+.gg-practice .micerr{display:none;margin-top:9px;font-size:12.5px;font-weight:700;color:var(--gg-red)}
+
+/* Frosted glass over the video while the card is up: a real frost, so the
+   lesson stays visible behind it but the card reads cleanly. */
+.gg-glass{
+  position:absolute;inset:0;pointer-events:none;z-index:54;border-radius:inherit;opacity:0;
+  -webkit-backdrop-filter:blur(18px) saturate(1.1) brightness(.72);
+  backdrop-filter:blur(18px) saturate(1.1) brightness(.72);
+  background:rgba(16,24,40,.28);
+  transition:opacity .32s cubic-bezier(.2,.8,.2,1)
+}
+.gg-glass.on{opacity:1}
+
+/* Amplitude glow while listening. */
+.gg-vignette{position:absolute;inset:0;pointer-events:none;z-index:55;border-radius:inherit;opacity:0;transition:opacity .35s ease;box-shadow:inset 0 0 55px 8px rgba(80,175,55,.45)}
+.gg-glow-listening .gg-vignette{opacity:1}
+.gg-glow-green .gg-vignette{opacity:1;box-shadow:inset 0 0 80px 14px rgba(63,146,44,.6)}
+.gg-glow-red .gg-vignette{opacity:1;box-shadow:inset 0 0 80px 14px rgba(229,72,77,.55)}
+
+@media(max-width:640px){
+  .gg-practice{padding:10px}
+  .gg-practice .phrasecard{max-width:94%;padding:12px 14px 11px;border-radius:16px}
+  .gg-practice .abtn .abox{padding:8px;border-radius:12px}
+  .gg-practice .abtn svg{width:18px;height:18px}
+  .gg-practice .abtn .albl{font-size:10px}
+  .gg-practice .bigmic{height:46px}
+}

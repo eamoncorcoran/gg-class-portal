@@ -1249,6 +1249,7 @@ function adminNav() {
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.calendar, 'Calendar')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
+      <a class="nav-button" href="/live/teacher.html" target="_blank" rel="noopener"><span class="nav-icon">${svg.video}</span>Live classroom</a>
       ${adminNavButton('plans', svg.grid, 'Plans')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
       ${adminNavButton('community', svg.board, 'Community')}
@@ -1852,14 +1853,9 @@ function openAdminClassInfo(classId, at) {
     onOpen() {
       /* The live classroom's console, for this class, opened with a signed
          hand-off so the teacher is already identified there. */
-      document.getElementById('open-teacher-console')?.addEventListener('click', async (event) => {
-        const button = event.currentTarget; button.disabled = true;
-        try {
-          const { url } = await api(`/api/admin/live/handoff?classId=${encodeURIComponent(classId)}`);
-          window.open(url, '_blank', 'noopener');
-        } catch (error) { showToast(error.message, 'error'); }
-        button.disabled = false;
-      });
+      document.getElementById('open-teacher-console')?.addEventListener('click', () => {
+          window.open(`/live/teacher.html?classId=${encodeURIComponent(classId)}`, '_blank', 'noopener');
+        });
       document.getElementById('class-info-setup').addEventListener('click', () => {
         closeModal();
         openClassSetupModal(classId);
@@ -3505,7 +3501,7 @@ function bindCourse() {
       state.practiceUrls[frame.dataset.lesson] = { at: Date.now(), address: api(where) };
     }
     state.practiceUrls[frame.dataset.lesson].address.then(({ url }) => {
-      state.practiceOrigin = new URL(url).origin;
+      state.practiceOrigin = new URL(url, location.origin).origin;
       frame.addEventListener('load', () => wait?.remove(), { once: true });
       frame.src = url;
     }).catch((error) => { if (wait) wait.textContent = error.message; });
@@ -4230,11 +4226,8 @@ function openLessonModal(moduleId, lesson = null) {
       };
       providerPick?.addEventListener('change', syncPasscode);
       if (lesson?.videoProvider === 'practice') loadStudio();
-      document.getElementById('open-studio')?.addEventListener('click', async () => {
-        try {
-          const { url } = await api('/api/admin/live/handoff?page=studio');
-          window.open(url, '_blank', 'noopener');
-        } catch (error) { showToast(error.message, 'error'); }
+      document.getElementById('open-studio')?.addEventListener('click', () => {
+        window.open('/live/studio.html', '_blank', 'noopener');
       });
 
       /* The host is read off the link as it is pasted, so the dropdown shows
@@ -8659,6 +8652,7 @@ function studentNav() {
     ${studentNavButton('calendar', svg.calendar, 'Calendar')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
+    ${state.studentData?.liveClassroom ? `<a class="nav-button" href="/live/room.html" target="_blank" rel="noopener"><span class="nav-icon">${svg.video}</span>Live class</a>` : ''}
     ${/* A class set up without a board never shows Community at all. */
       state.studentData?.hasCommunity
         ? studentNavButton('community', svg.board, 'Community', state.studentData?.communityUnread || 0)
@@ -9434,7 +9428,7 @@ function openWithdrawalForm() {
 
 function bindStudentView() {
   document.querySelectorAll('[data-open-student-item]').forEach((button) => button.addEventListener('click', () => openStudentItem(button.dataset)));
-  document.getElementById('join-live-classroom')?.addEventListener('click', (event) => joinLiveClassroom(event.currentTarget));
+  document.getElementById('join-live-classroom')?.addEventListener('click', () => joinLiveClassroom());
   document.querySelectorAll('[data-open-class]').forEach((button) =>
     button.addEventListener('click', () => openClassInfo(button.dataset.openClass, button.dataset.classKind)));
   document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', (event) => {
@@ -9466,14 +9460,10 @@ function bindStudentView() {
 /* Into the live classroom.
    The portal signs a short-lived hand-off and sends the student across with
    it, so they arrive in the room already known, in their own class. */
-async function joinLiveClassroom(button) {
-  const label = button.textContent;
-  button.disabled = true; button.textContent = 'Opening…';
-  try {
-    const { url } = await api('/api/student/live/handoff');
-    window.open(url, '_blank', 'noopener');
-  } catch (error) { showToast(error.message, 'error'); }
-  button.disabled = false; button.textContent = label;
+/* The live room is a page of this site, signed in with the same session, so
+   there is nothing to fetch first: it opens in its own tab beside the portal. */
+function joinLiveClassroom() {
+  window.open('/live/room.html', '_blank', 'noopener');
 }
 
 function openStudentItem(dataset) {

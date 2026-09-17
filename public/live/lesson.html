@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gaeilgeoir Guides · Lesson</title>
+<link rel="stylesheet" href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800">
+<link rel="stylesheet" href="/live/live.css">
+<link rel="stylesheet" href="/live/practice.css">
+<style>
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:22px;align-items:start}
+@media(max-width:1080px){.layout{grid-template-columns:1fr}}
+.videowrap{position:relative;background:#0b0f14;border-radius:14px;overflow:hidden;aspect-ratio:16/9;box-shadow:var(--shadow-sm);border:1px solid var(--border)}
+.videowrap video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#0b0f14}
+.playgate{position:absolute;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 45%,#00000022,#000000aa);cursor:pointer}
+.playgate .pbtn{width:70px;height:70px;border-radius:50%;background:#ffffffee;display:grid;place-items:center;box-shadow:0 12px 34px #0007;transition:transform .12s}
+.playgate:hover .pbtn{transform:scale(1.06)}
+.playgate .pbtn svg{width:32px;height:32px;fill:var(--gray-900);margin-left:4px}
+.playgate .cap{position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#fff;font-weight:600;font-size:13px;text-shadow:0 1px 6px #000a}
+.fsbtn{position:absolute;top:12px;right:12px;z-index:75;width:36px;height:36px;border-radius:9px;background:#0009;border:0;cursor:pointer;display:grid;place-items:center;opacity:.9;transition:opacity .15s,background .15s}
+.fsbtn:hover{opacity:1;background:#000c}
+.fsbtn svg{width:19px;height:19px}
+.videowrap:fullscreen,.videowrap:-webkit-full-screen{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;border:0}
+
+.progline{display:flex;align-items:center;gap:12px;margin:2px 0 14px}
+.progbar{flex:1;height:8px;border-radius:9999px;background:var(--gray-200);overflow:hidden}
+.progbar i{display:block;height:100%;background:var(--brand-500);width:0;transition:width .4s}
+.progtxt{font-size:12.5px;font-weight:700;color:var(--text-secondary);white-space:nowrap}
+.ovr{font-size:14px;color:var(--text-secondary);font-weight:500;line-height:1.6;margin:0}
+.howrow{display:flex;gap:12px;align-items:flex-start;margin-top:12px}
+.howrow .n{width:24px;height:24px;border-radius:50%;background:var(--brand-50);color:var(--brand-700);font-weight:800;font-size:12px;display:grid;place-items:center;flex:0 0 auto}
+.howrow .t{font-size:13.5px;color:var(--text-secondary);font-weight:500;line-height:1.5}
+.howrow .t b{color:var(--text)}
+
+.plist{padding:8px}
+.prow{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer}
+.prow:hover{background:var(--gray-50)}
+.prow.active{background:var(--brand-50)}
+.prow .pnum{width:29px;height:29px;border-radius:8px;background:var(--gray-100);color:var(--text-tertiary);font-weight:800;font-size:12.5px;display:grid;place-items:center;flex:0 0 auto}
+.prow.done .pnum{background:var(--brand-50);color:var(--brand-600)}
+.prow.active .pnum{background:var(--brand-600);color:#fff}
+.prow .pmid{flex:1;min-width:0}
+.prow .pga{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .pen{font-size:12.5px;color:var(--text-tertiary);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.prow .ptime{font-size:12.5px;font-weight:700;color:var(--text-tertiary);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.prow.done .ptime{color:var(--brand-600)}
+.author{display:flex;gap:12px;align-items:center;padding:17px 19px}
+.author .aav{width:42px;height:42px;border-radius:50%;background:var(--brand-600);display:grid;place-items:center;font-size:20px;flex:0 0 auto}
+.author .an{font-size:14.5px;font-weight:700;color:var(--text)}
+.author .ar{font-size:12.5px;color:var(--text-tertiary);font-weight:500}
+
+.iconbtn{width:38px;height:38px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--white);cursor:pointer;display:grid;place-items:center;color:var(--text-tertiary);box-shadow:var(--shadow-xs)}
+.iconbtn:hover{background:var(--gray-50)}
+.iconbtn svg{width:20px;height:20px;fill:currentColor}
+.settings-pop{position:absolute;top:46px;right:0;z-index:200;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-lg);padding:14px;width:262px}
+.settings-pop .st{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-quaternary);margin-bottom:10px}
+.vrow{display:flex;align-items:center;justify-content:space-between;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:7px;cursor:pointer;font-size:13.5px;font-weight:650;color:var(--text-secondary)}
+.vrow .tick{width:17px;height:17px;border-radius:50%;border:2px solid var(--border-strong)}
+.vrow.sel{border-color:var(--brand-600);background:var(--brand-50);color:var(--text)}
+.vrow.sel .tick{border-color:var(--brand-600);background:var(--brand-600);box-shadow:inset 0 0 0 3px #fff}
+/* Inside the portal the page is a player, not a site: no sidebar, no crumbs,
+   no second set of navigation around the one the portal already has. */
+body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb{display:none !important}
+body.embed .app-main{padding:14px 16px 24px;max-width:none}
+body.embed .app-shell{display:block}
+.emptyst{max-width:440px;margin:70px auto;text-align:center}
+.emptyst .fox{width:56px;height:56px;border-radius:15px;background:var(--brand-600);display:grid;place-items:center;font-size:28px;margin:0 auto 14px}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><img class="brand-mark" src="/logo.webp" alt=""><div class="bt"><strong>Gaeilgeoir Guides</strong><small>Class Portal</small></div></div>
+    <div class="nav-label">Learn</div>
+    <nav class="nav">
+      <a class="nav-button" href="/"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none"><path d="m17 9.5 3.223-2.148c.402-.268.603-.402.769-.395a.5.5 0 0 1 .372.195c.103.13.103.372.103.856v7.984c0 .484 0 .726-.103.856a.5.5 0 0 1-.372.195c-.166.007-.367-.127-.769-.395L17 14.5m-11.8 4h7.6c1.12 0 1.68 0 2.108-.218a2 2 0 0 0 .874-.874C16 16.98 16 16.42 16 15.3V8.7c0-1.12 0-1.68-.218-2.108a2 2 0 0 0-.874-.874C14.48 5.5 13.92 5.5 12.8 5.5H5.2c-1.12 0-1.68 0-2.108.218a2 2 0 0 0-.874.874C2 7.02 2 7.58 2 8.7v6.6c0 1.12 0 1.68.218 2.108a2 2 0 0 0 .874.874c.428.218.988.218 2.108.218Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Live class</span></a>
+    </nav>
+    <div class="side-foot"><div class="avatar">GG</div><div class="who"><div class="n">Student</div><div class="e">Learning Irish</div></div></div>
+  </aside>
+
+  <main class="app-main">
+    <div id="content" hidden>
+      <div class="breadcrumb"><a href="/" style="color:inherit;text-decoration:none">Class Portal</a><span class="sep">/</span><span class="here" id="crumb">Lesson</span></div>
+      <div class="page-header" style="margin-bottom:18px">
+        <div>
+          <h1 class="page-title" id="title">Lesson</h1>
+          <div class="page-sub"><span class="pill green dot" id="phrasePill">0 phrases</span></div>
+        </div>
+        <div style="position:relative">
+          <button class="iconbtn" id="gearBtn" title="Voice"><svg viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
+          <div class="settings-pop" id="settingsPop" hidden><div class="st">Voice · Dialect</div><div id="voiceRows"></div><div class="field-hint">Powered by abair.ie and Azure.</div></div>
+        </div>
+      </div>
+
+      <div class="layout">
+        <div>
+          <div class="videowrap" id="videowrap">
+            <video id="video" playsinline preload="metadata" controls controlsList="nodownload nofullscreen"></video>
+            <button class="fsbtn" id="fsBtn" title="Fullscreen">
+              <svg class="ic-expand" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 0 0-2 2v3m0 8v3a2 2 0 0 0 2 2h3m8-18h3a2 2 0 0 1 2 2v3m0 8v3a2 2 0 0 1-2 2h-3" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg class="ic-compress" viewBox="0 0 24 24" fill="none" hidden><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3m13-5h-3a2 2 0 0 0-2 2v3" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="playgate" id="playgate"><div class="pbtn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div><div class="cap">Press to start · the video pauses at each phrase to practise</div></div>
+          </div>
+          <div class="tabs" style="margin-top:18px">
+            <div class="tab active" data-tab="ovr">Overview</div>
+            <div class="tab" data-tab="how">How it works</div>
+          </div>
+          <div id="panel-ovr">
+            <div class="progline"><div class="progbar"><i id="progFill"></i></div><div class="progtxt" id="progTxt">0 / 0 done</div></div>
+            <p class="ovr" id="ovrText">Watch the video. At each phrase it pauses and you say the phrase aloud into the mic. You can move the video back and forth any time to redo a phrase.</p>
+          </div>
+          <div id="panel-how" hidden>
+            <div class="howrow"><div class="n">1</div><div class="t"><b>Watch.</b> Play the video like normal, or scrub with the controls.</div></div>
+            <div class="howrow"><div class="n">2</div><div class="t"><b>It pauses.</b> At each phrase the video pauses and a card appears over it.</div></div>
+            <div class="howrow"><div class="n">3</div><div class="t"><b>Say it.</b> Tap the mic and say the phrase. Words light up green as you get them right.</div></div>
+            <div class="howrow"><div class="n">4</div><div class="t"><b>Carry on.</b> Nail it (or tap Skip) and the video plays on. Rewind any time to redo one.</div></div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div class="card">
+            <div class="card-header"><div><h2>Phrases in this lesson</h2><p id="contentsSub">Tap any phrase to practise it</p></div></div>
+            <div class="plist" id="plist"></div>
+          </div>
+          <div class="card"><div class="author"><div class="aav"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5 12 4l9.5 4.5L12 13 2.5 8.5Z" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M6.5 10.7v4.6c0 .6.3 1.1.8 1.4 1.2.7 2.9 1.3 4.7 1.3s3.5-.6 4.7-1.3c.5-.3.8-.8.8-1.4v-4.6M21 9v5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div><div><div class="an">Gaeilgeoir Guides</div><div class="ar">Your Irish teacher</div></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="empty" class="emptyst" hidden>
+      <img src="/logo.webp" alt="Gaeilgeoir Guides" style="height:54px;display:block;margin:0 auto 14px">
+      <h1 class="page-title">Lesson not found</h1>
+      <p style="color:var(--text-tertiary);font-weight:500;margin:8px 0 20px">This link does not point to a lesson. Check the link, or open it from your course page.</p>
+      <a class="btn primary" href="/" id="studioLink">Back to the portal</a>
+    </div>
+  </main>
+
+  <nav class="mobile-nav">
+    <a class="mnav" href="/live/room.html"><svg viewBox="0 0 24 24"><path d="m17 9.5 3.2-2.1v9.2L17 14.5M5 18.5h8c1.1 0 2-.9 2-2v-9c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v9c0 1.1.9 2 2 2Z"/></svg>Live</a>
+  </nav>
+</div>
+<div class="toast" id="toast">Saved</div>
+
+<script type="module">
+import { createPractice } from '/live/practice.js';
+const qs = new URLSearchParams(location.search);
+const id = qs.get('id');
+const $ = s => document.querySelector(s);
+const toast = $('#toast');
+function flash(m){ toast.textContent = m; toast.classList.add('on'); setTimeout(()=>toast.classList.remove('on'),1500); }
+function fmt(t){ t=Math.max(0,Math.round(t)); const m=Math.floor(t/60), s=t%60; return m+':'+String(s).padStart(2,'0'); }
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+const video = $('#video');
+const videowrap = $('#videowrap');
+const playgate = $('#playgate');
+const plist = $('#plist');
+
+let lesson = null;
+const done = new Set();     // phrase ids passed (for the checkmark)
+let activePhrase = null;
+let prevT = 0;              // last playhead time, for crossing detection
+
+const practice = createPractice({
+  glowEl: videowrap,
+  onPass: () => { if (activePhrase){ done.add(activePhrase.id); } resumeVideo(); },
+  onSkip: () => { resumeVideo(); },
+  onFail: () => { /* card stays up for another go; video stays paused */ }
+});
+videowrap.appendChild(practice.el);
+
+function updateProgress(){
+  if (!lesson) return;
+  const n = lesson.phrases.length, d = done.size;
+  $('#progFill').style.width = (n ? (d/n*100) : 0) + '%';
+  $('#progTxt').textContent = d + ' / ' + n + ' done';
+  tellPortal({ type: 'progress', done: d, total: n, complete: n > 0 && d >= n });
+}
+function rowState(p){ return activePhrase && activePhrase.id===p.id ? 'active' : done.has(p.id) ? 'done' : ''; }
+function renderList(){
+  plist.innerHTML = '';
+  lesson.phrases.forEach((p,i) => {
+    const row = document.createElement('div');
+    row.className = 'prow ' + rowState(p);
+    row.innerHTML = `<div class="pnum">${done.has(p.id) ? '✓' : (i+1)}</div>`
+      + `<div class="pmid"><div class="pga">${esc(p.irish)}</div>${p.english?`<div class="pen">${esc(p.english)}</div>`:''}</div>`
+      + `<div class="ptime">${fmt(p.at)}</div>`;
+    row.onclick = () => practisePhrase(p);
+    plist.appendChild(row);
+  });
+  updateProgress();
+}
+
+function trigger(p){
+  activePhrase = p;
+  video.pause();
+  prevT = video.currentTime;
+  renderList();
+  practice.show(p);
+}
+function practisePhrase(p){
+  try { video.currentTime = Math.max(0, p.at); } catch {}
+  trigger(p);
+}
+function resumeVideo(){
+  activePhrase = null;
+  prevT = video.currentTime;
+  renderList();
+  if (playgate.hidden) video.play().catch(()=>{});
+}
+
+// Trigger a phrase only when continuous playback CROSSES its timestamp, so the
+// teacher/student can scrub freely. Rewind before a phrase and play through it
+// again and it fires again (redo). A big jump (scrub) does not trigger.
+video.addEventListener('timeupdate', () => {
+  const t = video.currentTime;
+  if (!lesson || practice.active || video.seeking){ prevT = t; return; }
+  if (t > prevT && t - prevT < 1){
+    for (const p of lesson.phrases){ if (prevT < p.at && p.at <= t){ prevT = t; return trigger(p); } }
+  }
+  prevT = t;
+});
+video.addEventListener('seeked', () => { prevT = video.currentTime; });
+video.addEventListener('ended', () => { playgate.hidden = false; playgate.querySelector('.cap').textContent = 'Lesson complete · press to watch again'; });
+playgate.addEventListener('click', () => { playgate.hidden = true; video.play().catch(()=>{}); });
+
+// Fullscreen the WRAPPER (video + practice overlay), not the bare <video>, so
+// the phrase card and glass stay visible in fullscreen. The native video
+// fullscreen button is disabled (controlsList) so this is the only way in.
+const fsBtn = $('#fsBtn');
+fsBtn.addEventListener('click', () => {
+  const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+  if (fsEl) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else (videowrap.requestFullscreen || videowrap.webkitRequestFullscreen).call(videowrap);
+});
+function syncFs(){
+  const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  fsBtn.querySelector('.ic-expand').hidden = on;
+  fsBtn.querySelector('.ic-compress').hidden = !on;
+}
+document.addEventListener('fullscreenchange', syncFs);
+document.addEventListener('webkitfullscreenchange', syncFs);
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => tab.onclick = () => {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active');
+  $('#panel-ovr').hidden = tab.dataset.tab!=='ovr';
+  $('#panel-how').hidden = tab.dataset.tab!=='how';
+});
+
+// Voice settings
+/* Opened from the portal: `embed=1` strips the chrome, and a hand-off token
+   (which the portal signs) names the student. The token comes off the URL
+   straight away so it is not what gets bookmarked or shared. */
+const bootQs = new URLSearchParams(location.search);
+const embedded = bootQs.get('embed') === '1' || bootQs.has('handoff');
+if (embedded) document.body.classList.add('embed');
+if (bootQs.has('handoff')) {
+  bootQs.delete('handoff');
+  history.replaceState(null, '', location.pathname + '?' + bootQs.toString());
+  const studioLink = document.getElementById('studioLink'); if (studioLink) studioLink.hidden = true;
+}
+function tellPortal(msg) {
+  if (!embedded || window.parent === window) return;
+  try { window.parent.postMessage({ source: 'gglive', ...msg }, '*'); } catch {}
+}
+
+const gearBtn = $('#gearBtn'), settingsPop = $('#settingsPop'), voiceRows = $('#voiceRows');
+let voiceId = localStorage.getItem('gglive_voice') || '', sampleAudio = null;
+async function buildVoiceRows(){
+  let voices = []; try { voices = await fetch('/api/live/voices').then(r=>r.json()); } catch { return; }
+  voiceRows.innerHTML = '';
+  for (const v of voices){
+    const b = document.createElement('div');
+    b.className = 'vrow' + (v.id===voiceId?' sel':'');
+    b.innerHTML = `<span>${v.name}</span><span class="tick"></span>`;
+    b.onclick = () => {
+      voiceId = v.id; localStorage.setItem('gglive_voice', voiceId);
+      [...voiceRows.children].forEach(x=>x.classList.remove('sel')); b.classList.add('sel');
+      try { if (sampleAudio) sampleAudio.pause(); sampleAudio = new Audio('/api/live/tts?text='+encodeURIComponent(v.sample)+'&voice='+encodeURIComponent(v.id)); sampleAudio.play(); } catch {}
+    };
+    voiceRows.appendChild(b);
+  }
+}
+gearBtn.onclick = e => { e.stopPropagation(); settingsPop.hidden = !settingsPop.hidden; if (!settingsPop.hidden && !voiceRows.children.length) buildVoiceRows(); };
+document.addEventListener('click', e => { if (!settingsPop.hidden && !settingsPop.contains(e.target) && e.target!==gearBtn) settingsPop.hidden = true; });
+
+async function load(){
+  if (!id){ $('#empty').hidden = false; return; }
+  let data;
+  try { const r = await fetch('/api/live/lessons/' + encodeURIComponent(id)); if (r.status === 401) { location.href = '/'; return; } if (!r.ok) throw 0; data = await r.json(); }
+  catch { $('#empty').hidden = false; return; }
+  lesson = data;
+  $('#content').hidden = false;
+  $('#title').textContent = lesson.title;
+  $('#crumb').textContent = lesson.title;
+  document.title = 'Gaeilgeoir Guides · ' + lesson.title;
+  const n = lesson.phrases.length;
+  $('#phrasePill').textContent = n + (n===1?' phrase':' phrases');
+  $('#contentsSub').textContent = n ? 'Tap any phrase to practise it' : 'No phrases on this lesson yet';
+  video.src = lesson.videoUrl;
+  renderList();
+}
+load();
+</script>
+</body>
+</html>

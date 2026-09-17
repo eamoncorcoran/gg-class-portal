@@ -68,6 +68,20 @@ function actor(label) {
   const jar = new Map();
   return {
     label, jar,
+    /* A server-sent stream: the first frame is the answer, then hang up. */
+    async stream(path) {
+      touched.add(`GET ${path.split('?')[0]}`);
+      const ctrl = new AbortController();
+      const headers = jar.size ? { cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; ') } : {};
+      try {
+        const response = await fetch(`${BASE}${path}`, { headers, signal: ctrl.signal });
+        if (!response.ok) { const text = await response.text(); ctrl.abort(); return { status: response.status, data: text }; }
+        const reader = response.body.getReader();
+        const first = await Promise.race([reader.read(), new Promise((r) => setTimeout(() => r({ value: null }), 4000))]);
+        ctrl.abort();
+        return { status: response.status, data: first.value ? Buffer.from(first.value).toString() : '' };
+      } catch (error) { return { status: 0, data: { error: error.message } }; }
+    },
     async call(path, { method = 'GET', body, form } = {}) {
       const headers = {};
       if (jar.size) headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
@@ -291,12 +305,12 @@ try {
          studio lesson id; the address a viewer gets is signed for them. */
       const practice = expectOk('add a practice lesson from a studio share link', await admin.call(
         `/api/admin/modules/${made.moduleId}/lessons`,
-        { method: 'POST', body: { title: 'Say it: greetings', video: 'http://localhost:3211/lesson.html?id=c96313c8a944', published: true } }),
+        { method: 'POST', body: { title: 'Say it: greetings', video: 'http://localhost:3111/live/lesson.html?id=c96313c8a944', published: true } }),
         (body) => body?.video_provider === 'practice' && body?.video_ref === 'c96313c8a944');
       made.practiceLessonId = practice?.id;
       if (made.practiceLessonId) {
-        expectOk('an administrator gets a signed player address for it', await admin.call(`/api/admin/lessons/${made.practiceLessonId}/practice`),
-          (body) => /lesson\.html\?id=c96313c8a944&embed=1&handoff=/.test(body?.url || ''));
+        expectOk('an administrator gets the player address for it, on this site', await admin.call(`/api/admin/lessons/${made.practiceLessonId}/practice`),
+          (body) => body?.url === '/live/lesson.html?id=c96313c8a944&embed=1');
         expectStatus('but not for a lesson that is a recording', await admin.call(`/api/admin/lessons/${lesson.id}/practice`), 404);
         expectStatus('a practice lesson without a studio id is refused', await admin.call(
           `/api/admin/modules/${made.moduleId}/lessons`,
@@ -717,33 +731,50 @@ try {
   }
 
   /* -------------------------------------------------------- live classroom */
-  section('The live classroom, from the portal side');
+  section('The live classroom, from the teacher\u2019s side');
   {
-    const bearer = process.env.LIVE_ENTITLEMENTS_TOKEN;
-    const ask = (path) => fetch(`${BASE}${path}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} });
-    expect('the entitlements lookup refuses a caller with no bearer',
-      (await fetch(`${BASE}/api/live/entitlements?email=${encodeURIComponent(made.studentEmail)}`)).status === 401, 'it answered without a bearer');
-    if (bearer) {
-      const ent = await ask(`/api/live/entitlements?email=${encodeURIComponent(made.studentEmail)}`).then((r) => r.json());
-      expect('and answers the live room with class ids', Array.isArray(ent.courses) && ent.courses.includes(made.classId), JSON.stringify(ent).slice(0, 160));
-      expect('plus the webinar parsed from the class link', ent.classes?.[0] && 'webinarId' in ent.classes[0], 'no webinar field');
-      const stranger = await ask('/api/live/entitlements?email=nobody-at-all@example.com').then((r) => r.json());
-      expect('and nothing for an email it does not know', stranger.courses?.length === 0, JSON.stringify(stranger));
-      expect('the console can list every class', (await ask('/api/live/classes').then((r) => r.json())).classes?.length >= 1, 'no classes');
-      expect('and the studio every course', Array.isArray((await ask('/api/live/courses').then((r) => r.json())).courses), 'no courses');
-    }
-    /* The teacher's hand-off: a signed doorway into the console, for one class,
-       thirty minutes long. Checked as shape here; the live room verifies it. */
-    const decode = (url) => JSON.parse(Buffer.from(new URL(url).searchParams.get('handoff').split('.')[1], 'base64url').toString());
-    const theirs = await admin.call(`/api/admin/live/handoff?classId=${made.classId}`);
-    if (theirs.status === 503) {
-      expect('the teacher is told plainly when the live room is not switched on', /not switched on/.test(theirs.data?.error || ''), theirs.data?.error);
-    } else {
-      expectOk('a teacher gets a hand-off into the console', theirs, (d) => /teacher\.html/.test(d?.url));
-      const claims = decode(theirs.data.url);
-      expect('as an administrator, for that class, for half an hour',
-        claims?.role === 'admin' && claims?.classId === made.classId && (claims.exp - claims.iat) === 1800, JSON.stringify(claims));
-    }
+    const me = expectOk('the console knows who the teacher is', await admin.call('/api/live/me'), (d) => d?.role === 'admin' && typeof d?.live === 'boolean');
+    expectOk('and what the session is', await admin.call('/api/live/session'), (d) => ['open', 'entitled'].includes(d?.mode));
+    expectOk('the console can list every class, with its webinar', await admin.call('/api/live/classes'),
+      (d) => Array.isArray(d?.classes) && d.classes.some((c) => c.id === made.classId && 'webinarId' in c));
+    expectOk('and the studio every course', await admin.call('/api/live/courses'), (d) => Array.isArray(d?.courses));
+    expectOk('the session is set to this class, enrolled students only', await admin.call('/api/live/session',
+      { method: 'POST', body: { mode: 'entitled', classId: made.classId } }), (d) => d?.classId === made.classId && d?.mode === 'entitled');
+    expectStatus('a class that does not exist is refused', await admin.call('/api/live/session',
+      { method: 'POST', body: { mode: 'open', classId: '00000000-0000-4000-8000-000000000000' } }), 400);
+    const pushed = expectOk('the teacher puts a phrase on screen', await admin.call('/api/live/phrase',
+      { method: 'POST', body: { irish: 'Dia duit', english: 'Hello', show: true } }), (d) => d?.phrase?.id > 0 && d.phrase.show);
+    made.phraseId = pushed?.phrase?.id;
+    expectOk('the room reports how many are in it', await admin.call('/api/live/status'), (d) => typeof d?.students === 'number' && d?.phrase?.irish === 'Dia duit');
+    const preview = await admin.stream('/api/live/phrase-stream');
+    expect('the console\u2019s preview stream carries the phrase', preview.status === 200 && /Dia duit/.test(preview.data), `status ${preview.status}`);
+    const teacherChat = await admin.stream('/api/live/chat-stream');
+    expect('the teacher\u2019s question stream opens with the threads', teacherChat.status === 200 && /"threads"/.test(teacherChat.data), `status ${teacherChat.status}`);
+    expectOk('the teacher can message the whole class', await admin.call('/api/live/chat/broadcast', { method: 'POST', body: { text: 'Fáilte romhaibh' } }));
+    expectOk('and pin a question for everyone', await admin.call('/api/live/chat/highlight', { method: 'POST', body: { text: 'Cad is brí le sin?', name: 'Aoife' } }));
+    expectOk('marking a thread read is harmless when there is none', await admin.call('/api/live/chat/read', { method: 'POST', body: { cid: 'nobody' } }));
+    expectStatus('a reply to nobody is refused', await admin.call('/api/live/chat/reply', { method: 'POST', body: { cid: 'nobody', text: 'Hi' } }), 400);
+    expectGraceful('a video upload that is not a video is refused', await admin.call('/api/live/lessons/video', { method: 'POST', form: 'not a video' }));
+
+    /* The studio: a deck of phrases filed under the course. */
+    const deck = expectOk('the studio saves a lesson', await admin.call('/api/live/lessons', { method: 'POST',
+      body: { title: 'Audit deck', courseId: made.courseId, phrases: [{ at: 0, irish: 'Dia duit', english: 'Hello' }, { at: 1, irish: 'Slán', english: 'Bye' }] } }),
+      (d) => d?.id && d?.lesson?.phrases?.length === 2);
+    made.liveLessonId = deck?.id;
+    expectStatus('but not an empty one', await admin.call('/api/live/lessons', { method: 'POST', body: { title: 'Nothing' } }), 400);
+    expectOk('the studio lists it', await admin.call('/api/live/lessons'), (d) => Array.isArray(d) && d.some((l) => l.id === made.liveLessonId));
+    if (made.liveLessonId) expectOk('and reads it back', await admin.call(`/api/live/lessons/${made.liveLessonId}`), (d) => d?.title === 'Audit deck');
+    expectStatus('a lesson that does not exist is a 404', await admin.call('/api/live/lessons/nope'), 404);
+    expectStatus('so is a video that does not exist', await admin.call('/api/live/video/nope.mp4'), 404);
+    expectOk('the voices are listed', await admin.call('/api/live/voices'), (d) => Array.isArray(d) && d.length >= 1);
+    expectGraceful('a phrase can be heard, or the reason it cannot is given', await admin.call('/api/live/tts?text=Dia%20duit'));
+    /* These two lean on OpenAI, which a local portal may not have a key for:
+       an answer, or a plain sentence saying why not, are both right. */
+    const phon = await admin.call('/api/live/phonetics?text=Dia%20duit');
+    expect('phonetics answer or explain', (phon.status === 200 && phon.data?.phonetic) || (phon.status === 502 && /phonetics/.test(phon.data?.error || '')), `status ${phon.status}`);
+    const graded = await admin.call('/api/live/analyze', { method: 'POST', body: { target: 'Dia duit', audioBase64: 'x' } });
+    expect('a recorded attempt is graded or refused plainly', [400, 503].includes(graded.status) && typeof graded.data?.error === 'string', `status ${graded.status}`);
+    expectStatus('the practice-lesson picker in the course editor sees the studio', await admin.call('/api/admin/live/practice-lessons'), 200);
   }
 
   /* ----------------------------------------------------------- community */
@@ -958,25 +989,51 @@ try {
      merely not shown it. */
   if (made.courseId) {
     const sneak = await student.call(`/api/admin/plans/${made.courseId}`);
-    /* Into the live classroom: a signed doorway naming them and their class,
-       as a student, five minutes long. The live room verifies it on its side. */
-    const decodeHandoff = (url) => JSON.parse(Buffer.from(new URL(url).searchParams.get('handoff').split('.')[1], 'base64url').toString());
+    /* Into the live classroom: the same session, so nothing to carry. */
     if (made.practiceLessonId) {
-      expectOk('the student gets their own signed player address for a practice lesson',
+      expectOk('the student gets the practice player for a practice lesson, on this site',
         await student.call(`/api/student/lessons/${made.practiceLessonId}/practice`),
-        (body) => /embed=1&handoff=/.test(body?.url || ''));
+        (body) => /^\/live\/lesson\.html\?id=c96313c8a944&embed=1$/.test(body?.url || ''));
       expectStatus('and not for a recording', await student.call(`/api/student/lessons/${made.lessonId}/practice`), 404);
     }
-    const mine = await student.call('/api/student/live/handoff');
-    if (mine.status === 503) {
-      expect('the student is told plainly when the live room is not switched on', /not switched on/.test(mine.data?.error || ''), mine.data?.error);
-    } else {
-      expectOk('a student gets a hand-off into the live room', mine, (d) => typeof d?.url === 'string');
-      const claims = mine.data?.url ? decodeHandoff(mine.data.url) : null;
-      expect('naming them and their class, as a student, briefly',
-        claims?.role === 'student' && claims?.classId === made.classId && Boolean(claims?.sub) && (claims.exp - claims.iat) === 300, JSON.stringify(claims));
-      expectStatus('a student cannot mint a teacher hand-off', await student.call(`/api/admin/live/handoff?classId=${made.classId}`), 403);
+    /* The live room, from a student in the class the session is for. */
+    const mine = expectOk('the room knows who the student is', await student.call('/api/live/me'),
+      (d) => d?.role === 'student' && d?.allowed === true && d?.classId === made.classId);
+    const sig = await student.call('/api/live/signature', { method: 'POST', body: { meetingNumber: '84218712491' } });
+    expect('a student gets an attendee signature, or is told the room is not set up',
+      (sig.status === 200 && typeof sig.data?.signature === 'string') || (sig.status === 503 && /not set up/.test(sig.data?.error || '')), `status ${sig.status} ${JSON.stringify(sig.data).slice(0, 120)}`);
+    if (sig.status === 200) {
+      const claims = JSON.parse(Buffer.from(sig.data.signature.split('.')[1], 'base64url').toString());
+      expect('and it is attendee role 0, for that webinar', claims.role === 0 && claims.mn === '84218712491', JSON.stringify(claims));
     }
+    expectStatus('a webinar id that is not one is refused', await student.call('/api/live/signature', { method: 'POST', body: { meetingNumber: '12' } }), 400);
+    const phrases = await student.stream('/api/live/phrase-stream');
+    expect('the student\u2019s phrase stream opens with the phrase on screen', phrases.status === 200 && /Dia duit/.test(phrases.data), `status ${phrases.status}`);
+    const chat = await student.stream('/api/live/chat-stream');
+    expect('and their own question thread', chat.status === 200 && /"thread"/.test(chat.data), `status ${chat.status}`);
+    if (made.phraseId) expectOk('saying the phrase is recorded', await student.call('/api/live/phrase-result', { method: 'POST', body: { phraseId: made.phraseId, result: 'passed' } }));
+    expectOk('a question goes to the teacher', await student.call('/api/live/chat', { method: 'POST', body: { text: 'Cad is brí le "duit"?' } }));
+    expectStatus('an empty question is refused', await student.call('/api/live/chat', { method: 'POST', body: { text: '  ' } }), 400);
+    if (made.liveLessonId) expectOk('a student can read a lesson the studio made', await student.call(`/api/live/lessons/${made.liveLessonId}`), (d) => d?.title === 'Audit deck');
+    expectStatus('but cannot put a phrase on screen', await student.call('/api/live/phrase', { method: 'POST', body: { irish: 'x' } }), 403);
+    expectStatus('nor list the studio', await student.call('/api/live/lessons'), 403);
+    expectStatus('nor change who may join', await student.call('/api/live/session', { method: 'POST', body: { mode: 'open' } }), 403);
+    expectStatus('nor delete a lesson', await student.call(`/api/live/lessons/${made.liveLessonId || 'x'}`, { method: 'DELETE' }), 403);
+    /* Once the session is for a class the student is not in, they are shut out. */
+    const other = expectOk('a second class exists for the session to move to', await admin.call('/api/admin/classes', { method: 'POST', body: {
+      programmeName: `Audit ${stamp} other`, dayOfWeek: 2, startTime: '19:00',
+      timezone: 'Europe/Dublin', hasCommunity: false, startsOn: day(-7), endsOn: day(120),
+    } }));
+    if (other?.id) {
+      expectOk('the session moves to that class', await admin.call('/api/live/session', { method: 'POST', body: { mode: 'entitled', classId: other.id } }), (d) => d?.classId === other.id);
+      expect('a student outside the class is refused the room', (await student.call('/api/live/me')).data?.allowed === false, 'the student was allowed');
+      expectStatus('and refused a signature', await student.call('/api/live/signature', { method: 'POST', body: { meetingNumber: '84218712491' } }), 403);
+      expectStatus('and a stream', await student.call('/api/live/phrase-stream'), 403);
+      expectOk('the second class is deleted', await admin.call(`/api/admin/classes/${other.id}?confirmWork=0`, { method: 'DELETE' }));
+    }
+    /* Leave the room as it was found. */
+    expectOk('the session is opened up again', await admin.call('/api/live/session', { method: 'POST', body: { mode: 'open', classId: '' } }), (d) => d?.mode === 'open');
+    if (made.liveLessonId) expectOk('the audit deck is deleted', await admin.call(`/api/live/lessons/${made.liveLessonId}`, { method: 'DELETE' }));
     expect('a signed-in student is refused the plan', sneak.status === 401 || sneak.status === 403,
       `status ${sneak.status}`);
   }
@@ -1414,7 +1471,7 @@ try {
 /* Which routes this journey never called. Named rather than counted, because a
    number tells you there is a gap and not where it is. */
 const MOUNTS = { 'admin.js': '/api/admin', 'student.js': '/api/student', 'auth.js': '/api/auth',
-  'settings.js': '/api/settings', 'media.js': '/api/media', 'zoom.js': '/api/zoom' };
+  'settings.js': '/api/settings', 'media.js': '/api/media', 'zoom.js': '/api/zoom', 'live.js': '/api/live' };
 const defined = [];
 for (const file of fs.readdirSync(new URL('../src/routes/', import.meta.url))) {
   const mount = MOUNTS[file];

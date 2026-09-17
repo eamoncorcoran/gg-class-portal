@@ -28,7 +28,7 @@ import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, cours
 import { addTopic, coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, removeTopic,
   reorderWeek, scheduleTopic, setItemDone, setTopicGroup, topicCost, unscheduleItem } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
-import { liveConfig, liveConfigured, signHandoff, liveFetch, practiceUrl } from '../live.js';
+import { listLessons as listLiveLessons } from '../live/lessons.js';
 import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashText, isStandIn,
   providerName, renderStory, ttsConfigured } from '../tts.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
@@ -2084,34 +2084,20 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
   res.json({ ...row, moved: delta, previousDay: plotted.toISODate(), previous, keptVisible: Boolean(alreadyVisible) });
 }));
 
-/* The teacher console for a class, opened from the portal.
-   The console is told which class it is running and identifies the teacher by
-   this token, rather than by a shared key typed in by hand. Thirty minutes:
-   long enough to open it, short enough that a leaked link goes stale. */
-router.get('/live/handoff', asyncRoute(async (req, res) => {
-  if (!liveConfigured()) return res.status(503).json({ error: 'The live classroom is not switched on for this portal yet.' });
-  const klass = req.query.classId ? await one('SELECT * FROM classes WHERE id=$1', [String(req.query.classId)]) : null;
-  const token = signHandoff({ sub: req.user.email, name: req.user.name, cid: req.user.id, role: 'admin', classId: klass?.id || null }, { minutes: 30 });
-  const page = String(req.query.page || 'teacher') === 'studio' ? 'studio.html' : 'teacher.html';
-  res.json({ url: `${liveConfig.url}/${page}?handoff=${encodeURIComponent(token)}`, classId: klass?.id || null });
-}));
-
 /* The studio's lessons, by name, for the lesson editor's picker. */
 router.get('/live/practice-lessons', asyncRoute(async (_req, res) => {
-  const lessons = await liveFetch('/api/portal/lessons');
-  res.json({ lessons: Array.isArray(lessons) ? lessons : [] });
+  const lessons = (await listLiveLessons()).filter((item) => item.hasVideo);
+  res.json({ lessons });
 }));
 
 /* The same player address a student gets, for an administrator previewing a
-   course. Thirty minutes, like the teacher console. */
+   course. */
 router.get('/lessons/:id/practice', asyncRoute(async (req, res) => {
-  if (!liveConfigured()) return res.status(503).json({ error: 'Practice lessons are not switched on for this portal yet.' });
   const lesson = await one('SELECT video_provider, video_ref FROM course_lessons WHERE id=$1', [req.params.id]);
   if (lesson?.video_provider !== 'practice' || !lesson.video_ref) {
     return res.status(404).json({ error: 'This lesson is not a practice lesson.' });
   }
-  const token = signHandoff({ sub: req.user.email, name: req.user.name, cid: req.user.id, role: 'admin', lessonId: req.params.id }, { minutes: 30 });
-  res.json({ url: practiceUrl(lesson.video_ref, token) });
+  res.json({ url: `/live/lesson.html?id=${encodeURIComponent(lesson.video_ref)}&embed=1` });
 }));
 
 router.delete('/assignments/:id', asyncRoute(async (req, res) => {

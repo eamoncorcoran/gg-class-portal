@@ -16,6 +16,8 @@ import studentRoutes from './src/routes/student.js';
 import settingsRoutes from './src/routes/settings.js';
 import mediaRoutes from './src/routes/media.js';
 import liveRoutes from './src/routes/live.js';
+import { loadAccess } from './src/live/room.js';
+import { attachSpeechRelay } from './src/live/speech.js';
 import calendarRoutes from './src/routes/calendar.js';
 import zoomHookRoutes from './src/routes/zoomhook.js';
 import { ensureAllWeeks } from './src/weeks.js';
@@ -66,9 +68,7 @@ app.use(helmet({
       // setting advertising cookies on students.
       frameSrc: ["'self'", 'https://www.loom.com', 'https://loom.com',
         'https://www.youtube-nocookie.com', 'https://www.youtube.com',
-        'https://*.leadconnectorhq.com', 'https://challenges.cloudflare.com',
-        // The live classroom's practice player, inside a course page.
-        ...(process.env.LIVE_URL ? [process.env.LIVE_URL.replace(/\/+$/, '')] : [])],
+        'https://*.leadconnectorhq.com', 'https://challenges.cloudflare.com'],
       mediaSrc: ["'self'", 'blob:', 'https:'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -97,6 +97,30 @@ app.use(helmet({
    — which reads `error` out of a JSON body — with nothing to show but "Something
    went wrong", so the one message that needs to say "wait a moment and try
    again" was the one message that could not. */
+/* The live classroom pages (the room, the console, the studio, the practice
+   player) load Zoom's Meeting SDK from Zoom's CDN and talk to Zoom's media
+   servers, and they carry their own inline scripts. They get their own policy,
+   scoped to /live/, instead of loosening the portal's. The practice player is
+   framed by the course page, so it may be framed by this site and nobody else. */
+app.use('/live', (req, res, next) => {
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://source.zoom.us",
+    "style-src 'self' 'unsafe-inline' https://fonts.bunny.net https://source.zoom.us",
+    "font-src 'self' data: https://fonts.bunny.net",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: data:",
+    "connect-src 'self' ws: wss: https://*.zoom.us wss://*.zoom.us https://source.zoom.us",
+    "worker-src 'self' blob:",
+    "frame-src 'self' https://*.zoom.us",
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; '));
+  res.removeHeader('X-Frame-Options');
+  next();
+});
+
 app.use(rateLimit({
   windowMs: 60 * 1000,
   limit: 600,
@@ -108,6 +132,8 @@ app.use(rateLimit({
 /* Ahead of the JSON parser: verifying Zoom's signature needs the bytes they
    actually sent, and a re-serialised object is not those bytes. */
 app.use('/api/zoom/webhook', zoomHookRoutes);
+// A recorded practice attempt is a few megabytes of audio in a JSON body.
+app.use('/api/live/analyze', express.json({ limit: '6mb' }));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 app.use(cookieParser());
@@ -147,7 +173,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/media', mediaRoutes);
-// Service to service, bearer token, no cookie: what the live classroom may ask.
+// The live classroom: the room, the questions, the studio's lessons, the mic.
 app.use('/api/live', liveRoutes);
 // Calendar apps subscribe with no cookies, so this one authenticates by URL token.
 app.use('/calendar', calendarRoutes);
@@ -203,9 +229,16 @@ async function start() {
   // Scheduled board posts become visible by the clock passing rather than by
   // anything running, so without this nothing would notice they had appeared.
   startBoardNotifier();
-  app.listen(config.port, () => {
+  await loadAccess();
+  const server = app.listen(config.port, () => {
     console.log(`Gaeilgeoir Guides Student Support running at ${config.appUrl}`);
   });
+  /* The live room holds thousands of idle event streams open and takes video
+     uploads that run for minutes. Node's defaults would hang up on both. */
+  server.keepAliveTimeout = 75000;
+  server.headersTimeout = 80000;
+  server.requestTimeout = 0;
+  attachSpeechRelay(server);
 }
 
 start().catch((error) => {

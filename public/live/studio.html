@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gaeilgeoir Guides · Courses</title>
+<link rel="stylesheet" href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800">
+<link rel="stylesheet" href="/live/live.css">
+<style>
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.tile{display:flex;align-items:center;gap:12px;padding:15px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-xs);cursor:pointer;text-align:left;transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .16s,border-color .16s}
+.tile:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);border-color:var(--brand-200)}
+.tile .ic{width:42px;height:42px;border-radius:11px;background:var(--brand-50);color:var(--brand-700);display:grid;place-items:center;flex:0 0 auto}
+.tile .ic svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9}
+.tile .tt{font-size:14.5px;font-weight:700;color:var(--text)}
+.tile .ts{font-size:12.5px;color:var(--text-tertiary);font-weight:500;margin-top:2px}
+
+.rowitem{display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .14s}
+.rowitem:last-child{border-bottom:0}
+.rowitem:hover{background:var(--gray-50)}
+.rowitem .ri{flex:1;min-width:0}
+.rowitem .rt{font-size:14.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rowitem .rs{font-size:12.5px;color:var(--text-tertiary);font-weight:500;margin-top:2px}
+.rowitem .ra{display:flex;gap:7px;flex:0 0 auto}
+
+.statebox{padding:34px 20px;text-align:center;color:var(--text-tertiary);font-size:13.5px;font-weight:600;line-height:1.6}
+.statebox .btn{margin-top:12px}
+.spin{width:18px;height:18px;border:2.5px solid var(--gray-200);border-top-color:var(--brand-500);border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-4px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.editorgrid{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:20px;align-items:start}
+@media(max-width:1080px){.editorgrid{grid-template-columns:1fr}}
+.stack{display:flex;flex-direction:column;gap:18px}
+.dropzone{border:2px dashed var(--border-strong);border-radius:12px;background:var(--gray-50);padding:30px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.dropzone:hover,.dropzone.drag{border-color:var(--brand-500);background:var(--brand-50)}
+.dropzone .ic{width:44px;height:44px;border-radius:11px;background:#fff;border:1px solid var(--border);display:grid;place-items:center;margin:0 auto 11px;box-shadow:var(--shadow-xs)}
+.dropzone .ic svg{width:21px;height:21px;stroke:var(--brand-600);fill:none;stroke-width:1.8}
+.dropzone .big{font-size:14.5px;font-weight:700;color:var(--text-secondary)}
+.dropzone .big b{color:var(--brand-700)}
+.dropzone .small{font-size:12.5px;color:var(--text-tertiary);font-weight:500;margin-top:4px}
+.orlink{text-align:center;margin-top:11px;font-size:13px;font-weight:600;color:var(--text-tertiary)}
+.orlink a{color:var(--brand-700);cursor:pointer;text-decoration:underline}
+.uprog{height:8px;border-radius:9999px;background:var(--gray-200);overflow:hidden;margin-top:14px}
+.uprog i{display:block;height:100%;width:0;background:var(--brand-500);transition:width .25s}
+.previewwrap{position:relative;background:#0b0f14;border-radius:12px;overflow:hidden;aspect-ratio:16/9;border:1px solid var(--border)}
+.previewwrap video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#0b0f14}
+.deckph{background:var(--brand-50);border:1px solid var(--brand-100);border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.deckph .dt strong{display:block;font-size:14px;color:var(--brand-800)}
+.deckph .dt span{font-size:12.5px;color:var(--text-tertiary)}
+.vbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
+.timenow{font-size:13px;font-weight:700;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.timenow b{color:var(--brand-700)}
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.qgrid .full{grid-column:1/-1}
+@media(max-width:560px){.qgrid{grid-template-columns:1fr}}
+.tsrow{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.frow{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;transition:background .14s}
+.frow:hover{background:var(--gray-50)}
+.frow .ft{font-size:12px;font-weight:800;color:#fff;background:var(--brand-600);border-radius:7px;padding:4px 8px;flex:0 0 auto;font-variant-numeric:tabular-nums;min-width:36px;text-align:center}
+.frow .fm{flex:1;min-width:0}
+.frow .fga{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .fen{font-size:12.5px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .fx{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--text-quaternary);flex:0 0 auto;background:none;border:0;cursor:pointer}
+.frow .fx:hover{background:var(--error-50);color:var(--error-700)}
+.frow .fx svg{width:16px;height:16px;fill:currentColor}
+.share{background:var(--brand-50);border:1px solid var(--brand-100);border-radius:10px;padding:13px;margin-top:13px}
+.share .lbl{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--brand-700);margin-bottom:8px}
+.share .lk{display:flex;gap:8px}
+.share .lk input{flex:1;font-size:12.5px}
+.gate{max-width:420px;margin:12vh auto 0;padding:0 14px}
+</style>
+</head>
+<body>
+<div class="app-shell" id="shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><img class="brand-mark" src="/logo.webp" alt=""><div class="bt"><strong>Gaeilgeoir Guides</strong><small>Class Portal</small></div></div>
+    <div class="nav-label">Teach</div>
+    <nav class="nav">
+      <a class="nav-button" href="/live/teacher.html"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none"><path d="m17 9.5 3.223-2.148c.402-.268.603-.402.769-.395a.5.5 0 0 1 .372.195c.103.13.103.372.103.856v7.984c0 .484 0 .726-.103.856a.5.5 0 0 1-.372.195c-.166.007-.367-.127-.769-.395L17 14.5m-11.8 4h7.6c1.12 0 1.68 0 2.108-.218a2 2 0 0 0 .874-.874C16 16.98 16 16.42 16 15.3V8.7c0-1.12 0-1.68-.218-2.108a2 2 0 0 0-.874-.874C14.48 5.5 13.92 5.5 12.8 5.5H5.2c-1.12 0-1.68 0-2.108.218a2 2 0 0 0-.874.874C2 7.02 2 7.58 2 8.7v6.6c0 1.12 0 1.68.218 2.108a2 2 0 0 0 .874.874c.428.218.988.218 2.108.218Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Live class</span></a>
+      <a class="nav-button active"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5 12 4l9.5 4.5L12 13 2.5 8.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M6.5 10.7v4.6c0 .6.3 1.1.8 1.4 1.2.7 2.9 1.3 4.7 1.3s3.5-.6 4.7-1.3c.5-.3.8-.8.8-1.4v-4.6M21 9v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span><span>Courses</span></a>
+      <a class="nav-button" href="/live/room.html" target="_blank"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span><span>Student view</span></a>
+      <a class="nav-button" href="/"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Back to the portal</span></a>
+    </nav>
+    <div class="side-foot"><div class="avatar" id="sideAv">GG</div><div class="who"><div class="n" id="sideName">Teacher</div><div class="e">Teacher</div></div></div>
+  </aside>
+
+  <main class="app-main">
+    <!-- COURSES -->
+    <section id="viewCourses" hidden>
+      <div class="page-header">
+        <div>
+          <div class="breadcrumb"><span class="here">Courses</span></div>
+          <h1 class="page-title">Courses</h1>
+          <p class="page-sub">Open a course to add lessons and keep building it up.</p>
+        </div>
+        <button class="btn primary" id="newCourseBtn">+ New course</button>
+      </div>
+      <div id="coursesBody"></div>
+    </section>
+
+    <!-- LESSONS IN A COURSE -->
+    <section id="viewLessons" hidden>
+      <div class="page-header">
+        <div>
+          <div class="breadcrumb"><a id="bcCourses" style="cursor:pointer">Courses</a><span class="sep">/</span><span class="here" id="bcCourseName">Course</span></div>
+          <h1 class="page-title" id="courseTitle">Course</h1>
+          <p class="page-sub" id="courseSub">Lessons in this course</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="backToCourses">← All courses</button>
+          <button class="btn primary" id="newLessonBtn">+ New lesson</button>
+        </div>
+      </div>
+      <div class="card"><div id="lessonsBody"></div></div>
+    </section>
+
+    <!-- LESSON EDITOR -->
+    <section id="viewEditor" hidden>
+      <div class="page-header">
+        <div>
+          <div class="breadcrumb"><a id="bcCourses2" style="cursor:pointer">Courses</a><span class="sep">/</span><a id="bcCourse2" style="cursor:pointer">Course</a><span class="sep">/</span><span class="here" id="bcLesson">Lesson</span></div>
+          <h1 class="page-title" id="editorTitle">Lesson</h1>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="backToLessons">← Back</button>
+          <button class="btn primary" id="saveBtn">Save lesson</button>
+        </div>
+      </div>
+
+      <div class="editorgrid">
+        <div class="stack">
+          <div class="card"><div class="card-body">
+            <div class="qgrid">
+              <div class="field"><label>Course</label><select id="courseInput"><option value="">Choose a course</option></select>
+                <div style="font-size:12px;color:var(--text-tertiary);margin-top:6px">Courses are the portal's own. Add one under Courses and it appears here.</div></div>
+              <div class="field"><label>Lesson title</label><input id="titleInput" placeholder="e.g. Greetings" maxlength="120"></div>
+            </div>
+          </div></div>
+
+          <div class="card">
+            <div class="card-header"><h2>Video <span style="color:var(--text-quaternary);font-weight:500">(optional)</span></h2></div>
+            <div class="card-body">
+              <div id="dropzone" class="dropzone">
+                <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M20 16v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/></svg></div>
+                <div class="big"><b>Click to upload</b> or drag a video here</div>
+                <div class="small">Any common format · up to 700 MB · converted automatically so it always plays</div>
+              </div>
+              <div class="orlink" id="orlink">or <a id="deckLink">build a phrase deck with no video</a> for live class</div>
+              <input type="file" id="fileInput" accept="video/*" hidden>
+              <div id="uprogWrap" hidden><div class="uprog"><i id="uprogFill"></i></div><div class="field-hint" id="uprogTxt" style="margin-top:7px">Uploading…</div></div>
+              <div id="previewBox" hidden>
+                <div class="previewwrap"><video id="preview" controls preload="metadata"></video></div>
+                <div class="vbar"><div class="timenow">Current time · <b id="timeNow">0:00</b></div><button class="btn small" id="replaceBtn">↻ Replace video</button></div>
+              </div>
+              <div id="deckBox" class="deckph" hidden><div class="dt"><strong>Live deck (no video)</strong><span>Phrases run in order · you step through them in class</span></div><button class="btn small" id="addVideoBtn" style="margin-left:auto">Add a video</button></div>
+            </div>
+          </div>
+
+          <div class="card" id="composerCard">
+            <div class="card-header"><div><h2>Add a phrase</h2><p id="composerHint">Add as many as you like, then save.</p></div></div>
+            <div class="card-body">
+              <div class="qgrid">
+                <div class="field"><label>Gaeilge</label><input id="cGa" placeholder="Dia duit" maxlength="200"></div>
+                <div class="field"><label>English</label><input id="cEn" placeholder="Hello" maxlength="240"></div>
+                <div class="field full"><label>Phonetics <span style="color:var(--text-quaternary);font-weight:500">(optional)</span></label><input id="cPh" placeholder="jee-a gwit" maxlength="240"></div>
+              </div>
+              <div class="tsrow">
+                <div class="field" id="tsField" style="margin:0"><label>Timestamp</label><input id="cAt" placeholder="0:00" style="max-width:120px"></div>
+                <button class="btn" id="grabTimeBtn" type="button">Use current time</button>
+                <button class="btn primary" id="addBtn" type="button" style="flex:1">+ Add phrase</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <div class="card-header"><h2>Phrases</h2><span class="pill" id="frCount">0</span></div>
+            <div id="flist" style="padding:6px"></div>
+            <div class="card-footer" style="flex-direction:column;align-items:stretch;gap:0">
+              <button class="btn primary block" id="saveBtn2">Save lesson</button>
+              <div id="shareBox" class="share" hidden>
+                <div class="lbl">✓ Saved · player link (add it to a course as a practice lesson)</div>
+                <div class="lk"><input id="shareLink" readonly><button class="btn small" id="copyBtn">Copy</button></div>
+                <div style="margin-top:10px"><a class="btn small" id="openLink" target="_blank" style="width:100%">Open lesson ↗</a></div>
+              </div>
+            </div>
+          </div>
+          <div class="card"><div class="card-body" style="padding:14px 16px">
+            <button class="btn danger block" id="deleteBtn">Delete this lesson</button>
+          </div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="mobile-nav">
+    <a class="mnav" href="/live/teacher.html"><svg viewBox="0 0 24 24"><path d="m17 9.5 3.2-2.1v9.2L17 14.5M5 18.5h8c1.1 0 2-.9 2-2v-9c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v9c0 1.1.9 2 2 2Z"/></svg>Live class</a>
+    <a class="mnav on"><svg viewBox="0 0 24 24"><path d="M2.5 8.5 12 4l9.5 4.5L12 13 2.5 8.5Z"/><path d="M6.5 10.7v4.6c0 .6.3 1.1.8 1.4 1.2.7 2.9 1.3 4.7 1.3s3.5-.6 4.7-1.3c.5-.3.8-.8.8-1.4v-4.6M21 9v5"/></svg>Courses</a>
+    <a class="mnav" href="/live/room.html" target="_blank"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>Student</a>
+  </nav>
+</div>
+<div class="toast" id="toast">Saved</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const toast = $('#toast');
+function flash(m, bad){ toast.textContent=m; toast.classList.toggle('error', !!bad); toast.classList.add('on'); setTimeout(()=>toast.classList.remove('on'),1800); }
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = t => { t=Math.max(0,Math.round(t)); const m=Math.floor(t/60),s=t%60; return m+':'+String(s).padStart(2,'0'); };
+function parseTime(v){ v=String(v).trim(); if(/^\d+:\d{1,2}$/.test(v)){ const [m,s]=v.split(':').map(Number); return m*60+s; } const n=parseFloat(v); return isNaN(n)?null:n; }
+
+/* Every network call is bounded and reports failure, so nothing can sit on a
+   spinner forever. */
+async function api(url, opts = {}){
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), opts.timeout || 15000);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctrl.signal,
+      headers: { ...(opts.headers||{}) } });
+    const txt = await r.text();
+    let data = null; try { data = txt ? JSON.parse(txt) : null; } catch {}
+    if (!r.ok) throw new Error((data && data.error) || ('Request failed (' + r.status + ')'));
+    return data;
+  } finally { clearTimeout(t); }
+}
+
+/* ---------------- view state ---------------- */
+const state = { view:'courses', course:null, lessonId:null };
+/* The portal's courses, as the only choices. A lesson filed under a course the
+   portal no longer has keeps its old label as an extra option rather than
+   silently moving. */
+async function loadPortalCourses(){
+  const sel = $('#courseInput'); if (!sel) return;
+  let courses = [];
+  try { courses = (await api('/api/live/courses')).courses || []; } catch {}
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">Choose a course</option>' + courses.map(c =>
+    '<option value="' + esc(c.title) + '" data-id="' + esc(c.id) + '">' + esc(c.title) + '</option>').join('');
+  if (keep && ![...sel.options].some(o => o.value === keep)) sel.insertAdjacentHTML('beforeend', '<option value="' + esc(keep) + '">' + esc(keep) + ' (not in the portal)</option>');
+  sel.value = keep;
+}
+let allLessons = [];
+
+function show(view){
+  state.view = view;
+  $('#viewCourses').hidden = view !== 'courses';
+  $('#viewLessons').hidden = view !== 'lessons';
+  $('#viewEditor').hidden  = view !== 'editor';
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+async function refreshLessons(){
+  allLessons = await api('/api/live/lessons');
+  await loadPortalCourses();
+  return allLessons;
+}
+
+/* ---------------- courses ---------------- */
+async function openCourses(){
+  show('courses');
+  const body = $('#coursesBody');
+  body.innerHTML = '<div class="statebox"><span class="spin"></span>Loading courses…</div>';
+  try { await refreshLessons(); } catch(e){
+    body.innerHTML = `<div class="statebox">Could not load courses.<br><span style="color:var(--error-700)">${esc(e.message)}</span><br><button class="btn" onclick="location.reload()">Try again</button></div>`;
+    return;
+  }
+  const map = new Map();
+  for (const l of allLessons){ const c = l.course || 'Ungrouped'; if(!map.has(c)) map.set(c, []); map.get(c).push(l); }
+  if (!map.size){
+    body.innerHTML = '<div class="statebox">No courses yet.<br>Make your first one with <b>+ New course</b>.</div>';
+    return;
+  }
+  const CAP='<svg viewBox="0 0 24 24"><path d="M2.5 8.5 12 4l9.5 4.5L12 13 2.5 8.5Z"/><path d="M6.5 10.7v4.6c0 .6.3 1.1.8 1.4 1.2.7 2.9 1.3 4.7 1.3s3.5-.6 4.7-1.3c.5-.3.8-.8.8-1.4v-4.6M21 9v5"/></svg>';
+  const grid = document.createElement('div'); grid.className='grid';
+  for (const [course, ls] of [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
+    const n = ls.length, ph = ls.reduce((s,l)=>s+l.phrases,0);
+    const el = document.createElement('button'); el.className='tile'; el.type='button';
+    el.innerHTML = `<div class="ic">${CAP}</div><div><div class="tt">${esc(course)}</div><div class="ts">${n} ${n===1?'lesson':'lessons'} · ${ph} ${ph===1?'phrase':'phrases'}</div></div>`;
+    el.onclick = () => openCourse(course === 'Ungrouped' ? '' : course);
+    grid.appendChild(el);
+  }
+  body.innerHTML=''; body.appendChild(grid);
+}
+$('#newCourseBtn').onclick = () => {
+  const name = prompt('Course name'); if (name === null) return;
+  const clean = name.trim(); if (!clean) return;
+  openCourse(clean, true);
+};
+
+/* ---------------- lessons in a course ---------------- */
+async function openCourse(course, isNew){
+  state.course = course;
+  show('lessons');
+  const label = course || 'Ungrouped';
+  $('#courseTitle').textContent = label;
+  $('#bcCourseName').textContent = label;
+  const body = $('#lessonsBody');
+  body.innerHTML = '<div class="statebox"><span class="spin"></span>Loading lessons…</div>';
+  try { if (!isNew) await refreshLessons(); } catch(e){
+    body.innerHTML = `<div class="statebox">Could not load lessons.<br><span style="color:var(--error-700)">${esc(e.message)}</span></div>`; return;
+  }
+  const ls = allLessons.filter(l => (l.course||'') === (course||''));
+  $('#courseSub').textContent = ls.length ? `${ls.length} ${ls.length===1?'lesson':'lessons'} in this course` : 'No lessons yet in this course';
+  if (!ls.length){
+    body.innerHTML = '<div class="statebox">Nothing here yet.<br>Add your first lesson with <b>+ New lesson</b>.</div>';
+    return;
+  }
+  body.innerHTML = '';
+  for (const l of ls){
+    const el = document.createElement('div'); el.className='rowitem';
+    el.innerHTML = `<div class="ri"><div class="rt">${esc(l.title)}</div><div class="rs">${l.phrases} ${l.phrases===1?'phrase':'phrases'} · ${l.hasVideo?'🎬 video lesson':'🗂️ live deck'}</div></div>
+      <div class="ra"><button class="btn small">Open</button></div>`;
+    el.onclick = () => openLesson(l.id);
+    body.appendChild(el);
+  }
+}
+$('#newLessonBtn').onclick = () => openLesson(null);
+$('#backToCourses').onclick = openCourses;
+$('#bcCourses').onclick = openCourses;
+$('#bcCourses2').onclick = openCourses;
+$('#bcCourse2').onclick = () => openCourse(state.course);
+$('#backToLessons').onclick = () => openCourse(state.course);
+
+/* ---------------- lesson editor ---------------- */
+let videoId='', videoType='', phrases=[], mode=null;
+const preview = $('#preview');
+const hasVideo = () => mode==='video' && !!videoId;
+
+function resetEditorFields(){
+  videoId=''; videoType=''; phrases=[]; mode=null;
+  try { preview.pause(); } catch {}
+  preview.removeAttribute('src'); try { preview.load(); } catch {}
+  $('#previewBox').hidden=true; $('#deckBox').hidden=true;
+  $('#dropzone').hidden=false; $('#orlink').hidden=false; $('#uprogWrap').hidden=true;
+  $('#shareBox').hidden=true; $('#titleInput').value=''; $('#cGa').value=''; $('#cEn').value=''; $('#cPh').value=''; $('#cAt').value='';
+  setComposerMode();
+  renderPhrases();
+}
+function setComposerMode(){
+  const v = hasVideo();
+  $('#tsField').style.display = v ? '' : 'none';
+  $('#grabTimeBtn').style.display = v ? '' : 'none';
+  $('#composerHint').textContent = v
+    ? 'Scrub the video to a moment, grab the time, then write the phrase.'
+    : 'Phrases run in the order you add them.';
+}
+function enterVideoMode(){ mode='video'; $('#deckBox').hidden=true; $('#dropzone').hidden=true; $('#orlink').hidden=true; $('#previewBox').hidden=false; setComposerMode(); renderPhrases(); }
+function enterDeckMode(){ mode='deck'; videoId=''; $('#dropzone').hidden=true; $('#orlink').hidden=true; $('#previewBox').hidden=true; $('#deckBox').hidden=false; setComposerMode(); renderPhrases(); }
+$('#deckLink').onclick = enterDeckMode;
+$('#addVideoBtn').onclick = () => { mode=null; $('#deckBox').hidden=true; $('#dropzone').hidden=false; $('#orlink').hidden=false; setComposerMode(); };
+
+async function openLesson(id){
+  state.lessonId = id;
+  show('editor');
+  $('#bcCourse2').textContent = state.course || 'Ungrouped';
+  resetEditorFields();
+  $('#courseInput').value = state.course || '';
+  if (!id){
+    $('#editorTitle').textContent = 'New lesson';
+    $('#bcLesson').textContent = 'New lesson';
+    return;
+  }
+  $('#editorTitle').textContent = 'Loading…';
+  try {
+    const l = await api('/api/live/lessons/' + encodeURIComponent(id));
+    $('#editorTitle').textContent = l.title;
+    $('#bcLesson').textContent = l.title;
+    $('#titleInput').value = l.title === 'Untitled lesson' ? '' : l.title;
+    $('#courseInput').value = l.course || '';
+    phrases = (l.phrases||[]).map(p => ({ id:p.id, at:p.at, irish:p.irish, english:p.english, phonetic:p.phonetic }));
+    if (l.videoUrl){ videoId = l.videoUrl.split('/').pop(); videoType = l.videoType || ''; preview.src = l.videoUrl; enterVideoMode(); }
+    else enterDeckMode();
+    renderPhrases();
+    const link = location.origin + '/live/lesson.html?id=' + l.id;
+    if (l.videoUrl){ $('#shareLink').value=link; $('#openLink').href=link; $('#shareBox').hidden=false; }
+  } catch(e){
+    $('#editorTitle').textContent = 'Could not open lesson';
+    flash(e.message, true);
+  }
+}
+
+/* upload */
+function pickFile(){ $('#fileInput').click(); }
+$('#dropzone').onclick = pickFile;
+$('#replaceBtn').onclick = pickFile;
+$('#fileInput').onchange = () => { const f=$('#fileInput').files[0]; if(f) uploadVideo(f); $('#fileInput').value=''; };
+['dragenter','dragover'].forEach(ev=>$('#dropzone').addEventListener(ev,e=>{e.preventDefault();$('#dropzone').classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>$('#dropzone').addEventListener(ev,e=>{e.preventDefault();$('#dropzone').classList.remove('drag');}));
+$('#dropzone').addEventListener('drop', e=>{ const f=e.dataTransfer.files[0]; if(f&&/^video\//.test(f.type)) uploadVideo(f); else flash('Drop a video file', true); });
+
+function uploadVideo(file){
+  if(!/^video\//.test(file.type)) return flash('That is not a video', true);
+  $('#dropzone').hidden=true; $('#orlink').hidden=true; $('#uprogWrap').hidden=false;
+  $('#uprogFill').style.width='0%'; $('#uprogTxt').textContent='Uploading… 0%';
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/api/live/lessons/video');
+  xhr.setRequestHeader('content-type', file.type);
+  xhr.upload.onprogress = e => {
+    if(!e.lengthComputable) return;
+    const pc=Math.round(e.loaded/e.total*100);
+    $('#uprogFill').style.width=pc+'%';
+    $('#uprogTxt').textContent = pc < 100 ? ('Uploading… '+pc+'%') : 'Converting so it plays everywhere…';
+  };
+  xhr.onload = () => {
+    $('#uprogWrap').hidden=true;
+    let r={}; try{ r=JSON.parse(xhr.responseText);}catch{}
+    if(xhr.status===200 && r.videoId){
+      videoId=r.videoId; videoType=r.videoType||''; preview.src=r.videoUrl; enterVideoMode(); flash('Video ready ✓');
+    } else {
+      $('#dropzone').hidden=false; $('#orlink').hidden=false;
+      flash(r.error || 'Upload failed', true);
+    }
+  };
+  xhr.onerror = () => { $('#uprogWrap').hidden=true; $('#dropzone').hidden=false; $('#orlink').hidden=false; flash('Upload failed', true); };
+  xhr.send(file);
+}
+preview.addEventListener('timeupdate', ()=>{ $('#timeNow').textContent = fmt(preview.currentTime); });
+
+/* phrases */
+$('#grabTimeBtn').onclick = () => { $('#cAt').value = fmt(preview.currentTime); };
+$('#addBtn').onclick = addPhrase;
+$('#cGa').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#cEn').focus(); });
+$('#cEn').addEventListener('keydown', e=>{ if(e.key==='Enter') addPhrase(); });
+$('#cPh').addEventListener('keydown', e=>{ if(e.key==='Enter') addPhrase(); });
+$('#cAt').addEventListener('keydown', e=>{ if(e.key==='Enter') addPhrase(); });
+function addPhrase(){
+  const irish=$('#cGa').value.trim(); if(!irish) return flash('Type the Irish phrase', true);
+  if(!mode) enterDeckMode();
+  let at;
+  if(hasVideo()){ at=parseTime($('#cAt').value || fmt(preview.currentTime)); if(at===null) return flash('Time looks off — use m:ss', true); }
+  else at = phrases.length ? Math.max(...phrases.map(p=>p.at))+1 : 0;
+  phrases.push({ at, irish, english:$('#cEn').value.trim(), phonetic:$('#cPh').value.trim() });
+  phrases.sort((a,b)=>a.at-b.at);
+  $('#cGa').value=''; $('#cEn').value=''; $('#cPh').value=''; $('#cGa').focus();
+  renderPhrases(); flash('Phrase added');
+}
+function renderPhrases(){
+  const list=$('#flist'); $('#frCount').textContent=phrases.length;
+  if(!phrases.length){ list.innerHTML='<div class="statebox" style="padding:22px 14px">No phrases yet.<br>Add one on the left.</div>'; return; }
+  list.innerHTML='';
+  phrases.forEach((p,i)=>{
+    const row=document.createElement('div'); row.className='frow';
+    row.innerHTML=`<span class="ft">${hasVideo()?fmt(p.at):(i+1)}</span>
+      <div class="fm"><div class="fga">${esc(p.irish)}</div>${p.english?`<div class="fen">${esc(p.english)}</div>`:''}</div>
+      <button class="fx del" title="Delete"><svg viewBox="0 0 24 24"><path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/></svg></button>`;
+    row.querySelector('.del').onclick=e=>{ e.stopPropagation(); phrases.splice(i,1); renderPhrases(); };
+    if(hasVideo()) row.onclick=()=>{ try{ preview.currentTime=p.at; }catch{} };
+    list.appendChild(row);
+  });
+}
+
+/* save / delete */
+async function saveLesson(){
+  const title = $('#titleInput').value.trim();
+  const course = $('#courseInput').value.trim();
+  const courseId = $('#courseInput').selectedOptions[0]?.dataset.id || '';
+  if (!videoId && !phrases.length) return flash('Add a video or at least one phrase', true);
+  const btns=[$('#saveBtn'),$('#saveBtn2')];
+  btns.forEach(b=>{ b.disabled=true; b.textContent='Saving…'; });
+  try{
+    const out = hasVideo() ? phrases : phrases.map((p,i)=>({...p, at:i}));
+    const j = await api('/api/live/lessons', { method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({ id: state.lessonId || undefined, title, course, courseId, videoId: mode==='video'?videoId:'', videoType, phrases: out }), timeout: 20000 });
+    state.lessonId = j.id;
+    state.course = j.lesson.course || '';
+    $('#editorTitle').textContent = j.lesson.title;
+    $('#bcLesson').textContent = j.lesson.title;
+    $('#bcCourse2').textContent = state.course || 'Ungrouped';
+    if (j.lesson.videoUrl){ const link=location.origin+'/live/lesson.html?id='+j.id; $('#shareLink').value=link; $('#openLink').href=link; $('#shareBox').hidden=false; }
+    await refreshLessons().catch(()=>{});
+    flash('Lesson saved ✓');
+  } catch(e){ flash(e.message || 'Save failed', true); }
+  btns.forEach(b=>{ b.disabled=false; b.textContent='Save lesson'; });
+}
+$('#saveBtn').onclick = saveLesson;
+$('#saveBtn2').onclick = saveLesson;
+$('#copyBtn').onclick = () => navigator.clipboard.writeText($('#shareLink').value).then(()=>flash('Copied ✓')).catch(()=>{});
+$('#deleteBtn').onclick = async () => {
+  if (!state.lessonId) return openCourse(state.course);
+  if (!confirm('Delete this lesson? This cannot be undone.')) return;
+  try { await api('/api/live/lessons/'+encodeURIComponent(state.lessonId), { method:'DELETE' }); flash('Deleted'); await refreshLessons().catch(()=>{}); openCourse(state.course); }
+  catch(e){ flash(e.message||'Delete failed', true); }
+};
+
+/* ---------------- open ---------------- */
+(async function boot(){
+  try {
+    const me = await api('/api/live/me', { timeout: 10000 });
+    if (me.role !== 'admin') { location.href = '/'; return; }
+    $('#sideName').textContent = me.name || 'Teacher';
+    $('#sideAv').textContent = (me.name || 'GG').trim().slice(0,2).toUpperCase();
+    openCourses();
+  } catch (e) {
+    if (/401|403|Authentication|Administrator/.test(e.message)) { location.href = '/'; return; }
+    flash(e.message || 'Could not reach the server', true);
+  }
+})();
+</script>
+</body>
+</html>

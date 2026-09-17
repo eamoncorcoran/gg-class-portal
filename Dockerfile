@@ -18,7 +18,7 @@ RUN apt-get update \
  && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list \
  && apt-get update \
- && apt-get install -y --no-install-recommends "postgresql-client-${PG_MAJOR}" \
+ && apt-get install -y --no-install-recommends "postgresql-client-${PG_MAJOR}" ffmpeg \
  && apt-get purge -y curl gnupg && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r app && useradd -r -g app app
