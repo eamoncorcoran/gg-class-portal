@@ -1033,8 +1033,17 @@ details.leaving summary:hover{color:var(--text-secondary)}
   .modal,.modal.wide{inset:0;left:0;top:0;width:100%;max-width:100%;max-height:none;height:100dvh;transform:none;border-radius:0;border:0}
   /* The form fills the sheet so the toolbar and Post sit on the bottom edge
      where a thumb is, not floating in the middle of the screen. */
-  .modal-body{flex:1;display:flex;min-height:0}
+  .modal-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
   .modal.bare .modal-body{padding:16px 16px 0}
+  /* A post and its comments: one column, the conversation scrolls, the reply
+     box stays on the bottom edge. A flex row here put the post, the comments
+     and the reply side by side in three thin strips on a phone. */
+  .modal.wide.bare .modal-body{padding:0}
+  .modal.wide.bare .modal-body>*{flex:0 0 auto;width:100%}
+  .modal.wide.bare .opening{padding:52px 16px 12px}
+  .modal.wide.bare .cmt-count,.modal.wide.bare .cmts,.modal.wide.bare .mod-bar{padding-left:16px;padding-right:16px}
+  .modal.wide.bare .reply{padding:10px 12px calc(12px + env(safe-area-inset-bottom));margin-top:auto}
+  .modal.wide.bare .reply>.fa{display:none}
   .composer-form{flex:1;min-height:0}
   .composer-form textarea{flex:1;min-height:120px}
   .drawer{width:100vw;height:100dvh;border-left:0}
