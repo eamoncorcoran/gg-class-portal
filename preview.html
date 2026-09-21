@@ -1048,7 +1048,15 @@ details.leaving summary:hover{color:var(--text-secondary)}
      box stays on the bottom edge. A flex row here put the post, the comments
      and the reply side by side in three thin strips on a phone. */
   .modal.wide.bare .modal-body{padding:0}
-  .modal.wide.bare .modal-body>*{flex:0 0 auto;width:100%}
+  .modal.wide.bare .modal-body>*:not(.cmt-close){flex:0 0 auto;width:100%}
+  .modal.wide.bare .cmt-close{width:40px;height:40px;top:8px;right:8px}
+  /* Things a thumb has to hit: the comment actions were 18px tall. And a
+     field under 16px makes iPhone zoom the whole page on focus, which is
+     most of what "not very responsive" feels like. */
+  .modal .cmt-reply,.modal .act.sm,.modal .cmt-remove{min-height:34px;padding:6px 8px;font-size:12.5px}
+  .modal .fmt button{width:34px;height:34px}
+  .modal textarea,.modal input,.modal select,.composer textarea,.reply-box textarea,.cmt-reply-box textarea{font-size:16px}
+  .cmt-reply-box textarea{min-height:72px}
   .modal.wide.bare .opening{padding:52px 16px 12px}
   .modal.wide.bare .cmt-count,.modal.wide.bare .cmts,.modal.wide.bare .mod-bar{padding-left:16px;padding-right:16px}
   .modal.wide.bare .reply{padding:10px 12px calc(12px + env(safe-area-inset-bottom));margin-top:auto}
@@ -4933,7 +4941,7 @@ function adminNav() {
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.calendar, 'Calendar')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
-      ${adminNavButton('live', svg.video, 'Live classroom')}
+      ${adminNavButton('live', svg.video, state.liveRoom ? 'Live classroom' : 'Studio')}
       ${adminNavButton('plans', svg.grid, 'Plans')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
       ${adminNavButton('community', svg.board, 'Community')}
@@ -4951,6 +4959,11 @@ function adminNavButton(view, icon, label) {
 /* The teacher's live classroom: the console for running a class, and the
    studio for building lessons, each its own page shown in a frame. */
 function liveAdminView() {
+  /* Without the live room switched on, this is the studio and nothing else. */
+  if (!state.liveRoom) {
+    return `${pageHeader('Courses', 'Studio', 'Build a lesson: a video with the phrases to say aloud. Then add it to a course as a practice lesson.')}
+    <div class="live-embed admin"><iframe src="/live/studio.html?embed=1" title="Studio" allow="fullscreen" allowfullscreen></iframe></div>`;
+  }
   const tab = state.liveTab === 'studio' ? 'studio' : 'console';
   const src = tab === 'studio'
     ? '/live/studio.html?embed=1'
@@ -5004,6 +5017,7 @@ async function showStudentView(view) {
 async function loadAdmin() {
   const bootstrap = await api('/api/admin/bootstrap');
   state.classes = bootstrap.classes;
+  state.liveRoom = Boolean(bootstrap.liveRoom);
   state.activeClassId ||= state.classes[0]?.id || null;
   state.view ||= state.activeClassId ? 'tracker' : 'people';
   await renderAdmin();
@@ -5549,7 +5563,7 @@ function openAdminClassInfo(classId, at) {
         ${running && !sitting.joinUrl ? '<div><dt>Link</dt><dd>No class link set</dd></div>' : ''}
       </dl>
     </div>`,
-    footer: `<button class="btn" id="open-teacher-console">Open teacher console</button><button class="btn" data-close-modal>Close</button>
+    footer: `${state.liveRoom ? '<button class="btn" id="open-teacher-console">Open teacher console</button>' : ''}<button class="btn" data-close-modal>Close</button>
       <button class="btn" id="class-info-setup">Class setup</button>
       ${running && sitting.joinUrl
         ? `<a class="btn primary" href="${escapeHtml(sitting.joinUrl)}" target="_blank" rel="noopener noreferrer">${svg.video} Open the class</a>`
@@ -9339,7 +9353,8 @@ function openInlineReply(thread, parentId) {
   // One open at a time, so it is never ambiguous which one is being answered.
   modalRoot.querySelectorAll('[data-reply-slot]').forEach((other) => { other.innerHTML = ''; });
 
-  const name = modalRoot.querySelector(`[data-comment="${parentId}"] .post-name`)?.textContent?.trim() || 'this comment';
+  // The name alone: the Teacher tag sits inside the same span.
+  const name = modalRoot.querySelector(`[data-comment="${parentId}"] .post-name`)?.childNodes?.[0]?.textContent?.trim() || 'this comment';
   slot.innerHTML = `
     <div class="cmt-reply-box">
       <textarea id="inline-reply-${parentId}" rows="2" data-grow placeholder="Reply to ${escapeHtml(name)}"></textarea>

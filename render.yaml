@@ -132,6 +132,22 @@ services:
       # drafts; without this key the portal runs but every draft fails and the
       # teacher writes the reply themselves, which is what they were going to
       # do anyway.
+      # The live classroom, merged into the portal. The studio and practice
+      # lessons need the speech key (the mic) and, for dialect voices, abair.ie.
+      # The live Zoom room itself stays off until LIVE_ROOM_ENABLED is true
+      # and the Meeting SDK credentials are set.
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        value: southeastasia
+      - key: ABAIR_API_KEY
+        sync: false
+      - key: ZOOM_CLIENT_ID
+        sync: false
+      - key: ZOOM_CLIENT_SECRET
+        sync: false
+      - key: LIVE_ROOM_ENABLED
+        value: "false"
       - key: ANTHROPIC_API_KEY
         sync: false
 

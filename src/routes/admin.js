@@ -29,6 +29,7 @@ import { addTopic, coursesWithPlans, getPlan, getTopics, importPlan, packagedPla
   reorderWeek, scheduleTopic, setItemDone, setTopicGroup, topicCost, unscheduleItem } from '../plans.js';
 import { nextClassWithSessions, joinLinkFor, classSittings } from '../classtime.js';
 import { listLessons as listLiveLessons } from '../live/lessons.js';
+import { zoomConfigured as liveZoomConfigured, liveRoomEnabled } from '../live/zoom.js';
 import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashText, isStandIn,
   providerName, renderStory, ttsConfigured } from '../tts.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
@@ -162,7 +163,9 @@ router.get('/bootstrap', asyncRoute(async (_req, res) => {
     one(`SELECT count(*)::int count FROM users WHERE role='student' AND active=true`),
     one(`SELECT count(*)::int count FROM assignments WHERE status<>'archived'`),
   ]);
-  res.json({ classes: classes.rows.map((row) => ({ ...row, label: classLabel(row) })), counts: { students: studentCount.count, assignments: assignmentCount.count } });
+  res.json({ classes: classes.rows.map((row) => ({ ...row, label: classLabel(row) })), counts: { students: studentCount.count, assignments: assignmentCount.count },
+    // The live room is a separate switch from the studio, which is always there.
+    liveRoom: liveZoomConfigured() && liveRoomEnabled() });
 }));
 
 router.get('/classes', asyncRoute(async (_req, res) => {

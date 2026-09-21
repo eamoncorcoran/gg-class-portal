@@ -11,7 +11,7 @@ import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
 import { liveClasses, liveClass, studentClassIds } from '../live/classes.js';
 import { nextClassWithSessions } from '../classtime.js';
-import { zoom, zoomConfigured, signZoom } from '../live/zoom.js';
+import { zoom, zoomConfigured, signZoom, liveRoomEnabled } from '../live/zoom.js';
 import { speechConfigured } from '../live/speech.js';
 import * as room from '../live/room.js';
 import * as lessons from '../live/lessons.js';
@@ -49,7 +49,7 @@ router.get('/me', asyncRoute(async (req, res) => {
     id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role,
     allowed: gate.ok, reason: gate.ok ? '' : gate.error,
     session, classId, webinar, nextClass,
-    zoomClientId: zoom.clientId, live: zoomConfigured(), mic: speechConfigured(),
+    zoomClientId: zoom.clientId, live: zoomConfigured() && liveRoomEnabled(), mic: speechConfigured(),
   });
 }));
 

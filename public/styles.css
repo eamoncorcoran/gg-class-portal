@@ -1039,7 +1039,15 @@ details.leaving summary:hover{color:var(--text-secondary)}
      box stays on the bottom edge. A flex row here put the post, the comments
      and the reply side by side in three thin strips on a phone. */
   .modal.wide.bare .modal-body{padding:0}
-  .modal.wide.bare .modal-body>*{flex:0 0 auto;width:100%}
+  .modal.wide.bare .modal-body>*:not(.cmt-close){flex:0 0 auto;width:100%}
+  .modal.wide.bare .cmt-close{width:40px;height:40px;top:8px;right:8px}
+  /* Things a thumb has to hit: the comment actions were 18px tall. And a
+     field under 16px makes iPhone zoom the whole page on focus, which is
+     most of what "not very responsive" feels like. */
+  .modal .cmt-reply,.modal .act.sm,.modal .cmt-remove{min-height:34px;padding:6px 8px;font-size:12.5px}
+  .modal .fmt button{width:34px;height:34px}
+  .modal textarea,.modal input,.modal select,.composer textarea,.reply-box textarea,.cmt-reply-box textarea{font-size:16px}
+  .cmt-reply-box textarea{min-height:72px}
   .modal.wide.bare .opening{padding:52px 16px 12px}
   .modal.wide.bare .cmt-count,.modal.wide.bare .cmts,.modal.wide.bare .mod-bar{padding-left:16px;padding-right:16px}
   .modal.wide.bare .reply{padding:10px 12px calc(12px + env(safe-area-inset-bottom));margin-top:auto}

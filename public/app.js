@@ -1249,7 +1249,7 @@ function adminNav() {
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.calendar, 'Calendar')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
-      ${adminNavButton('live', svg.video, 'Live classroom')}
+      ${adminNavButton('live', svg.video, state.liveRoom ? 'Live classroom' : 'Studio')}
       ${adminNavButton('plans', svg.grid, 'Plans')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
       ${adminNavButton('community', svg.board, 'Community')}
@@ -1267,6 +1267,11 @@ function adminNavButton(view, icon, label) {
 /* The teacher's live classroom: the console for running a class, and the
    studio for building lessons, each its own page shown in a frame. */
 function liveAdminView() {
+  /* Without the live room switched on, this is the studio and nothing else. */
+  if (!state.liveRoom) {
+    return `${pageHeader('Courses', 'Studio', 'Build a lesson: a video with the phrases to say aloud. Then add it to a course as a practice lesson.')}
+    <div class="live-embed admin"><iframe src="/live/studio.html?embed=1" title="Studio" allow="fullscreen" allowfullscreen></iframe></div>`;
+  }
   const tab = state.liveTab === 'studio' ? 'studio' : 'console';
   const src = tab === 'studio'
     ? '/live/studio.html?embed=1'
@@ -1320,6 +1325,7 @@ async function showStudentView(view) {
 async function loadAdmin() {
   const bootstrap = await api('/api/admin/bootstrap');
   state.classes = bootstrap.classes;
+  state.liveRoom = Boolean(bootstrap.liveRoom);
   state.activeClassId ||= state.classes[0]?.id || null;
   state.view ||= state.activeClassId ? 'tracker' : 'people';
   await renderAdmin();
@@ -1865,7 +1871,7 @@ function openAdminClassInfo(classId, at) {
         ${running && !sitting.joinUrl ? '<div><dt>Link</dt><dd>No class link set</dd></div>' : ''}
       </dl>
     </div>`,
-    footer: `<button class="btn" id="open-teacher-console">Open teacher console</button><button class="btn" data-close-modal>Close</button>
+    footer: `${state.liveRoom ? '<button class="btn" id="open-teacher-console">Open teacher console</button>' : ''}<button class="btn" data-close-modal>Close</button>
       <button class="btn" id="class-info-setup">Class setup</button>
       ${running && sitting.joinUrl
         ? `<a class="btn primary" href="${escapeHtml(sitting.joinUrl)}" target="_blank" rel="noopener noreferrer">${svg.video} Open the class</a>`
@@ -5655,7 +5661,8 @@ function openInlineReply(thread, parentId) {
   // One open at a time, so it is never ambiguous which one is being answered.
   modalRoot.querySelectorAll('[data-reply-slot]').forEach((other) => { other.innerHTML = ''; });
 
-  const name = modalRoot.querySelector(`[data-comment="${parentId}"] .post-name`)?.textContent?.trim() || 'this comment';
+  // The name alone: the Teacher tag sits inside the same span.
+  const name = modalRoot.querySelector(`[data-comment="${parentId}"] .post-name`)?.childNodes?.[0]?.textContent?.trim() || 'this comment';
   slot.innerHTML = `
     <div class="cmt-reply-box">
       <textarea id="inline-reply-${parentId}" rows="2" data-grow placeholder="Reply to ${escapeHtml(name)}"></textarea>

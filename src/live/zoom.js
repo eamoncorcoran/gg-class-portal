@@ -29,3 +29,11 @@ export function signZoom(meetingNumber) {
   const signature = crypto.createHmac('sha256', zoom.clientSecret).update(`${header}.${body}`).digest('base64url');
   return `${header}.${body}.${signature}`;
 }
+
+/* The live room (the Zoom class inside the portal) is switched on
+   deliberately, apart from the studio and practice lessons, which need
+   nothing from Zoom. Off by default so a deploy of the studio does not put
+   a "Live class" tab in front of students before the teacher is ready. */
+export function liveRoomEnabled() {
+  return /^(1|true|yes|on)$/i.test(String(process.env.LIVE_ROOM_ENABLED || ''));
+}

@@ -23,7 +23,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
-import { zoomConfigured } from '../live/zoom.js';
+import { zoomConfigured, liveRoomEnabled } from '../live/zoom.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 
@@ -277,7 +277,7 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
     // Hidden entirely for a class without one, and for anybody with no class.
     hasCommunity: Boolean(klass.has_community),
     // Whether "Join live classroom" is on offer at all.
-    liveClassroom: zoomConfigured(),
+    liveClassroom: zoomConfigured() && liveRoomEnabled(),
     communityUnread: community,
     weeks: weeksResult.rows,
     attendance: attendanceResult.rows,
