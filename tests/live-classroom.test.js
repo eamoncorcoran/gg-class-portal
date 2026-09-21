@@ -137,3 +137,24 @@ test('the migrations and the code agree on the list of hosts', () => {
   assert.match(live, /CREATE TABLE IF NOT EXISTS live_lessons/);
   assert.match(live, /CREATE TABLE IF NOT EXISTS live_access/);
 });
+
+/* A 4K clip from a phone is the whole reason an upload can feel slow: it is
+   not web-safe, so it needs a full software re-encode, and every extra pixel
+   is time nobody on a CPU-only server gets back. Capping the longer side to
+   1080p before that encode is the fix; these are the shapes it must get
+   right without ever needing to spin up ffmpeg to check. */
+const { scaleFilterFor } = await import('../src/live/lessons.js');
+
+test('an ordinary clip is left alone: nothing added to the ffmpeg command', () => {
+  assert.equal(scaleFilterFor(1280, 720), null);
+  assert.equal(scaleFilterFor(1920, 1080), null, 'already exactly 1080p: no point scaling it to itself');
+  assert.equal(scaleFilterFor(0, 0), null, 'a probe with nothing to go on must not force a filter');
+});
+
+test('a 4K clip is capped on its longer side, whichever way it is held', () => {
+  assert.match(scaleFilterFor(3840, 2160), /min\(1920,iw\)/, 'landscape: width is the long side');
+  assert.match(scaleFilterFor(2160, 3840), /min\(1920,ih\)/, 'portrait: height is the long side');
+  // -2 rather than a fixed number on the short side, so the aspect ratio is
+  // kept exactly and the result is always an even number of pixels.
+  assert.match(scaleFilterFor(3840, 2160), /-2/);
+});

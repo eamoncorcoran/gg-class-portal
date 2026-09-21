@@ -118,6 +118,23 @@ function run(cmd, args, timeoutMs) {
    served as it came, which is fine for an MP4 and not for much else. */
 const WEB_VIDEO = ['h264', 'vp8', 'vp9', 'av1'];
 const WEB_AUDIO = ['aac', 'mp3', 'opus', 'vorbis'];
+
+/* A phone records in HEVC by default (every iPhone since iOS 11, plenty of
+   Android phones too), which is not web-safe and needs a full software
+   re-encode — the one genuinely slow step in an upload, since there is no GPU
+   to hand it to on the server. A 4K clip has four times the pixels of 1080p
+   to push through libx264 for no benefit a language lesson needs: nobody is
+   reading fine print off the video. Capping the longer side to 1080p before
+   encoding is the single biggest lever on that time, and it also means a
+   smaller file for students to stream afterwards. Null when the clip is
+   already no bigger than that, so nothing is added to the command for the
+   ordinary case of a screen recording or a laptop webcam. */
+export function scaleFilterFor(width, height) {
+  const longSide = Math.max(Number(width) || 0, Number(height) || 0);
+  if (!(longSide > 1920)) return null;
+  return "scale='if(gt(iw,ih),min(1920,iw),-2)':'if(gt(iw,ih),-2,min(1920,ih))'";
+}
+
 export async function normalizeVideo(id) {
   const src = path.join(VIDEO_DIR, id);
   let info;
@@ -139,11 +156,15 @@ export async function normalizeVideo(id) {
   const outId = id.replace(/\.[^.]+$/, '') + '-web.mp4';
   const args = ['-y', '-i', src, '-map', '0:v:0'];
   if (a) args.push('-map', '0:a:0?');
+  // Only on the path that was already paying for a re-encode: a plain
+  // container remux (vOk) stays exactly as fast as it was.
+  const scaleFilter = vOk ? null : scaleFilterFor(v.width, v.height);
+  if (scaleFilter) args.push('-vf', scaleFilter);
   args.push('-c:v', vOk ? 'copy' : 'libx264');
-  if (!vOk) args.push('-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
+  if (!vOk) args.push('-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-threads', '0');
   if (a) args.push('-c:a', aOk ? 'copy' : 'aac', '-b:a', '160k');
   args.push('-movflags', '+faststart', path.join(VIDEO_DIR, outId));
-  console.log(`[live video] normalising ${id} (v=${v.codec_name}${a ? ' a=' + a.codec_name : ''}) -> ${outId}`);
+  console.log(`[live video] normalising ${id} (v=${v.codec_name}${a ? ' a=' + a.codec_name : ''}${scaleFilter ? ', capped to 1080p' : ''}) -> ${outId}`);
   await run('ffmpeg', args, 20 * 60 * 1000);
   fs.unlink(src, () => {});
   return outId;
