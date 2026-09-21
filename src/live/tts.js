@@ -64,21 +64,44 @@ async function azureOrla(text) {
   return Buffer.from(await r.arrayBuffer());
 }
 
+/* abair.ie hands out short-lived tokens and allows only so many alive per
+   key at once. One token, kept until it is about to expire, is the whole
+   budget; minting one per clip locked the key out within minutes. */
+let abairToken = { token: '', expiresAt: 0, minting: null };
+async function abairAuth(key, { fresh = false } = {}) {
+  if (!fresh && abairToken.token && Date.now() < abairToken.expiresAt - 30000) return abairToken.token;
+  if (abairToken.minting) return abairToken.minting;
+  abairToken.minting = (async () => {
+    try {
+      const r = await fetch('https://api.abair.ie/v4/tokens', { method: 'POST', headers: { 'abair-api-key': key }, signal: AbortSignal.timeout(15000) });
+      if (!r.ok) { console.error('abair token', r.status, (await r.text().catch(() => '')).slice(0, 160)); return null; }
+      const j = await r.json();
+      abairToken.token = j.token || '';
+      abairToken.expiresAt = Date.now() + (Number(j.expiresIn) || 900) * 1000;
+      return abairToken.token || null;
+    } finally { abairToken.minting = null; }
+  })();
+  return abairToken.minting;
+}
 async function abair(text, voice) {
   const key = process.env.ABAIR_API_KEY;
   if (!key || !voice) return null;
-  const tokenResp = await fetch('https://api.abair.ie/v4/tokens', { method: 'POST', headers: { 'abair-api-key': key }, signal: AbortSignal.timeout(15000) });
-  if (!tokenResp.ok) return null;
-  const { token } = await tokenResp.json();
-  const r = await fetch('https://api.abair.ie/v4/synthesis?outputType=JSON&audioEncoding=MP3&timing=false', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'abair-api-key': token },
-    body: JSON.stringify({ input: spoken(text), voice, speed: 1.0 }),
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!r.ok) { console.error('abair tts', r.status); return null; }
-  const j = await r.json();
-  return j.audioContent ? Buffer.from(j.audioContent, 'base64') : null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const token = await abairAuth(key, { fresh: attempt > 0 });
+    if (!token) return null;
+    const r = await fetch('https://api.abair.ie/v4/synthesis?outputType=JSON&audioEncoding=MP3&timing=false', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'abair-api-key': token },
+      body: JSON.stringify({ input: spoken(text), voice, speed: 1.0 }),
+      signal: AbortSignal.timeout(30000),
+    });
+    // A token abair no longer honours: mint once more, then give up.
+    if (r.status === 401 && attempt === 0) { abairToken.token = ''; continue; }
+    if (!r.ok) { console.error('abair tts', r.status, (await r.text().catch(() => '')).slice(0, 160)); return null; }
+    const j = await r.json();
+    return j.audioContent ? Buffer.from(j.audioContent, 'base64') : null;
+  }
+  return null;
 }
 
 async function openai(text) {
