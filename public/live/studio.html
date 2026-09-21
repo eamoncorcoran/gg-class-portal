@@ -60,6 +60,10 @@
 .frow .fm{flex:1;min-width:0}
 .frow .fga{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frow .fen{font-size:12.5px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .ftedit{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto}
+.frow .ftin{width:58px;padding:4px 6px;font-size:12.5px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;border:1px solid var(--border-strong);border-radius:7px;background:var(--white)}
+.frow .ftnow{border:1px solid var(--border);background:var(--gray-50);border-radius:7px;padding:4px 7px;font-size:11px;font-weight:700;color:var(--text-secondary);cursor:pointer}
+.frow .ftnow:hover{background:var(--brand-50);color:var(--brand-700);border-color:var(--brand-200)}
 .frow .fx{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--text-quaternary);flex:0 0 auto;background:none;border:0;cursor:pointer}
 .frow .fx:hover{background:var(--error-50);color:var(--error-700)}
 .frow .fx svg{width:16px;height:16px;fill:currentColor}
@@ -446,11 +450,24 @@ function renderPhrases(){
   list.innerHTML='';
   phrases.forEach((p,i)=>{
     const row=document.createElement('div'); row.className='frow';
-    row.innerHTML=`<span class="ft">${hasVideo()?fmt(p.at):(i+1)}</span>
-      <div class="fm"><div class="fga">${esc(p.irish)}</div>${p.english?`<div class="fen">${esc(p.english)}</div>`:''}</div>
+    /* With a video, the time is a box you can change, and a "now" button
+       stamps wherever the preview is. A deck added before its video would
+       otherwise be stuck at 0:00, 0:01, 0:02 with no way but deleting. */
+    row.innerHTML=(hasVideo()
+        ? `<span class="ftedit"><input class="ftin" value="${fmt(p.at)}" title="Time in the video, m:ss" aria-label="Time for ${esc(p.irish)}"><button type="button" class="ftnow" title="Set to the current time of the video">now</button></span>`
+        : `<span class="ft">${i+1}</span>`)
+      + `<div class="fm"><div class="fga">${esc(p.irish)}</div>${p.english?`<div class="fen">${esc(p.english)}</div>`:''}</div>
       <button class="fx del" title="Delete"><svg viewBox="0 0 24 24"><path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/></svg></button>`;
     row.querySelector('.del').onclick=e=>{ e.stopPropagation(); phrases.splice(i,1); renderPhrases(); };
-    if(hasVideo()) row.onclick=()=>{ try{ preview.currentTime=p.at; }catch{} };
+    if(hasVideo()){
+      row.onclick=()=>{ try{ preview.currentTime=p.at; }catch{} };
+      const box=row.querySelector('.ftin');
+      const setAt=(v)=>{ const at=parseTime(v); if(at===null){ flash('Time looks off, use m:ss', true); box.value=fmt(p.at); return; } p.at=at; phrases.sort((a,b)=>a.at-b.at); renderPhrases(); flash('Time set to '+fmt(at)); };
+      box.onclick=e=>e.stopPropagation();
+      box.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); setAt(box.value); } };
+      box.onchange=()=>setAt(box.value);
+      row.querySelector('.ftnow').onclick=e=>{ e.stopPropagation(); setAt(fmt(preview.currentTime)); };
+    }
     list.appendChild(row);
   });
 }
