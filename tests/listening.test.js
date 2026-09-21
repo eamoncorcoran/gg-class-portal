@@ -32,7 +32,7 @@ test('the dialects a recording can be filed under', () => {
 test('no speech key means a clear refusal, not a broken button', () => {
   const tts = fs.readFileSync(new URL('../src/tts.js', import.meta.url), 'utf8');
   assert.match(tts, /providerName\(\) === 'none'/);
-  assert.match(tts, /Set ABAIR_API_KEY/);
+  assert.match(tts, /Paste an abair\.ie key under Feedback drafting/);
   assert.match(tts, /status: 503/);
   /* With no key the button is simply not drawn, rather than drawn and refused.
      Uploading is the main path now, so there is nothing missing from the screen

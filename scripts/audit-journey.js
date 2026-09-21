@@ -554,12 +554,13 @@ try {
       await admin.call(`/api/admin/assignments/${created?.id}/listening`),
       (d) => d.dialects.find((item) => item.key === 'munster')?.stale === false);
 
-    expectStatus('reading a term aloud needs a speech service', await admin.call(
-      `/api/admin/classes/${made.classId}/listening/render-all`,
-      { method: 'POST', body: { dialects: ['connacht'] } }), 503);
-    expectStatus('and so does one story', await admin.call(
-      `/api/admin/assignments/${created?.id}/listening/render`,
-      { method: 'POST', body: { dialects: ['connacht'] } }), 503);
+    const speechOn = Boolean((await admin.call('/api/settings')).data?.speech?.abairConfigured);
+    const term = await admin.call(`/api/admin/classes/${made.classId}/listening/render-all`, { method: 'POST', body: { dialects: ['connacht'] } });
+    expect(speechOn ? 'a term is read aloud with the abair.ie key' : 'reading a term aloud needs a speech service',
+      speechOn ? term.status === 200 : term.status === 503, `status ${term.status} ${JSON.stringify(term.data).slice(0, 160)}`);
+    const story = await admin.call(`/api/admin/assignments/${created?.id}/listening/render`, { method: 'POST', body: { dialects: ['connacht'] } });
+    expect(speechOn ? 'and so is one story' : 'and so does one story',
+      speechOn ? story.status === 200 : story.status === 503, `status ${story.status} ${JSON.stringify(story.data).slice(0, 160)}`);
     expectStatus('standard cannot be synthesised at all', await admin.call(
       `/api/admin/assignments/${created?.id}/listening/render`,
       { method: 'POST', body: { dialects: ['standard'] } }), 400);
@@ -577,8 +578,10 @@ try {
     await play.arrayBuffer();
     // Through the actor as well, so the route counts as exercised.
     await admin.call(`/api/media/listening/${created?.id}/munster`);
-    expectStatus('a dialect with no recording is not found',
-      await admin.call(`/api/media/listening/${created?.id}/connacht`), 404);
+    /* Rendered above when a key is set, so it plays; not found when it is not. */
+    const connacht = await admin.call(`/api/media/listening/${created?.id}/connacht`);
+    expect(speechOn ? 'the rendered dialect plays' : 'a dialect with no recording is not found',
+      speechOn ? connacht.status === 200 : connacht.status === 404, `status ${connacht.status}`);
 
     expectOk('a recording can be taken off again', await admin.call(
       `/api/admin/assignments/${created?.id}/listening/munster`, { method: 'DELETE' }));
@@ -1155,6 +1158,12 @@ try {
     { method: 'PUT', body: nudgeNow }));
   const promptsNow = (await admin.call('/api/settings')).data?.prompts ?? {};
   expectOk('save the prompt settings', await admin.call('/api/settings/prompts', { method: 'PUT', body: promptsNow }));
+  expectOk('the speech keys can be saved, blanks keeping what is there', await admin.call('/api/settings/speech',
+    { method: 'PUT', body: { azureRegion: 'southeastasia' } }), (d) => typeof d?.azureConfigured === 'boolean' && d?.azureRegion === 'southeastasia');
+  expectStatus('a region that is not one is refused', await admin.call('/api/settings/speech', { method: 'PUT', body: { azureRegion: 'not a region!' } }), 400);
+  expect('the settings never return a speech key', !JSON.stringify((await admin.call('/api/settings')).data?.speech || {}).match(/Key"/), 'a key field came back');
+  const speechTest = await admin.call('/api/settings/speech/test', { method: 'POST', body: {} });
+  expect('the speech test says plainly how each service answered', speechTest.status === 200 && typeof speechTest.data?.azure?.message === 'string' && typeof speechTest.data?.abair?.message === 'string', `status ${speechTest.status}`);
   expectStatus('an Anthropic admin key is refused with an explanation', await admin.call('/api/settings/anthropic',
     { method: 'PUT', body: { apiKey: 'sk-ant-admin01-example', model: 'claude-opus-5' } }), 400);
 

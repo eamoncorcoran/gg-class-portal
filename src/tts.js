@@ -13,6 +13,8 @@
  * second exists so the rest of the feature can be built, tested and used
  * without waiting on anybody's API key.
  */
+import { getSpeechConfig, speechConfigSync } from './settings.js';
+import { abairAuth } from './live/tts.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -50,7 +52,8 @@ export const SYNTHESISABLE = Object.freeze(['connacht', 'munster', 'ulster']);
 export const AUDIO_UPLOAD_MB = 60;
 
 export function providerName() {
-  return process.env.TTS_PROVIDER || (process.env.ABAIR_API_KEY ? 'abair' : 'none');
+  const key = process.env.ABAIR_API_KEY || speechConfigSync()?.abairKey || '';
+  return process.env.TTS_PROVIDER || (key ? 'abair' : 'none');
 }
 
 /* A stand-in for a machine with no ABAIR key.
@@ -110,72 +113,45 @@ export function hashText(text) {
   return crypto.createHash('sha256').update(String(text || ''), 'utf8').digest('hex').slice(0, 32);
 }
 
-/**
- * Pick ABAIR's voice for a dialect.
- *
- * Asked of ABAIR rather than assumed, and cached for the life of the process:
- * the list changes about once a year and a lookup per sentence would be rude.
- */
-let voiceCache = null;
-async function abairVoices() {
-  if (voiceCache) return voiceCache;
-  const response = await fetch('https://api.abair.ie/v4/synthesis/voices', {
-    headers: { Authorization: `Bearer ${process.env.ABAIR_API_KEY}` },
-  });
-  if (!response.ok) {
-    throw Object.assign(new Error(`ABAIR refused the voice list (${response.status}).`), { status: 502 });
-  }
-  voiceCache = await response.json();
-  return voiceCache;
-}
-
-function pickVoice(voices, dialect) {
-  const code = DIALECT_CODES[dialect];
-  const list = Array.isArray(voices) ? voices : (voices?.voices || []);
-  const named = list.find((voice) => {
-    const id = String(voice?.name || voice?.id || voice);
-    return code && id.split('_').includes(code);
-  });
-  return named ? String(named.name || named.id || named) : null;
-}
+/* ABAIR's voices, by dialect. Named rather than looked up: the voice list
+   endpoint the first version asked for does not exist on their v4 API, and
+   these three are the voices the practice player uses every day. */
+const ABAIR_VOICES = Object.freeze({ connacht: 'sibeal', ulster: 'donall', munster: 'fianait' });
 
 /**
  * Render one story in one dialect.
  *
- * Returns the bytes and the voice used. Long stories are sent whole: ABAIR
- * takes paragraphs, and splitting them would put a seam in the middle of a
- * sentence where a comprehension question might be listening for it.
+ * The same call the practice player makes for a phrase, with the story sent
+ * whole: ABAIR takes paragraphs, and splitting them would put a seam in the
+ * middle of a sentence where a comprehension question might be listening for
+ * it. One token, shared with the player, kept until it expires: ABAIR allows
+ * only a few alive per key.
  */
 async function synthesiseWithAbair({ text, dialect }) {
-  const voices = await abairVoices();
-  const voice = pickVoice(voices, dialect);
-  if (!voice) {
-    throw Object.assign(new Error(`ABAIR has no voice for ${dialect} at the moment.`), { status: 502 });
-  }
-
-  const response = await fetch('https://api.abair.ie/v4/synthesis/synthesise', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.ABAIR_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ text, voice, outputType: 'MP3' }),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw Object.assign(new Error(`ABAIR could not read that out (${response.status}). ${detail.slice(0, 200)}`), { status: 502 });
-  }
-
-  const type = response.headers.get('content-type') || '';
-  /* Some deployments answer with JSON carrying base64 rather than the bytes
-     themselves, so both shapes are accepted rather than one being assumed. */
-  if (type.includes('application/json')) {
+  const voice = ABAIR_VOICES[dialect];
+  if (!voice) throw Object.assign(new Error(`ABAIR has no voice for ${dialect} at the moment.`), { status: 502 });
+  const { abairKey } = await getSpeechConfig();
+  const key = abairKey || process.env.ABAIR_API_KEY;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const token = await abairAuth(key, { fresh: attempt > 0 });
+    if (!token) throw Object.assign(new Error('ABAIR refused the key, or its token limit is reached for the moment. Try again in a quarter of an hour.'), { status: 502 });
+    const response = await fetch('https://api.abair.ie/v4/synthesis?outputType=JSON&audioEncoding=MP3&timing=false', {
+      method: 'POST',
+      headers: { 'abair-api-key': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: text, voice, speed: 1.0 }),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (response.status === 401 && attempt === 0) continue;
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw Object.assign(new Error(`ABAIR could not read that out (${response.status}). ${detail.slice(0, 200)}`), { status: 502 });
+    }
     const body = await response.json();
     const encoded = body.audioContent || body.audio || body.data;
     if (!encoded) throw Object.assign(new Error('ABAIR returned no audio.'), { status: 502 });
     return { buffer: Buffer.from(encoded, 'base64'), mime: 'audio/mpeg', voice };
   }
-  return { buffer: Buffer.from(await response.arrayBuffer()), mime: type || 'audio/mpeg', voice };
+  throw Object.assign(new Error('ABAIR would not accept the token.'), { status: 502 });
 }
 
 /**
@@ -192,9 +168,10 @@ export async function renderStory({ assignmentId, dialect, text }) {
   if (!String(text || '').trim()) {
     throw Object.assign(new Error('There is no story to read out.'), { status: 400 });
   }
+  await getSpeechConfig();
   if (providerName() === 'none') {
     throw Object.assign(new Error(
-      'No speech service is configured, so the story cannot be read aloud yet. Set ABAIR_API_KEY.',
+      'No speech service is configured, so the story cannot be read aloud yet. Paste an abair.ie key under Feedback drafting, Speech and voices.',
     ), { status: 503 });
   }
 

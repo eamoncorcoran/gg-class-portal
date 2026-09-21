@@ -4,7 +4,7 @@ import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
 import { config } from '../config.js';
 import { requireAdmin } from '../session.js';
-import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting } from '../settings.js';
+import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig } from '../settings.js';
 import { draftCheckinFeedback } from '../ai.js';
 import { sendEmail } from '../email.js';
 import { audit } from '../audit.js';
@@ -14,13 +14,15 @@ const router = Router();
 router.use(requireAdmin);
 
 router.get('/', asyncRoute(async (_req, res) => {
-  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge] = await Promise.all([
+  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech] = await Promise.all([
     getAnthropicConfig(), getOpenAIConfig(), getEmailConfig(), getSetting('prompts', {}), getSetting('reminders', {}),
-    getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}),
+    getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}), getSpeechConfig(),
   ]);
   res.json({
     anthropic: { configured: anthropic.configured, model: anthropic.model },
     openai: { configured: openai.configured, model: openai.model },
+    // Set or not set, and the region: never the keys.
+    speech: { azureConfigured: speech.azureConfigured, azureRegion: speech.azureRegion, abairConfigured: speech.abairConfigured },
     email: { ...email, smtpPassword: undefined },
     prompts,
     reminders,
@@ -104,6 +106,27 @@ router.post('/anthropic/test', asyncRoute(async (_req, res) => {
         : detail.slice(0, 400),
     });
   }
+}));
+
+/* The speech keys. A blank box keeps the key that is there; "clear" removes it. */
+router.put('/speech', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    azureKey: z.string().max(200).optional(),
+    azureRegion: z.string().regex(/^[a-z0-9]{3,40}$/i).optional(),
+    abairKey: z.string().max(200).optional(),
+    clearAzure: z.boolean().optional(),
+    clearAbair: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Check the region: it is a short name such as southeastasia or westeurope.') });
+  const saved = await saveSpeechConfig(parsed.data, req.user.id);
+  await audit({ actorId: req.user.id, action: 'settings.speech_updated', entityType: 'settings', entityId: 'speech', ip: req.ip });
+  res.json(saved);
+}));
+
+/* Try both services with the keys as saved, and say plainly which answered. */
+router.post('/speech/test', asyncRoute(async (_req, res) => {
+  const { probeSpeech } = await import('../live/tts.js');
+  res.json(await probeSpeech());
 }));
 
 router.put('/openai', asyncRoute(async (req, res) => {

@@ -6892,6 +6892,22 @@ function remindersView() {
 /* Dictation settings mirror the VoiceKey app: which models to use, which language
    to pin, and the personal dictionary that biases both the speech model and the
    cleanup pass toward the terms this course actually uses. */
+/* The speech keys behind practice lessons: the mic and the standard voice
+   (Azure), and the three dialect voices (abair.ie). Pasted here, encrypted on
+   the server, shown only as set or not set. */
+function speechSettingsCard() {
+  const speech = state.settings.speech || {};
+  return `<section class="card" id="speech-card"><div class="card-header"><div><h2>Speech and voices</h2><p>For practice lessons: the mic that hears a student, and the voices that say each phrase. Keys are encrypted server-side and never returned to the browser.</p></div>
+      <button class="btn small" id="test-speech">Test speech</button></div><div class="card-body">
+    <div class="connection"><span class="connection-dot ${speech.azureConfigured ? 'ok' : ''}"></span><div><strong>${speech.azureConfigured ? 'Azure Speech connected' : 'Azure Speech not set'}</strong><span>The mic, and the standardised voice. Region ${escapeHtml(speech.azureRegion || 'southeastasia')}.</span></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Azure Speech key</strong><span>From the Azure portal, Keys and Endpoint. Leave blank to keep the existing key.</span></div><div><input id="azure-key" type="password" autocomplete="off" placeholder="Paste the key"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Azure region</strong><span>The resource's location, for example southeastasia or westeurope.</span></div><div><input id="azure-region" value="${escapeHtml(speech.azureRegion || 'southeastasia')}"></div></div>
+    <div class="connection" style="margin-top:14px"><span class="connection-dot ${speech.abairConfigured ? 'ok' : ''}"></span><div><strong>${speech.abairConfigured ? 'abair.ie connected' : 'abair.ie not set'}</strong><span>The Connemara, Donegal and Kerry voices. Without it every voice is the standardised one.</span></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>abair.ie API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="abair-key" type="password" autocomplete="off" placeholder="Paste the key"></div></div>
+    <p class="muted small" id="speech-test-result"></p>
+  </div></section>`;
+}
+
 function dictationSettingsCard() {
   const dictation = state.settings.dictation || {};
   const voicePrompts = state.settings.voicePrompts || {};
@@ -6942,6 +6958,7 @@ function aiSettingsView() {
         <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used to tidy up dictated voice notes.</span></div><div><input id="openai-model" value="${escapeHtml(openai.model || 'gpt-5.6')}"></div></div>
       </div></section>
       ${dictationSettingsCard()}
+      ${speechSettingsCard()}
     </div><aside class="settings-stack"><section class="card"><div class="card-header"><div><h3>Draft lifecycle</h3><p>Clear states on the teacher side.</p></div></div><div class="card-body">
       <div class="connection"><span class="connection-dot ok"></span><div><strong>Submission-triggered only</strong><span>No reply is drafted for missing work.</span></div></div>
       <div class="mini-stats"><span class="mini-stat">AI drafted</span><span class="mini-stat">Teacher edited</span><span class="mini-stat">Returned</span></div>
@@ -8095,6 +8112,11 @@ function bindAISettings() {
     try {
       await api('/api/settings/anthropic', { method: 'PUT', body: { apiKey: document.getElementById('anthropic-key').value || undefined, model: document.getElementById('anthropic-model').value } });
       await api('/api/settings/openai', { method: 'PUT', body: { apiKey: document.getElementById('openai-key').value || undefined, model: document.getElementById('openai-model').value } });
+      await api('/api/settings/speech', { method: 'PUT', body: {
+        azureKey: document.getElementById('azure-key').value.trim() || undefined,
+        azureRegion: document.getElementById('azure-region').value.trim() || undefined,
+        abairKey: document.getElementById('abair-key').value.trim() || undefined,
+      } });
       await api('/api/settings/prompts', { method: 'PUT', body: { correctionPrompt: document.getElementById('correction-prompt').value, generalFeedbackPrompt: document.getElementById('general-prompt').value, checkinNotes: document.getElementById('checkin-notes').value, communityNotes: document.getElementById('community-notes').value } });
       await api('/api/settings/dictation', { method: 'PUT', body: {
         transcribeModel: document.getElementById('dictation-transcribe-model').value,
@@ -8106,6 +8128,15 @@ function bindAISettings() {
       } });
       showToast('Drafting configuration saved'); await renderAdmin();
     } catch (error) { showToast(error.message, 'error'); }
+  });
+  document.getElementById('test-speech')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; const out = document.getElementById('speech-test-result');
+    button.disabled = true; out.textContent = 'Asking Azure and abair.ie';
+    try {
+      const result = await api('/api/settings/speech/test', { method: 'POST', body: {} });
+      out.innerHTML = `<span class="${result.azure.ok ? 'ok' : 'error'}">${escapeHtml(result.azure.message)}</span><br><span class="${result.abair.ok ? 'ok' : 'error'}">${escapeHtml(result.abair.message)}</span>`;
+    } catch (error) { out.textContent = error.message; }
+    button.disabled = false;
   });
   /* Drafts a real check-in from an invented student rather than pinging the API,
      because the thing worth testing is whether it sounds like you. */

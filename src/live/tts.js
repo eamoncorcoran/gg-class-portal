@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from '../config.js';
+import { getSpeechConfig } from '../settings.js';
 
 export const VOICES = Object.freeze([
   { id: '', name: 'Standardised', sample: 'Conas atá tú?' },
@@ -21,8 +22,6 @@ export const VOICES = Object.freeze([
   { id: 'fianait', name: 'Kerry', sample: 'Conas atá tú?' },
 ]);
 
-const azureKey = process.env.AZURE_SPEECH_KEY || '';
-const azureRegion = process.env.AZURE_SPEECH_REGION || 'germanywestcentral';
 
 const TTS_DIR = path.join(config.privateUploadDir, 'live-tts');
 fs.mkdirSync(TTS_DIR, { recursive: true });
@@ -47,6 +46,7 @@ const escapeXml = (s) => s.replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;
 const spoken = (text) => text.replaceAll('duit', 'dhuit').replaceAll('Duit', 'Dhuit');
 
 async function azureOrla(text) {
+  const { azureKey, azureRegion } = await getSpeechConfig();
   if (!azureKey) return null;
   const ssml = `<speak version='1.0' xml:lang='ga-IE'><voice name='ga-IE-OrlaNeural'>${escapeXml(spoken(text))}</voice></speak>`;
   const r = await fetch(`https://${azureRegion}.tts.speech.microsoft.com/cognitiveservices/v1`, {
@@ -68,7 +68,7 @@ async function azureOrla(text) {
    key at once. One token, kept until it is about to expire, is the whole
    budget; minting one per clip locked the key out within minutes. */
 let abairToken = { token: '', expiresAt: 0, minting: null };
-async function abairAuth(key, { fresh = false } = {}) {
+export async function abairAuth(key, { fresh = false } = {}) {
   if (!fresh && abairToken.token && Date.now() < abairToken.expiresAt - 30000) return abairToken.token;
   if (abairToken.minting) return abairToken.minting;
   abairToken.minting = (async () => {
@@ -84,7 +84,7 @@ async function abairAuth(key, { fresh = false } = {}) {
   return abairToken.minting;
 }
 async function abair(text, voice) {
-  const key = process.env.ABAIR_API_KEY;
+  const { abairKey: key } = await getSpeechConfig();
   if (!key || !voice) return null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const token = await abairAuth(key, { fresh: attempt > 0 });
@@ -157,13 +157,40 @@ export function prerender(lesson) {
   for (const p of lesson.phrases || []) for (const v of VOICES) jobs.push([v.id, String(p.irish || '').trim()]);
   queue = queue.then(async () => {
     let made = 0;
+    const { abairConfigured } = await getSpeechConfig();
     for (const [voice, text] of jobs) {
       if (!text || fromDisk(voice, text)) continue;
       // Nothing to render a dialect with: skip rather than file the standard voice under it.
-      if (voice && !process.env.ABAIR_API_KEY) continue;
+      if (voice && !abairConfigured) continue;
       try { if (await ttsFor(text, voice)) made += 1; } catch { /* the next one may still work */ }
     }
     if (made) console.log(`live tts: rendered ${made} phrase clip(s) for "${lesson.title}"`);
   }).catch(() => {});
   return queue;
+}
+
+/* The settings screen's "Test speech": does each service answer with the
+   keys as saved? Azure is asked for a token in the saved region; abair is
+   asked through the same cached token the voices use, so a test does not
+   spend one of the few tokens the key allows. */
+export async function probeSpeech() {
+  const { azureKey, azureRegion, abairKey } = await getSpeechConfig();
+  const out = { azure: { ok: false, message: 'No Azure key saved.' }, abair: { ok: false, message: 'No abair.ie key saved.' } };
+  if (azureKey) {
+    try {
+      const r = await fetch(`https://${azureRegion}.api.cognitive.microsoft.com/sts/v1.0/issueToken`, {
+        method: 'POST', headers: { 'Ocp-Apim-Subscription-Key': azureKey, 'Content-Length': '0' }, signal: AbortSignal.timeout(15000),
+      });
+      out.azure = r.ok ? { ok: true, message: `Azure answered in ${azureRegion}. The mic and the standard voice are on.` }
+        : { ok: false, message: r.status === 401 ? `Azure refused the key in ${azureRegion}. Check the key, and that the region matches the resource.` : `Azure answered ${r.status} in ${azureRegion}.` };
+    } catch (error) { out.azure = { ok: false, message: `Azure could not be reached in ${azureRegion}: ${error?.cause?.code || error?.message || 'network error'}.` }; }
+  }
+  if (abairKey) {
+    try {
+      const token = await abairAuth(abairKey);
+      out.abair = token ? { ok: true, message: 'abair.ie answered. The Connemara, Donegal and Kerry voices are on.' }
+        : { ok: false, message: 'abair.ie refused the key, or its token limit is reached for the moment. Try again in a quarter of an hour.' };
+    } catch (error) { out.abair = { ok: false, message: `abair.ie could not be reached: ${error?.cause?.code || error?.message || 'network error'}.` }; }
+  }
+  return out;
 }

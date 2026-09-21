@@ -49,7 +49,7 @@ router.get('/me', asyncRoute(async (req, res) => {
     id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role,
     allowed: gate.ok, reason: gate.ok ? '' : gate.error,
     session, classId, webinar, nextClass,
-    zoomClientId: zoom.clientId, live: zoomConfigured() && liveRoomEnabled(), mic: speechConfigured(),
+    zoomClientId: zoom.clientId, live: zoomConfigured() && liveRoomEnabled(), mic: await speechConfigured(),
   });
 }));
 

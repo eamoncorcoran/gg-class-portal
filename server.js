@@ -18,6 +18,7 @@ import settingsRoutes from './src/routes/settings.js';
 import mediaRoutes from './src/routes/media.js';
 import liveRoutes from './src/routes/live.js';
 import { loadAccess } from './src/live/room.js';
+import { getSpeechConfig } from './src/settings.js';
 import { attachSpeechRelay } from './src/live/speech.js';
 import calendarRoutes from './src/routes/calendar.js';
 import zoomHookRoutes from './src/routes/zoomhook.js';
@@ -239,6 +240,7 @@ async function start() {
   // anything running, so without this nothing would notice they had appeared.
   startBoardNotifier();
   await loadAccess();
+  await getSpeechConfig();
   const server = app.listen(config.port, () => {
     console.log(`Gaeilgeoir Guides Student Support running at ${config.appUrl}`);
   });

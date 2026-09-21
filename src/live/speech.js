@@ -10,12 +10,11 @@
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket as WSClient } from 'ws';
 import { sessionUser, sessionTokenFromCookieHeader } from '../session.js';
+import { getSpeechConfig } from '../settings.js';
 
 export const SPEECH_PATH = '/api/live/speech';
-const azureKey = process.env.AZURE_SPEECH_KEY || '';
-const azureRegion = process.env.AZURE_SPEECH_REGION || 'germanywestcentral';
 
-export function speechConfigured() { return Boolean(azureKey); }
+export async function speechConfigured() { return (await getSpeechConfig()).azureConfigured; }
 
 function wavHeader16k() {
   const b = Buffer.alloc(44);
@@ -47,7 +46,8 @@ export function attachSpeechRelay(httpServer) {
     wss.handleUpgrade(req, socket, head, (client) => wss.emit('connection', client, req, user));
   });
 
-  wss.on('connection', (client) => {
+  wss.on('connection', async (client) => {
+    const { azureKey, azureRegion } = await getSpeechConfig();
     if (!azureKey) {
       client.send(JSON.stringify({ type: 'error', message: 'The mic is not set up on this portal yet.' }));
       client.close();

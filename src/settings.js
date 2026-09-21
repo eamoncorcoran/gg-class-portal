@@ -106,3 +106,44 @@ export async function saveEmailConfig(input, userId) {
   await setSetting('email', next, userId);
   return { provider: next.provider, configured: true };
 }
+
+/* The speech keys: Azure for the mic and the standard voice, abair.ie for the
+   dialect voices. Pasted in the portal's own settings, encrypted at rest, the
+   environment as the fallback. Nothing here is ever returned to a browser
+   beyond "set" or "not set". Read on every use, so a key pasted just now
+   works without a restart; cached for half a minute so a class of students
+   pressing "hear it" is not a query each. */
+let speechCache = { at: 0, value: null };
+export async function getSpeechConfig() {
+  if (speechCache.value && Date.now() - speechCache.at < 30 * 1000) return speechCache.value;
+  const stored = await getSetting('speech', {});
+  let azureKey = '', abairKey = '';
+  try { azureKey = decryptSecret(stored.azureKeyEncrypted || ''); } catch (error) { console.error(error); }
+  try { abairKey = decryptSecret(stored.abairKeyEncrypted || ''); } catch (error) { console.error(error); }
+  const value = {
+    azureKey: azureKey || process.env.AZURE_SPEECH_KEY || '',
+    azureRegion: stored.azureRegion || process.env.AZURE_SPEECH_REGION || 'southeastasia',
+    abairKey: abairKey || process.env.ABAIR_API_KEY || '',
+  };
+  value.azureConfigured = Boolean(value.azureKey);
+  value.abairConfigured = Boolean(value.abairKey);
+  speechCache = { at: Date.now(), value };
+  return value;
+}
+
+export async function saveSpeechConfig({ azureKey, azureRegion, abairKey, clearAzure = false, clearAbair = false }, userId) {
+  const current = await getSetting('speech', {});
+  const next = {
+    ...current,
+    azureRegion: String(azureRegion || current.azureRegion || 'southeastasia').trim().toLowerCase(),
+    azureKeyEncrypted: clearAzure ? null : (azureKey ? encryptSecret(azureKey.trim()) : current.azureKeyEncrypted || null),
+    abairKeyEncrypted: clearAbair ? null : (abairKey ? encryptSecret(abairKey.trim()) : current.abairKeyEncrypted || null),
+  };
+  await setSetting('speech', next, userId);
+  speechCache = { at: 0, value: null };
+  const fresh = await getSpeechConfig();
+  return { azureConfigured: fresh.azureConfigured, azureRegion: fresh.azureRegion, abairConfigured: fresh.abairConfigured };
+}
+
+/** The last speech config read, for callers that cannot wait; primed at start. */
+export function speechConfigSync() { return speechCache.value; }
