@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import net from 'node:net';
 import path from 'node:path';
 import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +29,14 @@ import { startBoardNotifier } from './src/boardsweep.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+/* Outbound connections: Node tries each address a host resolves to for half
+   a second before moving on, and on a slow or VPN'd connection every attempt
+   runs out before the handshake finishes, so fetch() reports a connect
+   timeout while curl gets through. Three seconds per address is plenty and
+   costs nothing when the network is quick. This is what made abair.ie look
+   down when it was not. */
+net.setDefaultAutoSelectFamilyAttemptTimeout(3000);
+
 const app = express();
 
 if (config.isProduction) app.set('trust proxy', 1);

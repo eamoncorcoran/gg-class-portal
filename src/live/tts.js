@@ -107,13 +107,19 @@ export async function ttsFor(rawText, voice = '') {
   const key = `${voice}|${text}`;
   if (memory.has(key)) return memory.get(key);
   let buf = fromDisk(voice, text);
+  /* A dialect asked for before abair.ie is set up falls back to the standard
+     voice, and that must not be remembered as the dialect: the clip goes on
+     disk under the voice that actually spoke it, so the day the key arrives
+     the dialects start speaking without anything to clear out. */
+  let spokeAs = voice;
   if (!buf) {
     if (voice) { try { buf = await abair(text, voice); } catch (e) { console.error('abair tts failed', e?.message); } }
+    if (!buf) { spokeAs = ''; buf = fromDisk('', text); }
     if (!buf) { try { buf = await azureOrla(text); } catch (e) { console.error('azure tts failed', e?.message); } }
     if (!buf) { try { buf = await openai(text); } catch (e) { console.error('openai tts failed', e?.message); } }
-    if (buf) toDisk(voice, text, buf);
+    if (buf) toDisk(spokeAs, text, buf);
   }
-  if (buf) {
+  if (buf && spokeAs === voice) {
     memory.set(key, buf);
     if (memory.size > 200) memory.delete(memory.keys().next().value);
   }
@@ -130,6 +136,8 @@ export function prerender(lesson) {
     let made = 0;
     for (const [voice, text] of jobs) {
       if (!text || fromDisk(voice, text)) continue;
+      // Nothing to render a dialect with: skip rather than file the standard voice under it.
+      if (voice && !process.env.ABAIR_API_KEY) continue;
       try { if (await ttsFor(text, voice)) made += 1; } catch { /* the next one may still work */ }
     }
     if (made) console.log(`live tts: rendered ${made} phrase clip(s) for "${lesson.title}"`);
