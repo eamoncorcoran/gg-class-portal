@@ -9037,7 +9037,7 @@ function sideNextClass(next) {
       <strong>${escapeHtml(label)}</strong>
       ${next.note ? `<em>${escapeHtml(/^pass\s*code/i.test(next.note) || !next.joinUrl ? `Passcode: ${passcodeOnly(next.note)}` : next.note)}</em>` : ''}
     </div>
-    ${state.studentData?.liveClassroom && (next.live || next.soon || state.studentData?.liveNow)
+    ${state.studentData?.liveReady && (next.live || next.soon || state.studentData?.liveNow)
       ? '<button class="btn primary small" data-go-live>Join</button>'
       : next.joinUrl && (next.live || next.soon)
         ? `<a class="btn primary small" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener">Join</a>`
@@ -12763,7 +12763,7 @@ function nextClassBanner() {
       <strong>${escapeHtml(when)}</strong>
       <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(plainHour(next.startsAt, next.timezone))} Irish${next.note ? ` · Passcode: ${escapeHtml(passcodeOnly(next.note))}` : ''}${next.movedFrom ? ' · moved from its usual day' : ''}</span>
     </div>
-    ${state.studentData?.liveClassroom
+    ${state.studentData?.liveReady
       ? `<button class="btn primary" id="join-live-classroom">${next.live || state.studentData?.liveNow ? 'Join now' : 'Join live classroom'}</button>`
       : next.joinUrl
         ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
@@ -13135,13 +13135,13 @@ function openClassInfo(date, kind) {
         <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
         <div><dt>Timezone</dt><dd>${escapeHtml(zone)}</dd></div>
         ${sitting.minutes ? `<div><dt>Length</dt><dd>${sitting.minutes} minutes</dd></div>` : ''}
-        ${klass?.join_note && joinUrl && !state.studentData?.liveClassroom ? `<div><dt>Passcode</dt><dd>${escapeHtml(passcodeOnly(klass.join_note))}</dd></div>` : ''}
+        ${klass?.join_note && joinUrl && !state.studentData?.liveReady ? `<div><dt>Passcode</dt><dd>${escapeHtml(passcodeOnly(klass.join_note))}</dd></div>` : ''}
       </dl>`}
     </div>`,
     footer: `<button class="btn" data-close-modal>Close</button>
       ${sitting.kind === 'recorded'
         ? '<button class="btn primary" id="class-info-courses">Go to Courses</button>'
-        : state.studentData?.liveClassroom && sitting.kind !== 'skipped'
+        : state.studentData?.liveReady && sitting.kind !== 'skipped'
           ? '<button class="btn primary" id="class-info-live">Go to Live class</button>'
           : joinUrl
             ? `<a class="btn primary" href="${escapeHtml(joinUrl)}" target="_blank" rel="noopener noreferrer">Join class</a>`

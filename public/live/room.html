@@ -394,6 +394,10 @@ $('#joinBtn').onclick = join;
     if (me.role === 'student') showNextClass(me.liveNow ? { live: true } : me.nextClass);
     if (me.liveNow) { const el = $('#nextClass'); if (el) el.textContent = 'Your teacher is live now. Press Join.'; }
     if (!me.allowed) showError(me.reason || 'This session is for a different class.');
+    if (!me.live && !preview) {
+      const nc = $('#nextClass'); if (nc) { nc.textContent = 'Your teacher is still setting this up. Until then, join from the link on your calendar as usual.'; nc.className = 'nextclass'; }
+      $('#joinBtn').hidden = true;
+    }
     connectChat();
     connectPhrases();
     if (preview) {

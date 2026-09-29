@@ -86,7 +86,8 @@ test('the live classroom pages are on this site and get their own policy', () =>
 test('the practice player is same-origin and the portal asks its own session', () => {
   assert.match(student, /url: `\/live\/lesson\.html\?id=\$\{encodeURIComponent\(lesson\.video_ref\)\}&embed=1`/);
   assert.match(admin, /url: `\/live\/lesson\.html\?id=\$\{encodeURIComponent\(lesson\.video_ref\)\}&embed=1`/);
-  assert.match(student, /liveClassroom: await liveRoomOn\(\)/, 'the room is a switch, apart from the studio');
+  assert.match(student, /liveClassroom: await liveRoomEnabled\(\)/, 'the tab shows on the switch alone');
+  assert.match(student, /liveReady: await liveRoomOn\(\)/, 'the doors only lead in once the keys are in place');
   assert.match(admin, /liveRoom: await liveRoomEnabled\(\)/, 'the console shows on the switch alone, so the teacher can finish setting up from it');
   assert.match(admin, /listLiveLessons\(\)/);
   assert.doesNotMatch(student + admin, /signHandoff|liveFetch|practiceUrl/);

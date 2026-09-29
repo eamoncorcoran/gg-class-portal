@@ -150,7 +150,7 @@ services:
       - key: ZOOM_SDK_CLIENT_SECRET
         sync: false
       - key: LIVE_ROOM_ENABLED
-        value: "false"
+        value: "true"
       - key: ANTHROPIC_API_KEY
         sync: false
 

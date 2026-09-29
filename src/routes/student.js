@@ -23,7 +23,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
-import { liveRoomOn } from '../live/zoom.js';
+import { liveRoomOn, liveRoomEnabled } from '../live/zoom.js';
 import { liveFor } from '../live/room.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
@@ -278,7 +278,12 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
     // Hidden entirely for a class without one, and for anybody with no class.
     hasCommunity: Boolean(klass.has_community),
     // Whether "Join live classroom" is on offer at all.
-    liveClassroom: await liveRoomOn(),
+    /* Two things, kept apart: the Live class tab shows on the switch alone, so
+       the section is there to find; the banner and the calendar only send a
+       student into it once the Zoom keys are in place, and hand out the plain
+       class link until then, so nobody loses their door on a class night. */
+    liveClassroom: await liveRoomEnabled(),
+    liveReady: await liveRoomOn(),
     // The teacher has pressed Go live for this student's class.
     liveNow: (await liveRoomOn()) && await liveFor(req.user.id),
     communityUnread: community,

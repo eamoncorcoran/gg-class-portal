@@ -169,9 +169,11 @@ export async function getZoomConfig() {
     clientId: (stored.clientId || process.env.ZOOM_SDK_CLIENT_ID || '').trim(),
     clientSecret: secret || envSecret,
     hostEmail: (stored.hostEmail || '').trim(),
+    // On unless somebody has switched it off: the tab is the way in, and a
+    // room nobody can find is no room. The settings card can still hide it.
     enabled: typeof stored.enabled === 'boolean'
       ? stored.enabled
-      : /^(1|true|yes|on)$/i.test(String(process.env.LIVE_ROOM_ENABLED || '')),
+      : !/^(0|false|no|off)$/i.test(String(process.env.LIVE_ROOM_ENABLED || '')),
   };
   value.configured = Boolean(value.clientId && value.clientSecret);
   zoomCache = { at: Date.now(), value };
