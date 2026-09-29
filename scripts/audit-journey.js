@@ -743,6 +743,13 @@ try {
     expectOk('and the studio every course', await admin.call('/api/live/courses'), (d) => Array.isArray(d?.courses));
     expectOk('the session is set to this class, enrolled students only', await admin.call('/api/live/session',
       { method: 'POST', body: { mode: 'entitled', classId: made.classId } }), (d) => d?.classId === made.classId && d?.mode === 'entitled');
+    expectOk('the session takes its own Zoom link, for several classes at once', await admin.call('/api/live/session',
+      { method: 'POST', body: { mode: 'entitled', classIds: [made.classId], joinUrl: 'https://us06web.zoom.us/j/88408476378?pwd=abc', joinNote: '' } }),
+      (d) => d?.classIds?.length === 1 && d?.webinar?.webinarId === '88408476378' && d?.webinar?.source === 'session' && d?.webinar?.webinarPwd === 'abc');
+    expectStatus('a link with no meeting id in it is refused', await admin.call('/api/live/session',
+      { method: 'POST', body: { joinUrl: 'https://example.com/not-zoom' } }), 400);
+    expectOk('clearing the link falls back to the class\u2019s own', await admin.call('/api/live/session',
+      { method: 'POST', body: { joinUrl: '' } }), (d) => d?.joinUrl === '' && d?.webinar?.source !== 'session');
     expectStatus('a class that does not exist is refused', await admin.call('/api/live/session',
       { method: 'POST', body: { mode: 'open', classId: '00000000-0000-4000-8000-000000000000' } }), 400);
     const pushed = expectOk('the teacher puts a phrase on screen', await admin.call('/api/live/phrase',

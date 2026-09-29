@@ -29,8 +29,14 @@ router.get('/me', asyncRoute(async (req, res) => {
   let webinar = session.webinar;
   let nextClass = null;
   if (req.user.role !== 'admin') {
-    const [own] = await studentClassIds(req.user.id);
-    if (own && !classId) { classId = own; const klass = await liveClass(own); webinar = { webinarId: klass?.webinarId || null, webinarPwd: klass?.webinarPwd || '' }; }
+    const mine = await studentClassIds(req.user.id);
+    const own = mine[0];
+    /* The session's room when it is for everyone or for one of this student's
+       classes; otherwise their own class's link, so a class that is not part of
+       today's session still finds its usual room. */
+    const inSession = !session.classIds.length || mine.some((id) => session.classIds.includes(id));
+    if (own && (!inSession || !webinar.webinarId)) { classId = own; const klass = await liveClass(own); webinar = { webinarId: klass?.webinarId || null, webinarPwd: klass?.webinarPwd || '' }; }
+    else if (own && !classId) classId = own;
     /* When the class next sits, from the same setup the calendar uses: the
        weekly slot, the term, the date changes and any extra sessions. */
     if (own) {

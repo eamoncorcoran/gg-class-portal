@@ -11,6 +11,11 @@
 @media(max-width:1160px){.console{grid-template-columns:1fr}}
 .stack{display:flex;flex-direction:column;gap:18px}
 
+/* The session's class tick list */
+.acc-classes{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--gray-25)}
+.acc-class{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;cursor:pointer}
+.acc-class input{width:auto;margin:0}
+.acc-class small{margin-left:auto;color:var(--text-quaternary);font-weight:500;font-size:11.5px;white-space:nowrap}
 /* Run-a-lesson selectors */
 .selrow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:520px){.selrow{grid-template-columns:1fr}}
@@ -152,16 +157,22 @@ body.embed .app-main{padding:0 0 18px;max-width:none}
         </div>
 
         <div class="card">
-          <div class="card-header"><div><h2>Who can join</h2><p id="accessNote">Controls access to this live session</p></div></div>
+          <div class="card-header"><div><h2>This session</h2><p id="accessNote">The Zoom link you are hosting, who it is for, and who may join</p></div></div>
           <div class="card-body">
+            <div class="field"><label>Zoom link for this session</label>
+              <input id="accLink" type="url" placeholder="https://us06web.zoom.us/j/88408476378" autocomplete="off">
+              <div class="field-hint">Leave blank to use the class's own link from Class setup.</div></div>
             <div class="selrow">
+              <div class="field" style="margin:0"><label>Passcode, if the link does not carry it</label><input id="accNote" placeholder="Passcode 4821" maxlength="200" autocomplete="off"></div>
               <div class="field" style="margin:0"><label>Access</label>
-                <select id="accMode"><option value="open">Open to anyone with the link</option><option value="entitled">Enrolled students only</option></select>
+                <select id="accMode"><option value="open">Open to anyone signed in</option><option value="entitled">Only the classes ticked below</option></select>
               </div>
-              <div class="field" style="margin:0"><label>Class this session is for</label><select id="accClass"><option value="">Any class</option></select>
-                <div id="accWebinar" style="font-size:12px;color:var(--text-tertiary);margin-top:6px"></div></div>
             </div>
-            <button class="btn block" id="accSave" style="margin-top:12px">Save access</button>
+            <div class="field" style="margin-top:12px"><label>Classes that see this session</label>
+              <div id="accClasses" class="acc-classes"><span style="color:var(--text-tertiary);font-size:12.5px">Loading classes</span></div>
+              <div class="field-hint">None ticked means every class. Each class's own Zoom link is shown so you can see where they would land otherwise.</div></div>
+            <div id="accWebinar" style="font-size:12.5px;color:var(--text-secondary);font-weight:600;margin-top:10px"></div>
+            <button class="btn block" id="accSave" style="margin-top:12px">Save session</button>
             <p class="field-hint" style="margin-top:9px" id="accSrc"></p>
           </div>
         </div>
@@ -533,44 +544,52 @@ async function boot(){
   }
 }
 
-/* ---------- who can join ---------- */
+/* ---------- this session ---------- */
 async function loadAccess(){
   try {
     const a = await api('/api/live/session');
     $('#accMode').value = a.mode;
-    await loadClassPicker(a.classId || '');
+    $('#accLink').value = a.joinUrl || '';
+    $('#accNote').value = a.joinNote || '';
+    await loadClassPicker(a.classIds || []);
     showWebinar(a);
-    $('#accSrc').textContent = 'Enrolled students only means the class chosen here; open means anyone signed in to the portal.';
-    /* Opened from a class in the portal: run the session for that class. */
+    $('#accSrc').textContent = 'Students in a ticked class get this session\'s link in their Live class tab. Open lets anyone signed in join it too.';
+    /* Opened from a class in the portal: add that class to the session. */
     const wanted = bootQs.get('classId');
-    if (wanted && wanted !== (a.classId || '') && [...$('#accClass').options].some(o => o.value === wanted)) {
-      $('#accClass').value = wanted;
+    if (wanted && !(a.classIds || []).includes(wanted) && $('#accClasses input[value="' + wanted + '"]')) {
+      $('#accClasses input[value="' + wanted + '"]').checked = true;
       $('#accSave').click();
       bootQs.delete('classId'); history.replaceState(null, '', location.pathname + (bootQs.toString() ? '?' + bootQs.toString() : ''));
     }
-  } catch { $('#accSrc').textContent = 'Could not read the access setting.'; }
+  } catch { $('#accSrc').textContent = 'Could not read the session.'; }
 }
-/* The portal's classes, as the session picker. Each carries the webinar the
-   portal parsed from that class's Zoom link, shown so the teacher can see which
-   room the students will land in. */
+/* Every class, each a tick box, with the room its own Class setup link would
+   send it to, so the teacher can see where a class lands when no session
+   link is given. */
 async function loadClassPicker(selected){
-  const sel = $('#accClass');
+  const box = $('#accClasses');
   try {
     const j = await api('/api/live/classes');
-    sel.innerHTML = '<option value="">Any class</option>' + (j.classes||[]).map(c =>
-      '<option value="' + esc(c.id) + '" ' + (c.id===selected?'selected':'') + '>' + esc(c.label) + (c.webinarId ? '' : ' (no Zoom link)') + '</option>').join('');
-  } catch (e) { sel.innerHTML = '<option value="">Portal not reachable</option>'; }
+    if (!(j.classes||[]).length) { box.innerHTML = '<span style="color:var(--text-tertiary);font-size:12.5px">No classes yet.</span>'; return; }
+    box.innerHTML = (j.classes||[]).map(c =>
+      '<label class="acc-class"><input type="checkbox" value="' + esc(c.id) + '"' + (selected.includes(c.id) ? ' checked' : '') + '> <span>' + esc(c.label) + '</span>'
+      + '<small>' + (c.webinarId ? 'own link · ' + esc(c.webinarId) : 'no Zoom link in Class setup') + '</small></label>').join('');
+  } catch (e) { box.innerHTML = '<span style="color:var(--error-700);font-size:12.5px">Could not load the classes.</span>'; }
 }
 function showWebinar(a){
   const w = a && a.webinar; if (!w) return;
-  $('#accWebinar').textContent = w.webinarId ? ('Webinar ' + w.webinarId.replace(/(\d{3})(\d{4})(\d{4})/, '$1 $2 $3') + (w.webinarPwd ? ' · passcode set' : '')) : 'No webinar: set the class\'s Zoom link in the portal.';
+  const id = w.webinarId ? w.webinarId.replace(/(\d{3})(\d{4})(\d{4})/, '$1 $2 $3') : '';
+  $('#accWebinar').textContent = w.webinarId
+    ? ('Students join meeting ' + id + (w.webinarPwd ? ' · passcode set' : ' · no passcode') + (w.source === 'session' ? ' · from the link above' : ' · from the first ticked class\'s Class setup'))
+    : 'No room yet: paste a Zoom link above, or tick a class that has one in Class setup.';
 }
 $('#accSave').onclick = async () => {
+  const classIds = [...document.querySelectorAll('#accClasses input:checked')].map(i => i.value);
   try {
     const saved = await api('/api/live/session', { method:'POST', headers:{'content-type':'application/json'},
-      body: JSON.stringify({ mode: $('#accMode').value, classId: $('#accClass').value }) });
+      body: JSON.stringify({ mode: $('#accMode').value, classIds, joinUrl: $('#accLink').value.trim(), joinNote: $('#accNote').value.trim() }) });
     showWebinar(saved);
-    flash('Access saved ✓'); loadAccess();
+    flash('Session saved ✓'); loadAccess();
   } catch(e){ flash(e.message, true); }
 };
 setInterval(async () => {

@@ -11,20 +11,27 @@
  * administrator. There is no gate to type a name into any more.
  */
 import { one, query } from '../db.js';
-import { liveClass, studentClassIds } from './classes.js';
+import { liveClass, studentClassIds, parseWebinar } from './classes.js';
 import { ttsFor } from './tts.js';
 
-/* ---- who may join ------------------------------------------------------ */
-export const access = { mode: 'open', classId: '' };
+/* ---- the session: which link, which classes, who may join ------------- */
+/* classIds: the classes this session is for (any number; none means every
+   class). joinUrl/joinNote: the Zoom link the teacher is hosting today; when
+   blank, the first class's own link from Class setup is used instead. */
+export const access = { mode: 'open', classIds: [], joinUrl: '', joinNote: '' };
+Object.defineProperty(access, 'classId', { get: () => access.classIds[0] || '' });
 
 export async function loadAccess() {
-  const row = await one('SELECT mode, class_id FROM live_access WHERE id=1');
+  const row = await one('SELECT mode, class_id, class_ids, join_url, join_note FROM live_access WHERE id=1');
   access.mode = row?.mode === 'entitled' ? 'entitled' : 'open';
-  access.classId = row?.class_id || '';
+  access.classIds = Array.isArray(row?.class_ids) && row.class_ids.length ? row.class_ids : (row?.class_id ? [row.class_id] : []);
+  access.joinUrl = row?.join_url || '';
+  access.joinNote = row?.join_note || '';
   return access;
 }
 async function saveAccess() {
-  await query('UPDATE live_access SET mode=$1, class_id=$2, updated_at=now() WHERE id=1', [access.mode, access.classId || null]);
+  await query('UPDATE live_access SET mode=$1, class_id=$2, class_ids=$3, join_url=$4, join_note=$5, updated_at=now() WHERE id=1',
+    [access.mode, access.classIds[0] || null, access.classIds, access.joinUrl, access.joinNote]);
 }
 
 /* A student's classes, cached a minute: ten thousand joins must not mean ten
@@ -42,9 +49,9 @@ export async function classesOf(userId) {
 export async function studentGate(user) {
   if (!user) return { ok: false, error: 'Sign in to join the live class.' };
   if (user.role === 'admin') return { ok: true };
-  if (access.mode !== 'entitled' || !access.classId) return { ok: true };
+  if (access.mode !== 'entitled' || !access.classIds.length) return { ok: true };
   const ids = await classesOf(user.id);
-  if (!ids.includes(access.classId)) return { ok: false, error: 'This live session is for a different class. Open it from your own course page.' };
+  if (!ids.some((id) => access.classIds.includes(id))) return { ok: false, error: 'This live session is for a different class. Open it from your own course page.' };
   return { ok: true };
 }
 
@@ -239,22 +246,54 @@ function restore(classId) {
   threads.clear(); for (const [k, v] of (saved?.threads || [])) threads.set(k, v);
 }
 
-export async function sessionSummary() {
-  const klass = await liveClass(access.classId);
-  return { mode: access.mode, classId: access.classId || '', classLabel: klass?.label || '', webinar: klass ? { webinarId: klass.webinarId, webinarPwd: klass.webinarPwd } : { webinarId: null, webinarPwd: '' } };
+/* The room the session lands in: the session's own link when one is set,
+   otherwise the first class's link from Class setup. */
+export async function sessionWebinar() {
+  if (access.joinUrl) {
+    const parsed = parseWebinar(access.joinUrl, access.joinNote);
+    if (parsed.webinarId) return { ...parsed, source: 'session' };
+  }
+  const klass = await liveClass(access.classIds[0]);
+  return { webinarId: klass?.webinarId || null, webinarPwd: klass?.webinarPwd || '', source: klass?.webinarId ? 'class' : 'none' };
 }
 
-export async function setSession({ mode, classId }) {
+export async function sessionSummary() {
+  const classes = (await Promise.all(access.classIds.map((id) => liveClass(id)))).filter(Boolean);
+  return {
+    mode: access.mode,
+    classId: access.classIds[0] || '',
+    classIds: access.classIds,
+    classLabel: classes.map((k) => k.label).join(', '),
+    classLabels: classes.map((k) => ({ id: k.id, label: k.label })),
+    joinUrl: access.joinUrl,
+    joinNote: access.joinNote,
+    webinar: await sessionWebinar(),
+  };
+}
+
+const sessionKey = (ids) => [...ids].sort().join(',');
+
+export async function setSession({ mode, classId, classIds, joinUrl, joinNote }) {
   const nextMode = mode === 'entitled' ? 'entitled' : 'open';
-  const nextClass = String(classId || '').trim();
-  if (nextClass && !(await liveClass(nextClass))) throw Object.assign(new Error('That class does not exist.'), { status: 400 });
-  if (nextClass !== (access.classId || '')) {
-    stash(access.classId);
-    restore(nextClass);
+  const wanted = Array.isArray(classIds) ? classIds : (classId !== undefined ? [classId] : access.classIds);
+  const nextClasses = [...new Set(wanted.map((id) => String(id || '').trim()).filter(Boolean))].slice(0, 50);
+  for (const id of nextClasses) {
+    if (!(await liveClass(id))) throw Object.assign(new Error('That class does not exist.'), { status: 400 });
+  }
+  const nextUrl = joinUrl === undefined ? access.joinUrl : String(joinUrl || '').trim().slice(0, 500);
+  if (nextUrl && !parseWebinar(nextUrl).webinarId) {
+    throw Object.assign(new Error('That does not look like a Zoom link. It should carry the meeting id, like https://us06web.zoom.us/j/88408476378'), { status: 400 });
+  }
+  const nextNote = joinNote === undefined ? access.joinNote : String(joinNote || '').trim().slice(0, 200);
+  if (sessionKey(nextClasses) !== sessionKey(access.classIds)) {
+    stash(sessionKey(access.classIds));
+    restore(sessionKey(nextClasses));
     broadcastPhrase();
   }
   access.mode = nextMode;
-  access.classId = nextClass;
+  access.classIds = nextClasses;
+  access.joinUrl = nextUrl;
+  access.joinNote = nextNote;
   await saveAccess();
   classCache.clear();
   return sessionSummary();
