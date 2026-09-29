@@ -24,6 +24,27 @@ Object.defineProperty(access, 'classId', { get: () => access.classIds[0] || '' }
    host's key, so it lives in memory for this run only, never in the table. */
 let hostStartUrl = '';
 
+/* A class is an hour, an extra session a few. What nobody remembers to do is
+   press End session after closing Zoom: the first real class stayed "live"
+   on ninety students' tabs for a day. So live has a shelf life, after which
+   the session counts as over on its own, and Go live starts a fresh one. */
+export const LIVE_MAX_MS = 5 * 60 * 60 * 1000;
+export function isLive(session = access, now = Date.now()) {
+  if (!session.startedAt || !session.joinUrl) return false;
+  const since = now - new Date(session.startedAt).getTime();
+  return since >= 0 ? since < LIVE_MAX_MS : true;
+}
+
+/* The teacher pastes the plain link from Zoom's invitation, but the class's
+   own link in Class setup carries the passcode. When both point at the same
+   room, the passcode is kept: a join refused for want of a passcode the
+   portal already had would be a poor way to start a class. */
+export function withClassPasscode(parsed, classes) {
+  if (!parsed?.webinarId || parsed.webinarPwd) return parsed;
+  const match = (classes || []).find((k) => k && k.webinarId === parsed.webinarId && k.webinarPwd);
+  return match ? { ...parsed, webinarPwd: match.webinarPwd } : parsed;
+}
+
 export async function loadAccess() {
   const row = await one('SELECT mode, class_id, class_ids, join_url, join_note, meeting_id, started_at FROM live_access WHERE id=1');
   access.mode = row?.mode === 'entitled' ? 'entitled' : 'open';
@@ -41,7 +62,7 @@ async function saveAccess() {
 
 /** Live right now, and for this student (or for everyone). */
 export async function liveFor(userId) {
-  if (!access.startedAt || !access.joinUrl) return false;
+  if (!isLive()) return false;
   if (!access.classIds.length) return true;
   const ids = await classesOf(userId);
   return ids.some((id) => access.classIds.includes(id));
@@ -268,8 +289,11 @@ function restore(classId) {
    otherwise the first class's link from Class setup. */
 export async function sessionWebinar() {
   if (access.joinUrl) {
-    const parsed = parseWebinar(access.joinUrl, access.joinNote);
-    if (parsed.webinarId) return { ...parsed, source: 'session' };
+    let parsed = parseWebinar(access.joinUrl, access.joinNote);
+    if (parsed.webinarId) {
+      if (!parsed.webinarPwd) parsed = withClassPasscode(parsed, await Promise.all(access.classIds.map((id) => liveClass(id))));
+      return { ...parsed, source: 'session' };
+    }
   }
   const klass = await liveClass(access.classIds[0]);
   return { webinarId: klass?.webinarId || null, webinarPwd: klass?.webinarPwd || '', source: klass?.webinarId ? 'class' : 'none' };
@@ -286,11 +310,11 @@ export async function sessionSummary() {
     joinUrl: access.joinUrl,
     joinNote: access.joinNote,
     webinar: await sessionWebinar(),
-    live: Boolean(access.startedAt && access.joinUrl),
-    startedAt: access.startedAt ? access.startedAt.toISOString() : null,
+    live: isLive(),
+    startedAt: isLive() && access.startedAt ? access.startedAt.toISOString() : null,
     meetingId: access.meetingId,
     // The host's door, only while this process remembers it.
-    startUrl: access.startedAt && access.meetingId ? hostStartUrl : '',
+    startUrl: isLive() && access.meetingId ? hostStartUrl : '',
   };
 }
 
@@ -329,6 +353,8 @@ export async function endLive() {
   }
   access.joinUrl = ''; access.joinNote = ''; access.meetingId = ''; access.startedAt = null; hostStartUrl = '';
   await saveAccess();
+  // The last phrase does not stay on screen over an empty stage.
+  if (currentPhrase.show) pushPhrase({ show: false });
   return { ...(await sessionSummary()), zoomEnded: ended };
 }
 

@@ -442,10 +442,28 @@ $('#qpPh').addEventListener('keydown', e => { if(e.key==='Enter') $('#qpSend').c
 /* The preview frame is sized by the student page inside it, which reports
    its stage height once Zoom's player has drawn. */
 window.addEventListener('message', (e) => {
-  if (e.origin !== location.origin || !e.data || e.data.source !== 'gglive' || e.data.type !== 'stage') return;
+  if (e.origin !== location.origin || !e.data || e.data.source !== 'gglive') return;
+  if (e.data.type === 'ended') { if (e.data.byHost) autoEnd(); return; }
+  if (e.data.type !== 'stage') return;
   const st = $('#stage'); if (!st) return;
   st.style.aspectRatio = 'auto'; st.style.height = Math.max(200, Number(e.data.height) || 0) + 'px';
 });
+/* The preview sits in the webinar as a silent attendee, so it is the first
+   to know when the host ends it in Zoom. The session is ended here in the
+   same breath: the first real class stayed "live" on the students' tab for a
+   day because nobody thought to press End session after closing Zoom. */
+let autoEnding = false;
+async function autoEnd(){
+  if (autoEnding || $('#liveNow').hidden) return;
+  autoEnding = true;
+  try {
+    await api('/api/live/end', { method:'POST', headers:{'content-type':'application/json'}, body: '{}' });
+    flash('The webinar ended in Zoom, so the session is ended here too.');
+    $('#accLink').value = ''; $('#accNote').value = '';
+    await loadAccess();
+  } catch(e){ flash(e.message, true); }
+  autoEnding = false;
+}
 /* The stage is the student page itself now; this only keeps the pill honest. */
 function preview(p){
   const on = !!(p && p.show && p.irish);

@@ -308,7 +308,51 @@ function setStatus(on, text){
 }
 function showError(msg){ const e = $('#err'); e.textContent = msg; e.style.display = 'block'; }
 
-let joined = false;
+let joined = false, inMeeting = false, client = null, fitObserver = null, endedAt = 0;
+const root = $('#zoomRoot'), wrap = $('#stage');
+/* Speaker view, filling the stage. Zoom's component view opens in its
+   "ribbon" layout by default: one small draggable tile in the middle of a
+   black stage, which is what a student saw the first time. Speaker view
+   at the stage's own size is the class on screen, and it follows the
+   stage when the window is resized. */
+/* Zoom's player is a 16:9 video at the width it is given, plus its own
+   header and toolbar above and below. Shrinking that to fit a 16:9 stage
+   leaves dark bands either side and, in a narrow column, crops the
+   toolbar with Join Audio on it. So it is done the other way round: the
+   video takes the stage's full width, and the stage grows to the height
+   of the whole player, measured after every draw. */
+const stageSize = () => { const w = Math.max(320, root.clientWidth); return { width: w, height: Math.round(w * 9 / 16) }; };
+const fitStage = () => {
+  const box = root.querySelector('.react-resizable');
+  if (!box) return;
+  const b = box.getBoundingClientRect();
+  if (b.height > 100) { wrap.style.aspectRatio = 'auto'; wrap.style.height = Math.round(b.height) + 'px'; }
+  const holder = root.firstElementChild;
+  if (holder) { holder.style.position = 'absolute'; holder.style.top = '0px'; holder.style.left = Math.max(0, Math.round((root.clientWidth - b.width) / 2)) + 'px'; }
+  // The console's preview frame sizes itself to this.
+  tellPortal({ type: 'stage', height: Math.round(wrap.getBoundingClientRect().height) + 8 });
+  if (!fitObserver && window.ResizeObserver) { fitObserver = new ResizeObserver(() => fitStage()); fitObserver.observe(box); }
+};
+/* The webinar over, or the line dropped: the player goes, the door comes
+   back and says which it was. Without this a student was left looking at a
+   black stage with the last phrase over it, and no idea the class was done.
+   The console's preview passes the word up, so the session is ended in the
+   portal the moment the host ends it in Zoom. */
+function classOver(reason){
+  // A join that failed is the join's own business; this is for a class that was on.
+  if (!joined || !inMeeting) return;
+  joined = false; inMeeting = false; endedAt = Date.now();
+  const byHost = /host|ended|end\b/i.test(reason);
+  if (fitObserver) { try { fitObserver.disconnect(); } catch {} fitObserver = null; }
+  wrap.style.height = ''; wrap.style.aspectRatio = '';
+  $('#gate').style.display = '';
+  $('#err').style.display = 'none';
+  const nc = $('#nextClass');
+  if (nc) nc.textContent = byHost ? 'The class has ended. Go raibh maith agaibh, see you at the next one.' : 'You were disconnected from the class. Press Join to come back in.';
+  const btn = $('#joinBtn'); btn.disabled = false; btn.textContent = byHost ? 'Join again' : 'Join the class';
+  setStatus(false, byHost ? 'Class over' : 'Not connected');
+  tellPortal({ type: 'ended', byHost, reason: String(reason || '') });
+}
 async function join(){
   if (joined) return;
   joined = true;
@@ -325,57 +369,45 @@ async function join(){
     const sig = await fetch('/api/live/signature', { method:'POST', headers: {'content-type':'application/json'},
       body: JSON.stringify({ meetingNumber: webinarId }) }).then(r=>r.json());
     if (!sig.signature) throw new Error(sig.error || 'Could not get a join signature.');
-    const root = $('#zoomRoot');
-    const client = ZoomMtgEmbedded.createClient();
-    /* Speaker view, filling the stage. Zoom's component view opens in its
-       "ribbon" layout by default: one small draggable tile in the middle of a
-       black stage, which is what a student saw the first time. Speaker view
-       at the stage's own size is the class on screen, and it follows the
-       stage when the window is resized. */
-    /* Zoom's window is the video plus its own header and toolbar, so a video
-       the height of the stage overflows it by that chrome. The chrome is
-       measured after the first draw and taken off, and again on resize. */
-    /* Zoom's player is a 16:9 video at the width it is given, plus its own
-       header and toolbar above and below. Shrinking that to fit a 16:9 stage
-       leaves dark bands either side and, in a narrow column, crops the
-       toolbar with Join Audio on it. So it is done the other way round: the
-       video takes the stage's full width, and the stage grows to the height
-       of the whole player, measured after every draw. */
-    const wrap = $('#stage');
-    const stageSize = () => { const w = Math.max(320, root.clientWidth); return { width: w, height: Math.round(w * 9 / 16) }; };
-    let fitObserver = null;
-    const fitStage = () => {
-      const box = root.querySelector('.react-resizable');
-      if (!box) return;
-      const b = box.getBoundingClientRect();
-      if (b.height > 100) { wrap.style.aspectRatio = 'auto'; wrap.style.height = Math.round(b.height) + 'px'; }
-      const holder = root.firstElementChild;
-      if (holder) { holder.style.position = 'absolute'; holder.style.top = '0px'; holder.style.left = Math.max(0, Math.round((root.clientWidth - b.width) / 2)) + 'px'; }
-      // The console's preview frame sizes itself to this.
-      tellPortal({ type: 'stage', height: Math.round(wrap.getBoundingClientRect().height) + 8 });
-      if (!fitObserver && window.ResizeObserver) { fitObserver = new ResizeObserver(() => fitStage()); fitObserver.observe(box); }
-    };
-    await client.init({
-      zoomAppRoot: root, language: 'en-US', patchJsMedia: true, leaveOnPageUnload: true,
-      customize: {
-        video: {
-          isResizable: false,
-          defaultViewType: 'speaker',
-          popper: { disableDraggable: true },
-          viewSizes: { default: stageSize(), ribbon: { width: 300, height: 700 } },
+    if (!client) {
+      client = ZoomMtgEmbedded.createClient();
+      await client.init({
+        zoomAppRoot: root, language: 'en-US', patchJsMedia: true, leaveOnPageUnload: true,
+        customize: {
+          video: {
+            isResizable: false,
+            defaultViewType: 'speaker',
+            popper: { disableDraggable: true },
+            viewSizes: { default: stageSize(), ribbon: { width: 300, height: 700 } },
+          },
+          meetingInfo: ['topic', 'host', 'participant'],
         },
-        meetingInfo: ['topic', 'host', 'participant'],
-      },
-    });
-    window.addEventListener('resize', () => { try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {} setTimeout(fitStage, 600); });
+      });
+      window.addEventListener('resize', () => { try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {} setTimeout(fitStage, 600); });
+      client.on('connection-change', (p) => {
+        const state = String(p?.state || '');
+        if (state === 'Closed' || state === 'Fail') classOver(p?.reason || state);
+      });
+    }
     await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.email || '' });
+    inMeeting = true;
     $('#gate').style.display = 'none';
     $('#stageNote').style.display = 'none';
     setStatus(true, 'Live');
     setTimeout(fitStage, 800); setTimeout(fitStage, 2500);
   } catch (e) {
-    const reason = (e && (e.reason || e.message)) ? (e.reason || e.message) : 'Could not join.';
-    showError(/not start/i.test(reason) ? 'The class has not started yet. Keep this page open and try again at class time.' : reason);
+    // Zoom's own words when it has any, its error code when it has not, so the
+    // console's failure log says something a person can act on.
+    // Code 200 with no reason is what a webinar gives before the host presses
+    // Start, while they are still in the practice session.
+    const code = e && e.errorCode;
+    const reason = (e && (e.reason || e.message)) ? (e.reason || e.message)
+      : code === 200 ? 'Not started yet: the host is still in the practice session (Zoom code 200)'
+      : code ? 'Zoom refused the join (code ' + code + ')' : 'Could not join.';
+    showError(/not start|practice/i.test(reason) ? 'The class has not started yet. Keep this page open and press Join again in a minute.' : reason);
+    // Zoom's own "Fail to join the meeting" box says nothing the line above
+    // does not, and it sits over the whole page; it is closed for the student.
+    setTimeout(() => { for (const b of document.querySelectorAll('button[class*="zoom-MuiButton"]')) if (/^ok$/i.test(b.textContent.trim())) b.click(); }, 150);
     btn.disabled = false; btn.textContent = 'Join the class';
     joined = false;
     // Tell the teacher's console, in Zoom's words, and show the way out.
@@ -412,7 +444,8 @@ $('#joinBtn').onclick = join;
       const gateTitle = document.querySelector('.gatecard h2'); if (gateTitle) gateTitle.textContent = 'What students see';
       const nc = $('#nextClass');
       const tryJoin = async () => {
-        if (joined) return;
+        // A moment's grace after the host ends it, while the console ends the session.
+        if (joined || Date.now() - endedAt < 30000) return;
         const now = await whoAmI().catch(() => null);
         if (now && now.liveNow) { me = now; join(); }
         else if (nc) nc.textContent = 'Joins here by itself when you press Go live.';
