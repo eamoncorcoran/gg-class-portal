@@ -57,7 +57,7 @@
 .qgrid .full{grid-column:1/-1}
 
 /* Live preview stage */
-.stage{position:relative;background:#0e141b;border-radius:12px;aspect-ratio:16/9;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:18px}
+.stage{position:relative;background:#0e141b;border-radius:12px;aspect-ratio:16/9;overflow:hidden}
 .mockcard{background:#fff;border-radius:16px;padding:16px 22px 14px;max-width:92%;box-shadow:0 14px 40px #0007;text-align:center;display:none;animation:mpop .4s cubic-bezier(.34,1.56,.64,1) both}
 @keyframes mpop{from{transform:scale(.7) translateY(12px);opacity:0}to{transform:none;opacity:1}}
 .mkirish{display:flex;flex-wrap:wrap;justify-content:center;gap:0 8px}
@@ -222,17 +222,12 @@ body.embed .app-main{padding:0 0 18px;max-width:none}
       <!-- RIGHT: live preview (top) + questions (under) -->
       <div class="stack">
         <div class="card">
-          <div class="card-header"><div><h2>Phrase card preview</h2><p style="margin:0" id="previewNote">The card students see over their video. Your own video is in Zoom, not here.</p></div>
-            <a class="btn small" href="/live/room.html" target="_blank" rel="noopener" title="Opens the student page in a new tab. It joins your meeting as a second attendee, so mute it there.">Student view</a></div>
+          <div class="card-header"><div><h2>What students see</h2><p style="margin:0" id="previewNote">Your video and the phrase card, exactly as a student gets them. Joins your meeting as a silent viewer once you are live.</p></div>
+            <span class="pill" id="liveLabel">Off screen</span></div>
           <div class="card-body">
             <div class="stage" id="stage">
-              <div class="livedot"><i></i><span id="liveLabel">Off screen</span></div>
-              <div class="mockempty" id="mockEmpty">Nothing on screen</div>
-              <div class="mockcard" id="mockCard">
-                <div class="mkirish" id="mkIrish"></div>
-                <div class="mkeng" id="mkEng"></div>
-                <div class="mkphon" id="mkPhon"></div>
-              </div>
+              <iframe id="previewFrame" src="/live/room.html?embed=1&preview=1" title="What students see"
+                allow="autoplay; fullscreen" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
             </div>
             <div class="statsrow" id="statsRow" hidden>
               <span class="statpill"><b id="stAnswered">0</b> answered</span>
@@ -439,17 +434,11 @@ $('#qpGa').addEventListener('keydown', e => { if(e.key==='Enter') $('#qpEn').foc
 $('#qpPh').addEventListener('keydown', e => { if(e.key==='Enter') $('#qpSend').click(); });
 
 /* ---------- Live preview (mirrors what students see) ---------- */
+/* The stage is the student page itself now; this only keeps the pill honest. */
 function preview(p){
   const on = !!(p && p.show && p.irish);
-  $('#stage').classList.toggle('on', on);
-  $('#liveLabel').textContent = on ? 'On screen' : 'Off screen';
-  $('#mockCard').style.display = on ? 'block' : 'none';
-  $('#mockEmpty').style.display = on ? 'none' : 'block';
-  if (!on) return;
-  const ir = $('#mkIrish'); ir.innerHTML='';
-  for (const w of p.irish.split(/\s+/)){ const s=document.createElement('span'); s.textContent=w; ir.appendChild(s); }
-  $('#mkEng').textContent = p.english ? '“'+p.english+'”' : '';
-  $('#mkPhon').textContent = p.phonetic ? '\\ '+p.phonetic+' \\' : '';
+  $('#liveLabel').textContent = on ? 'On screen: ' + p.irish : 'Off screen';
+  $('#liveLabel').className = 'pill' + (on ? ' green dot' : '');
 }
 
 /* ---------- Questions feed (private threads) ---------- */

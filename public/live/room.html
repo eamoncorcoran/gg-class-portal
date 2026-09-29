@@ -23,8 +23,12 @@
    (z-index 60 on the stage) sits over the video whatever z-index Zoom's own
    widgets use inside; without it their 9999 beat the card and students saw
    video with no phrase. */
-#zoomRoot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
-#zoomRoot > div{margin:0 auto}
+#zoomRoot{position:absolute;inset:0;display:block;overflow:hidden;z-index:1}
+/* Zoom anchors its window at a zero-size wrapper it puts in the root. With the
+   root centring its children, that wrapper sat in the middle of the stage and
+   the whole meeting window hung off it, half out of view. Block layout keeps
+   the wrapper at the top-left, where the window then starts. */
+#zoomRoot > div{margin:0}
 .stagenote{position:absolute;inset:0;display:grid;place-items:center;color:#5f6b78;font-size:13.5px;font-weight:600;z-index:5;text-align:center;padding:20px}
 
 .gate{position:absolute;inset:0;z-index:90;display:grid;place-items:center;background:rgba(11,15,20,.86);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:16px}
@@ -75,6 +79,19 @@ body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb,body.embed .pa
 body.embed .app-shell{display:block}
 body.embed .app-main{padding:0 0 18px;max-width:none}
 body.embed .page-header{margin-bottom:12px;justify-content:flex-end}
+body.preview .page-header,body.preview .qpanel{display:none !important}
+body.preview .app-main{padding:0}
+body.preview .live-grid{display:block}
+body.preview .videowrap{border-radius:10px}
+body.preview .gatecard{padding:18px;width:min(340px,100%)}
+body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
+/* On a phone a 16:9 stage is 190px tall, most of it Zoom's own header and
+   toolbar. Taller, so the teacher's video is a picture and not a strip. */
+@media (max-width:760px){
+  body.embed .videowrap,body.preview .videowrap{aspect-ratio:auto;height:min(64vh,520px);border-radius:8px}
+  .gatecard{padding:18px 16px;width:min(340px,100%)}
+  .gatecard h2{font-size:17px}
+}
 .nextclass{margin:-4px 0 14px;font-size:13px;font-weight:600;color:var(--text-secondary)}
 .nextclass.on{color:var(--success-700)}
 </style>
@@ -154,6 +171,12 @@ const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'
 let me = null;
 let studentName = '';
 if (qs.get('embed') === '1') document.body.classList.add('embed');
+/* The console's preview: this same page, as a student would see it, joined
+   as a silent viewer under a name that says so. Audio is never joined, so the
+   teacher does not hear themselves; the questions panel is left out because
+   the console has its own. It joins by itself the moment the session is live. */
+const preview = qs.get('preview') === '1';
+if (preview) document.body.classList.add('preview');
 
 /* When the class is not on, the gate says when it next is, from the same
    class setup the calendar uses, extra sessions included. */
@@ -280,7 +303,10 @@ function setStatus(on, text){
 }
 function showError(msg){ const e = $('#err'); e.textContent = msg; e.style.display = 'block'; }
 
+let joined = false;
 async function join(){
+  if (joined) return;
+  joined = true;
   $('#err').style.display = 'none';
   const btn = $('#joinBtn'); btn.disabled = true; btn.textContent = 'Joining…';
   try {
@@ -301,7 +327,39 @@ async function join(){
        black stage, which is what a student saw the first time. Speaker view
        at the stage's own size is the class on screen, and it follows the
        stage when the window is resized. */
-    const stageSize = () => ({ width: Math.max(320, root.clientWidth), height: Math.max(180, root.clientHeight) });
+    /* Zoom's window is the video plus its own header and toolbar, so a video
+       the height of the stage overflows it by that chrome. The chrome is
+       measured after the first draw and taken off, and again on resize. */
+    /* Zoom sizes its video from the width it is given (16:9) and adds its own
+       header and toolbar underneath, so a stage-wide video overflows the stage
+       by that chrome and the toolbar, with Join Audio on it, is cut off. The
+       window is therefore sized to fit the height: measured after each draw,
+       and narrowed until the whole thing, toolbar included, is inside. */
+    let scale = 1;
+    const stageSize = () => {
+      const w = Math.max(320, Math.round(root.clientWidth * scale));
+      return { width: w, height: Math.max(120, Math.round(w * 9 / 16)) };
+    };
+    let fits = 0;
+    const fitZoom = () => {
+      const box = root.querySelector('.react-resizable') || root.querySelector('[class*="MuiBox-root"]');
+      if (!box || fits > 5) return;
+      const h = box.getBoundingClientRect().height;
+      if (h > root.clientHeight + 4) {
+        fits += 1;
+        scale = Math.max(0.3, scale * (root.clientHeight / h) * 0.98);
+        try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {}
+        setTimeout(fitZoom, 700);
+      }
+      // Centred, whatever width it ended up.
+      const wrap = root.firstElementChild;
+      if (wrap) {
+        const b = box.getBoundingClientRect();
+        wrap.style.position = 'absolute';
+        wrap.style.left = Math.max(0, Math.round((root.clientWidth - b.width) / 2)) + 'px';
+        wrap.style.top = Math.max(0, Math.round((root.clientHeight - b.height) / 2)) + 'px';
+      }
+    };
     await client.init({
       zoomAppRoot: root, language: 'en-US', patchJsMedia: true, leaveOnPageUnload: true,
       customize: {
@@ -314,15 +372,17 @@ async function join(){
         meetingInfo: ['topic', 'host', 'participant'],
       },
     });
-    window.addEventListener('resize', () => { try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {} });
+    window.addEventListener('resize', () => { scale = 1; fits = 0; try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {} setTimeout(fitZoom, 600); });
     await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.email || '' });
     $('#gate').style.display = 'none';
     $('#stageNote').style.display = 'none';
     setStatus(true, 'Live');
+    setTimeout(fitZoom, 800); setTimeout(fitZoom, 2500);
   } catch (e) {
     const reason = (e && (e.reason || e.message)) ? (e.reason || e.message) : 'Could not join.';
     showError(/not start/i.test(reason) ? 'The class has not started yet. Keep this page open and try again at class time.' : reason);
     btn.disabled = false; btn.textContent = 'Join the class';
+    joined = false;
   }
 }
 $('#joinBtn').onclick = join;
@@ -332,7 +392,7 @@ $('#joinBtn').onclick = join;
 (async () => {
   try {
     me = await whoAmI(); if (!me) return;
-    studentName = me.name || 'Student';
+    studentName = preview ? 'Teacher preview (silent)' : (me.name || 'Student');
     $('#sideName').textContent = studentName;
     $('#sideAv').textContent = studentName.trim().slice(0,2).toUpperCase();
     $('#gateName').textContent = studentName;
@@ -342,6 +402,18 @@ $('#joinBtn').onclick = join;
     if (!me.allowed) showError(me.reason || 'This session is for a different class.');
     connectChat();
     connectPhrases();
+    if (preview) {
+      $('#gateName').textContent = 'a silent viewer';
+      const gateTitle = document.querySelector('.gatecard h2'); if (gateTitle) gateTitle.textContent = 'What students see';
+      const nc = $('#nextClass');
+      const tryJoin = async () => {
+        if (joined) return;
+        const now = await whoAmI().catch(() => null);
+        if (now && now.liveNow) { me = now; join(); }
+        else if (nc) nc.textContent = 'Joins here by itself when you press Go live.';
+      };
+      tryJoin(); setInterval(tryJoin, 8000);
+    }
   } catch (e) { showError(e.message || 'Could not reach the live classroom.'); }
   if (demo){
     $('#gate').style.display = 'none';
