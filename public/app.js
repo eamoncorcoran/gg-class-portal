@@ -1013,6 +1013,9 @@ function mobileNav() {
         ['calendar', svg.calendar, 'Calendar'],
         ['tracker', svg.grid, 'Tracker'],
         ['courses', svg.cap, 'Courses'],
+        // The room, once the portal has one: on a phone the bottom bar is the
+        // navigation, and a tab that only exists in a sidebar is no tab at all.
+        ...(state.studentData?.liveClassroom ? [['live', svg.video, 'Live']] : []),
         ['community', svg.board, 'Board'],
       ];
   const badge = (view) => {
@@ -1023,8 +1026,9 @@ function mobileNav() {
   const attribute = state.user.role === 'admin' ? 'data-admin-view' : 'data-student-view';
   return `<nav class="mobile-nav">${buttons.map(([view, icon, label]) => {
     const count = badge(view);
-    return `<button class="mnav ${state.view === view ? 'on' : ''}" ${attribute}="${view}">
-      <span class="mnav-icon">${icon}${count ? `<i>${count}</i>` : ''}</span>
+    const liveDot = view === 'live' && (state.studentData?.liveNow || state.studentData?.nextClass?.live);
+    return `<button class="mnav ${state.view === view ? 'on' : ''} ${liveDot ? 'is-live' : ''}" ${attribute}="${view}">
+      <span class="mnav-icon">${icon}${count ? `<i>${count}</i>` : ''}${liveDot ? '<b class="mnav-live"></b>' : ''}</span>
       <span>${label}</span>
     </button>`;
   }).join('')}</nav>`;
@@ -5340,9 +5344,11 @@ function sideNextClass(next) {
       <strong>${escapeHtml(label)}</strong>
       ${next.note ? `<em>${escapeHtml(/^pass\s*code/i.test(next.note) || !next.joinUrl ? `Passcode: ${passcodeOnly(next.note)}` : next.note)}</em>` : ''}
     </div>
-    ${next.joinUrl && (next.live || next.soon)
-      ? `<a class="btn primary small" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener">Join</a>`
-      : ''}
+    ${state.studentData?.liveClassroom && (next.live || next.soon || state.studentData?.liveNow)
+      ? '<button class="btn primary small" data-go-live>Join</button>'
+      : next.joinUrl && (next.live || next.soon)
+        ? `<a class="btn primary small" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener">Join</a>`
+        : ''}
   </div>`;
 }
 
@@ -9436,16 +9442,24 @@ function openClassInfo(date, kind) {
         <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
         <div><dt>Timezone</dt><dd>${escapeHtml(zone)}</dd></div>
         ${sitting.minutes ? `<div><dt>Length</dt><dd>${sitting.minutes} minutes</dd></div>` : ''}
-        ${klass?.join_note && joinUrl ? `<div><dt>Passcode</dt><dd>${escapeHtml(passcodeOnly(klass.join_note))}</dd></div>` : ''}
+        ${klass?.join_note && joinUrl && !state.studentData?.liveClassroom ? `<div><dt>Passcode</dt><dd>${escapeHtml(passcodeOnly(klass.join_note))}</dd></div>` : ''}
       </dl>`}
     </div>`,
     footer: `<button class="btn" data-close-modal>Close</button>
       ${sitting.kind === 'recorded'
         ? '<button class="btn primary" id="class-info-courses">Go to Courses</button>'
-        : joinUrl
-          ? `<a class="btn primary" href="${escapeHtml(joinUrl)}" target="_blank" rel="noopener noreferrer">Join class</a>`
-          : ''}`,
+        : state.studentData?.liveClassroom && sitting.kind !== 'skipped'
+          ? '<button class="btn primary" id="class-info-live">Go to Live class</button>'
+          : joinUrl
+            ? `<a class="btn primary" href="${escapeHtml(joinUrl)}" target="_blank" rel="noopener noreferrer">Join class</a>`
+            : ''}`,
     onOpen() {
+      /* The class plays inside the portal now, so the door is the Live class
+         section rather than a Zoom link that opens somewhere else. */
+      document.getElementById('class-info-live')?.addEventListener('click', () => {
+        closeModal();
+        showStudentView('live');
+      });
       document.getElementById('class-info-courses')?.addEventListener('click', () => {
         closeModal();
         state.view = 'courses';
@@ -9618,6 +9632,7 @@ function openWithdrawalForm() {
 function bindStudentView() {
   document.querySelectorAll('[data-open-student-item]').forEach((button) => button.addEventListener('click', () => openStudentItem(button.dataset)));
   document.getElementById('join-live-classroom')?.addEventListener('click', () => joinLiveClassroom());
+  document.querySelectorAll('[data-go-live]').forEach((button) => button.addEventListener('click', () => showStudentView('live')));
   document.querySelectorAll('[data-open-class]').forEach((button) =>
     button.addEventListener('click', () => openClassInfo(button.dataset.openClass, button.dataset.classKind)));
   document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', (event) => {
