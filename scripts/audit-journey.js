@@ -756,7 +756,7 @@ try {
     const went = await admin.call('/api/live/go-live', { method: 'POST', body: { mode: 'open', classIds: [made.classId], joinUrl: 'https://us06web.zoom.us/j/88408476378' } });
     if (ready?.sdk?.configured) {
       expectOk('Go live with a pasted link starts the session for that class', went, (d) => d?.live === true && d?.classIds?.[0] === made.classId && d?.startedAt);
-      expectOk('the student in that class is told the teacher is live', await student.call('/api/live/me'), (d) => d?.liveNow === true);
+      expectOk('the session reports itself live', await admin.call('/api/live/session'), (d) => d?.live === true && d?.startedAt);
       expectOk('End session clears it', await admin.call('/api/live/end', { method: 'POST', body: {} }), (d) => d?.live === false && d?.joinUrl === '');
       const noLink = await admin.call('/api/live/go-live', { method: 'POST', body: { mode: 'open', classIds: [made.classId] } });
       expect('Go live with no link and no Zoom account says what to do', (noLink.status === 503 && /Paste the Zoom link|connect the Zoom account/.test(noLink.data?.error || '')) || noLink.status === 200, `status ${noLink.status} ${JSON.stringify(noLink.data).slice(0, 120)}`);

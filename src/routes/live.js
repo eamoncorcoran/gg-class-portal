@@ -126,7 +126,15 @@ router.post('/go-live', requireAdmin, asyncRoute(async (req, res) => {
   const classes = await liveClasses();
   const chosen = classes.filter((k) => (req.body?.classIds || []).includes(k.id));
   const topic = chosen.length ? `${chosen.map((k) => k.programme).join(', ')} live class` : 'Live class';
-  res.json({ ok: true, ...(await room.goLive({ ...(req.body || {}), topic })) });
+  try {
+    res.json({ ok: true, ...(await room.goLive({ ...(req.body || {}), topic })) });
+  } catch (error) {
+    /* What stops a Go live is always something the teacher can act on: paste
+       a link, add a scope, fix a class. Said in those words, not as "something
+       went wrong", which is what a 5xx becomes further down the line. */
+    if ([400, 502, 503].includes(error?.status)) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
 }));
 router.post('/end', requireAdmin, asyncRoute(async (_req, res) => res.json({ ok: true, ...(await room.endLive()) })));
 
