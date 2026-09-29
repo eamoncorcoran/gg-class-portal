@@ -347,11 +347,35 @@ function classOver(reason){
   wrap.style.height = ''; wrap.style.aspectRatio = '';
   $('#gate').style.display = '';
   $('#err').style.display = 'none';
-  const nc = $('#nextClass');
-  if (nc) nc.textContent = byHost ? 'The class has ended. Go raibh maith agaibh, see you at the next one.' : 'You were disconnected from the class. Press Join to come back in.';
-  const btn = $('#joinBtn'); btn.disabled = false; btn.textContent = byHost ? 'Join again' : 'Join the class';
-  setStatus(false, byHost ? 'Class over' : 'Not connected');
+  const nc = $('#nextClass'), btn = $('#joinBtn');
+  if (byHost) {
+    // An ended webinar cannot be joined again, so there is no button to
+    // press: the door says the class is over, and opens again only if the
+    // teacher goes live afresh.
+    if (nc) nc.textContent = 'The class has ended. Go raibh maith agaibh, see you at the next one.';
+    btn.hidden = true; $('#zoomOut').hidden = true;
+    setStatus(false, 'Class over');
+    watchForNextSession();
+  } else {
+    if (nc) nc.textContent = 'You were disconnected from the class. Press Join to come back in.';
+    btn.hidden = false; btn.disabled = false; btn.textContent = 'Join the class';
+    setStatus(false, 'Not connected');
+  }
   tellPortal({ type: 'ended', byHost, reason: String(reason || '') });
+}
+/* After the class is over the page keeps an ear out: a second session the
+   same evening (a new Go live, so a new start time) brings the button back. */
+let sessionWatch = null;
+function watchForNextSession(){
+  if (preview || sessionWatch) return;
+  const endedStart = me?.session?.startedAt || '';
+  sessionWatch = setInterval(async () => {
+    const now = await whoAmI().catch(() => null);
+    if (!now || !now.liveNow || (now.session?.startedAt || '') === endedStart) return;
+    clearInterval(sessionWatch); sessionWatch = null; me = now;
+    const nc = $('#nextClass'); if (nc) nc.textContent = 'Your teacher is live again. Press Join.';
+    const btn = $('#joinBtn'); btn.hidden = false; btn.disabled = false; btn.textContent = 'Join the class';
+  }, 15000);
 }
 async function join(){
   if (joined) return;

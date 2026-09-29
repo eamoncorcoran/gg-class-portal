@@ -226,6 +226,11 @@ test('the host ending the webinar reaches the student, and ends the session from
   const teacher = fs.readFileSync(new URL('../public/live/teacher.html', import.meta.url), 'utf8');
   assert.match(room, /client\.on\('connection-change'/);
   assert.match(room, /type: 'ended', byHost/);
+  // An ended webinar cannot be joined again: no button is offered, only
+  // when the teacher goes live afresh does the door open.
+  assert.match(room, /btn\.hidden = true; \$\('#zoomOut'\)\.hidden = true;/);
+  assert.match(room, /function watchForNextSession/);
+  assert.doesNotMatch(room, /textContent = 'Join again'/);
   assert.match(teacher, /e\.data\.type === 'ended'/);
   assert.match(teacher, /async function autoEnd/);
 });
