@@ -177,6 +177,10 @@ if (qs.get('embed') === '1') document.body.classList.add('embed');
    the console has its own. It joins by itself the moment the session is live. */
 const preview = qs.get('preview') === '1';
 if (preview) document.body.classList.add('preview');
+function tellPortal(msg) {
+  if (window.parent === window) return;
+  try { window.parent.postMessage({ source: 'gglive', ...msg }, location.origin); } catch {}
+}
 
 /* When the class is not on, the gate says when it next is, from the same
    class setup the calendar uses, extra sessions included. */
@@ -330,35 +334,25 @@ async function join(){
     /* Zoom's window is the video plus its own header and toolbar, so a video
        the height of the stage overflows it by that chrome. The chrome is
        measured after the first draw and taken off, and again on resize. */
-    /* Zoom sizes its video from the width it is given (16:9) and adds its own
-       header and toolbar underneath, so a stage-wide video overflows the stage
-       by that chrome and the toolbar, with Join Audio on it, is cut off. The
-       window is therefore sized to fit the height: measured after each draw,
-       and narrowed until the whole thing, toolbar included, is inside. */
-    let scale = 1;
-    const stageSize = () => {
-      const w = Math.max(320, Math.round(root.clientWidth * scale));
-      return { width: w, height: Math.max(120, Math.round(w * 9 / 16)) };
-    };
-    let fits = 0;
-    const fitZoom = () => {
-      const box = root.querySelector('.react-resizable') || root.querySelector('[class*="MuiBox-root"]');
-      if (!box || fits > 5) return;
-      const h = box.getBoundingClientRect().height;
-      if (h > root.clientHeight + 4) {
-        fits += 1;
-        scale = Math.max(0.3, scale * (root.clientHeight / h) * 0.98);
-        try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {}
-        setTimeout(fitZoom, 700);
-      }
-      // Centred, whatever width it ended up.
-      const wrap = root.firstElementChild;
-      if (wrap) {
-        const b = box.getBoundingClientRect();
-        wrap.style.position = 'absolute';
-        wrap.style.left = Math.max(0, Math.round((root.clientWidth - b.width) / 2)) + 'px';
-        wrap.style.top = Math.max(0, Math.round((root.clientHeight - b.height) / 2)) + 'px';
-      }
+    /* Zoom's player is a 16:9 video at the width it is given, plus its own
+       header and toolbar above and below. Shrinking that to fit a 16:9 stage
+       leaves dark bands either side and, in a narrow column, crops the
+       toolbar with Join Audio on it. So it is done the other way round: the
+       video takes the stage's full width, and the stage grows to the height
+       of the whole player, measured after every draw. */
+    const wrap = $('#stage');
+    const stageSize = () => { const w = Math.max(320, root.clientWidth); return { width: w, height: Math.round(w * 9 / 16) }; };
+    let fitObserver = null;
+    const fitStage = () => {
+      const box = root.querySelector('.react-resizable');
+      if (!box) return;
+      const b = box.getBoundingClientRect();
+      if (b.height > 100) { wrap.style.aspectRatio = 'auto'; wrap.style.height = Math.round(b.height) + 'px'; }
+      const holder = root.firstElementChild;
+      if (holder) { holder.style.position = 'absolute'; holder.style.top = '0px'; holder.style.left = Math.max(0, Math.round((root.clientWidth - b.width) / 2)) + 'px'; }
+      // The console's preview frame sizes itself to this.
+      tellPortal({ type: 'stage', height: Math.round(wrap.getBoundingClientRect().height) + 8 });
+      if (!fitObserver && window.ResizeObserver) { fitObserver = new ResizeObserver(() => fitStage()); fitObserver.observe(box); }
     };
     await client.init({
       zoomAppRoot: root, language: 'en-US', patchJsMedia: true, leaveOnPageUnload: true,
@@ -372,12 +366,12 @@ async function join(){
         meetingInfo: ['topic', 'host', 'participant'],
       },
     });
-    window.addEventListener('resize', () => { scale = 1; fits = 0; try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {} setTimeout(fitZoom, 600); });
+    window.addEventListener('resize', () => { try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {} setTimeout(fitStage, 600); });
     await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.email || '' });
     $('#gate').style.display = 'none';
     $('#stageNote').style.display = 'none';
     setStatus(true, 'Live');
-    setTimeout(fitZoom, 800); setTimeout(fitZoom, 2500);
+    setTimeout(fitStage, 800); setTimeout(fitStage, 2500);
   } catch (e) {
     const reason = (e && (e.reason || e.message)) ? (e.reason || e.message) : 'Could not join.';
     showError(/not start/i.test(reason) ? 'The class has not started yet. Keep this page open and try again at class time.' : reason);

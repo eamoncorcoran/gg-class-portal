@@ -57,7 +57,7 @@
 .qgrid .full{grid-column:1/-1}
 
 /* Live preview stage */
-.stage{position:relative;background:#0e141b;border-radius:12px;aspect-ratio:16/9;overflow:hidden}
+.stage{position:relative;background:#0e141b;border-radius:12px;aspect-ratio:16/9;overflow:hidden;transition:height .2s}
 .mockcard{background:#fff;border-radius:16px;padding:16px 22px 14px;max-width:92%;box-shadow:0 14px 40px #0007;text-align:center;display:none;animation:mpop .4s cubic-bezier(.34,1.56,.64,1) both}
 @keyframes mpop{from{transform:scale(.7) translateY(12px);opacity:0}to{transform:none;opacity:1}}
 .mkirish{display:flex;flex-wrap:wrap;justify-content:center;gap:0 8px}
@@ -434,6 +434,13 @@ $('#qpGa').addEventListener('keydown', e => { if(e.key==='Enter') $('#qpEn').foc
 $('#qpPh').addEventListener('keydown', e => { if(e.key==='Enter') $('#qpSend').click(); });
 
 /* ---------- Live preview (mirrors what students see) ---------- */
+/* The preview frame is sized by the student page inside it, which reports
+   its stage height once Zoom's player has drawn. */
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin || !e.data || e.data.source !== 'gglive' || e.data.type !== 'stage') return;
+  const st = $('#stage'); if (!st) return;
+  st.style.aspectRatio = 'auto'; st.style.height = Math.max(200, Number(e.data.height) || 0) + 'px';
+});
 /* The stage is the student page itself now; this only keeps the pill honest. */
 function preview(p){
   const on = !!(p && p.show && p.irish);
