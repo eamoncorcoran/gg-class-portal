@@ -120,9 +120,13 @@ app.use('/live', (req, res, next) => {
     "font-src 'self' data: https://fonts.bunny.net",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: data:",
-    "connect-src 'self' ws: wss: https://*.zoom.us wss://*.zoom.us https://source.zoom.us",
+    /* zoom.us itself as well as *.zoom.us: a wildcard does not match the bare
+       domain, and the SDK's very first call is to https://zoom.us/api/v1/wc/info.
+       With only the wildcard that call is blocked and every join dies with a
+       bare "connection error" before the signature is even looked at. */
+    "connect-src 'self' ws: wss: https://zoom.us wss://zoom.us https://*.zoom.us wss://*.zoom.us https://source.zoom.us",
     "worker-src 'self' blob:",
-    "frame-src 'self' https://*.zoom.us",
+    "frame-src 'self' https://zoom.us https://*.zoom.us",
     "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -1158,6 +1158,10 @@ try {
     { method: 'PUT', body: nudgeNow }));
   const promptsNow = (await admin.call('/api/settings')).data?.prompts ?? {};
   expectOk('save the prompt settings', await admin.call('/api/settings/prompts', { method: 'PUT', body: promptsNow }));
+  const zoomNow = (await admin.call('/api/settings')).data?.zoom ?? {};
+  expect('the settings never return the Zoom secret', !('clientSecret' in zoomNow) && typeof zoomNow.secretConfigured === 'boolean', JSON.stringify(zoomNow));
+  expectOk('the Zoom settings can be saved, a blank secret keeping what is there', await admin.call('/api/settings/zoom',
+    { method: 'PUT', body: { clientId: zoomNow.clientId || '', enabled: Boolean(zoomNow.enabled) } }), (d) => typeof d?.configured === 'boolean');
   expectOk('the speech keys can be saved, blanks keeping what is there', await admin.call('/api/settings/speech',
     { method: 'PUT', body: { azureRegion: 'southeastasia' } }), (d) => typeof d?.azureConfigured === 'boolean' && d?.azureRegion === 'southeastasia');
   expectStatus('a region that is not one is refused', await admin.call('/api/settings/speech', { method: 'PUT', body: { azureRegion: 'not a region!' } }), 400);

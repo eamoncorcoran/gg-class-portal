@@ -6908,6 +6908,20 @@ function speechSettingsCard() {
   </div></section>`;
 }
 
+/* The Zoom Meeting SDK app behind the live room, and the switch that shows
+   the room to students and the console to teachers. The secret is encrypted
+   on the server and shown only as set or not set. */
+function zoomSettingsCard() {
+  const zoomCfg = state.settings.zoom || {};
+  return `<section class="card" id="zoom-card"><div class="card-header"><div><h2>Live classroom (Zoom)</h2><p>The Meeting SDK app that lets a class play inside the portal. From marketplace.zoom.us: a "Meeting SDK" app, its Client ID and Client Secret. The secret is encrypted server-side and never returned to the browser.</p></div></div><div class="card-body">
+    <div class="connection"><span class="connection-dot ${zoomCfg.configured ? 'ok' : ''}"></span><div><strong>${zoomCfg.configured ? 'Zoom connected' : 'Zoom not set'}</strong><span>${zoomCfg.enabled ? 'The live room is switched on.' : 'The live room is switched off: students see no Live class tab and the console is hidden.'}</span></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Client ID</strong><span>Public: it goes into every join signature.</span></div><div><input id="zoom-client-id" autocomplete="off" value="${escapeHtml(zoomCfg.clientId || '')}" placeholder="Paste the Client ID"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Client Secret</strong><span>Leave blank to keep the existing secret.</span></div><div><input id="zoom-client-secret" type="password" autocomplete="off" placeholder="${zoomCfg.secretConfigured ? 'Set. Paste to replace.' : 'Paste the Client Secret'}"></div></div>
+    <label class="check-row"><input type="checkbox" id="zoom-enabled" ${zoomCfg.enabled ? 'checked' : ''}> Show the live room: a Live class tab for students, the console for teachers</label>
+    <p class="muted small">Each class also needs its Zoom join link saved under Class setup; that is where the room reads the meeting id from.</p>
+  </div></section>`;
+}
+
 function dictationSettingsCard() {
   const dictation = state.settings.dictation || {};
   const voicePrompts = state.settings.voicePrompts || {};
@@ -6959,6 +6973,7 @@ function aiSettingsView() {
       </div></section>
       ${dictationSettingsCard()}
       ${speechSettingsCard()}
+      ${zoomSettingsCard()}
     </div><aside class="settings-stack"><section class="card"><div class="card-header"><div><h3>Draft lifecycle</h3><p>Clear states on the teacher side.</p></div></div><div class="card-body">
       <div class="connection"><span class="connection-dot ok"></span><div><strong>Submission-triggered only</strong><span>No reply is drafted for missing work.</span></div></div>
       <div class="mini-stats"><span class="mini-stat">AI drafted</span><span class="mini-stat">Teacher edited</span><span class="mini-stat">Returned</span></div>
@@ -8112,6 +8127,13 @@ function bindAISettings() {
     try {
       await api('/api/settings/anthropic', { method: 'PUT', body: { apiKey: document.getElementById('anthropic-key').value || undefined, model: document.getElementById('anthropic-model').value } });
       await api('/api/settings/openai', { method: 'PUT', body: { apiKey: document.getElementById('openai-key').value || undefined, model: document.getElementById('openai-model').value } });
+      const zoomSaved = await api('/api/settings/zoom', { method: 'PUT', body: {
+        clientId: document.getElementById('zoom-client-id').value.trim(),
+        clientSecret: document.getElementById('zoom-client-secret').value.trim() || undefined,
+        enabled: document.getElementById('zoom-enabled').checked,
+      } });
+      // The sidebar item reads Live classroom or Studio by this, so it follows the switch at once.
+      state.liveRoom = Boolean(zoomSaved.configured && zoomSaved.enabled);
       await api('/api/settings/speech', { method: 'PUT', body: {
         azureKey: document.getElementById('azure-key').value.trim() || undefined,
         azureRegion: document.getElementById('azure-region').value.trim() || undefined,

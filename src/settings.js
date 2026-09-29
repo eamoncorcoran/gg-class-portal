@@ -147,3 +147,42 @@ export async function saveSpeechConfig({ azureKey, azureRegion, abairKey, clearA
 
 /** The last speech config read, for callers that cannot wait; primed at start. */
 export function speechConfigSync() { return speechCache.value; }
+
+/* The live classroom's Zoom Meeting SDK app: client id, client secret, and
+   whether the room is shown at all. Pasted in the portal's own settings,
+   encrypted at rest, the environment as the fallback for each. The secret is
+   never returned to a browser beyond "set" or "not set"; the client id is
+   public by design (it goes into every signature). Cached briefly, since a
+   signature is minted per join. */
+let zoomCache = { at: 0, value: null };
+export async function getZoomConfig() {
+  if (zoomCache.value && Date.now() - zoomCache.at < 30 * 1000) return zoomCache.value;
+  let stored = {};
+  try { stored = await getSetting('zoom', {}); } catch (error) { console.error('zoom settings unreadable, using the environment', error?.message); }
+  let secret = '';
+  try { secret = decryptSecret(stored.clientSecretEncrypted || ''); } catch (error) { console.error(error); }
+  const value = {
+    clientId: (stored.clientId || process.env.ZOOM_CLIENT_ID || '').trim(),
+    clientSecret: secret || process.env.ZOOM_CLIENT_SECRET || '',
+    enabled: typeof stored.enabled === 'boolean'
+      ? stored.enabled
+      : /^(1|true|yes|on)$/i.test(String(process.env.LIVE_ROOM_ENABLED || '')),
+  };
+  value.configured = Boolean(value.clientId && value.clientSecret);
+  zoomCache = { at: Date.now(), value };
+  return value;
+}
+
+export async function saveZoomConfig({ clientId, clientSecret, enabled, clearSecret = false }, userId) {
+  const current = await getSetting('zoom', {});
+  const next = {
+    ...current,
+    clientId: clientId !== undefined ? String(clientId || '').trim() : (current.clientId || ''),
+    clientSecretEncrypted: clearSecret ? null : (clientSecret ? encryptSecret(clientSecret.trim()) : current.clientSecretEncrypted || null),
+    enabled: typeof enabled === 'boolean' ? enabled : current.enabled,
+  };
+  await setSetting('zoom', next, userId);
+  zoomCache = { at: 0, value: null };
+  const fresh = await getZoomConfig();
+  return { clientId: fresh.clientId, secretConfigured: Boolean(fresh.clientSecret), configured: fresh.configured, enabled: fresh.enabled };
+}

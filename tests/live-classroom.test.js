@@ -11,10 +11,10 @@ import crypto from 'node:crypto';
    is only ever an attendee's, the router being session-only, and a studio
    lesson filed as a course lesson. */
 
-process.env.ZOOM_CLIENT_ID = 'test-client';
-process.env.ZOOM_CLIENT_SECRET = 'test-secret';
 const { parseWebinar, classForLive } = await import('../src/live/classes.js');
-const { signZoom, zoomConfigured } = await import('../src/live/zoom.js');
+const { signZoomWith } = await import('../src/live/zoom.js');
+const creds = { clientId: 'test-client', clientSecret: 'test-secret' };
+const signZoom = (mn) => signZoomWith(creds, mn);
 const routes = fs.readFileSync(new URL('../src/routes/live.js', import.meta.url), 'utf8');
 const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const student = fs.readFileSync(new URL('../src/routes/student.js', import.meta.url), 'utf8');
@@ -34,7 +34,6 @@ test('the webinar is read out of the class link, whichever way Zoom wrote it', (
 });
 
 test('a Zoom signature is HS256, for that webinar, and never anything but attendee role 0', () => {
-  assert.ok(zoomConfigured());
   const token = signZoom('842 1871 2491');
   const [h, b, sig] = token.split('.');
   assert.deepEqual(JSON.parse(Buffer.from(h, 'base64url')), { alg: 'HS256', typ: 'JWT' });
@@ -42,13 +41,13 @@ test('a Zoom signature is HS256, for that webinar, and never anything but attend
   assert.equal(claims.mn, '84218712491');
   assert.equal(claims.role, 0);
   assert.equal(claims.appKey, 'test-client');
-  assert.equal(claims.sdkKey, 'test-client');
   assert.equal(claims.exp - claims.iat, 3 * 60 * 60);
   assert.equal(claims.tokenExp, claims.exp);
   assert.equal(sig, crypto.createHmac('sha256', 'test-secret').update(`${h}.${b}`).digest('base64url'));
   assert.throws(() => signZoom('12'), /valid webinar/);
+  assert.throws(() => signZoomWith({ clientId: 'x', clientSecret: '' }, '84218712491'), /not set up/);
   // The role is not a parameter: there is no way to ask for a host signature.
-  assert.equal(signZoom.length, 1);
+  assert.equal(signZoomWith.length, 2);
 });
 
 test('the live router is behind the portal session, teacher routes behind the admin role', () => {
@@ -87,8 +86,8 @@ test('the live classroom pages are on this site and get their own policy', () =>
 test('the practice player is same-origin and the portal asks its own session', () => {
   assert.match(student, /url: `\/live\/lesson\.html\?id=\$\{encodeURIComponent\(lesson\.video_ref\)\}&embed=1`/);
   assert.match(admin, /url: `\/live\/lesson\.html\?id=\$\{encodeURIComponent\(lesson\.video_ref\)\}&embed=1`/);
-  assert.match(student, /liveClassroom: zoomConfigured\(\) && liveRoomEnabled\(\)/, 'the room is a switch, apart from the studio');
-  assert.match(admin, /liveRoom: liveZoomConfigured\(\) && liveRoomEnabled\(\)/);
+  assert.match(student, /liveClassroom: await liveRoomOn\(\)/, 'the room is a switch, apart from the studio');
+  assert.match(admin, /liveRoom: await liveRoomOn\(\)/);
   assert.match(admin, /listLiveLessons\(\)/);
   assert.doesNotMatch(student + admin, /signHandoff|liveFetch|practiceUrl/);
 });

@@ -4,7 +4,7 @@ import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
 import { config } from '../config.js';
 import { requireAdmin } from '../session.js';
-import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig } from '../settings.js';
+import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig, getZoomConfig, saveZoomConfig } from '../settings.js';
 import { draftCheckinFeedback } from '../ai.js';
 import { sendEmail } from '../email.js';
 import { audit } from '../audit.js';
@@ -14,15 +14,17 @@ const router = Router();
 router.use(requireAdmin);
 
 router.get('/', asyncRoute(async (_req, res) => {
-  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech] = await Promise.all([
+  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech, zoomCfg] = await Promise.all([
     getAnthropicConfig(), getOpenAIConfig(), getEmailConfig(), getSetting('prompts', {}), getSetting('reminders', {}),
-    getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}), getSpeechConfig(),
+    getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}), getSpeechConfig(), getZoomConfig(),
   ]);
   res.json({
     anthropic: { configured: anthropic.configured, model: anthropic.model },
     openai: { configured: openai.configured, model: openai.model },
     // Set or not set, and the region: never the keys.
     speech: { azureConfigured: speech.azureConfigured, azureRegion: speech.azureRegion, abairConfigured: speech.abairConfigured },
+    // The client id is public (it is in every signature); the secret never comes back.
+    zoom: { clientId: zoomCfg.clientId, secretConfigured: Boolean(zoomCfg.clientSecret), configured: zoomCfg.configured, enabled: zoomCfg.enabled },
     email: { ...email, smtpPassword: undefined },
     prompts,
     reminders,
@@ -120,6 +122,21 @@ router.put('/speech', asyncRoute(async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Check the region: it is a short name such as southeastasia or westeurope.') });
   const saved = await saveSpeechConfig(parsed.data, req.user.id);
   await audit({ actorId: req.user.id, action: 'settings.speech_updated', entityType: 'settings', entityId: 'speech', ip: req.ip });
+  res.json(saved);
+}));
+
+/* The Zoom Meeting SDK app behind the live room, and the switch that shows
+   the room at all. A blank secret keeps the one that is there. */
+router.put('/zoom', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    clientId: z.string().trim().max(200).optional(),
+    clientSecret: z.string().max(200).optional(),
+    enabled: z.boolean().optional(),
+    clearSecret: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Check the Zoom client id and secret.') });
+  const saved = await saveZoomConfig(parsed.data, req.user.id);
+  await audit({ actorId: req.user.id, action: 'settings.zoom_updated', entityType: 'settings', entityId: 'zoom', ip: req.ip });
   res.json(saved);
 }));
 
