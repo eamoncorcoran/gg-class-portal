@@ -55,6 +55,8 @@ router.get('/me', asyncRoute(async (req, res) => {
     id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role,
     allowed: gate.ok, reason: gate.ok ? '' : gate.error,
     session: { ...session, startUrl: undefined }, classId, webinar, nextClass,
+    // The plain Zoom link, for the way out when the room cannot get somebody in.
+    joinUrl: session.joinUrl || (classId ? (await liveClass(classId))?.joinUrl || null : null),
     liveNow: req.user.role === 'admin' ? session.live : await room.liveFor(req.user.id),
     zoomClientId: await zoomClientId(), live: await liveRoomOn(), mic: await speechConfigured(),
   });
@@ -86,6 +88,9 @@ router.post('/phrase-result', requireStudent, asyncRoute(async (req, res) => {
 }));
 router.post('/phrase', requireAdmin, (req, res) => res.json({ ok: true, phrase: room.pushPhrase(req.body) }));
 router.get('/status', requireAdmin, (_req, res) => res.json(room.roomStatus()));
+/* A join that failed, in Zoom's own words, so the console can say who could
+   not get in and why instead of the teacher finding out from an empty room. */
+router.post('/join-failed', (req, res) => { room.noteJoinFailure(req.user, req.body?.reason); res.json({ ok: true }); });
 
 /* ---- questions ---- */
 router.get('/chat-stream', asyncRoute(async (req, res) => {

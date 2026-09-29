@@ -158,10 +158,15 @@ export function pushPhrase(body) {
   return currentPhrase;
 }
 
+const joinFailures = [];
+export function noteJoinFailure(user, reason) {
+  joinFailures.unshift({ name: String(user?.name || 'Somebody').slice(0, 60), reason: String(reason || 'Could not join.').slice(0, 200), at: new Date().toISOString() });
+  if (joinFailures.length > 50) joinFailures.length = 50;
+}
 export function roomStatus() {
   let students = 0;
   for (const l of listeners) if (l.who === 'student') students += 1;
-  return { students, present: presentStudents.size, phrase: currentPhrase };
+  return { students, present: presentStudents.size, phrase: currentPhrase, joinFailures: joinFailures.slice(0, 20) };
 }
 
 /* ---- questions: private threads --------------------------------------- */

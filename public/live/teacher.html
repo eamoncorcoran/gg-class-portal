@@ -201,6 +201,11 @@ body.embed .app-main{padding:0 0 18px;max-width:none}
               <p class="field-hint" id="liveHint"></p>
             </div>
             <p class="field-hint" style="margin-top:9px" id="accSrc"></p>
+            <div id="joinFails" hidden style="margin-top:12px;border:1px solid var(--error-100);background:var(--error-50);border-radius:10px;padding:10px 12px">
+              <div style="font-size:12px;font-weight:800;color:var(--error-700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Could not join</div>
+              <div id="joinFailList" style="font-size:12.5px;color:var(--text-secondary);display:grid;gap:4px"></div>
+              <p class="field-hint" style="margin-top:8px">Zoom's own reason for each. A passcode, a waiting room, or a meeting that asks people to sign in to Zoom all stop the room from getting a student in; each of those is a setting on the meeting itself.</p>
+            </div>
           </div>
         </div>
 
@@ -674,7 +679,11 @@ $('#endLive').onclick = async () => {
   } catch(e){ flash(e.message, true); }
 };
 setInterval(async () => {
-  try { const s = await fetch('/api/live/status').then(r=>r.json()); lastStudents=s.students; paintPill(); } catch {}
+  try {
+    const s = await fetch('/api/live/status').then(r=>r.json()); lastStudents=s.students; paintPill();
+    const fails = s.joinFailures || []; const box = $('#joinFails');
+    if (box) { box.hidden = !fails.length; $('#joinFailList').innerHTML = fails.map(f => '<div><b>' + esc(f.name) + '</b> · ' + esc(f.reason) + ' <span style="color:var(--text-quaternary)">' + new Date(f.at).toLocaleTimeString('en-IE',{hour:'numeric',minute:'2-digit'}) + '</span></div>').join(''); }
+  } catch {}
 }, 4000);
 boot();
 </script>

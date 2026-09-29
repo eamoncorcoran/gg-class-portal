@@ -1039,6 +1039,8 @@ try {
     if (made.phraseId) expectOk('saying the phrase is recorded', await student.call('/api/live/phrase-result', { method: 'POST', body: { phraseId: made.phraseId, result: 'passed' } }));
     expectOk('a question goes to the teacher', await student.call('/api/live/chat', { method: 'POST', body: { text: 'Cad is brí le "duit"?' } }));
     expectStatus('an empty question is refused', await student.call('/api/live/chat', { method: 'POST', body: { text: '  ' } }), 400);
+    expectOk('a failed join is reported to the console', await student.call('/api/live/join-failed', { method: 'POST', body: { reason: 'The passcode is wrong' } }));
+    expectOk('and the console sees who could not get in and why', await admin.call('/api/live/status'), (d) => (d?.joinFailures || []).some((f) => /passcode/.test(f.reason)));
     if (made.liveLessonId) expectOk('a student can read a lesson the studio made', await student.call(`/api/live/lessons/${made.liveLessonId}`), (d) => d?.title === 'Audit deck');
     expectStatus('but cannot put a phrase on screen', await student.call('/api/live/phrase', { method: 'POST', body: { irish: 'x' } }), 403);
     expectStatus('nor list the studio', await student.call('/api/live/lessons'), 403);

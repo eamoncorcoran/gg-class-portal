@@ -134,6 +134,7 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
             <p class="nextclass" id="nextClass"></p>
             <button class="btn primary block" id="joinBtn">Join the class</button>
             <div class="err" id="err"></div>
+            <p class="field-hint" id="zoomOut" hidden style="margin-top:10px">Trouble joining? <a id="zoomOutLink" href="#" target="_blank" rel="noopener">Open the class in Zoom instead</a>.</p>
           </div>
         </div>
       </div>
@@ -377,6 +378,11 @@ async function join(){
     showError(/not start/i.test(reason) ? 'The class has not started yet. Keep this page open and try again at class time.' : reason);
     btn.disabled = false; btn.textContent = 'Join the class';
     joined = false;
+    // Tell the teacher's console, in Zoom's words, and show the way out.
+    if (!preview) {
+      try { fetch('/api/live/join-failed', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ reason }) }); } catch {}
+      if (me && me.joinUrl) { $('#zoomOutLink').href = me.joinUrl; $('#zoomOut').hidden = false; }
+    }
   }
 }
 $('#joinBtn').onclick = join;
@@ -392,6 +398,7 @@ $('#joinBtn').onclick = join;
     $('#gateName').textContent = studentName;
     if (me.session?.classLabel) $('#stageNote').textContent = 'The class video appears here once you join · ' + me.session.classLabel;
     if (me.role === 'student') showNextClass(me.liveNow ? { live: true } : me.nextClass);
+    if (me.joinUrl && !preview) { $('#zoomOutLink').href = me.joinUrl; $('#zoomOut').hidden = false; }
     if (me.liveNow) { const el = $('#nextClass'); if (el) el.textContent = 'Your teacher is live now. Press Join.'; }
     if (!me.allowed) showError(me.reason || 'This session is for a different class.');
     if (!me.live && !preview) {

@@ -169,11 +169,12 @@ export async function getZoomConfig() {
     clientId: (stored.clientId || process.env.ZOOM_SDK_CLIENT_ID || '').trim(),
     clientSecret: secret || envSecret,
     hostEmail: (stored.hostEmail || '').trim(),
-    // On unless somebody has switched it off: the tab is the way in, and a
-    // room nobody can find is no room. The settings card can still hide it.
+    // Off unless switched on in the settings card. A real class was put
+    // through the room before it had been rehearsed with real students, and
+    // it failed them; until it has been, the plain Zoom link is the door.
     enabled: typeof stored.enabled === 'boolean'
       ? stored.enabled
-      : !/^(0|false|no|off)$/i.test(String(process.env.LIVE_ROOM_ENABLED || '')),
+      : /^(1|true|yes|on)$/i.test(String(process.env.LIVE_ROOM_ENABLED || '')),
   };
   value.configured = Boolean(value.clientId && value.clientSecret);
   zoomCache = { at: Date.now(), value };
