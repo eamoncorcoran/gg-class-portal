@@ -19,7 +19,11 @@
 @media(max-width:1100px){.live-grid{grid-template-columns:1fr}}
 
 .videowrap{position:relative;background:#0b0f14;border-radius:var(--radius-lg);overflow:hidden;aspect-ratio:16/9;border:1px solid var(--border);box-shadow:var(--shadow-sm)}
-#zoomRoot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+/* z-index:1 makes the Zoom root its own stacking context, so the phrase card
+   (z-index 60 on the stage) sits over the video whatever z-index Zoom's own
+   widgets use inside; without it their 9999 beat the card and students saw
+   video with no phrase. */
+#zoomRoot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
 #zoomRoot > div{margin:0 auto}
 .stagenote{position:absolute;inset:0;display:grid;place-items:center;color:#5f6b78;font-size:13.5px;font-weight:600;z-index:5;text-align:center;padding:20px}
 
@@ -292,10 +296,25 @@ async function join(){
     if (!sig.signature) throw new Error(sig.error || 'Could not get a join signature.');
     const root = $('#zoomRoot');
     const client = ZoomMtgEmbedded.createClient();
+    /* Speaker view, filling the stage. Zoom's component view opens in its
+       "ribbon" layout by default: one small draggable tile in the middle of a
+       black stage, which is what a student saw the first time. Speaker view
+       at the stage's own size is the class on screen, and it follows the
+       stage when the window is resized. */
+    const stageSize = () => ({ width: Math.max(320, root.clientWidth), height: Math.max(180, root.clientHeight) });
     await client.init({
       zoomAppRoot: root, language: 'en-US', patchJsMedia: true, leaveOnPageUnload: true,
-      customize: { video: { isResizable: false, viewSizes: { default: { width: root.clientWidth, height: root.clientHeight } } } }
+      customize: {
+        video: {
+          isResizable: false,
+          defaultViewType: 'speaker',
+          popper: { disableDraggable: true },
+          viewSizes: { default: stageSize(), ribbon: { width: 300, height: 700 } },
+        },
+        meetingInfo: ['topic', 'host', 'participant'],
+      },
     });
+    window.addEventListener('resize', () => { try { client.updateVideoOptions({ viewSizes: { default: stageSize() } }); } catch {} });
     await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.email || '' });
     $('#gate').style.display = 'none';
     $('#stageNote').style.display = 'none';
