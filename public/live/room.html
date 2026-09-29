@@ -4,7 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Gaeilgeoir Guides · Live class</title>
-<link rel="stylesheet" href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800">
+<!-- crossorigin: this page opts into cross-origin isolation (see the
+     Cross-Origin-Embedder-Policy header on it) so Zoom's video decoder gets
+     the SharedArrayBuffer it needs. Under that policy a cross-origin
+     stylesheet fetched the plain way is blocked outright unless the server
+     sends a matching resource-policy header; bunny.net doesn't, but it does
+     allow the fetch under CORS, which crossorigin here asks the browser to
+     use instead, and that satisfies the isolation check too. -->
+<link rel="stylesheet" href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800" crossorigin="anonymous">
 <link rel="stylesheet" href="/live/live.css">
 <link rel="stylesheet" href="/live/practice.css">
 <style>

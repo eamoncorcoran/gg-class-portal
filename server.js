@@ -128,6 +128,23 @@ app.use('/live', (req, res, next) => {
     "form-action 'self'",
   ].join('; '));
   res.removeHeader('X-Frame-Options');
+  /* room.html is the one page that actually renders the Zoom video: the
+     Meeting SDK decodes it through WebAssembly, and that decoder needs
+     SharedArrayBuffer, which a browser only hands out on a "cross-origin
+     isolated" page. Without these two headers the join still succeeds, the
+     controls still work, but the video tile itself is just black behind
+     whatever is drawn over it — which reads as "the class is live but I see
+     nothing", exactly the shape of this bug. Scoped to room.html alone,
+     because the other three pages carry no Zoom video and isolating them too
+     would only add a way for some other cross-origin resource to break. */
+  // req.originalUrl, not req.path: this middleware is mounted at '/live', and
+  // Express rewrites req.path to be relative to the mount point inside it
+  // (the same way a Router strips its own prefix) — a check against the full
+  // '/live/room.html' string here would silently never match.
+  if (req.originalUrl.split('?')[0] === '/live/room.html') {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  }
   next();
 });
 

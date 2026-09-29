@@ -158,3 +158,37 @@ test('a 4K clip is capped on its longer side, whichever way it is held', () => {
   // kept exactly and the result is always an even number of pixels.
   assert.match(scaleFilterFor(3840, 2160), /-2/);
 });
+
+/* room.html is the only /live page with an actual Zoom video tile in it, and
+   the Meeting SDK's decoder needs SharedArrayBuffer for that, which only
+   exists on a page the browser has made "cross-origin isolated" — the two
+   response headers below. Their absence is exactly what a joined-but-black
+   video tile looks like: everything else works, students report "I'm live
+   but I see nothing". */
+test('room.html is served cross-origin isolated for Zoom’s video decoder', () => {
+  assert.match(server, /Cross-Origin-Opener-Policy', 'same-origin'/);
+  assert.match(server, /Cross-Origin-Embedder-Policy', 'require-corp'/);
+  /* The middleware is mounted with app.use('/live', ...), which is exactly
+     the setup where Express rewrites req.path to be relative to the mount
+     point — a check against the full '/live/room.html' string against
+     req.path would silently never match. req.originalUrl is never rewritten
+     by mounting, so that is what the check must read. */
+  assert.match(server, /req\.originalUrl\.split\('\?'\)\[0\] === '\/live\/room\.html'/,
+    'must key off the unrewritten URL, not req.path, inside an app.use(\'/live\', ...) mount');
+  // Scoped to that one page: the console, the studio and the practice player
+  // carry no Zoom video and isolating them too only adds a way for some other
+  // cross-origin resource on those pages to break for no benefit.
+  for (const page of ['teacher', 'studio', 'lesson']) {
+    const html = fs.readFileSync(new URL(`../public/live/${page}.html`, import.meta.url), 'utf8');
+    assert.doesNotMatch(html, /crossorigin="anonymous"/, page);
+  }
+});
+
+test('the bunny.net font survives cross-origin isolation on room.html', () => {
+  // Under require-corp, a stylesheet fetched the plain way needs the server to
+  // send a matching Cross-Origin-Resource-Policy header; bunny.net does not.
+  // It does allow the fetch under CORS, and `crossorigin` is what asks the
+  // browser to fetch it that way instead, which satisfies the isolation check.
+  const room = fs.readFileSync(new URL('../public/live/room.html', import.meta.url), 'utf8');
+  assert.match(room, /fonts\.bunny\.net[^>]*crossorigin="anonymous"/);
+});
