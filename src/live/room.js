@@ -18,20 +18,33 @@ import { ttsFor } from './tts.js';
 /* classIds: the classes this session is for (any number; none means every
    class). joinUrl/joinNote: the Zoom link the teacher is hosting today; when
    blank, the first class's own link from Class setup is used instead. */
-export const access = { mode: 'open', classIds: [], joinUrl: '', joinNote: '' };
+export const access = { mode: 'open', classIds: [], joinUrl: '', joinNote: '', meetingId: '', startedAt: null };
 Object.defineProperty(access, 'classId', { get: () => access.classIds[0] || '' });
+/* The host's own door into the meeting the portal created. Carries the
+   host's key, so it lives in memory for this run only, never in the table. */
+let hostStartUrl = '';
 
 export async function loadAccess() {
-  const row = await one('SELECT mode, class_id, class_ids, join_url, join_note FROM live_access WHERE id=1');
+  const row = await one('SELECT mode, class_id, class_ids, join_url, join_note, meeting_id, started_at FROM live_access WHERE id=1');
   access.mode = row?.mode === 'entitled' ? 'entitled' : 'open';
   access.classIds = Array.isArray(row?.class_ids) && row.class_ids.length ? row.class_ids : (row?.class_id ? [row.class_id] : []);
   access.joinUrl = row?.join_url || '';
   access.joinNote = row?.join_note || '';
+  access.meetingId = row?.meeting_id || '';
+  access.startedAt = row?.started_at ? new Date(row.started_at) : null;
   return access;
 }
 async function saveAccess() {
-  await query('UPDATE live_access SET mode=$1, class_id=$2, class_ids=$3, join_url=$4, join_note=$5, updated_at=now() WHERE id=1',
-    [access.mode, access.classIds[0] || null, access.classIds, access.joinUrl, access.joinNote]);
+  await query(`UPDATE live_access SET mode=$1, class_id=$2, class_ids=$3, join_url=$4, join_note=$5, meeting_id=$6, started_at=$7, updated_at=now() WHERE id=1`,
+    [access.mode, access.classIds[0] || null, access.classIds, access.joinUrl, access.joinNote, access.meetingId, access.startedAt]);
+}
+
+/** Live right now, and for this student (or for everyone). */
+export async function liveFor(userId) {
+  if (!access.startedAt || !access.joinUrl) return false;
+  if (!access.classIds.length) return true;
+  const ids = await classesOf(userId);
+  return ids.some((id) => access.classIds.includes(id));
 }
 
 /* A student's classes, cached a minute: ten thousand joins must not mean ten
@@ -268,7 +281,50 @@ export async function sessionSummary() {
     joinUrl: access.joinUrl,
     joinNote: access.joinNote,
     webinar: await sessionWebinar(),
+    live: Boolean(access.startedAt && access.joinUrl),
+    startedAt: access.startedAt ? access.startedAt.toISOString() : null,
+    meetingId: access.meetingId,
+    // The host's door, only while this process remembers it.
+    startUrl: access.startedAt && access.meetingId ? hostStartUrl : '',
   };
+}
+
+/* One press: the meeting made (or the teacher's own link taken as given), the
+   session pointed at it for the classes chosen, and the clock started. */
+export async function goLive({ mode, classIds, joinUrl, joinNote, topic } = {}) {
+  await setSession({ mode, classIds, joinUrl: joinUrl === undefined ? '' : joinUrl, joinNote: joinNote === undefined ? '' : joinNote });
+  if (!access.joinUrl) {
+    const { zoomConfigured, createInstantMeeting } = await import('../zoom.js');
+    if (!zoomConfigured()) {
+      throw Object.assign(new Error('Paste the Zoom link you are hosting, or connect the Zoom account under Feedback drafting so the portal can start the meeting for you.'), { status: 503 });
+    }
+    const { getZoomConfig } = await import('../settings.js');
+    const { hostEmail } = await getZoomConfig();
+    const made = await createInstantMeeting({ topic, host: hostEmail || 'me' });
+    access.joinUrl = made.joinUrl;
+    access.joinNote = made.passcode ? `Passcode ${made.passcode}` : '';
+    access.meetingId = made.id;
+    hostStartUrl = made.startUrl;
+  } else {
+    access.meetingId = '';
+    hostStartUrl = '';
+  }
+  access.startedAt = new Date();
+  await saveAccess();
+  return sessionSummary();
+}
+
+/* The session over: the meeting the portal made is ended on Zoom too, the
+   link is cleared, the classes and the access setting are kept for next time. */
+export async function endLive() {
+  let ended = true;
+  if (access.meetingId) {
+    try { const { endMeeting } = await import('../zoom.js'); await endMeeting(access.meetingId); }
+    catch (error) { ended = false; console.error('could not end the Zoom meeting', error?.message); }
+  }
+  access.joinUrl = ''; access.joinNote = ''; access.meetingId = ''; access.startedAt = null; hostStartUrl = '';
+  await saveAccess();
+  return { ...(await sessionSummary()), zoomEnded: ended };
 }
 
 const sessionKey = (ids) => [...ids].sort().join(',');
@@ -292,6 +348,7 @@ export async function setSession({ mode, classId, classIds, joinUrl, joinNote })
   }
   access.mode = nextMode;
   access.classIds = nextClasses;
+  if (nextUrl !== access.joinUrl) { access.meetingId = ''; access.startedAt = null; hostStartUrl = ''; }
   access.joinUrl = nextUrl;
   access.joinNote = nextNote;
   await saveAccess();

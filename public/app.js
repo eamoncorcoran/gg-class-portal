@@ -6918,7 +6918,11 @@ function zoomSettingsCard() {
     <div class="setting-row"><div class="setting-copy"><strong>Client ID</strong><span>Public: it goes into every join signature.</span></div><div><input id="zoom-client-id" autocomplete="off" value="${escapeHtml(zoomCfg.clientId || '')}" placeholder="Paste the Client ID"></div></div>
     <div class="setting-row"><div class="setting-copy"><strong>Client Secret</strong><span>Leave blank to keep the existing secret.</span></div><div><input id="zoom-client-secret" type="password" autocomplete="off" placeholder="${zoomCfg.secretConfigured ? 'Set. Paste to replace.' : 'Paste the Client Secret'}"></div></div>
     <label class="check-row"><input type="checkbox" id="zoom-enabled" ${zoomCfg.enabled ? 'checked' : ''}> Show the live room: a Live class tab for students, the console for teachers</label>
-    <p class="muted small">Each class also needs its Zoom join link saved under Class setup; that is where the room reads the meeting id from.</p>
+    <div class="connection" style="margin-top:14px"><span class="connection-dot ${zoomCfg.apiConfigured ? 'ok' : ''}"></span><div><strong>${zoomCfg.apiConfigured ? 'Zoom account connected' : 'Zoom account not connected'}</strong><span>Lets Go live start the meeting for you. It is the same Server-to-Server app the recordings import uses (ZOOM_ACCOUNT_ID and its keys on the server), and it needs the meeting:write:admin scope.</span></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Host</strong><span>The Zoom user the meeting is created under. Leave blank for the account owner.</span></div><div><input id="zoom-host-email" type="email" autocomplete="off" value="${escapeHtml(zoomCfg.hostEmail || '')}" placeholder="you@gaeilgeoirguides.com"></div></div>
+    <p class="muted small">Without the account connected, Go live still works: paste the Zoom link you are hosting into the console instead.</p>
+    <div style="margin-top:10px"><button class="btn small" id="test-zoom">Test Zoom</button></div>
+    <p class="muted small" id="zoom-test-result"></p>
   </div></section>`;
 }
 
@@ -8131,6 +8135,7 @@ function bindAISettings() {
         clientId: document.getElementById('zoom-client-id').value.trim(),
         clientSecret: document.getElementById('zoom-client-secret').value.trim() || undefined,
         enabled: document.getElementById('zoom-enabled').checked,
+        hostEmail: document.getElementById('zoom-host-email').value.trim(),
       } });
       // The sidebar item reads Live classroom or Studio by this, so it follows the switch at once.
       state.liveRoom = Boolean(zoomSaved.configured && zoomSaved.enabled);
@@ -8150,6 +8155,15 @@ function bindAISettings() {
       } });
       showToast('Drafting configuration saved'); await renderAdmin();
     } catch (error) { showToast(error.message, 'error'); }
+  });
+  document.getElementById('test-zoom')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; const out = document.getElementById('zoom-test-result');
+    button.disabled = true; out.textContent = 'Asking Zoom';
+    try {
+      const result = await api('/api/settings/zoom/test', { method: 'POST', body: {} });
+      out.innerHTML = `<span class="${result.sdk.ok ? 'ok' : 'error'}">${escapeHtml(result.sdk.message)}</span><br><span class="${result.api.ok ? 'ok' : 'error'}">${escapeHtml(result.api.message)}</span>`;
+    } catch (error) { out.textContent = error.message; }
+    button.disabled = false;
   });
   document.getElementById('test-speech')?.addEventListener('click', async (event) => {
     const button = event.currentTarget; const out = document.getElementById('speech-test-result');
@@ -8817,7 +8831,7 @@ function studentNav() {
     ${studentNavButton('calendar', svg.calendar, 'Calendar')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
-    ${state.studentData?.liveClassroom ? `<button class="nav-button ${state.view === 'live' ? 'active' : ''}" data-student-view="live"><span class="nav-icon">${svg.video}</span>Live class${state.studentData?.nextClass?.live ? '<span class="live-dot" title="Your class is on now"></span>' : ''}</button>` : ''}
+    ${state.studentData?.liveClassroom ? `<button class="nav-button ${state.view === 'live' ? 'active' : ''}" data-student-view="live"><span class="nav-icon">${svg.video}</span>Live class${state.studentData?.nextClass?.live || state.studentData?.liveNow ? '<span class="live-dot" title="Your class is on now"></span>' : ''}</button>` : ''}
     ${/* A class set up without a board never shows Community at all. */
       state.studentData?.hasCommunity
         ? studentNavButton('community', svg.board, 'Community', state.studentData?.communityUnread || 0)
@@ -9051,7 +9065,7 @@ function nextClassBanner() {
       <span>${escapeHtml(next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: 'short' }) : fmtDate(next.startsAt, { dateStyle: 'medium' }))} · ${escapeHtml(plainHour(next.startsAt, next.timezone))} Irish${next.note ? ` · Passcode: ${escapeHtml(passcodeOnly(next.note))}` : ''}${next.movedFrom ? ' · moved from its usual day' : ''}</span>
     </div>
     ${state.studentData?.liveClassroom
-      ? `<button class="btn primary" id="join-live-classroom">${next.live ? 'Join now' : 'Join live classroom'}</button>`
+      ? `<button class="btn primary" id="join-live-classroom">${next.live || state.studentData?.liveNow ? 'Join now' : 'Join live classroom'}</button>`
       : next.joinUrl
         ? `<a class="btn primary" href="${escapeHtml(next.joinUrl)}" target="_blank" rel="noopener noreferrer">${next.live ? 'Join now' : 'Join class'}</a>`
         : '<span class="muted small">No link yet</span>'}

@@ -750,6 +750,21 @@ try {
       { method: 'POST', body: { joinUrl: 'https://example.com/not-zoom' } }), 400);
     expectOk('clearing the link falls back to the class\u2019s own', await admin.call('/api/live/session',
       { method: 'POST', body: { joinUrl: '' } }), (d) => d?.joinUrl === '' && d?.webinar?.source !== 'session');
+    expectOk('the console can see what going live needs', await admin.call('/api/live/readiness'),
+      (d) => typeof d?.sdk?.configured === 'boolean' && typeof d?.api?.configured === 'boolean' && d?.session);
+    const ready = (await admin.call('/api/live/readiness')).data;
+    const went = await admin.call('/api/live/go-live', { method: 'POST', body: { mode: 'open', classIds: [made.classId], joinUrl: 'https://us06web.zoom.us/j/88408476378' } });
+    if (ready?.sdk?.configured) {
+      expectOk('Go live with a pasted link starts the session for that class', went, (d) => d?.live === true && d?.classIds?.[0] === made.classId && d?.startedAt);
+      expectOk('the student in that class is told the teacher is live', await student.call('/api/live/me'), (d) => d?.liveNow === true);
+      expectOk('End session clears it', await admin.call('/api/live/end', { method: 'POST', body: {} }), (d) => d?.live === false && d?.joinUrl === '');
+      const noLink = await admin.call('/api/live/go-live', { method: 'POST', body: { mode: 'open', classIds: [made.classId] } });
+      expect('Go live with no link and no Zoom account says what to do', (noLink.status === 503 && /Paste the Zoom link|connect the Zoom account/.test(noLink.data?.error || '')) || noLink.status === 200, `status ${noLink.status} ${JSON.stringify(noLink.data).slice(0, 120)}`);
+      if (noLink.status === 200) await admin.call('/api/live/end', { method: 'POST', body: {} });
+    } else {
+      expectStatus('Go live is refused plainly until the SDK secret is pasted', went, 503);
+      expectStatus('and End session is harmless', await admin.call('/api/live/end', { method: 'POST', body: {} }), 200);
+    }
     expectStatus('a class that does not exist is refused', await admin.call('/api/live/session',
       { method: 'POST', body: { mode: 'open', classId: '00000000-0000-4000-8000-000000000000' } }), 400);
     const pushed = expectOk('the teacher puts a phrase on screen', await admin.call('/api/live/phrase',
@@ -1167,6 +1182,8 @@ try {
   expectOk('save the prompt settings', await admin.call('/api/settings/prompts', { method: 'PUT', body: promptsNow }));
   const zoomNow = (await admin.call('/api/settings')).data?.zoom ?? {};
   expect('the settings never return the Zoom secret', !('clientSecret' in zoomNow) && typeof zoomNow.secretConfigured === 'boolean', JSON.stringify(zoomNow));
+  const zoomTest = await admin.call('/api/settings/zoom/test', { method: 'POST', body: {} });
+  expect('the Zoom test says plainly how the SDK app and the account stand', zoomTest.status === 200 && typeof zoomTest.data?.sdk?.message === 'string' && typeof zoomTest.data?.api?.message === 'string', `status ${zoomTest.status}`);
   expectOk('the Zoom settings can be saved, a blank secret keeping what is there', await admin.call('/api/settings/zoom',
     { method: 'PUT', body: { clientId: zoomNow.clientId || '', enabled: Boolean(zoomNow.enabled) } }), (d) => typeof d?.configured === 'boolean');
   expectOk('the speech keys can be saved, blanks keeping what is there', await admin.call('/api/settings/speech',

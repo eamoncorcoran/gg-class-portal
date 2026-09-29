@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { zoomConfigured as zoomApiConfigured, whoAmI as zoomWhoAmI } from '../zoom.js';
 import { z } from 'zod';
 import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
@@ -24,7 +25,8 @@ router.get('/', asyncRoute(async (_req, res) => {
     // Set or not set, and the region: never the keys.
     speech: { azureConfigured: speech.azureConfigured, azureRegion: speech.azureRegion, abairConfigured: speech.abairConfigured },
     // The client id is public (it is in every signature); the secret never comes back.
-    zoom: { clientId: zoomCfg.clientId, secretConfigured: Boolean(zoomCfg.clientSecret), configured: zoomCfg.configured, enabled: zoomCfg.enabled },
+    zoom: { clientId: zoomCfg.clientId, secretConfigured: Boolean(zoomCfg.clientSecret), configured: zoomCfg.configured, enabled: zoomCfg.enabled,
+      hostEmail: zoomCfg.hostEmail, apiConfigured: zoomApiConfigured() },
     email: { ...email, smtpPassword: undefined },
     prompts,
     reminders,
@@ -132,12 +134,31 @@ router.put('/zoom', asyncRoute(async (req, res) => {
     clientId: z.string().trim().max(200).optional(),
     clientSecret: z.string().max(200).optional(),
     enabled: z.boolean().optional(),
+    hostEmail: z.string().trim().max(200).optional(),
     clearSecret: z.boolean().optional(),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Check the Zoom client id and secret.') });
   const saved = await saveZoomConfig(parsed.data, req.user.id);
   await audit({ actorId: req.user.id, action: 'settings.zoom_updated', entityType: 'settings', entityId: 'zoom', ip: req.ip });
   res.json(saved);
+}));
+
+/* Is the Zoom account reachable, and does the SDK app have what it needs? */
+router.post('/zoom/test', asyncRoute(async (_req, res) => {
+  const sdk = await getZoomConfig();
+  const out = {
+    sdk: sdk.configured
+      ? { ok: true, message: 'Meeting SDK id and secret are set. Whether Zoom accepts them shows the first time a student joins.' }
+      : { ok: false, message: sdk.clientId ? 'The Meeting SDK client secret is not set.' : 'The Meeting SDK client id and secret are not set.' },
+    api: { ok: false, message: 'The Zoom account is not connected: ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET are not set on the server.' },
+  };
+  if (zoomApiConfigured()) {
+    try {
+      const me = await zoomWhoAmI();
+      out.api = { ok: true, message: `Zoom account connected as ${me.name || me.email} (${me.email}). Go live can start meetings for you.`, owner: me.email };
+    } catch (error) { out.api = { ok: false, message: error.message }; }
+  }
+  res.json(out);
 }));
 
 /* Try both services with the keys as saved, and say plainly which answered. */

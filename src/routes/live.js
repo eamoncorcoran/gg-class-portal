@@ -54,7 +54,8 @@ router.get('/me', asyncRoute(async (req, res) => {
   res.json({
     id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role,
     allowed: gate.ok, reason: gate.ok ? '' : gate.error,
-    session, classId, webinar, nextClass,
+    session: { ...session, startUrl: undefined }, classId, webinar, nextClass,
+    liveNow: req.user.role === 'admin' ? session.live : await room.liveFor(req.user.id),
     zoomClientId: await zoomClientId(), live: await liveRoomOn(), mic: await speechConfigured(),
   });
 }));
@@ -63,7 +64,13 @@ router.get('/me', asyncRoute(async (req, res) => {
 router.post('/signature', asyncRoute(async (req, res) => {
   const gate = await room.studentGate(req.user);
   if (!gate.ok) return res.status(403).json({ error: gate.error });
-  res.json({ signature: await signZoom(req.body?.meetingNumber) });
+  /* Said plainly rather than thrown: a 5xx from the error handler is
+     "something went wrong", and the one thing a student needs to hear is
+     that the room is not set up yet, not that the portal is broken. */
+  const mn = String(req.body?.meetingNumber ?? '').replace(/\D/g, '');
+  if (mn.length < 9 || mn.length > 12) return res.status(400).json({ error: 'A valid webinar ID is required.' });
+  if (!(await liveRoomOn())) return res.status(503).json({ error: 'The live classroom is not set up on this portal yet.' });
+  res.json({ signature: await signZoom(mn) });
 }));
 
 /* ---- the phrase on screen ---- */
@@ -100,6 +107,29 @@ router.post('/chat/highlight', requireAdmin, (req, res) => { room.teacherHighlig
 /* ---- the session: which class, who may join ---- */
 router.get('/session', requireAdmin, asyncRoute(async (_req, res) => res.json(await room.sessionSummary())));
 router.post('/session', requireAdmin, asyncRoute(async (req, res) => res.json({ ok: true, ...(await room.setSession(req.body || {})) })));
+/* Going live, in one press, and the state of everything it needs. */
+router.get('/readiness', requireAdmin, asyncRoute(async (_req, res) => {
+  const { getZoomConfig } = await import('../settings.js');
+  const { zoomConfigured: apiConfigured } = await import('../zoom.js');
+  const sdk = await getZoomConfig();
+  const session = await room.sessionSummary();
+  res.json({
+    sdk: { configured: sdk.configured, enabled: sdk.enabled, clientId: sdk.clientId },
+    api: { configured: apiConfigured(), hostEmail: sdk.hostEmail || '' },
+    session,
+  });
+}));
+router.post('/go-live', requireAdmin, asyncRoute(async (req, res) => {
+  const { getZoomConfig } = await import('../settings.js');
+  const sdk = await getZoomConfig();
+  if (!sdk.configured) return res.status(503).json({ error: 'Students cannot join until the Zoom Meeting SDK secret is pasted under Feedback drafting, Live classroom (Zoom).' });
+  const classes = await liveClasses();
+  const chosen = classes.filter((k) => (req.body?.classIds || []).includes(k.id));
+  const topic = chosen.length ? `${chosen.map((k) => k.programme).join(', ')} live class` : 'Live class';
+  res.json({ ok: true, ...(await room.goLive({ ...(req.body || {}), topic })) });
+}));
+router.post('/end', requireAdmin, asyncRoute(async (_req, res) => res.json({ ok: true, ...(await room.endLive()) })));
+
 router.get('/classes', requireAdmin, asyncRoute(async (_req, res) => {
   res.json({ classes: await liveClasses(), current: room.access.classId || '' });
 }));

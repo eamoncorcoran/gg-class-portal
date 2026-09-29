@@ -142,9 +142,12 @@ services:
         value: southeastasia
       - key: ABAIR_API_KEY
         sync: false
-      - key: ZOOM_CLIENT_ID
+      # The Meeting SDK app (students watching inside the portal) is a different
+      # Zoom app from the Server-to-Server one below; both are usually pasted in
+      # the portal's own settings instead of set here.
+      - key: ZOOM_SDK_CLIENT_ID
         sync: false
-      - key: ZOOM_CLIENT_SECRET
+      - key: ZOOM_SDK_CLIENT_SECRET
         sync: false
       - key: LIVE_ROOM_ENABLED
         value: "false"

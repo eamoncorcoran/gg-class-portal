@@ -41,13 +41,60 @@ export async function accessToken() {
   return cachedToken.value;
 }
 
-async function api(path) {
+async function api(path, { method = 'GET', body } = {}) {
   const token = await accessToken();
-  const response = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  const response = await fetch(`${API}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(20000),
+  });
   if (!response.ok) {
-    throw Object.assign(new Error(`Zoom returned ${response.status} for ${path}.`), { status: 502 });
+    /* Zoom says exactly what is wrong, and for the one failure a teacher can
+       fix themselves, a scope the app was not given, its wording names the
+       scope. That wording is worth more than a status code. */
+    let detail = '';
+    try { detail = (await response.json())?.message || ''; } catch { /* no body */ }
+    const scopes = /does not contain scopes:\s*\[([^\]]+)\]/i.exec(detail)?.[1];
+    const message = scopes
+      ? `The Zoom app is missing the ${scopes} scope. Add it under Scopes in the Zoom Marketplace app, then try again.`
+      : `Zoom returned ${response.status}${detail ? `: ${detail}` : ''}.`;
+    throw Object.assign(new Error(message), { status: 502, zoomStatus: response.status });
   }
+  if (response.status === 204) return null;
   return response.json();
+}
+
+/* Who the account is: the owner, as the portal sees it through the app. */
+export async function whoAmI() {
+  const me = await api('/users/me');
+  return { id: me.id, email: me.email, name: [me.first_name, me.last_name].filter(Boolean).join(' '), type: me.type };
+}
+
+/**
+ * A meeting for right now, hosted by the account's user (or a named one).
+ * Settings chosen for a class that joins from inside the portal: no waiting
+ * room, no sign-in demanded of attendees, everyone muted on entry, a passcode
+ * generated so the link carries one. The start_url is the host's door and
+ * carries their key: it is handed back once and never stored.
+ */
+export async function createInstantMeeting({ topic, host = 'me' } = {}) {
+  const meeting = await api(`/users/${encodeURIComponent(host)}/meetings`, {
+    method: 'POST',
+    body: {
+      topic: String(topic || 'Live class').slice(0, 200),
+      type: 1,
+      settings: {
+        host_video: true, participant_video: false, join_before_host: false, mute_upon_entry: true,
+        waiting_room: false, meeting_authentication: false, approval_type: 2, auto_recording: 'none',
+      },
+    },
+  });
+  return { id: String(meeting.id), joinUrl: meeting.join_url, startUrl: meeting.start_url, passcode: meeting.password || '', topic: meeting.topic };
+}
+
+export async function endMeeting(meetingId) {
+  await api(`/meetings/${encodeURIComponent(meetingId)}/status`, { method: 'PUT', body: { action: 'end' } });
 }
 
 /* The screen-and-speaker recording is the one worth keeping; Zoom also returns

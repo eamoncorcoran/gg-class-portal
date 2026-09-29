@@ -161,9 +161,14 @@ export async function getZoomConfig() {
   try { stored = await getSetting('zoom', {}); } catch (error) { console.error('zoom settings unreadable, using the environment', error?.message); }
   let secret = '';
   try { secret = decryptSecret(stored.clientSecretEncrypted || ''); } catch (error) { console.error(error); }
+  /* The Meeting SDK app is a different Zoom app from the Server-to-Server one
+     the recordings import uses, with its own id and secret, so its
+     environment fallback has its own names. A stand-in value is not a secret. */
+  const envSecret = /placeholder/i.test(process.env.ZOOM_SDK_CLIENT_SECRET || '') ? '' : (process.env.ZOOM_SDK_CLIENT_SECRET || '');
   const value = {
-    clientId: (stored.clientId || process.env.ZOOM_CLIENT_ID || '').trim(),
-    clientSecret: secret || process.env.ZOOM_CLIENT_SECRET || '',
+    clientId: (stored.clientId || process.env.ZOOM_SDK_CLIENT_ID || '').trim(),
+    clientSecret: secret || envSecret,
+    hostEmail: (stored.hostEmail || '').trim(),
     enabled: typeof stored.enabled === 'boolean'
       ? stored.enabled
       : /^(1|true|yes|on)$/i.test(String(process.env.LIVE_ROOM_ENABLED || '')),
@@ -173,16 +178,17 @@ export async function getZoomConfig() {
   return value;
 }
 
-export async function saveZoomConfig({ clientId, clientSecret, enabled, clearSecret = false }, userId) {
+export async function saveZoomConfig({ clientId, clientSecret, enabled, hostEmail, clearSecret = false }, userId) {
   const current = await getSetting('zoom', {});
   const next = {
     ...current,
     clientId: clientId !== undefined ? String(clientId || '').trim() : (current.clientId || ''),
+    hostEmail: hostEmail !== undefined ? String(hostEmail || '').trim().toLowerCase() : (current.hostEmail || ''),
     clientSecretEncrypted: clearSecret ? null : (clientSecret ? encryptSecret(clientSecret.trim()) : current.clientSecretEncrypted || null),
     enabled: typeof enabled === 'boolean' ? enabled : current.enabled,
   };
   await setSetting('zoom', next, userId);
   zoomCache = { at: 0, value: null };
   const fresh = await getZoomConfig();
-  return { clientId: fresh.clientId, secretConfigured: Boolean(fresh.clientSecret), configured: fresh.configured, enabled: fresh.enabled };
+  return { clientId: fresh.clientId, secretConfigured: Boolean(fresh.clientSecret), configured: fresh.configured, enabled: fresh.enabled, hostEmail: fresh.hostEmail };
 }

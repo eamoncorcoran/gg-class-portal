@@ -318,7 +318,8 @@ $('#joinBtn').onclick = join;
     $('#sideAv').textContent = studentName.trim().slice(0,2).toUpperCase();
     $('#gateName').textContent = studentName;
     if (me.session?.classLabel) $('#stageNote').textContent = 'The class video appears here once you join · ' + me.session.classLabel;
-    if (me.role === 'student') showNextClass(me.nextClass);
+    if (me.role === 'student') showNextClass(me.liveNow ? { live: true } : me.nextClass);
+    if (me.liveNow) { const el = $('#nextClass'); if (el) el.textContent = 'Your teacher is live now. Press Join.'; }
     if (!me.allowed) showError(me.reason || 'This session is for a different class.');
     connectChat();
     connectPhrases();

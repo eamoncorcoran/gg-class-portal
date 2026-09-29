@@ -11,6 +11,20 @@
 @media(max-width:1160px){.console{grid-template-columns:1fr}}
 .stack{display:flex;flex-direction:column;gap:18px}
 
+/* Going live */
+.ready{display:flex;flex-direction:column;gap:5px;margin-top:12px;font-size:12.5px}
+.ready .rl{display:flex;align-items:center;gap:8px;color:var(--text-secondary)}
+.ready .rl i{width:16px;height:16px;border-radius:50%;display:inline-grid;place-items:center;font-style:normal;font-size:10px;font-weight:800;flex:0 0 auto}
+.ready .rl.ok i{background:var(--success-50);color:var(--success-700)}
+.ready .rl.no i{background:var(--error-50);color:var(--error-700)}
+.ready .rl a{color:var(--brand-700);font-weight:700}
+.golive{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+@media(max-width:520px){.golive{grid-template-columns:1fr}}
+.livenow{margin-top:12px;border:1px solid var(--success-100);background:var(--success-50);border-radius:12px;padding:12px 14px}
+.ln-head{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--success-700)}
+.ln-dot{width:10px;height:10px;border-radius:50%;background:var(--success-600);box-shadow:0 0 0 0 rgba(18,183,106,.5);animation:lnp 1.6s ease-out infinite}
+@keyframes lnp{0%{box-shadow:0 0 0 0 rgba(18,183,106,.5)}70%{box-shadow:0 0 0 8px rgba(18,183,106,0)}100%{box-shadow:0 0 0 0 rgba(18,183,106,0)}}
+.ln-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 /* The session's class tick list */
 .acc-classes{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--gray-25)}
 .acc-class{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;cursor:pointer}
@@ -172,7 +186,20 @@ body.embed .app-main{padding:0 0 18px;max-width:none}
               <div id="accClasses" class="acc-classes"><span style="color:var(--text-tertiary);font-size:12.5px">Loading classes</span></div>
               <div class="field-hint">None ticked means every class. Each class's own Zoom link is shown so you can see where they would land otherwise.</div></div>
             <div id="accWebinar" style="font-size:12.5px;color:var(--text-secondary);font-weight:600;margin-top:10px"></div>
-            <button class="btn block" id="accSave" style="margin-top:12px">Save session</button>
+            <div class="ready" id="ready"></div>
+            <div class="golive" id="goliveRow">
+              <button class="btn primary block" id="goLive">Go live</button>
+              <button class="btn block" id="accSave">Save without going live</button>
+            </div>
+            <div class="livenow" id="liveNow" hidden>
+              <div class="ln-head"><span class="ln-dot"></span><b>Live</b> <span id="liveSince"></span></div>
+              <div class="ln-actions">
+                <a class="btn primary" id="openHost" target="_blank" rel="noopener" hidden>Open Zoom as host</a>
+                <button class="btn" id="accSaveLive">Save changes</button>
+                <button class="btn danger" id="endLive">End session</button>
+              </div>
+              <p class="field-hint" id="liveHint"></p>
+            </div>
             <p class="field-hint" style="margin-top:9px" id="accSrc"></p>
           </div>
         </div>
@@ -553,6 +580,7 @@ async function loadAccess(){
     $('#accNote').value = a.joinNote || '';
     await loadClassPicker(a.classIds || []);
     showWebinar(a);
+    await paintReadiness();
     $('#accSrc').textContent = 'Students in a ticked class get this session\'s link in their Live class tab. Open lets anyone signed in join it too.';
     /* Opened from a class in the portal: add that class to the session. */
     const wanted = bootQs.get('classId');
@@ -583,13 +611,69 @@ function showWebinar(a){
     ? ('Students join meeting ' + id + (w.webinarPwd ? ' · passcode set' : ' · no passcode') + (w.source === 'session' ? ' · from the link above' : ' · from the first ticked class\'s Class setup'))
     : 'No room yet: paste a Zoom link above, or tick a class that has one in Class setup.';
 }
-$('#accSave').onclick = async () => {
-  const classIds = [...document.querySelectorAll('#accClasses input:checked')].map(i => i.value);
+function sessionBody(){
+  return { mode: $('#accMode').value,
+    classIds: [...document.querySelectorAll('#accClasses input:checked')].map(i => i.value),
+    joinUrl: $('#accLink').value.trim(), joinNote: $('#accNote').value.trim() };
+}
+async function saveSession(){
   try {
-    const saved = await api('/api/live/session', { method:'POST', headers:{'content-type':'application/json'},
-      body: JSON.stringify({ mode: $('#accMode').value, classIds, joinUrl: $('#accLink').value.trim(), joinNote: $('#accNote').value.trim() }) });
-    showWebinar(saved);
-    flash('Session saved ✓'); loadAccess();
+    const saved = await api('/api/live/session', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(sessionBody()) });
+    showWebinar(saved); flash('Session saved ✓'); loadAccess();
+  } catch(e){ flash(e.message, true); }
+}
+$('#accSave').onclick = saveSession;
+$('#accSaveLive').onclick = saveSession;
+
+/* What going live needs, each line saying what to do when it is missing. */
+let readiness = null;
+async function paintReadiness(){
+  try { readiness = await api('/api/live/readiness'); } catch { return; }
+  const r = readiness, box = $('#ready'); const lines = [];
+  const line = (ok, text) => lines.push('<div class="rl ' + (ok ? 'ok' : 'no') + '"><i>' + (ok ? '✓' : '!') + '</i><span>' + text + '</span></div>');
+  line(r.sdk.configured, r.sdk.configured ? 'Students can watch inside the portal (Meeting SDK set).' : 'Students cannot join yet: paste the Meeting SDK client secret under <a href="/" target="_blank">Feedback drafting, Live classroom (Zoom)</a>.');
+  line(r.sdk.enabled, r.sdk.enabled ? 'The Live class tab is switched on for students.' : 'The Live class tab is switched off: turn it on under Feedback drafting, Live classroom (Zoom).');
+  const hasLink = !!$('#accLink').value.trim();
+  line(r.api.configured || hasLink, r.api.configured
+    ? 'Go live can start the Zoom meeting for you' + (r.api.hostEmail ? ' as ' + esc(r.api.hostEmail) : '') + '.'
+    : (hasLink ? 'Your own Zoom link will be used.' : 'Paste the Zoom link you will host, or connect the Zoom account (ZOOM_ACCOUNT_ID and its keys) so Go live can start the meeting for you.'));
+  const n = document.querySelectorAll('#accClasses input:checked').length;
+  line(true, n ? n + (n === 1 ? ' class' : ' classes') + ' will see this session.' : 'Every class will see this session.');
+  box.innerHTML = lines.join('');
+  const live = !!(r.session && r.session.live);
+  $('#goliveRow').hidden = live; $('#liveNow').hidden = !live;
+  if (live){
+    const since = r.session.startedAt ? new Date(r.session.startedAt) : null;
+    $('#liveSince').textContent = since ? 'since ' + since.toLocaleTimeString('en-IE', { hour: 'numeric', minute: '2-digit' }) : '';
+    const host = $('#openHost'); host.hidden = !r.session.startUrl; if (r.session.startUrl) host.href = r.session.startUrl;
+    $('#liveHint').textContent = r.session.meetingId
+      ? 'The portal started this meeting. End session ends it on Zoom as well.'
+      : 'Running on the link you pasted. End session takes it off the students\u2019 Live class tab.';
+    $('#statusPill').classList.add('green');
+  }
+}
+$('#accLink').addEventListener('input', () => paintReadiness());
+$('#accClasses').addEventListener('change', () => paintReadiness());
+
+$('#goLive').onclick = async () => {
+  const btn = $('#goLive'); btn.disabled = true; btn.textContent = 'Starting\u2026';
+  try {
+    const r = await api('/api/live/go-live', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(sessionBody()), timeout: 30000 });
+    $('#accLink').value = r.joinUrl || ''; $('#accNote').value = r.joinNote || '';
+    showWebinar(r);
+    if (r.startUrl) { window.open(r.startUrl, '_blank', 'noopener'); flash('Live. Zoom is opening for you as host.'); }
+    else flash('Live. Start the meeting in Zoom if you have not already.');
+    await paintReadiness();
+  } catch(e){ flash(e.message, true); }
+  btn.disabled = false; btn.textContent = 'Go live';
+};
+$('#endLive').onclick = async () => {
+  if (!confirm('End the live session for students?')) return;
+  try {
+    const r = await api('/api/live/end', { method:'POST', headers:{'content-type':'application/json'}, body: '{}' });
+    flash(r.zoomEnded === false ? 'Session ended here. End the meeting in Zoom yourself.' : 'Session ended');
+    $('#accLink').value = ''; $('#accNote').value = '';
+    await loadAccess();
   } catch(e){ flash(e.message, true); }
 };
 setInterval(async () => {

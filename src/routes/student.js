@@ -24,6 +24,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { liveRoomOn } from '../live/zoom.js';
+import { liveFor } from '../live/room.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 
@@ -278,6 +279,8 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
     hasCommunity: Boolean(klass.has_community),
     // Whether "Join live classroom" is on offer at all.
     liveClassroom: await liveRoomOn(),
+    // The teacher has pressed Go live for this student's class.
+    liveNow: (await liveRoomOn()) && await liveFor(req.user.id),
     communityUnread: community,
     weeks: weeksResult.rows,
     attendance: attendanceResult.rows,
