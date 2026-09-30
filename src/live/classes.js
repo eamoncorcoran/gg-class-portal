@@ -22,6 +22,21 @@ export function parseWebinar(joinUrl, joinNote = '') {
   return { webinarId: id, webinarPwd: pwdFromUrl || pwdFromNote || '' };
 }
 
+/* Zoom insists on an email for a webinar attendee and refuses the join
+   outright ("Fail to join the meeting.", code 200) when the address carries
+   a plus tag, which is how Eamon's own test accounts are made. The address
+   only ever appears in Zoom's attendee report, so a student with such an
+   address is sent the plain mailbox behind it, and anything stranger still
+   gets a portal address that cannot be refused. */
+const ZOOM_EMAIL = /^[A-Za-z0-9._-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
+export function zoomEmailFor(email, id) {
+  const raw = String(email || '').trim();
+  if (ZOOM_EMAIL.test(raw)) return raw;
+  const untagged = raw.replace(/\+[^@]*@/, '@');
+  if (ZOOM_EMAIL.test(untagged)) return untagged;
+  return 'student-' + String(id || 'guest').replace(/[^a-z0-9]/gi, '').slice(0, 32).toLowerCase() + '@hub.gaeilgeoirguides.com';
+}
+
 export function classForLive(row) {
   if (!row) return null;
   const day = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][Number(row.day_of_week)] || '';

@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
    is only ever an attendee's, the router being session-only, and a studio
    lesson filed as a course lesson. */
 
-const { parseWebinar, classForLive } = await import('../src/live/classes.js');
+const { parseWebinar, classForLive, zoomEmailFor } = await import('../src/live/classes.js');
 const { signZoomWith } = await import('../src/live/zoom.js');
 const creds = { clientId: 'test-client', clientSecret: 'test-secret' };
 const signZoom = (mn) => signZoomWith(creds, mn);
@@ -221,4 +221,17 @@ test('the host ending the webinar reaches the student, and ends the session from
   assert.doesNotMatch(room, /textContent = 'Join again'/);
   assert.match(teacher, /e\.data\.type === 'ended'/);
   assert.match(teacher, /async function autoEnd/);
+});
+
+/* Zoom refused the first real student join with "Fail to join the meeting."
+   because the test account's address carried a plus tag. */
+test('a webinar attendee is given an address Zoom will take', () => {
+  assert.equal(zoomEmailFor('sarah.dunning@gmail.com', 'u1'), 'sarah.dunning@gmail.com');
+  assert.equal(zoomEmailFor('ecorcoran212+33@gmail.com', 'u1'), 'ecorcoran212@gmail.com');
+  assert.equal(zoomEmailFor('  Someone@Example.co.uk ', 'u1'), 'Someone@Example.co.uk');
+  assert.equal(zoomEmailFor('not an email', '9a2b8b76-1111'), 'student-9a2b8b761111@hub.gaeilgeoirguides.com');
+  assert.equal(zoomEmailFor('', ''), 'student-guest@hub.gaeilgeoirguides.com');
+  const room = fs.readFileSync(new URL('../public/live/room.html', import.meta.url), 'utf8');
+  assert.match(room, /userEmail: me\.zoomEmail \|\| me\.email/);
+  assert.match(routes, /zoomEmail: zoomEmailFor\(req\.user\.email, req\.user\.id\)/);
 });

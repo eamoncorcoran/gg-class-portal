@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { requireAuth, requireAdmin, requireStudent } from '../session.js';
 import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
-import { liveClasses, liveClass, studentClassIds } from '../live/classes.js';
+import { liveClasses, liveClass, studentClassIds, zoomEmailFor } from '../live/classes.js';
 import { nextClassWithSessions } from '../classtime.js';
 import { zoomClientId, signZoom, liveRoomOn } from '../live/zoom.js';
 import { speechConfigured } from '../live/speech.js';
@@ -55,6 +55,7 @@ router.get('/me', asyncRoute(async (req, res) => {
     id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role,
     allowed: gate.ok, reason: gate.ok ? '' : gate.error,
     session: { ...session, startUrl: undefined }, classId, webinar, nextClass,
+    zoomEmail: zoomEmailFor(req.user.email, req.user.id),
     // The plain Zoom link, for the way out when the room cannot get somebody in.
     joinUrl: session.joinUrl || (classId ? (await liveClass(classId))?.joinUrl || null : null),
     liveNow: req.user.role === 'admin' ? session.live : await room.liveFor(req.user.id),

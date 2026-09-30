@@ -413,7 +413,7 @@ async function join(){
         if (state === 'Closed' || state === 'Fail') classOver(p?.reason || state);
       });
     }
-    await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.email || '' });
+    await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.zoomEmail || me.email || '' });
     inMeeting = true;
     $('#gate').style.display = 'none';
     $('#stageNote').style.display = 'none';
@@ -425,7 +425,8 @@ async function join(){
     // Code 200 with no reason is what a webinar gives before the host presses
     // Start, while they are still in the practice session.
     const code = e && e.errorCode;
-    const reason = (e && (e.reason || e.message)) ? (e.reason || e.message)
+    const said = e && (e.reason || e.message);
+    const reason = said ? (said + (code ? ' (Zoom code ' + code + ')' : ''))
       : code === 200 ? 'Not started yet: the host is still in the practice session (Zoom code 200)'
       : code ? 'Zoom refused the join (code ' + code + ')' : 'Could not join.';
     showError(/not start|practice/i.test(reason) ? 'The class has not started yet. Keep this page open and press Join again in a minute.' : reason);
