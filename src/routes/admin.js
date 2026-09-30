@@ -1483,14 +1483,8 @@ function readAssignmentCsv(content, { weeks, timezone }) {
     if (!questions.length) problems.push('no questions — add a Q1 column');
     if (kind === 'listening') {
       if (!story) problems.push('a listening activity needs a story — add a Story column');
-      /* Marked against what the teacher wrote, so a listening row with no
-         expected answers would be handed to the model with nothing to mark
-         against and come back as full marks for everybody. */
-      const answered = expected.filter(Boolean).length;
-      if (!answered) problems.push('no expected answers — add A1, A2, A3 beside the questions');
-      else if (answered < questions.length) {
-        problems.push(`${questions.length - answered} question${questions.length - answered === 1 ? ' has' : 's have'} no expected answer`);
-      }
+      /* No answer columns needed: the marker reads the answers out of the
+         story. A1, A2, A3 beside the questions are still taken when given. */
       const bad = marks.slice(0, questions.length).find((value) => value && !/^\d+$/.test(value));
       if (bad) problems.push(`the marks “${bad}” should be a whole number`);
     }

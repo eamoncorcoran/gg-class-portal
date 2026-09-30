@@ -133,8 +133,10 @@ export async function draftCommunityReply(payload) {
 /* Marking a listening comprehension.
    ------------------------------------------------------------------
    Different work from drafting feedback, and kept apart from it. Feedback is a
-   register; this is a judgement against an answer the teacher wrote, and it
-   produces a number. The number never reaches the student on its own: it lands
+   register; this is a judgement against the story, and it produces a number.
+   The teacher may type a model answer beside a question and need not: the
+   marker reads the answer out of the story itself, and says in its note what
+   it took the answer to be, so the teacher can check it at a glance. The number never reaches the student on its own: it lands
    in the held-back columns beside the AI's prose and waits for the teacher, the
    same as everything else.
 
@@ -144,19 +146,20 @@ export async function draftCommunityReply(payload) {
    worse than marking it slowly. */
 const MARKING_SYSTEM = `You are marking a listening comprehension for a Leaving Certificate Irish class.
 
-The student listened to a story in Irish and answered questions about it. For each question you are given the question, what the teacher considers a correct answer, the marks available, and what the student wrote.
+The student listened to a story in Irish and answered questions about it. You are given the story, and for each question: the question, the marks available, what the student wrote, and sometimes a model answer the teacher typed.
 
-Award marks for each question and say briefly why.
+The story is the answer key. Work out the correct answer to each question from the story yourself. Where the teacher gave a model answer, treat it as one way of putting the same thing, not the only way. Where they gave none, the story alone decides.
 
 How to mark:
 - Mark the content, not the spelling. A right answer spelled badly is a right answer.
-- Accept a synonym, a paraphrase, or the same fact in different words. The expected answer is one way of putting it, not the only way.
-- Accept an answer in English if the question did not require Irish, unless the teacher's expected answer shows the point was to answer in Irish.
+- Accept a synonym, a paraphrase, or the same fact in different words.
+- Accept an answer in English if the question did not require Irish, unless the question or the teacher's model answer shows the point was to answer in Irish.
 - Partial marks where a question carries more than one mark and the student got part of it.
 - An empty answer gets zero.
 - Do not invent a reason to take marks off. If it is right, it is right.
+- If the story does not answer the question at all, say so in the note and give the marks to any reasonable answer.
 
-Write the note on each question to the teacher, not to the student: it is a working note that helps them check your marking quickly. One short sentence. Never use an em dash or an en dash.`;
+Write the note on each question to the teacher, not to the student: a working note that lets them check your marking quickly. Start with the answer the story gives, in a few words, then how the student's answer compares. One or two short sentences. Never use an em dash or an en dash.`;
 
 const MARKING_SCHEMA = {
   type: 'object',

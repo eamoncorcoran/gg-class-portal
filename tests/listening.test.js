@@ -172,18 +172,25 @@ test('the expected answers sit beside the questions in the sheet', () => {
   assert.match(admin, /marks: questions\.map\(\(_, index\) => Number\(marks\[index\]\) \|\| 1\)/);
 });
 
-test('a listening row with no expected answers is refused', () => {
-  /* Marked against what the teacher wrote, so a row with nothing to mark
-     against would come back as full marks for everybody. */
-  /* The condition, not just the words. A guard rewritten to never fire still
-     contains its own message, so matching the message proves nothing. */
-  assert.match(admin, /const answered = expected\.filter\(Boolean\)\.length;/);
-  assert.match(admin, /if \(!answered\) problems\.push\('no expected answers/);
-  assert.match(admin, /else if \(answered < questions\.length\) \{/);
+test('a listening row needs a story, not an answer column', () => {
+  /* The story is the answer key: the marker reads the answers out of it, so a
+     row with no A1, A2, A3 is taken as it is. The story itself is still
+     required, since without it there is nothing to listen to or mark from. */
   assert.match(admin, /if \(!story\) problems\.push\('a listening activity needs a story/);
-  assert.match(admin, /const bad = marks\.slice\(0, questions\.length\)\.find\(\(value\) => value && !\/\^\\d\+\$\/\.test\(value\)\);/);
-  // And all of it only for a listening row.
-  assert.match(admin, /if \(kind === 'listening'\) \{/);
+  assert.doesNotMatch(admin, /problems\.push\('no expected answers/);
+  assert.doesNotMatch(admin, /no expected answer`\)/);
+});
+
+test('the marker takes the answer from the story, with or without a model answer', () => {
+  const ai = fs.readFileSync(new URL('../src/ai.js', import.meta.url), 'utf8');
+  assert.match(ai, /The story is the answer key\. Work out the correct answer to each question from the story yourself\./);
+  assert.match(ai, /Where they gave none, the story alone decides\./);
+  assert.match(ai, /Start with the answer the story gives, in a few words/);
+  assert.match(ai, /Never use an em dash or an en dash/);
+  // The box on the form says it is optional, so nobody types answers they need not.
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /<label>What a right answer looks like, optional<\/label>/);
+  assert.match(app, /Leave blank and the marking takes the answer from the story\./);
 });
 
 test('an existing written sheet still imports unchanged', () => {
