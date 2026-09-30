@@ -241,3 +241,9 @@ test('the live pages are never cached past a deploy', () => {
   // for an hour: HTML is revalidated every time, assets keep their hour.
   assert.match(server, /filePath\.endsWith\('\.html'\)\) res\.setHeader\('Cache-Control', 'no-cache'\)/);
 });
+
+test('the framed live pages carry the asset version, so a deploy reaches them', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /new URL\(import\.meta\.url\)\.searchParams\.get\('v'\)/);
+  assert.match(app, /liveUrl\('\/live\/room\.html\?embed=1'\)/);
+});

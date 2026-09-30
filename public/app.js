@@ -1,3 +1,8 @@
+/* The version stamped on this module's URL by the server; framed pages carry
+   it too, so a student's browser fetches a fresh copy after every deploy
+   instead of the hour-old one it kept. */
+const ASSET_V = (() => { try { return new URL(import.meta.url).searchParams.get('v') || ''; } catch { return ''; } })();
+const liveUrl = (path) => path + (ASSET_V ? '&v=' + encodeURIComponent(ASSET_V) : '');
 
 const app = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
@@ -1274,7 +1279,7 @@ function liveAdminView() {
   /* Without the live room switched on, this is the studio and nothing else. */
   if (!state.liveRoom) {
     return `${pageHeader('Courses', 'Studio', 'Build a lesson: a video with the phrases to say aloud. Then add it to a course as a practice lesson.')}
-    <div class="live-embed admin"><iframe src="/live/studio.html?embed=1" title="Studio" allow="fullscreen" allowfullscreen></iframe></div>`;
+    <div class="live-embed admin"><iframe src="${liveUrl('/live/studio.html?embed=1')}" title="Studio" allow="fullscreen" allowfullscreen></iframe></div>`;
   }
   const tab = state.liveTab === 'studio' ? 'studio' : 'console';
   const src = tab === 'studio'
@@ -9094,7 +9099,7 @@ function liveRoomView() {
   const copy = STUDENT_PAGE.live;
   return `<header class="sh"><div><h1>${copy.title}</h1><p>${copy.line}</p></div>
     ${state.studentData?.class ? `<span class="sh-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</header>
-  <div class="live-embed"><iframe src="/live/room.html?embed=1" title="Live class"
+  <div class="live-embed"><iframe src="${liveUrl('/live/room.html?embed=1')}" title="Live class"
     allow="camera; microphone; autoplay; fullscreen; display-capture; speaker-selection" allowfullscreen></iframe></div>`;
 }
 
