@@ -35,16 +35,6 @@ export function isLive(session = access, now = Date.now()) {
   return since >= 0 ? since < LIVE_MAX_MS : true;
 }
 
-/* The teacher pastes the plain link from Zoom's invitation, but the class's
-   own link in Class setup carries the passcode. When both point at the same
-   room, the passcode is kept: a join refused for want of a passcode the
-   portal already had would be a poor way to start a class. */
-export function withClassPasscode(parsed, classes) {
-  if (!parsed?.webinarId || parsed.webinarPwd) return parsed;
-  const match = (classes || []).find((k) => k && k.webinarId === parsed.webinarId && k.webinarPwd);
-  return match ? { ...parsed, webinarPwd: match.webinarPwd } : parsed;
-}
-
 export async function loadAccess() {
   const row = await one('SELECT mode, class_id, class_ids, join_url, join_note, meeting_id, started_at FROM live_access WHERE id=1');
   access.mode = row?.mode === 'entitled' ? 'entitled' : 'open';
@@ -289,11 +279,11 @@ function restore(classId) {
    otherwise the first class's link from Class setup. */
 export async function sessionWebinar() {
   if (access.joinUrl) {
-    let parsed = parseWebinar(access.joinUrl, access.joinNote);
-    if (parsed.webinarId) {
-      if (!parsed.webinarPwd) parsed = withClassPasscode(parsed, await Promise.all(access.classIds.map((id) => liveClass(id))));
-      return { ...parsed, source: 'session' };
-    }
+    // The link and passcode the teacher gave are sent as they are: a stale
+    // pwd= from the class's old link, carried over to help, refused every
+    // join once the webinar's passcode was taken off.
+    const parsed = parseWebinar(access.joinUrl, access.joinNote);
+    if (parsed.webinarId) return { ...parsed, source: 'session' };
   }
   const klass = await liveClass(access.classIds[0]);
   return { webinarId: klass?.webinarId || null, webinarPwd: klass?.webinarPwd || '', source: klass?.webinarId ? 'class' : 'none' };

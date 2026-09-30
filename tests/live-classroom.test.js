@@ -195,10 +195,8 @@ test('the bunny.net font survives cross-origin isolation on room.html', () => {
 
 /* What the first real class taught. The host closed Zoom and the session
    stayed "live" on ninety students' tabs until the next day; a student whose
-   webinar ended was left with a black stage and the last phrase over it; and
-   a plain link pasted for a class whose own link carried the passcode sent
-   every join in without one. */
-const { isLive, withClassPasscode, LIVE_MAX_MS } = await import('../src/live/room.js');
+   webinar ended was left with a black stage and the last phrase over it. */
+const { isLive, LIVE_MAX_MS } = await import('../src/live/room.js');
 
 test('a session left running goes off by itself after a working day', () => {
   const now = Date.now();
@@ -209,16 +207,6 @@ test('a session left running goes off by itself after a working day', () => {
   assert.equal(isLive({ startedAt: null, joinUrl: link }, now), false);
   // A clock that is a little ahead of the database does not end a class early.
   assert.equal(isLive({ startedAt: new Date(now + 5000), joinUrl: link }, now), true);
-});
-
-test('a plain session link takes the passcode from the class that owns the same room', () => {
-  const plain = { webinarId: '83512243750', webinarPwd: '' };
-  const klass = { webinarId: '83512243750', webinarPwd: '975967' };
-  assert.equal(withClassPasscode(plain, [klass]).webinarPwd, '975967');
-  assert.equal(withClassPasscode(plain, [{ webinarId: '11111111111', webinarPwd: '1234' }]).webinarPwd, '');
-  assert.equal(withClassPasscode({ webinarId: '83512243750', webinarPwd: 'fromlink' }, [klass]).webinarPwd, 'fromlink');
-  assert.equal(withClassPasscode(plain, [null, undefined]).webinarPwd, '');
-  assert.equal(withClassPasscode({ webinarId: null, webinarPwd: '' }, [klass]).webinarPwd, '');
 });
 
 test('the host ending the webinar reaches the student, and ends the session from the console', () => {
