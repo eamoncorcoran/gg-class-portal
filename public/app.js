@@ -7296,7 +7296,7 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
         <span class="muted small">What students hear. One is usually all you need.</span></div></div>
       <div id="listening-render" class="listen-render"></div>
     </section>
-    <div class="form-field"><label>Instructions</label><textarea name="instructions">${escapeHtml(assignment?.instructions || '')}</textarea></div>
+    <div class="form-field"><label>Instructions page ${formatBar('assignment-instructions')}</label><textarea id="assignment-instructions" name="instructions" rows="6" placeholder="What to do, roughly how long it takes, what to hand in.">${escapeHtml(assignment?.instructions || '')}</textarea><div class="muted small">Students read this as a page of its own, then press Start. Leave it blank and they go straight to the first question.</div></div>
     <div class="form-field"><label>Loom share or embed URL</label><input name="loomUrl" type="url" value="${escapeHtml(assignment?.loom_url || '')}" placeholder="https://www.loom.com/share/..."></div>
     <div class="form-field"><label>Visible from</label><input name="visibleAt" type="datetime-local" value="${toZonedInput(assignment?.visible_at || new Date())}" required><div class="muted small">Times are ${escapeHtml(classTimezone())} (${escapeHtml(timezoneAbbreviation())}).</div></div>
     <div class="form-field"><label>Deadline</label><input name="deadlineAt" type="datetime-local" value="${assignment?.deadline_at ? toZonedInput(assignment.deadline_at) : (prefillDeadline || toZonedInput(new Date(Date.now() + 7 * 86400000)))}" required></div>
@@ -7659,6 +7659,7 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
     footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-assignment">${assignment ? 'Save changes' : 'Publish assignment'}</button>`,
     onOpen() {
       const form = document.getElementById('assignment-form');
+      bindFormatBars(form);
       const showListening = () => {
         const on = form.kind.value === 'listening';
         document.querySelectorAll('.listening-only').forEach((field) => { field.hidden = !on; });
@@ -9815,7 +9816,12 @@ async function openHomeworkForm(assignment, submission) {
         textShown: Boolean(data.assignment.listening_text_shown),
         at: 0, plays: 0,
       } };
-    renderHomeworkStep();
+    /* The teacher's explanation page comes first, the once: a student who
+       has started (an answer in the draft, or a later question) lands back
+       where they were, with the page a button away. */
+    const form = state.homeworkForm;
+    const started = form.step > 0 || form.answers.some((a) => String(a || '').trim());
+    if (homeworkHasIntro(data.assignment) && !started) renderHomeworkIntro(); else renderHomeworkStep();
   } catch (error) { showToast(error.message, 'error'); }
 }
 
@@ -9943,18 +9949,44 @@ function bindListeningPanel() {
   });
 }
 
-function renderHomeworkStep() {
-  const form = state.homeworkForm, assignment = form.assignment, question = assignment.questions[form.step];
+const homeworkHasIntro = (assignment) => Boolean(String(assignment?.instructions || '').trim());
+
+/* The page a student reads before the first question: what the teacher
+   wrote under Instructions, with the video and any files, and one button.
+   Reached again from any question, so nobody has to remember it all. */
+function renderHomeworkIntro() {
+  const form = state.homeworkForm, assignment = form.assignment;
+  const started = form.step > 0 || form.answers.some((a) => String(a || '').trim());
   modal({
     title: assignment.title, subtitle: `Due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true })}`, wide: true,
-    body: `<div class="rolling-form"><div class="progress"><span style="width:${((form.step + 1) / assignment.questions.length) * 100}%"></span></div><div class="rolling-stage">${listeningPanel(assignment, form)}${form.step === 0 ? loomEmbed(assignment.loom_url) : ''}${form.step === 0 && assignment.resources.length ? `<div style="margin-bottom:14px">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}<div class="rolling-kicker">Question ${form.step + 1} of ${assignment.questions.length}</div><div class="rolling-question">${escapeHtml(question.prompt)}</div>${question.imageUrl ? `<img src="${escapeHtml(question.imageUrl)}" alt="" style="max-width:100%;max-height:260px;border-radius:10px;margin-bottom:13px">` : ''}<div class="required-note">${question.required ? 'Required' : 'Optional'}</div><textarea id="homework-answer" placeholder="Type your answer">${escapeHtml(form.answers[form.step] || '')}</textarea>${form.step === assignment.questions.length - 1 ? homeworkUploadPanel(assignment, form) : ''}<div id="rolling-error"></div></div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div><button class="btn" id="homework-back" ${form.step === 0 ? 'disabled' : ''}>Previous</button> <button class="btn primary" id="homework-next">${form.step === assignment.questions.length - 1 ? 'Submit homework' : 'Save and continue'}</button></div></div></div>`,
+    body: `<div class="rolling-form"><div class="progress"><span style="width:0%"></span></div><div class="rolling-stage hw-intro">
+      <div class="rolling-kicker">Before you start</div>
+      <div class="hw-intro-text">${richText(assignment.instructions)}</div>
+      ${loomEmbed(assignment.loom_url)}
+      ${assignment.resources.length ? `<div class="hw-intro-files">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}
+      <div class="hw-intro-count">${assignment.questions.length} ${assignment.questions.length === 1 ? 'question' : 'questions'}</div>
+    </div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div><button class="btn primary" id="homework-start">${started ? 'Back to the questions' : 'Start the homework'}</button></div></div></div>`,
+    onOpen() {
+      document.getElementById('homework-exit').addEventListener('click', closeModal);
+      document.getElementById('homework-start').addEventListener('click', () => renderHomeworkStep());
+    },
+  });
+}
+
+function renderHomeworkStep() {
+  const form = state.homeworkForm, assignment = form.assignment, question = assignment.questions[form.step];
+  const hasIntro = homeworkHasIntro(assignment);
+  modal({
+    title: assignment.title, subtitle: `Due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true })}`, wide: true,
+    body: `<div class="rolling-form"><div class="progress"><span style="width:${((form.step + 1) / assignment.questions.length) * 100}%"></span></div><div class="rolling-stage">${listeningPanel(assignment, form)}${form.step === 0 && !hasIntro ? loomEmbed(assignment.loom_url) : ''}${form.step === 0 && !hasIntro && assignment.resources.length ? `<div style="margin-bottom:14px">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}<div class="rolling-kicker">Question ${form.step + 1} of ${assignment.questions.length}</div><div class="rolling-question">${escapeHtml(question.prompt)}</div>${question.imageUrl ? `<img src="${escapeHtml(question.imageUrl)}" alt="" style="max-width:100%;max-height:260px;border-radius:10px;margin-bottom:13px">` : ''}<div class="required-note">${question.required ? 'Required' : 'Optional'}</div><textarea id="homework-answer" placeholder="Type your answer">${escapeHtml(form.answers[form.step] || '')}</textarea>${form.step === assignment.questions.length - 1 ? homeworkUploadPanel(assignment, form) : ''}<div id="rolling-error"></div></div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div>${hasIntro ? '<button class="btn" id="homework-instructions">Instructions</button> ' : ''}<button class="btn" id="homework-back" ${form.step === 0 && !hasIntro ? 'disabled' : ''}>Previous</button> <button class="btn primary" id="homework-next">${form.step === assignment.questions.length - 1 ? 'Submit homework' : 'Save and continue'}</button></div></div></div>`,
     onOpen() {
       const answer = document.getElementById('homework-answer');
       bindHomeworkUploads();
       bindListeningPanel();
       answer.addEventListener('input', debounce(() => { form.answers[form.step] = answer.value; saveHomeworkDraft(); }, 500));
       document.getElementById('homework-exit').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); closeModal(); });
-      document.getElementById('homework-back').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); if (form.step > 0) { form.step -= 1; renderHomeworkStep(); } });
+      document.getElementById('homework-back').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); if (form.step > 0) { form.step -= 1; renderHomeworkStep(); } else if (hasIntro) renderHomeworkIntro(); });
+      document.getElementById('homework-instructions')?.addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); renderHomeworkIntro(); });
       document.getElementById('homework-next').addEventListener('click', async () => {
         form.answers[form.step] = answer.value.trim();
         if (question.required && !form.answers[form.step]) { document.getElementById('rolling-error').innerHTML = '<div class="error-banner" style="margin-top:10px">Please answer this question.</div>'; return; }

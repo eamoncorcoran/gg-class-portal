@@ -2112,3 +2112,6 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .calendar-event.assignment[draggable="true"]{cursor:grab}
 .calendar-event.assignment.is-dragging{opacity:.45;cursor:grabbing}
 .calendar-day.is-over{outline:2px dashed var(--brand-500);outline-offset:-3px;background:var(--brand-25,#f6faf4)}
+
+/* The explanation page before a homework's first question. */
+.hw-intro-text{margin:10px 0 18px;max-width:640px;color:var(--text-secondary);font-size:16px;line-height:1.65}.hw-intro-text strong{color:var(--text)}.hw-intro-files{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}.hw-intro-count{color:var(--text-quaternary);font-size:12px;font-weight:600}
