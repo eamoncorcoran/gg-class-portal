@@ -233,7 +233,11 @@ app.use(express.static(publicDir, {
   // The page itself is served below, not from here.
   index: false,
   setHeaders(res, filePath) {
-    if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache');
+    // Every page, not only the shell: the live room is a page in its own
+    // right, framed by the portal, and a student who loaded it before a fix
+    // went out kept the old one for an hour. no-cache still uses the ETag,
+    // so an unchanged page costs a 304 and nothing more.
+    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
   },
 }));
 

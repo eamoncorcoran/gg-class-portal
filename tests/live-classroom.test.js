@@ -235,3 +235,9 @@ test('a webinar attendee is given an address Zoom will take', () => {
   assert.match(room, /userEmail: me\.zoomEmail \|\| me\.email/);
   assert.match(routes, /zoomEmail: zoomEmailFor\(req\.user\.email, req\.user\.id\)/);
 });
+
+test('the live pages are never cached past a deploy', () => {
+  // A student who loaded room.html before a fix went out kept the old one
+  // for an hour: HTML is revalidated every time, assets keep their hour.
+  assert.match(server, /filePath\.endsWith\('\.html'\)\) res\.setHeader\('Cache-Control', 'no-cache'\)/);
+});
