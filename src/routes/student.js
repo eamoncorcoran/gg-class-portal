@@ -326,7 +326,7 @@ router.put('/checkins/:weekId/draft', asyncRoute(async (req, res) => {
      VALUES ($1,$2,'draft',$3::jsonb,now())
      ON CONFLICT (week_id,student_id) DO UPDATE
        SET answers=EXCLUDED.answers,
-           status=CASE WHEN checkins.status='returned' THEN checkins.status ELSE 'draft' END,
+           status=CASE WHEN checkins.status IN ('submitted','returned') THEN checkins.status ELSE 'draft' END,
            updated_at=now()
      RETURNING *`,
     [week.id, req.user.id, JSON.stringify(parsed.data.answers)],
@@ -447,7 +447,11 @@ router.put('/assignments/:id/draft', asyncRoute(async (req, res) => {
      VALUES ($1,$2,'draft',$3::jsonb,$4,now())
      ON CONFLICT (assignment_id,student_id) DO UPDATE
        SET answers=EXCLUDED.answers,current_question=EXCLUDED.current_question,
-           status=CASE WHEN homework_submissions.status='returned' THEN homework_submissions.status ELSE 'draft' END,
+           /* Never back to draft once it is in. A student who reopened their
+              submitted homework (the reminder email's link did exactly that)
+              had it silently turned back into a draft by the autosave: gone
+              from the teacher's queue, and chased by every reminder after. */
+           status=CASE WHEN homework_submissions.status IN ('submitted','returned') THEN homework_submissions.status ELSE 'draft' END,
            updated_at=now()
      RETURNING *`,
     [assignment.id, req.user.id, JSON.stringify(parsed.data.answers), parsed.data.currentQuestion],

@@ -6828,6 +6828,7 @@ async function loadReminderAudit() {
     </div>
     <div class="card-body">
       <p class="muted small">A reminder only goes to a student whose work is not in, checked when the list is drawn up and again at the moment of sending. ${audit.doneAfterReminder || 0} of these were followed by the work coming in.</p>
+      ${(audit.reverted?.homework || 0) + (audit.reverted?.checkins || 0) ? `<p class="muted small" style="color:var(--error-700)">${audit.reverted.homework} homework and ${audit.reverted.checkins} check-ins are sitting as drafts although they were handed in. That should not happen any more; tell Claude if it does.</p>` : ''}
       ${wrong.length ? `<table class="table"><thead><tr><th>Student</th><th>About</th><th>Reminder sent</th><th>Handed in</th></tr></thead><tbody>
         ${wrong.map((row) => `<tr><td>${escapeHtml(row.name)}<br><span class="muted small">${escapeHtml(row.email)}</span></td><td>${escapeHtml(row.what)}</td><td>${escapeHtml(when(row.sentAt))}</td><td>${escapeHtml(when(row.submittedAt))}</td></tr>`).join('')}
       </tbody></table>` : ''}
@@ -10346,7 +10347,10 @@ async function followLink() {
       const assignment = (state.studentData?.assignments || []).find((row) => row.id === id);
       /* An assignment that is gone, or belongs to somebody else's class, simply
          leaves them on the calendar rather than on an error. */
-      if (assignment) openHomeworkForm(assignment);
+      /* Through the same door as the calendar card: work already handed in is
+         shown as handed in, not reopened as a form whose autosave would have
+         turned the submission back into a draft. */
+      if (assignment) openStudentItem({ openStudentItem: 'homework', assignmentId: assignment.id });
       return;
     }
   } catch (error) {

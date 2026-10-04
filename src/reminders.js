@@ -371,7 +371,15 @@ export async function auditReminders({ days = 30 } = {}) {
     ...checkins.rows.filter((r) => r.already_done).map((r) => ({ ...shape(r, `Check-in, week of ${new Date(r.week_start).toISOString().slice(0, 10)}`), due: r.checkin_due_at })),
   ].sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
   const doneSince = [...homework.rows, ...checkins.rows].filter((r) => r.submitted_at && !r.already_done).length;
+  /* Work that was handed in and is a draft again. Nothing does that on
+     purpose: it was the autosave on a reopened form, fixed and repaired by
+     migration 052. Counted so that if it ever comes back it is seen. */
+  const reverted = await one(
+    `SELECT (SELECT count(*)::int FROM homework_submissions WHERE status='draft' AND submitted_at IS NOT NULL) homework,
+            (SELECT count(*)::int FROM checkins WHERE status='draft' AND submitted_at IS NOT NULL) checkins`,
+  );
   return {
+    reverted: { homework: reverted?.homework || 0, checkins: reverted?.checkins || 0 },
     days: span,
     homework: { sent: homework.rows.length, alreadyDone: homework.rows.filter((r) => r.already_done).length },
     checkins: { sent: checkins.rows.length, alreadyDone: checkins.rows.filter((r) => r.already_done).length },

@@ -94,7 +94,7 @@ test('and the app actually follows them', () => {
 
 test('a link to an assignment that is gone leaves the student on the calendar', () => {
   const body = bodyOf(app, 'async function followLink');
-  assert.match(body, /if \(assignment\) openHomeworkForm\(assignment\)/,
+  assert.match(body, /if \(assignment\) openStudentItem\(/,
     'a missing assignment must not throw at somebody arriving from an email');
 });
 
@@ -129,4 +129,29 @@ test('the audit sets every reminder against when the work came in', () => {
   const settings = fs.readFileSync(new URL('../src/routes/settings.js', import.meta.url), 'utf8');
   assert.match(settings, /router\.get\('\/reminders\/audit'/);
   assert.match(app, /api\('\/api\/settings\/reminders\/audit\?days=30'\)/);
+});
+
+/* The cause behind four of the five wrong reminders in a month of production
+   sends: the student's own autosave turning a submitted piece back into a
+   draft when a reminder email's link reopened the form. */
+test('a draft save never turns work that is in back into a draft', () => {
+  const student = fs.readFileSync(new URL('../src/routes/student.js', import.meta.url), 'utf8');
+  assert.match(student, /status=CASE WHEN homework_submissions\.status IN \('submitted','returned'\) THEN homework_submissions\.status ELSE 'draft' END/);
+  assert.match(student, /status=CASE WHEN checkins\.status IN \('submitted','returned'\) THEN checkins\.status ELSE 'draft' END/);
+  assert.doesNotMatch(student, /CASE WHEN homework_submissions\.status='returned' THEN/);
+  assert.doesNotMatch(student, /CASE WHEN checkins\.status='returned' THEN/);
+});
+
+test('the reminder email link opens handed-in work as handed in, not as a form', () => {
+  const body = bodyOf(app, 'async function followLink');
+  assert.match(body, /openStudentItem\(\{ openStudentItem: 'homework', assignmentId: assignment\.id \}\)/);
+  assert.doesNotMatch(body, /if \(assignment\) openHomeworkForm\(assignment\)/);
+});
+
+test('what the autosave demoted is put back, and the audit watches for it', () => {
+  const migration = fs.readFileSync(new URL('../migrations/052_restore_reverted_submissions.sql', import.meta.url), 'utf8');
+  assert.match(migration, /UPDATE homework_submissions SET status='submitted'[^;]*WHERE status='draft' AND submitted_at IS NOT NULL/);
+  assert.match(migration, /UPDATE checkins SET status='submitted'[^;]*WHERE status='draft' AND submitted_at IS NOT NULL/);
+  const audit = bodyOf(reminders, 'export async function auditReminders');
+  assert.match(audit, /FROM homework_submissions WHERE status='draft' AND submitted_at IS NOT NULL/);
 });
