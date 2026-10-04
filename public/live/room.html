@@ -92,6 +92,11 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
   .gatecard{padding:18px 16px;width:min(340px,100%)}
   .gatecard h2{font-size:17px}
 }
+/* The single tap a browser may insist on before it plays sound, and the line
+   shown while it asks about the microphone. */
+.hear{position:absolute;inset:0;z-index:95;display:grid;place-items:center;background:rgba(11,15,20,.5);padding:16px}
+.hear .btn{font-size:16px;padding:14px 26px;box-shadow:var(--shadow-lg)}
+.micnote{position:absolute;left:12px;right:12px;bottom:12px;z-index:96;background:rgba(255,255,255,.96);color:var(--text-secondary);border-radius:10px;padding:10px 12px;font-size:13px;font-weight:600;line-height:1.4;box-shadow:var(--shadow-md)}
 .nextclass{margin:-4px 0 14px;font-size:13px;font-weight:600;color:var(--text-secondary)}
 .nextclass.on{color:var(--success-700)}
 </style>
@@ -125,6 +130,8 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
       <div class="videowrap" id="stage">
         <div class="stagenote" id="stageNote">The class video appears here once you join.</div>
         <div id="zoomRoot"></div>
+        <div class="hear" id="hear" hidden><button class="btn primary" id="hearBtn">Tap to hear the class</button></div>
+        <div class="micnote" id="micNote" hidden>Your browser may ask to use the microphone. Allow it so you can practise aloud. If you refuse, you can still hear the class.</div>
         <div class="gate" id="gate">
           <div class="gatecard">
             <img src="/logo.webp" alt="Gaeilgeoir Guides">
@@ -177,6 +184,13 @@ if (qs.get('embed') === '1') document.body.classList.add('embed');
    teacher does not hear themselves; the questions panel is left out because
    the console has its own. It joins by itself the moment the session is live. */
 const preview = qs.get('preview') === '1';
+/* wait=1: the portal keeps this frame from the moment it loads, hidden, and
+   says when it is on screen. Until then nothing runs: no streams, no join.
+   The point is the browser's permission to make sound, which a page only
+   gets from a tap on itself or on a same-origin page that already held it:
+   a frame made at the moment the Live class tab is pressed has missed the
+   tap, this one was there for it. */
+const waitForShow = qs.get('wait') === '1';
 if (preview) document.body.classList.add('preview');
 function tellPortal(msg) {
   if (window.parent === window) return;
@@ -355,27 +369,30 @@ function classOver(reason){
     if (nc) nc.textContent = 'The class has ended. Go raibh maith agaibh, see you at the next one.';
     btn.hidden = true; $('#zoomOut').hidden = true;
     setStatus(false, 'Class over');
-    watchForNextSession();
+    watchLive(me?.session?.startedAt || '');
   } else {
-    if (nc) nc.textContent = 'You were disconnected from the class. Press Join to come back in.';
+    if (nc) nc.textContent = 'You were disconnected from the class. Joining you again…';
     btn.hidden = false; btn.disabled = false; btn.textContent = 'Join the class';
     setStatus(false, 'Not connected');
+    if (!preview) setTimeout(() => { if (!joined) join(); }, 4000);
   }
   tellPortal({ type: 'ended', byHost, reason: String(reason || '') });
 }
-/* After the class is over the page keeps an ear out: a second session the
-   same evening (a new Go live, so a new start time) brings the button back. */
+/* The page keeps an ear out for the session: it joins by itself when the
+   teacher goes live, and after a class has ended it waits for a session with
+   a new start time, since an ended webinar cannot be joined again. Nobody
+   has to press anything. */
 let sessionWatch = null;
-function watchForNextSession(){
+function watchLive(endedStart){
   if (preview || sessionWatch) return;
-  const endedStart = me?.session?.startedAt || '';
   sessionWatch = setInterval(async () => {
+    if (joined || Date.now() - endedAt < 30000) return;
     const now = await whoAmI().catch(() => null);
-    if (!now || !now.liveNow || (now.session?.startedAt || '') === endedStart) return;
+    if (!now || !now.liveNow || (endedStart && (now.session?.startedAt || '') === endedStart)) return;
     clearInterval(sessionWatch); sessionWatch = null; me = now;
-    const nc = $('#nextClass'); if (nc) nc.textContent = 'Your teacher is live again. Press Join.';
-    const btn = $('#joinBtn'); btn.hidden = false; btn.disabled = false; btn.textContent = 'Join the class';
-  }, 15000);
+    const nc = $('#nextClass'); if (nc) nc.textContent = 'Your teacher is live. Joining you now…';
+    join();
+  }, 10000);
 }
 async function join(){
   if (joined) return;
@@ -419,6 +436,7 @@ async function join(){
     $('#stageNote').style.display = 'none';
     setStatus(true, 'Live');
     setTimeout(fitStage, 800); setTimeout(fitStage, 2500);
+    joinAudio();
   } catch (e) {
     // Zoom's own words when it has any, its error code when it has not, so the
     // console's failure log says something a person can act on.
@@ -429,24 +447,90 @@ async function join(){
     const reason = said ? (said + (code ? ' (Zoom code ' + code + ')' : ''))
       : code === 200 ? 'Not started yet: the host is still in the practice session (Zoom code 200)'
       : code ? 'Zoom refused the join (code ' + code + ')' : 'Could not join.';
-    showError(/not start|practice/i.test(reason) ? 'The class has not started yet. Keep this page open and press Join again in a minute.' : reason);
+    const notStarted = /not start|practice/i.test(reason);
+    showError(notStarted ? 'The class has not started yet. Keep this page open: you join by yourself the moment it does.' : reason);
     // Zoom's own "Fail to join the meeting" box says nothing the line above
     // does not, and it sits over the whole page; it is closed for the student.
     setTimeout(() => { for (const b of document.querySelectorAll('button[class*="zoom-MuiButton"]')) if (/^ok$/i.test(b.textContent.trim())) b.click(); }, 150);
     btn.disabled = false; btn.textContent = 'Join the class';
     joined = false;
-    // Tell the teacher's console, in Zoom's words, and show the way out.
+    // Tell the teacher's console, in Zoom's words (once per reason, so a page
+    // trying every quarter minute is one line and not fifty), and show the way out.
     if (!preview) {
-      try { fetch('/api/live/join-failed', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ reason }) }); } catch {}
+      if (!reported.has(reason)) { reported.add(reason); try { fetch('/api/live/join-failed', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ reason }) }); } catch {} }
       if (me && me.joinUrl) { $('#zoomOutLink').href = me.joinUrl; $('#zoomOut').hidden = false; }
     }
+    // The host pressing Start is the only thing missing: try again by ourselves.
+    if (notStarted) setTimeout(() => { if (!joined) join(); }, 15000);
   }
 }
+const reported = new Set();
 $('#joinBtn').onclick = join;
+
+/* Audio. Zoom's component view never joins audio by itself and has no switch
+   for it (nothing in the 6.x typings; Zoom's own forum answer is to press the
+   button for the student), so once the video is in, the page presses Join
+   Audio. The browser asks about the microphone at that point, once per
+   device; refused, Zoom still joins listening only, which is all an attendee
+   needs. Some browsers will not play sound until the page has been tapped
+   (every iPhone, a desktop opened straight on this view): then one button,
+   Tap to hear the class, does the pressing inside the tap. The preview never
+   joins audio: the teacher is in the same room on the Zoom app, and a second
+   connection on the same desk is an echo. */
+const zoomButton = (label) => [...root.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label || b.title === label) || null;
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+function soundAllowed(){
+  try { const AC = window.AudioContext || window.webkitAudioContext; const ac = new AC(); const state = ac.state; ac.close().catch(() => {}); console.log('[gglive] sound probe', state, 'active', navigator.userActivation?.hasBeenActive); return state === 'running'; } catch { return true; }
+}
+/* While the tap is wanted, the page keeps checking: a tap anywhere in the
+   portal (the phrase card, the questions box, the Live class tab itself when
+   the frame was already there) counts, and the audio is pressed the moment
+   it is allowed, with the button taken away. */
+let soundPoll = null;
+function waitForSound(){
+  if (soundPoll) return;
+  let tries = 0;
+  soundPoll = setInterval(async () => {
+    if (++tries > 180 || $('#hear').hidden) { clearInterval(soundPoll); soundPoll = null; return; }
+    if (!soundAllowed()) return;
+    clearInterval(soundPoll); soundPoll = null;
+    $('#hear').hidden = true;
+    if (!(await pressJoinAudio())) $('#hear').hidden = false;
+  }, 1000);
+}
+async function pressJoinAudio(){
+  let btn = null;
+  for (let i = 0; i < 40 && !(btn = zoomButton('Join Audio')); i++) await pause(300);
+  if (!btn) return !zoomButton('Join Audio');
+  $('#micNote').hidden = false;
+  btn.click();
+  for (let i = 0; i < 20; i++) {
+    const box = [...document.querySelectorAll('button[class*="zoom-MuiButton"]')].find((b) => /join (audio by|with) computer/i.test(b.textContent));
+    if (box) { box.click(); break; }
+    if (!zoomButton('Join Audio')) break;
+    await pause(300);
+  }
+  await pause(2500);
+  $('#micNote').hidden = true;
+  return !zoomButton('Join Audio');
+}
+async function joinAudio(){
+  if (preview || demo) return;
+  if (!soundAllowed()) { $('#hear').hidden = false; waitForSound(); return; }
+  if (!(await pressJoinAudio())) { $('#hear').hidden = false; waitForSound(); }
+}
+$('#hearBtn').onclick = async () => {
+  $('#hear').hidden = true;
+  if (!(await pressJoinAudio())) $('#hear').hidden = false;
+};
+// For a look from the outside: the SDK client and where the page thinks it is.
+Object.defineProperty(window, 'gglive', { get: () => ({ client, joined, inMeeting }) });
 
 /* The page opens knowing who you are: the streams connect straight away, so a
    phrase pushed before you press Join is already on screen when you do. */
-(async () => {
+let booted = false;
+const boot = async () => {
+  if (booted) return; booted = true;
   try {
     me = await whoAmI(); if (!me) return;
     studentName = preview ? 'Teacher preview (silent)' : (me.name || 'Student');
@@ -456,7 +540,7 @@ $('#joinBtn').onclick = join;
     if (me.session?.classLabel) $('#stageNote').textContent = 'The class video appears here once you join · ' + me.session.classLabel;
     if (me.role === 'student') showNextClass(me.liveNow ? { live: true } : me.nextClass);
     if (me.joinUrl && !preview) { $('#zoomOutLink').href = me.joinUrl; $('#zoomOut').hidden = false; }
-    if (me.liveNow) { const el = $('#nextClass'); if (el) el.textContent = 'Your teacher is live now. Press Join.'; }
+    if (me.liveNow) { const el = $('#nextClass'); if (el) el.textContent = preview ? 'Your teacher is live now. Press Join.' : 'Your teacher is live. Joining you now…'; }
     if (!me.allowed) showError(me.reason || 'This session is for a different class.');
     if (!me.live && !preview) {
       const nc = $('#nextClass'); if (nc) { nc.textContent = 'Your teacher is still setting this up. Until then, join from the link on your calendar as usual.'; nc.className = 'nextclass'; }
@@ -464,6 +548,9 @@ $('#joinBtn').onclick = join;
     }
     connectChat();
     connectPhrases();
+    if (!preview && !demo && me.live && me.allowed) {
+      if (me.liveNow) join(); else watchLive('');
+    }
     if (preview) {
       $('#gateName').textContent = 'a silent viewer';
       const gateTitle = document.querySelector('.gatecard h2'); if (gateTitle) gateTitle.textContent = 'What students see';
@@ -483,7 +570,9 @@ $('#joinBtn').onclick = join;
     $('#stageNote').textContent = 'Demo mode · the phrase overlay works without a live class';
     setStatus(true, 'Demo mode');
   }
-})();
+};
+if (waitForShow) window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.source === 'gg-portal' && e.data.type === 'show') boot(); });
+else boot();
 </script>
 </body>
 </html>

@@ -217,7 +217,7 @@ test('the host ending the webinar reaches the student, and ends the session from
   // An ended webinar cannot be joined again: no button is offered, only
   // when the teacher goes live afresh does the door open.
   assert.match(room, /btn\.hidden = true; \$\('#zoomOut'\)\.hidden = true;/);
-  assert.match(room, /function watchForNextSession/);
+  assert.match(room, /function watchLive\(endedStart\)/);
   assert.doesNotMatch(room, /textContent = 'Join again'/);
   assert.match(teacher, /e\.data\.type === 'ended'/);
   assert.match(teacher, /async function autoEnd/);
@@ -245,5 +245,38 @@ test('the live pages are never cached past a deploy', () => {
 test('the framed live pages carry the asset version, so a deploy reaches them', () => {
   const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /new URL\(import\.meta\.url\)\.searchParams\.get\('v'\)/);
-  assert.match(app, /liveUrl\('\/live\/room\.html\?embed=1'\)/);
+  assert.match(app, /liveUrl\('\/live\/room\.html\?embed=1&wait=1'\)/);
+});
+
+/* Eamon, 4 Oct 2026: "I just want them to land on the page, have to do nothing
+   and it's streaming." Zoom's component view joins neither the meeting nor
+   its audio by itself, so the page does both. */
+test('a student lands on a live class and is in it, sound and all, without pressing anything', () => {
+  const room = fs.readFileSync(new URL('../public/live/room.html', import.meta.url), 'utf8');
+  // Joined on arrival when live, watched for otherwise; never the preview.
+  assert.match(room, /if \(!preview && !demo && me\.live && me\.allowed\) \{\s*if \(me\.liveNow\) join\(\); else watchLive\(''\);/);
+  // Audio is pressed for them once the video is in, and only for a real student.
+  assert.match(room, /setTimeout\(fitStage, 2500\);\s*joinAudio\(\);/);
+  assert.match(room, /async function joinAudio\(\)\{\s*if \(preview \|\| demo\) return;/);
+  assert.match(room, /zoomButton\('Join Audio'\)/);
+  // A browser that will not play sound untapped gets one button, nothing more.
+  assert.match(room, /id="hearBtn">Tap to hear the class</);
+  assert.match(room, /function soundAllowed\(\)/);
+  // A host still in the practice session is retried quietly, and logged once.
+  assert.match(room, /if \(notStarted\) setTimeout\(\(\) => \{ if \(!joined\) join\(\); \}, 15000\);/);
+  assert.match(room, /if \(!reported\.has\(reason\)\) \{ reported\.add\(reason\);/);
+});
+
+test('the student room frame is there before the tap that brings sound', () => {
+  // Made once at boot, hidden, outside the shell; shown and told so on the Live class view.
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const room = fs.readFileSync(new URL('../public/live/room.html', import.meta.url), 'utf8');
+  assert.match(app, /mountLiveFrame\(\);/);
+  assert.match(app, /liveUrl\('\/live\/room\.html\?embed=1&wait=1'\)/);
+  assert.match(app, /postMessage\(\{ source: 'gg-portal', type: 'show' \}, location\.origin\)/);
+  assert.match(app, /class="live-embed slot" id="live-slot"/);
+  assert.doesNotMatch(app, /live-embed"><iframe src="\$\{liveUrl\('\/live\/room\.html\?embed=1'\)/);
+  // The room does nothing until shown, then boots exactly once.
+  assert.match(room, /const waitForShow = qs\.get\('wait'\) === '1';/);
+  assert.match(room, /if \(waitForShow\) window\.addEventListener\('message'.*type === 'show'\) boot\(\); \}\);\s*else boot\(\);/);
 });

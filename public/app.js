@@ -8858,6 +8858,7 @@ function studentNavButton(view, icon, label, badge = 0) {
 
 async function loadStudent() {
   state.studentData = await api('/api/student/bootstrap');
+  mountLiveFrame();
   state.view ||= 'calendar';
   renderStudent();
 }
@@ -8979,6 +8980,7 @@ function renderStudent() {
   else content = studentCalendarView();
   shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Calendar', roleLabel: 'Student', notificationCount: state.studentData.notifications });
   bindStudentView();
+  placeLiveFrame();
   if (state.view === 'courses') bindCourse();
   if (state.view === 'private') {
     mountChatWidget();
@@ -9100,8 +9102,44 @@ function liveRoomView() {
   const copy = STUDENT_PAGE.live;
   return `<header class="sh"><div><h1>${copy.title}</h1><p>${copy.line}</p></div>
     ${state.studentData?.class ? `<span class="sh-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</header>
-  <div class="live-embed"><iframe src="${liveUrl('/live/room.html?embed=1')}" title="Live class"
-    allow="camera; microphone; autoplay; fullscreen; display-capture; speaker-selection" allowfullscreen></iframe></div>`;
+  <div class="live-embed slot" id="live-slot"></div>`;
+}
+
+/* The room's frame is made once, when the student's portal loads, and kept
+   outside the shell (which is redrawn on every view) hidden until the Live
+   class view is on screen, where it is laid over the slot above. The reason
+   is sound: a browser lets a page play audio only after a tap on it, or on a
+   same-origin page that was already holding it when the tap came. A frame
+   made at the moment the Live class tab is pressed has missed that tap and
+   Zoom's audio stays silent until the student taps again; this one was
+   there for it, so the class is heard with nothing pressed. The frame does
+   nothing at all until it is shown. */
+let liveFrameRoot = null;
+function mountLiveFrame() {
+  if (liveFrameRoot || !state.studentData?.liveClassroom) return;
+  liveFrameRoot = document.createElement('div');
+  liveFrameRoot.className = 'live-root';
+  liveFrameRoot.hidden = true;
+  liveFrameRoot.innerHTML = `<iframe src="${liveUrl('/live/room.html?embed=1&wait=1')}" title="Live class"
+    allow="camera; microphone; autoplay; fullscreen; display-capture; speaker-selection" allowfullscreen></iframe>`;
+  document.body.appendChild(liveFrameRoot);
+  const place = () => placeLiveFrame();
+  window.addEventListener('resize', place);
+  document.addEventListener('scroll', place, true);
+}
+let liveSlotWatch = null;
+function placeLiveFrame() {
+  if (!liveFrameRoot) return;
+  const slot = state.view === 'live' ? document.getElementById('live-slot') : null;
+  if (!slot) { liveFrameRoot.hidden = true; return; }
+  const r = slot.getBoundingClientRect();
+  Object.assign(liveFrameRoot.style, { top: `${Math.round(r.top)}px`, left: `${Math.round(r.left)}px`, width: `${Math.round(r.width)}px`, height: `${Math.round(r.height)}px` });
+  if (liveFrameRoot.hidden) {
+    liveFrameRoot.hidden = false;
+    liveFrameRoot.querySelector('iframe')?.contentWindow?.postMessage({ source: 'gg-portal', type: 'show' }, location.origin);
+  }
+  if (!liveSlotWatch && window.ResizeObserver) { liveSlotWatch = new ResizeObserver(() => placeLiveFrame()); }
+  try { liveSlotWatch?.disconnect(); liveSlotWatch?.observe(slot); } catch { /* fine */ }
 }
 
 /* A page title, not a greeting.
