@@ -92,6 +92,14 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
   .gatecard{padding:18px 16px;width:min(340px,100%)}
   .gatecard h2{font-size:17px}
 }
+/* The ten seconds on the door while the class is joined behind it. */
+.countdown{position:relative;width:88px;height:88px;margin:2px auto 12px}
+.countdown svg{width:88px;height:88px;transform:rotate(-90deg)}
+.countdown .track{fill:none;stroke:var(--gray-100);stroke-width:6}
+.countdown .bar{fill:none;stroke:var(--brand-500);stroke-width:6;stroke-linecap:round;stroke-dasharray:176;stroke-dashoffset:0}
+.countdown.run .bar{transition:stroke-dashoffset 10s linear;stroke-dashoffset:176}
+.countdown .num{position:absolute;inset:0;display:grid;place-items:center;font-size:32px;font-weight:800;letter-spacing:-.03em;color:var(--text);font-variant-numeric:tabular-nums}
+.countdown .num.wait{font-size:13px;font-weight:700;color:var(--text-tertiary)}
 /* The single tap a browser may insist on before it plays sound, and the line
    shown while it asks about the microphone. */
 .hear{position:absolute;inset:0;z-index:95;display:grid;place-items:center;background:rgba(11,15,20,.5);padding:16px}
@@ -138,6 +146,7 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
             <h2>Join the live class</h2>
             <p>It plays right here. No Zoom app, no Zoom account.</p>
             <p class="field-hint" style="margin:-6px 0 10px">Joining as <b id="gateName">you</b></p>
+            <div class="countdown" id="countdown" hidden><svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="28"/><circle class="bar" cx="32" cy="32" r="28"/></svg><div class="num" id="countNum">10</div></div>
             <p class="nextclass" id="nextClass"></p>
             <button class="btn primary block" id="joinBtn">Join the class</button>
             <div class="err" id="err"></div>
@@ -391,12 +400,46 @@ function watchLive(endedStart){
     if (!now || !now.liveNow || (endedStart && (now.session?.startedAt || '') === endedStart)) return;
     clearInterval(sessionWatch); sessionWatch = null; me = now;
     const nc = $('#nextClass'); if (nc) nc.textContent = 'Your teacher is live. Joining you now…';
-    join();
+    join({ countdown: true });
   }, 10000);
 }
-async function join(){
+/* Ten seconds on the door, so a student who has just arrived knows the
+   class is coming rather than looking at a dark box. The join runs behind
+   it; the door opens when the count is done and the video is in, whichever
+   is later. Past zero without the video, the ring stays full and the number
+   gives way to "almost there", which is the truth of it. */
+let countdownDone = Promise.resolve(), countdownTick = null;
+function startCountdown(seconds = 10){
+  const box = $('#countdown'), num = $('#countNum'), title = document.querySelector('.gatecard h2');
+  if (!box) return;
+  box.hidden = false; box.classList.remove('run'); num.className = 'num'; num.textContent = String(seconds);
+  if (title) title.textContent = 'Joining your class';
+  const nc = $('#nextClass'); if (nc) { nc.textContent = 'You will be in with your teacher in a moment.'; nc.className = 'nextclass'; }
+  $('#joinBtn').hidden = true;
+  void box.offsetWidth; box.classList.add('run');
+  if (countdownTick) clearInterval(countdownTick);
+  countdownDone = new Promise((resolve) => {
+    let left = seconds;
+    const tick = countdownTick = setInterval(() => {
+      left -= 1;
+      if (left > 0) { num.textContent = String(left); return; }
+      clearInterval(tick); countdownTick = null;
+      if (!inMeeting) { num.textContent = 'almost there'; num.className = 'num wait'; }
+      resolve();
+    }, 1000);
+  });
+}
+function endCountdown(){
+  if (countdownTick) { clearInterval(countdownTick); countdownTick = null; countdownDone = Promise.resolve(); }
+  const box = $('#countdown'); if (box) { box.hidden = true; box.classList.remove('run'); }
+  const title = document.querySelector('.gatecard h2'); if (title) title.textContent = preview ? 'What students see' : 'Join the live class';
+  $('#joinBtn').hidden = false;
+}
+
+async function join({ countdown = false } = {}){
   if (joined) return;
   joined = true;
+  if (countdown && !preview && !demo) startCountdown();
   $('#err').style.display = 'none';
   const btn = $('#joinBtn'); btn.disabled = true; btn.textContent = 'Joining…';
   try {
@@ -432,12 +475,15 @@ async function join(){
     }
     await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.zoomEmail || me.email || '' });
     inMeeting = true;
-    $('#gate').style.display = 'none';
     $('#stageNote').style.display = 'none';
     setStatus(true, 'Live');
     setTimeout(fitStage, 800); setTimeout(fitStage, 2500);
     joinAudio();
+    await countdownDone;
+    endCountdown();
+    $('#gate').style.display = 'none';
   } catch (e) {
+    endCountdown();
     // Zoom's own words when it has any, its error code when it has not, so the
     // console's failure log says something a person can act on.
     // Code 200 with no reason is what a webinar gives before the host presses
@@ -549,7 +595,7 @@ const boot = async () => {
     connectChat();
     connectPhrases();
     if (!preview && !demo && me.live && me.allowed) {
-      if (me.liveNow) join(); else watchLive('');
+      if (me.liveNow) join({ countdown: true }); else watchLive('');
     }
     if (preview) {
       $('#gateName').textContent = 'a silent viewer';

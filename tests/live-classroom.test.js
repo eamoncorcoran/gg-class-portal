@@ -254,7 +254,7 @@ test('the framed live pages carry the asset version, so a deploy reaches them', 
 test('a student lands on a live class and is in it, sound and all, without pressing anything', () => {
   const room = fs.readFileSync(new URL('../public/live/room.html', import.meta.url), 'utf8');
   // Joined on arrival when live, watched for otherwise; never the preview.
-  assert.match(room, /if \(!preview && !demo && me\.live && me\.allowed\) \{\s*if \(me\.liveNow\) join\(\); else watchLive\(''\);/);
+  assert.match(room, /if \(!preview && !demo && me\.live && me\.allowed\) \{\s*if \(me\.liveNow\) join\(\{ countdown: true \}\); else watchLive\(''\);/);
   // Audio is pressed for them once the video is in, and only for a real student.
   assert.match(room, /setTimeout\(fitStage, 2500\);\s*joinAudio\(\);/);
   assert.match(room, /async function joinAudio\(\)\{\s*if \(preview \|\| demo\) return;/);
@@ -279,4 +279,16 @@ test('the student room frame is there before the tap that brings sound', () => {
   // The room does nothing until shown, then boots exactly once.
   assert.match(room, /const waitForShow = qs\.get\('wait'\) === '1';/);
   assert.match(room, /if \(waitForShow\) window\.addEventListener\('message'.*type === 'show'\) boot\(\); \}\);\s*else boot\(\);/);
+});
+
+test('a student who has just arrived sees ten seconds counting down on the door', () => {
+  const room = fs.readFileSync(new URL('../public/live/room.html', import.meta.url), 'utf8');
+  assert.match(room, /function startCountdown\(seconds = 10\)/);
+  assert.match(room, /id="countdown" hidden/);
+  // The door opens when the count is done and the video is in, whichever is later.
+  assert.match(room, /joinAudio\(\);\s*await countdownDone;\s*endCountdown\(\);\s*\$\('#gate'\)\.style\.display = 'none';/);
+  // Past zero without the video, it says so rather than inventing a number.
+  assert.match(room, /num\.textContent = 'almost there'/);
+  // Retries while the host is in the practice session do not count down again.
+  assert.match(room, /if \(notStarted\) setTimeout\(\(\) => \{ if \(!joined\) join\(\); \}, 15000\);/);
 });
