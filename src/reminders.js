@@ -24,13 +24,27 @@ async function candidates(seconds) {
      JOIN class_students cs ON cs.class_id=a.class_id AND cs.active=true
      JOIN users u ON u.id=cs.student_id AND u.active=true AND u.withdrawn_at IS NULL
      LEFT JOIN homework_submissions hs ON hs.assignment_id=a.id AND hs.student_id=u.id
-     WHERE a.status='published' AND a.reminders_enabled=true
+     WHERE a.status='published' AND a.reminders_enabled=true AND a.visible_at <= now()
        AND COALESCE(hs.status,'draft') <> 'submitted' AND COALESCE(hs.status,'draft') <> 'returned'
        AND a.deadline_at BETWEEN now() + ($1::text || ' seconds')::interval - interval '6 minutes'
                            AND now() + ($1::text || ' seconds')::interval + interval '6 minutes'`,
     [seconds],
   );
   return result.rows;
+}
+
+/* Asked again at the moment of sending, not only when the list was drawn up.
+   A cycle works through a class one email at a time, and a student who hands
+   in while it is halfway down the list would otherwise be chased for work
+   that is already in. Draft or nothing is pending; submitted and returned are
+   done, whatever the list said a minute ago. */
+export async function homeworkStillPending(assignmentId, studentId) {
+  const row = await one('SELECT status FROM homework_submissions WHERE assignment_id=$1 AND student_id=$2', [assignmentId, studentId]);
+  return !row || row.status === 'draft';
+}
+export async function checkinStillPending(weekId, studentId) {
+  const row = await one('SELECT status FROM checkins WHERE week_id=$1 AND student_id=$2', [weekId, studentId]);
+  return !row || row.status === 'draft';
 }
 
 export async function runReminderCycle() {
@@ -46,6 +60,7 @@ export async function runReminderCycle() {
         [row.student_id, row.assignment_id, threshold.key],
       );
       if (existing) continue;
+      if (!(await homeworkStillPending(row.assignment_id, row.student_id))) continue;
       let status = 'failed';
       let providerId = null;
       let error = null;
@@ -142,6 +157,7 @@ export async function runCheckinReminders() {
 
   let sent = 0;
   for (const row of due.rows) {
+    if (!(await checkinStillPending(row.week_id, row.student_id))) continue;
     const ok = await sendOnce({
       studentId: row.student_id, email: row.email,
       key: `checkin_due:${row.week_id}`, templateKey: 'checkin_due',
@@ -296,6 +312,7 @@ export async function sendCheckinReminderNow({ classId = null, actorId = null } 
   let sent = 0;
   let skipped = 0;
   for (const row of rows) {
+    if (!(await checkinStillPending(row.week_id, row.student_id))) { skipped += 1; continue; }
     const ok = await sendOnce({
       studentId: row.student_id, email: row.email,
       key: `checkin_nudge:${row.week_id}:${today}`, templateKey: 'checkin_due',
@@ -308,6 +325,61 @@ export async function sendCheckinReminderNow({ classId = null, actorId = null } 
   }
   console.log(`Check-in reminder sent by hand${actorId ? ` by ${actorId}` : ''}: ${sent} sent, ${skipped} skipped.`);
   return { sent, skipped, considered: rows.length };
+}
+
+/* The audit: every reminder about work that went out, set against the moment
+   the work came in. The question it answers is the one that matters, which is
+   whether anybody was chased for something they had already handed in. The
+   send time is the delivery row's own; the hand-in time is the submission's.
+   A reminder that went before the work came in was right to go, however the
+   two look side by side now. */
+export async function auditReminders({ days = 30 } = {}) {
+  const span = Math.max(1, Math.min(365, Number(days) || 30));
+  const homework = await query(
+    `SELECT d.template_key, d.sent_at, u.name, u.email, a.title, a.deadline_at,
+            hs.status, hs.submitted_at,
+            (hs.submitted_at IS NOT NULL AND hs.submitted_at < d.sent_at) AS already_done
+     FROM email_deliveries d
+     JOIN users u ON u.id=d.user_id
+     JOIN assignments a ON a.id=d.assignment_id
+     LEFT JOIN homework_submissions hs ON hs.assignment_id=d.assignment_id AND hs.student_id=d.user_id
+     WHERE d.template_key IN ('tomorrow','twoHours','thirtyMinutes')
+       AND d.status IN ('sent','simulated') AND d.sent_at > now() - ($1::text || ' days')::interval
+     ORDER BY d.sent_at DESC`,
+    [span],
+  );
+  const checkins = await query(
+    `SELECT d.dedupe_key, d.template_key, d.sent_at, u.name, u.email, w.week_start, w.checkin_due_at,
+            ch.status, ch.submitted_at,
+            (ch.submitted_at IS NOT NULL AND ch.submitted_at < d.sent_at) AS already_done
+     FROM email_deliveries d
+     JOIN users u ON u.id=d.user_id
+     JOIN weeks w ON w.id = split_part(d.dedupe_key, ':', 2)::uuid
+     LEFT JOIN checkins ch ON ch.week_id=w.id AND ch.student_id=d.user_id
+     WHERE (d.dedupe_key LIKE 'checkin_due:%' OR d.dedupe_key LIKE 'checkin_nudge:%')
+       AND d.status IN ('sent','simulated') AND d.sent_at > now() - ($1::text || ' days')::interval
+     ORDER BY d.sent_at DESC`,
+    [span],
+  );
+  const shape = (row, what) => ({
+    what, name: row.name, email: row.email, sentAt: row.sent_at,
+    submittedAt: row.submitted_at, status: row.status || 'nothing yet',
+    template: row.template_key,
+  });
+  const wrong = [
+    ...homework.rows.filter((r) => r.already_done).map((r) => ({ ...shape(r, r.title), due: r.deadline_at })),
+    ...checkins.rows.filter((r) => r.already_done).map((r) => ({ ...shape(r, `Check-in, week of ${new Date(r.week_start).toISOString().slice(0, 10)}`), due: r.checkin_due_at })),
+  ].sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
+  const doneSince = [...homework.rows, ...checkins.rows].filter((r) => r.submitted_at && !r.already_done).length;
+  return {
+    days: span,
+    homework: { sent: homework.rows.length, alreadyDone: homework.rows.filter((r) => r.already_done).length },
+    checkins: { sent: checkins.rows.length, alreadyDone: checkins.rows.filter((r) => r.already_done).length },
+    /* Work that came in after its reminder: the reminder did its job, or at
+       least did no harm. Shown so the two numbers above have a scale. */
+    doneAfterReminder: doneSince,
+    wrong,
+  };
 }
 
 export function startReminderScheduler() {

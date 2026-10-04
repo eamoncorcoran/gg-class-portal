@@ -97,3 +97,36 @@ test('a link to an assignment that is gone leaves the student on the calendar', 
   assert.match(body, /if \(assignment\) openHomeworkForm\(assignment\)/,
     'a missing assignment must not throw at somebody arriving from an email');
 });
+
+/* Eamon, 4 Oct 2026: "only send out email reminders for homework and check-ins
+   to people who haven't actually done it." The list already left them out;
+   now the moment of sending asks again, and the audit shows it held. */
+test('a reminder is checked again at the moment of sending, not only when the list was drawn up', () => {
+  const cycle = bodyOf(reminders, 'export async function runReminderCycle');
+  assert.match(cycle, /if \(!\(await homeworkStillPending\(row\.assignment_id, row\.student_id\)\)\) continue;/);
+  assert.ok(cycle.indexOf('homeworkStillPending') < cycle.indexOf('sendDeadlineReminder'), 'the check comes before the send');
+  const weekly = bodyOf(reminders, 'export async function runCheckinReminders');
+  assert.match(weekly, /if \(!\(await checkinStillPending\(row\.week_id, row\.student_id\)\)\) continue;/);
+  const byHand = bodyOf(reminders, 'export async function sendCheckinReminderNow');
+  assert.match(byHand, /if \(!\(await checkinStillPending\(row\.week_id, row\.student_id\)\)\) \{ skipped \+= 1; continue; \}/);
+  // Draft or nothing is pending; submitted and returned are done.
+  const pending = bodyOf(reminders, 'export async function homeworkStillPending');
+  assert.match(pending, /return !row \|\| row\.status === 'draft';/);
+});
+
+test('a homework reminder is only about homework the student can open', () => {
+  const list = bodyOf(reminders, 'async function candidates');
+  assert.match(list, /a\.visible_at <= now\(\)/, 'nothing about homework that is not visible yet');
+  assert.match(list, /COALESCE\(hs\.status,'draft'\) <> 'submitted' AND COALESCE\(hs\.status,'draft'\) <> 'returned'/);
+});
+
+test('the audit sets every reminder against when the work came in', () => {
+  const audit = bodyOf(reminders, 'export async function auditReminders');
+  assert.match(audit, /hs\.submitted_at < d\.sent_at\) AS already_done/);
+  assert.match(audit, /ch\.submitted_at < d\.sent_at\) AS already_done/);
+  assert.match(audit, /d\.template_key IN \('tomorrow','twoHours','thirtyMinutes'\)/);
+  assert.match(audit, /d\.dedupe_key LIKE 'checkin_due:%' OR d\.dedupe_key LIKE 'checkin_nudge:%'/);
+  const settings = fs.readFileSync(new URL('../src/routes/settings.js', import.meta.url), 'utf8');
+  assert.match(settings, /router\.get\('\/reminders\/audit'/);
+  assert.match(app, /api\('\/api\/settings\/reminders\/audit\?days=30'\)/);
+});

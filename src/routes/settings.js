@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import { requireAdmin } from '../session.js';
 import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig, getZoomConfig, saveZoomConfig } from '../settings.js';
 import { draftCheckinFeedback } from '../ai.js';
+import { auditReminders } from '../reminders.js';
 import { sendEmail } from '../email.js';
 import { audit } from '../audit.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
@@ -332,6 +333,11 @@ router.put('/nudge', asyncRoute(async (req, res) => {
   await setSetting('nudge', parsed.data, req.user.id);
   await audit({ actorId: req.user.id, action: 'settings.nudge_updated', entityType: 'settings', entityId: 'nudge', ip: req.ip });
   res.json(parsed.data);
+}));
+
+/* Who the reminders actually reached, against who had already handed in. */
+router.get('/reminders/audit', asyncRoute(async (req, res) => {
+  res.json(await auditReminders({ days: req.query.days }));
 }));
 
 router.put('/reminders', asyncRoute(async (req, res) => {

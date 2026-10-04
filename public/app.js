@@ -6808,6 +6808,32 @@ async function openCheckinReminderModal() {
   });
 }
 
+/* The audit card: every homework and check-in reminder of the last month,
+   against who had already handed in when it went. The number that matters is
+   the one that should be zero, and it is shown first, with the names when it
+   is not. */
+async function loadReminderAudit() {
+  const card = document.getElementById('reminder-audit-card');
+  if (!card) return;
+  let audit;
+  try { audit = await api('/api/settings/reminders/audit?days=30'); }
+  catch (error) { card.innerHTML = `<div class="card-body"><p class="muted small">${escapeHtml(error.message)}</p></div>`; return; }
+  const wrong = audit.wrong || [];
+  const total = (audit.homework?.sent || 0) + (audit.checkins?.sent || 0);
+  const when = (iso) => iso ? fmtDate(iso, { weekday: true, time: true, dateStyle: 'medium' }) : '';
+  card.innerHTML = `
+    <div class="card-header">
+      <div><h2>Who the reminders reached</h2><p>Last ${audit.days} days: ${total} reminder${total === 1 ? '' : 's'} about work, ${audit.homework?.sent || 0} homework and ${audit.checkins?.sent || 0} check-in.</p></div>
+      <span class="pill ${wrong.length ? 'warn' : 'ok'}">${wrong.length ? `${wrong.length} went to somebody who had already handed in` : 'None went to anybody who had already handed in'}</span>
+    </div>
+    <div class="card-body">
+      <p class="muted small">A reminder only goes to a student whose work is not in, checked when the list is drawn up and again at the moment of sending. ${audit.doneAfterReminder || 0} of these were followed by the work coming in.</p>
+      ${wrong.length ? `<table class="table"><thead><tr><th>Student</th><th>About</th><th>Reminder sent</th><th>Handed in</th></tr></thead><tbody>
+        ${wrong.map((row) => `<tr><td>${escapeHtml(row.name)}<br><span class="muted small">${escapeHtml(row.email)}</span></td><td>${escapeHtml(row.what)}</td><td>${escapeHtml(when(row.sentAt))}</td><td>${escapeHtml(when(row.submittedAt))}</td></tr>`).join('')}
+      </tbody></table>` : ''}
+    </div>`;
+}
+
 async function loadEmailPause() {
   const card = document.getElementById('email-pause-card');
   if (!card) return;
@@ -6879,6 +6905,7 @@ function remindersView() {
   };
   return `${pageHeader('Automation', 'Email reminders', 'Configure the delivery provider, templates and automatic deadline sequence.', `<button class="btn" id="send-checkin-now">Send the check-in reminder now</button><button class="btn" id="run-reminders">Run reminder check</button><button class="btn primary" id="save-reminders">Save settings</button>`)}
     <section class="card" id="email-pause-card"><div class="card-body"><p class="muted small">Checking what has been sent…</p></div></section>
+    <section class="card" id="reminder-audit-card"><div class="card-body"><p class="muted small">Checking who the reminders reached…</p></div></section>
     <div class="settings-grid"><div class="settings-stack">
       <section class="card"><div class="card-header"><div><h2>Delivery settings</h2><p>Use a GoHighLevel webhook, SMTP or console mode.</p></div></div><div class="card-body">
         <div class="setting-row"><div class="setting-copy"><strong>Provider</strong><span>Console mode logs email locally without sending.</span></div><div><select id="email-provider"><option value="console" ${email.provider === 'console' ? 'selected' : ''}>Console / test</option><option value="ghl_webhook" ${email.provider === 'ghl_webhook' ? 'selected' : ''}>GoHighLevel webhook</option><option value="smtp" ${email.provider === 'smtp' ? 'selected' : ''}>SMTP</option></select></div></div>
@@ -8096,6 +8123,7 @@ function bindReminderSettings() {
   document.getElementById('save-email')?.addEventListener('click', saveEmailSettings);
   document.getElementById('test-email')?.addEventListener('click', testEmail);
   if (document.getElementById('email-pause-card')) loadEmailPause();
+  if (document.getElementById('reminder-audit-card')) loadReminderAudit();
   document.getElementById('send-checkin-now')?.addEventListener('click', openCheckinReminderModal);
   document.getElementById('run-reminders')?.addEventListener('click', async () => {
     try { await api('/api/admin/reminders/run', { method: 'POST' }); showToast('Reminder cycle completed'); }

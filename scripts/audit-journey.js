@@ -1359,6 +1359,8 @@ try {
      pause that cannot be lifted is worse than no pause at all. */
   expectOk('the sending summary loads', await admin.call('/api/settings/email/pause'),
     (d) => typeof d?.paused === 'boolean' && d?.lastDay !== undefined);
+  expectOk('the reminder audit loads, with nobody chased for work already in', await admin.call('/api/settings/reminders/audit?days=30'),
+    (d) => typeof d?.homework?.sent === 'number' && typeof d?.checkins?.sent === 'number' && Array.isArray(d?.wrong) && d.wrong.length === 0);
   const wasPaused = (await admin.call('/api/settings/email/pause')).data?.paused;
   expectOk('sending can be held', await admin.call('/api/settings/email/pause',
     { method: 'PUT', body: { hours: 1, reason: 'audit' } }), (d) => d?.paused === true);
