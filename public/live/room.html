@@ -104,6 +104,9 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
    shown while it asks about the microphone. */
 .hear{position:absolute;inset:0;z-index:95;display:grid;place-items:center;background:rgba(11,15,20,.5);padding:16px}
 .hear .btn{font-size:16px;padding:14px 26px;box-shadow:var(--shadow-lg)}
+/* The line across the top of the stage while the student is in a breakout room. */
+.bonote{position:absolute;left:12px;right:12px;top:12px;z-index:96;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.96);color:var(--text);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:700;line-height:1.4;box-shadow:var(--shadow-md)}
+.bonote .btn{margin-left:auto;padding:6px 12px;font-size:12.5px}
 .micnote{position:absolute;left:12px;right:12px;bottom:12px;z-index:96;background:rgba(255,255,255,.96);color:var(--text-secondary);border-radius:10px;padding:10px 12px;font-size:13px;font-weight:600;line-height:1.4;box-shadow:var(--shadow-md)}
 .nextclass{margin:-4px 0 14px;font-size:13px;font-weight:600;color:var(--text-secondary)}
 .nextclass.on{color:var(--success-700)}
@@ -139,6 +142,7 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
         <div class="stagenote" id="stageNote">The class video appears here once you join.</div>
         <div id="zoomRoot"></div>
         <div class="hear" id="hear" hidden><button class="btn primary" id="hearBtn">Tap to hear the class</button></div>
+        <div class="bonote" id="boNote" hidden><span id="boText">You are in a breakout room.</span><button class="btn" id="boLeave" hidden>Back to the class</button></div>
         <div class="micnote" id="micNote" hidden>Your browser may ask to use the microphone. Allow it so you can practise aloud. If you refuse, you can still hear the class.</div>
         <div class="gate" id="gate">
           <div class="gatecard">
@@ -456,7 +460,12 @@ async function join({ countdown = false } = {}){
     if (!client) {
       client = ZoomMtgEmbedded.createClient();
       await client.init({
-        zoomAppRoot: root, language: 'en-US', patchJsMedia: true, leaveOnPageUnload: true,
+        /* leaveOnPageUnload is off on purpose: with it on, Zoom's own note is
+           that a participant "needs to be assigned again instead of being
+           assigned and auto join the room", which is exactly the breakout
+           room silence students saw. A closed tab is noticed by Zoom a little
+           later instead, which costs nothing. */
+        zoomAppRoot: root, language: 'en-US', patchJsMedia: true, leaveOnPageUnload: false,
         customize: {
           video: {
             isResizable: false,
@@ -472,9 +481,11 @@ async function join({ countdown = false } = {}){
         const state = String(p?.state || '');
         if (state === 'Closed' || state === 'Fail') classOver(p?.reason || state);
       });
+      client.on('room-state-change', (p) => { console.log('[gglive] room state', p?.status); onRoomState(); });
     }
     await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.zoomEmail || me.email || '' });
     inMeeting = true;
+    watchRooms();
     $('#stageNote').style.display = 'none';
     setStatus(true, 'Live');
     setTimeout(fitStage, 800); setTimeout(fitStage, 2500);
@@ -524,6 +535,10 @@ $('#joinBtn').onclick = join;
    joins audio: the teacher is in the same room on the Zoom app, and a second
    connection on the same desk is an echo. */
 const zoomButton = (label) => [...root.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label || b.title === label) || null;
+/* Zoom's button for joining audio is called Join Audio in a webinar and plain
+   Audio in a meeting or a breakout room; once audio is in it becomes Audio
+   Setting, Mute or Unmute. So "not yet joined" is one of the first two. */
+const audioButton = () => zoomButton('Join Audio') || zoomButton('Audio');
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 function soundAllowed(){
   try { const AC = window.AudioContext || window.webkitAudioContext; const ac = new AC(); const state = ac.state; ac.close().catch(() => {}); console.log('[gglive] sound probe', state, 'active', navigator.userActivation?.hasBeenActive); return state === 'running'; } catch { return true; }
@@ -544,21 +559,21 @@ function waitForSound(){
     if (!(await pressJoinAudio())) $('#hear').hidden = false;
   }, 1000);
 }
+const audioJoined = () => { try { return Boolean(client?.getCurrentUser()?.audio); } catch { return false; } };
 async function pressJoinAudio(){
   let btn = null;
-  for (let i = 0; i < 40 && !(btn = zoomButton('Join Audio')); i++) await pause(300);
-  if (!btn) return !zoomButton('Join Audio');
+  for (let i = 0; i < 40 && !(btn = audioButton()); i++) { if (audioJoined()) return true; await pause(300); }
+  if (!btn) return audioJoined();
   $('#micNote').hidden = false;
   btn.click();
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 20 && !audioJoined(); i++) {
     const box = [...document.querySelectorAll('button[class*="zoom-MuiButton"]')].find((b) => /join (audio by|with) computer/i.test(b.textContent));
     if (box) { box.click(); break; }
-    if (!zoomButton('Join Audio')) break;
     await pause(300);
   }
-  await pause(2500);
+  for (let i = 0; i < 8 && !audioJoined(); i++) await pause(300);
   $('#micNote').hidden = true;
-  return !zoomButton('Join Audio');
+  return audioJoined();
 }
 async function joinAudio(){
   if (preview || demo) return;
@@ -569,6 +584,83 @@ $('#hearBtn').onclick = async () => {
   $('#hear').hidden = true;
   if (!(await pressJoinAudio())) $('#hear').hidden = false;
 };
+/* Breakout rooms. Zoom's component view does not move a participant into
+   the room the host assigned them to, nor ask them; it only reports that
+   they were invited and leaves the join to the page. So the page watches,
+   and the moment the student is assigned to an open room it joins it for
+   them, joins audio if that had not happened yet, and unmutes, since the
+   point of a breakout room is to talk. A line across the stage says where
+   they are, with a way back when the host allows one. When the host closes
+   the rooms Zoom brings everyone back by itself. */
+let roomPoll = null, inRoom = false, lastRoomStatus = '';
+const roomApi = (name, ...args) => { try { return client?.[name]?.(...args); } catch (e) { console.log('[gglive] ' + name, e?.message || e); return null; } };
+async function onRoomState(){
+  if (!client || !inMeeting) return;
+  const status = roomApi('getBreakoutRoomStatus');            // 2 = open, 3 = closing, 4 = closed
+  const mine = String(roomApi('getUserStatus') || '');          // invited, joining, in room, ...
+  const note = $('#boNote'), text = $('#boText'), back = $('#boLeave');
+  if (mine !== lastRoomStatus) { console.log('[gglive] breakout', status, mine); lastRoomStatus = mine; }
+  if (status === 2 && mine === 'invited') {
+    const rooms = roomApi('getBreakoutRoomList') || [];
+    const room = rooms[0];
+    if (room?.roomId) {
+      text.textContent = `Your teacher has put you in ${room.name || 'a breakout room'}. Joining…`;
+      note.hidden = false; back.hidden = true;
+      try { await client.joinBreakoutRoom(room.roomId); } catch (e) { console.log('[gglive] joinBreakoutRoom', e?.reason || e?.message || e); }
+    }
+    return;
+  }
+  if (mine === 'in room') {
+    if (!inRoom) {
+      inRoom = true;
+      const rooms = roomApi('getBreakoutRoomList') || [];
+      const name = rooms[0]?.name || (roomApi('getCurrentBreakoutRoom') || {}).name || 'a breakout room';
+      text.textContent = `You are in ${name}. Your mic is on, talk away.`;
+      note.hidden = false;
+      const opts = roomApi('getBreakoutRoomOptions') || {};
+      back.hidden = opts.isBackToMainSessionEnabled === false;
+      /* Zoom drops the audio connection on the way into a room, and the
+         button that brings it back is called Audio there rather than Join
+         Audio. Pressed for them, then the mic is opened, since the point of
+         a breakout room is to talk. */
+      await roomAudio(text);
+    }
+    return;
+  }
+  if (inRoom && (mine === 'initial' || mine === 'leaving' || status === 4 || status === 1)) {
+    inRoom = false; note.hidden = true;
+    try { client.mute(true); } catch {}
+    // Back in the class: the audio connection went with the room, so it is pressed again.
+    setTimeout(() => { if (!audioJoined()) pressJoinAudio(); }, 2500);
+  }
+}
+async function roomAudio(text){
+  const current = () => { try { return client.getCurrentUser() || {}; } catch { return {}; } };
+  if (!current().audio) {
+    const btn = audioButton();
+    if (btn) btn.click();
+    for (let i = 0; i < 20 && !current().audio; i++) {
+      const box = [...document.querySelectorAll('button[class*="zoom-MuiButton"]')].find((b) => /join (audio by|with) computer/i.test(b.textContent));
+      if (box) box.click();
+      await pause(400);
+    }
+  }
+  if (!current().audio) {
+    text.textContent = 'Allow the microphone (the lock or camera icon by the address bar) so you can hear and talk in the room.';
+    return;
+  }
+  try { await client.mute(false); text.textContent = text.textContent.replace(/Your mic is on, talk away\.$/, 'Your mic is on, talk away.'); }
+  catch (e) {
+    console.log('[gglive] unmute', e?.reason || e?.message || e);
+    text.textContent = 'You are in the room. Allow the microphone to talk; you can hear the others either way.';
+  }
+}
+function watchRooms(){
+  if (roomPoll || preview || demo) return;
+  roomPoll = setInterval(onRoomState, 3000);
+}
+$('#boLeave').onclick = async () => { try { await client.leaveBreakoutRoom(); } catch (e) { console.log('[gglive] leaveBreakoutRoom', e?.reason || e?.message || e); } };
+
 // For a look from the outside: the SDK client and where the page thinks it is.
 Object.defineProperty(window, 'gglive', { get: () => ({ client, joined, inMeeting }) });
 

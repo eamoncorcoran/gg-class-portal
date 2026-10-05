@@ -8890,6 +8890,26 @@ async function loadStudent() {
   mountLiveFrame();
   state.view ||= 'calendar';
   renderStudent();
+  watchForStaleStudent();
+}
+
+/* A tab left open overnight, or a second device, showed yesterday's list:
+   homework handed in on the phone still read "To do" on the laptop, and the
+   badge did not budge. Coming back to the tab after a while asks again. */
+let studentLoadedAt = Date.now(), staleWatch = false;
+function watchForStaleStudent() {
+  studentLoadedAt = Date.now();
+  if (staleWatch) return;
+  staleWatch = true;
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !state.studentData || Date.now() - studentLoadedAt < 60 * 1000) return;
+    if (document.querySelector('.modal-open, .modal')) return; // never under somebody's feet mid-form
+    try {
+      state.studentData = await api('/api/student/bootstrap');
+      studentLoadedAt = Date.now();
+      renderStudent();
+    } catch { /* the next visit will */ }
+  });
 }
 
 const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message', live: 'Live class' };
@@ -9296,8 +9316,12 @@ function studentCalendarView() {
   });
 
   // Anything already handed in disappears from this list entirely — it is not work
-  // to do. What is left splits by whether the deadline has gone.
-  const outstanding = items.filter((item) => !item.submitted);
+  // to do. What is left splits by whether the deadline has gone. Work that had
+  // already closed when this student joined the class was never theirs to do,
+  // so it is not theirs to have missed either: a student starting in week six
+  // used to open the portal to five missed check-ins and two missed homeworks.
+  const joinedAt = state.studentData.enrolledAt ? new Date(state.studentData.enrolledAt).getTime() : 0;
+  const outstanding = items.filter((item) => !item.submitted && !(item.status.tone === 'red' && joinedAt && new Date(item.due).getTime() < joinedAt));
   const upcoming = outstanding.filter((item) => item.status.tone !== 'red').sort((a, b) => new Date(a.due) - new Date(b.due));
   const overdue = outstanding
     .filter((item) => item.status.tone === 'red' && !isDismissed(item))
@@ -9425,7 +9449,12 @@ function studentTrackerView() {
       disabled: true,
       attributes: '',
     }];
-    if (week.checkin_available) {
+    /* The tile stays once the check-in has opened, closed or not: a
+       submitted or returned check-in, and its unread dot, has to be
+       reachable from the tracker the badge points at. Only a check-in that
+       is switched off, or has not opened yet, has no tile. */
+    const released = week.checkin_enabled !== false && week.checkin_release_at && Date.now() >= new Date(week.checkin_release_at).getTime();
+    if (released || checkin) {
       const unread = checkin?.status === 'returned' && !checkin.feedback_read_at;
       actions.push({ state: { ...checkinState(checkin, week), unread }, name: 'Check-in', unread, attributes: `data-open-student-item="checkin" data-week-id="${week.id}"` });
     }
@@ -9451,7 +9480,7 @@ function studentTrackerView() {
           ${statusIcon(action.state)}<span class="wk-name">${escapeHtml(action.name)}</span>
         </button>`).join('')}
       </div>
-      ${week.checkin_available ? '' : `<p class="week-card-note">Your check-in opens ${escapeHtml(fmtDate(week.checkin_release_at, { time: true, weekday: true, dateStyle: 'short' }))}.</p>`}
+      ${released || checkin || week.checkin_enabled === false ? '' : `<p class="week-card-note">Your check-in opens ${escapeHtml(fmtDate(week.checkin_release_at, { time: true, weekday: true, dateStyle: 'short' }))}.</p>`}
     </article>`;
   }).join('');
   return `${studentHeader()}${studentTabs('tracker')}
@@ -9760,7 +9789,9 @@ function openStudentItem(dataset) {
     if (week.checkin_release_at && Date.now() < new Date(week.checkin_release_at).getTime()) {
       return showToast(`This check-in opens ${fmtDate(week.checkin_release_at, { weekday: true, time: true, dateStyle: 'short' })}`);
     }
-    if (Date.now() > new Date(week.checkin_due_at).getTime()) {
+    /* A soft deadline keeps taking check-ins, marked late, which is what the
+       server does and what the card says ("Open, late"). Only a hard one closes. */
+    if (Date.now() > new Date(week.checkin_due_at).getTime() && week.checkin_hard_deadline !== false) {
       return showToast(`This check-in closed ${fmtDate(week.checkin_due_at, { weekday: true, time: true, dateStyle: 'short' })}`, 'error');
     }
     openCheckinForm(week, checkin);

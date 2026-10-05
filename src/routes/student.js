@@ -60,7 +60,7 @@ const homeworkUpload = multer({
 
 async function studentClass(studentId) {
   return one(
-    `SELECT c.* FROM classes c
+    `SELECT c.*, cs.enrolled_at FROM classes c
      JOIN class_students cs ON cs.class_id=c.id
      WHERE cs.student_id=$1 AND cs.active=true AND c.active=true
      ORDER BY cs.enrolled_at DESC LIMIT 1`,
@@ -221,9 +221,15 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
       [klass.id, req.user.id],
     ),
   ]);
+  /* Only feedback the student can get to counts. A returned check-in on a
+     week since switched off, or returned homework on an assignment since
+     archived or hidden, has no tile and no card, so counting it left a badge
+     that nothing could clear. */
+  const openWeeks = new Set(weeksResult.rows.filter((week) => week.checkin_enabled !== false).map((week) => week.id));
+  const shownAssignments = new Set(assignmentsResult.rows.map((row) => row.id));
   const notifications =
-    checkinsResult.rows.filter((row) => row.status === 'returned' && !row.feedback_read_at).length +
-    homeworkResult.rows.filter((row) => row.status === 'returned' && !row.feedback_read_at).length;
+    checkinsResult.rows.filter((row) => row.status === 'returned' && !row.feedback_read_at && openWeeks.has(row.week_id)).length +
+    homeworkResult.rows.filter((row) => row.status === 'returned' && !row.feedback_read_at && shownAssignments.has(row.assignment_id)).length;
 
   /* The next class and the link to join it. Worked out from the class day, time
      and timezone rather than stored, so there is no weekly row to forget to fill
@@ -293,6 +299,8 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
     assignments: assignmentsResult.rows,
     homework: allForStudent(withVoiceNotes(homeworkResult.rows, 'homework')),
     notifications,
+    // When this student joined the class: work that closed before then was never theirs to miss.
+    enrolledAt: klass.enrolled_at || null,
     progress: studentProgress({ checkins: checkinsResult.rows, homework: homeworkResult.rows }),
     dismissals: dismissalsResult.rows.map((row) => ({ kind: row.kind, refId: row.ref_id })),
     withdrawnAt: me?.withdrawn_at || null,
@@ -361,6 +369,10 @@ router.post('/checkins/:weekId/submit', asyncRoute(async (req, res) => {
   if (!checkinOpen(week)) {
     return res.status(409).json({ error: 'This check-in deadline has passed.' });
   }
+  /* Once the teacher has replied, a second submission would write over the
+     reply. A form left open in another tab is the usual way that happens. */
+  const already = await one('SELECT status FROM checkins WHERE week_id=$1 AND student_id=$2', [week.id, req.user.id]);
+  if (already?.status === 'returned') return res.status(409).json({ error: 'Your teacher has already replied to this check-in. Open it from your tracker to read the reply.' });
   const row = await one(
     `INSERT INTO checkins(week_id,student_id,status,answers,submitted_at,feedback_state,updated_at)
      VALUES ($1,$2,'submitted',$3::jsonb,now(),'generating',now())
@@ -472,6 +484,8 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
   const assignment = await accessibleAssignment(req.user.id, req.params.id);
   if (!assignment) return res.status(404).json({ error: 'Assignment not found.' });
   if (!assignmentOpen(assignment)) return res.status(409).json({ error: 'This assignment is closed.' });
+  const already = await one('SELECT status FROM homework_submissions WHERE assignment_id=$1 AND student_id=$2', [assignment.id, req.user.id]);
+  if (already?.status === 'returned') return res.status(409).json({ error: 'Your teacher has already returned this homework. Open it from your calendar to read the feedback.' });
   const questions = Array.isArray(assignment.questions) ? assignment.questions : [];
   const missingRequired = questions.some((question, index) => question.required && !String(parsed.data.answers[index] || '').trim());
   if (missingRequired) return res.status(400).json({ error: 'Complete every required homework question.' });

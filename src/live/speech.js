@@ -47,22 +47,48 @@ export function attachSpeechRelay(httpServer) {
   });
 
   wss.on('connection', async (client) => {
+    /* Everything the browser sends is kept from the first frame. The listener
+       used to be attached after the settings were read, which is a database
+       round trip every half minute, and the first word of anybody who pressed
+       the mic in that moment was dropped on the floor. */
+    const requestId = crypto.randomBytes(16).toString('hex');
+    let azure = null, azureOpen = false, sentWavHeader = false, finalized = '', attempt = 0, clientGone = false, ended = false;
+    let phrase = '';
+    const pending = [];
+    const RETRY_AFTER_MS = [500, 1500];
+    const feed = (frame) => { if (azureOpen && azure && azure.readyState === WSClient.OPEN) azure.send(frame); else pending.push(frame); };
+
+    client.on('error', (err) => console.error('speech client socket error:', err?.message));
+    client.on('message', (data, isBinary) => {
+      if (!isBinary) {
+        /* Two things the page says in words: which phrase it is listening
+           for, so Azure can be told what to expect, and that the student has
+           stopped, so Azure gives its last word rather than waiting for more. */
+        let msg = null;
+        try { msg = JSON.parse(data.toString()); } catch { return; }
+        if (msg?.type === 'phrase') phrase = String(msg.text || '').slice(0, 300);
+        if (msg?.type === 'end' && !ended) { ended = true; feed(wrapAudio(requestId, Buffer.alloc(0))); }
+        return;
+      }
+      if (ended) return;
+      if (!sentWavHeader) { sentWavHeader = true; feed(wrapAudio(requestId, wavHeader16k())); }
+      feed(wrapAudio(requestId, Buffer.from(data)));
+    });
+    client.on('close', () => { clientGone = true; try { azure && azure.close(); } catch { /* gone */ } });
+
     const { azureKey, azureRegion } = await getSpeechConfig();
     if (!azureKey) {
       client.send(JSON.stringify({ type: 'error', message: 'The mic is not set up on this portal yet.' }));
       client.close();
       return;
     }
-    const requestId = crypto.randomBytes(16).toString('hex');
+    if (clientGone) return;
     const connectionId = crypto.randomBytes(16).toString('hex');
     const url = `wss://${azureRegion}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=ga-IE&format=simple&Ocp-Apim-Subscription-Key=${azureKey}&X-ConnectionId=${connectionId}`;
 
     /* A mic press that lands on a DNS blip used to fail on the spot. The audio
        is held in `pending` while the connection is made, so a retry loses
        nothing the student has said. */
-    let azure = null, azureOpen = false, sentWavHeader = false, finalized = '', attempt = 0, clientGone = false;
-    const pending = [];
-    const RETRY_AFTER_MS = [500, 1500];
 
     function onAzureMessage(data, isBinary) {
       if (isBinary) return;
@@ -84,8 +110,19 @@ export function attachSpeechRelay(httpServer) {
       azure = new WSClient(url, { handshakeTimeout: 6000 });
       azure.on('open', () => {
         azureOpen = true;
-        azure.send(`path: speech.config\r\nx-requestid: ${requestId}\r\nx-timestamp: ${new Date().toISOString()}\r\ncontent-type: application/json; charset=utf-8\r\n\r\n` +
+        const stamp = () => new Date().toISOString();
+        azure.send(`path: speech.config\r\nx-requestid: ${requestId}\r\nx-timestamp: ${stamp()}\r\ncontent-type: application/json; charset=utf-8\r\n\r\n` +
           '{"context":{"system":{"name":"GaeilgeoirLive","version":"2.0.0"}}}');
+        /* The phrase on the card, handed to Azure as a hint before any audio.
+           Recognition is a guess among everything the language could be; told
+           what the class is saying, it guesses that. The whole phrase and
+           each word, so a student who gets three words of five still has the
+           three heard right. */
+        if (phrase) {
+          const items = [...new Set([phrase, ...phrase.split(/\s+/).filter((w) => w.replace(/[^\p{L}]/gu, '').length > 1)])].map((text) => ({ Text: text }));
+          azure.send(`path: speech.context\r\nx-requestid: ${requestId}\r\nx-timestamp: ${stamp()}\r\ncontent-type: application/json; charset=utf-8\r\n\r\n` +
+            JSON.stringify({ dgi: { Groups: [{ Type: 'Generic', Items: items }] } }));
+        }
         for (const p of pending) azure.send(p);
         pending.length = 0;
       });
@@ -101,17 +138,6 @@ export function attachSpeechRelay(httpServer) {
       });
     }
     connectAzure();
-
-    client.on('message', (data, isBinary) => {
-      if (!isBinary) return;
-      const chunks = [];
-      if (!sentWavHeader) { sentWavHeader = true; chunks.push(wrapAudio(requestId, wavHeader16k())); }
-      chunks.push(wrapAudio(requestId, Buffer.from(data)));
-      for (const c of chunks) {
-        if (azureOpen && azure.readyState === WSClient.OPEN) azure.send(c); else pending.push(c);
-      }
-    });
-    client.on('close', () => { clientGone = true; try { azure && azure.close(); } catch { /* gone */ } });
   });
   return wss;
 }

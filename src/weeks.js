@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { query } from './db.js';
+import { query, one } from './db.js';
 
 /* Students see a check-in from Friday morning and have until Sunday night.
    Five to midnight rather than midnight itself: a deadline written as 00:00
@@ -43,11 +43,20 @@ export async function ensureWeeksForClass(classRow, count = 18) {
     ? Math.ceil(termEnd.diff(first, 'weeks').weeks) + 1
     : count + 2;
 
+  /* Only ever adds weeks past the last one the class has. A week the teacher
+     deleted (a mid-term break, a week that never ran) used to come back on the
+     next student visit, switched on and with a hard deadline, and show up on
+     every calendar as a missed check-in. Gaps before the last week are the
+     teacher's and stay as they are; new weeks are added at the end as the
+     term goes on. */
+  const latest = await one('SELECT max(week_start)::text latest FROM weeks WHERE class_id=$1', [classRow.id]);
+  const after = latest?.latest ? DateTime.fromISO(latest.latest, { zone }) : null;
   const inserts = [];
   for (let i = 0; i < weeks; i += 1) {
     const week = first.plus({ weeks: i });
     if (termStart && week < termStart) continue;
     if (termEnd && week > termEnd) break;
+    if (after && week <= after) continue;
     const { release, due } = checkinTimesFor(week);
     inserts.push(query(
       `INSERT INTO weeks(class_id,week_start,checkin_release_at,checkin_due_at)

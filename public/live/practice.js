@@ -68,8 +68,27 @@ export function createPractice(opts = {}) {
   const replayBtn = $('.js-replay');
   const vizBars = [...root.querySelectorAll('.viz i')];
 
+  /* The app's own two sounds. Played from these elements rather than clones,
+     because a phone only plays a sound that was started during a tap: the mic
+     tap starts both at no volume and stops them again, and from then on the
+     verdict can play either at full volume on its own. */
   const sndSuccess = new Audio('/sounds/success_sound.mp3');
   const sndIncorrect = new Audio('/sounds/incorrect_sound.mp3');
+  for (const a of [sndSuccess, sndIncorrect]) { a.preload = 'auto'; a.load(); }
+  let soundsUnlocked = false;
+  function unlockSounds() {
+    if (soundsUnlocked) return;
+    soundsUnlocked = true;
+    for (const a of [sndSuccess, sndIncorrect]) {
+      a.volume = 0;
+      const p = a.play();
+      if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.volume = 1; }).catch(() => { a.volume = 1; soundsUnlocked = false; });
+      else { a.pause(); a.currentTime = 0; a.volume = 1; }
+    }
+  }
+  function playSound(a) {
+    try { a.volume = 1; a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch { /* a browser that refuses */ }
+  }
 
   let currentTarget = '';
   let currentPhraseData = null;
@@ -77,12 +96,17 @@ export function createPractice(opts = {}) {
   let isSlow = localStorage.getItem('gglive_slow') === '1';
   if (isSlow) slowBtn.classList.add('active');
 
-  let practiceState = 'idle'; // idle | listening | verdict
+  let practiceState = 'idle'; // idle | starting | listening | finishing | verdict
   let ws = null, recStream = null, srcNode = null, procNode = null, silentGain = null;
   let audioCtx = null, ampRAF = null;
   let locked = [], finished = false, colourDelay = 0;
-  let keepTryingTimer = null, maxTimer = null, verdictTimer = null, hideTimer = null;
+  let keepTryingTimer = null, maxTimer = null, verdictTimer = null, hideTimer = null, settleTimer = null, passTimer = null;
   let replayAudio = null;
+  const paintTimers = new Set();
+  // Audio captured before the relay is open is kept for it rather than dropped,
+  // so the first word of a phrase is heard even when the connection is slow.
+  let earlyAudio = [], earlyBytes = 0;
+  const EARLY_LIMIT = 16000 * 2 * 4; // four seconds
 
   function setGlow(cls) {
     glowEl.classList.remove('gg-glow-listening', 'gg-glow-green', 'gg-glow-red');
@@ -108,20 +132,33 @@ export function createPractice(opts = {}) {
   }
   function clearWordColours() { for (const s of irishEl.children) s.className = ''; }
 
-  function stopHardware() {
-    clearTimeout(keepTryingTimer); clearTimeout(maxTimer);
+  /* The mic side and the socket side are stopped separately: on a tap to
+     finish, the mic goes at once while the socket stays open a moment for
+     Azure's last word about what was said. */
+  function stopCapture() {
     if (ampRAF) cancelAnimationFrame(ampRAF); ampRAF = null;
-    if (ws) { try { ws.onmessage = null; ws.onerror = null; ws.close(); } catch {} ws = null; }
     if (procNode) { try { procNode.disconnect(); procNode.onaudioprocess = null; } catch {} procNode = null; }
     if (srcNode) { try { srcNode.disconnect(); } catch {} srcNode = null; }
     if (silentGain) { try { silentGain.disconnect(); } catch {} silentGain = null; }
     if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
     if (recStream) { recStream.getTracks().forEach(t => t.stop()); recStream = null; }
+    earlyAudio = []; earlyBytes = 0;
+  }
+  function stopSocket() {
+    if (ws) { try { ws.onmessage = null; ws.onerror = null; ws.onclose = null; ws.onopen = null; ws.close(); } catch {} ws = null; }
+  }
+  function stopHardware() {
+    clearTimeout(keepTryingTimer); clearTimeout(maxTimer); clearTimeout(settleTimer); clearTimeout(passTimer);
+    stopCapture();
+    stopSocket();
   }
   function resetPractice(clearAll) {
     clearTimeout(verdictTimer);
+    for (const t of paintTimers) clearTimeout(t);
+    paintTimers.clear();
     finished = true;
     stopHardware();
+    replayBtn.disabled = false;
     locked = []; colourDelay = 0;
     if (replayAudio) { try { replayAudio.pause(); } catch {} replayAudio = null; }
     replayBtn.disabled = false; replayBtn.classList.remove('playing');
@@ -133,11 +170,19 @@ export function createPractice(opts = {}) {
   }
   function practiceError(msg) { resetPractice(false); micErr.textContent = msg; micErr.style.display = 'block'; }
 
+  function later(fn, ms) { const t = setTimeout(() => { paintTimers.delete(t); fn(); }, ms); paintTimers.add(t); return t; }
   function paintWord(i, grade) {
     const spans = [...irishEl.children];
     const delay = colourDelay; colourDelay += 150;
-    setTimeout(() => { if (spans[i]) spans[i].className = grade + ' hit'; }, delay);
-    setTimeout(() => { colourDelay = Math.max(0, colourDelay - 150); }, delay + 150);
+    later(() => { if (spans[i]) spans[i].className = grade + ' hit'; }, delay);
+    later(() => { colourDelay = Math.max(0, colourDelay - 150); }, delay + 150);
+  }
+  function micProblem(error) {
+    const name = error && error.name;
+    if (name === 'NotAllowedError' || name === 'SecurityError') return 'Allow microphone access in your browser to practise (the lock or camera icon by the address bar).';
+    if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No microphone was found. Plug one in or check your sound settings.';
+    if (name === 'NotReadableError' || name === 'AbortError') return 'Another app is using the microphone. Close it and try again.';
+    return 'The microphone could not be started. Try again.';
   }
   function downsampleTo16k(f32, fromRate) {
     if (fromRate === 16000) return f32;
@@ -149,29 +194,58 @@ export function createPractice(opts = {}) {
   }
 
   async function startListening() {
+    if (practiceState !== 'idle') return;
+    practiceState = 'starting';
+    unlockSounds();
     micErr.style.display = 'none';
     verdictEl.className = 'verdict js-verdict';
     clearWordColours();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       return practiceError('This browser cannot use the microphone. Try Chrome, Edge or Safari.');
     }
+    const target = currentTarget;
     try {
       recStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
       });
-    } catch { return practiceError('Allow microphone access in your browser to practise.'); }
+    } catch (error) { return practiceError(micProblem(error)); }
+    // The phrase changed, or the card went, while the browser was asking.
+    if (currentTarget !== target || practiceState !== 'starting') { stopCapture(); return; }
     finished = false;
     locked = new Array(currentTarget.split(/\s+/).filter(Boolean).length).fill(null);
     colourDelay = 0;
+    replayBtn.disabled = true; // the replay voice must not be what gets heard
 
     const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
     ws = new WebSocket(proto + location.host + '/api/live/speech');
     ws.binaryType = 'arraybuffer';
+    let sawFinal = false;
+    ws.onopen = () => {
+      if (!ws) return;
+      // The phrase first, so Azure is told what to listen for before it hears anything.
+      try { ws.send(JSON.stringify({ type: 'phrase', text: currentTarget })); } catch {}
+      for (const chunk of earlyAudio) { try { ws.send(chunk); } catch {} }
+      earlyAudio = []; earlyBytes = 0;
+      if (practiceState === 'listening') { verdictEl.textContent = 'Speak Now'; }
+    };
     ws.onmessage = ev => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
-      if (m.type === 'text') onSpeechText(m.fullText);
-      else if (m.type === 'error' && practiceState === 'listening') practiceError('Could not reach the speech service. Try again.');
+      if (m.type === 'text') { if (m.final) sawFinal = true; onSpeechText(m.fullText, Boolean(m.final)); }
+      else if (m.type === 'error' && (practiceState === 'listening' || practiceState === 'finishing')) practiceError('Could not reach the speech service. Try again.');
+      else if (m.type === 'closed') onSocketGone();
     };
+    ws.onclose = () => { if (ws) onSocketGone(); };
+    ws.onerror = () => { if (ws) onSocketGone(); };
+    /* The relay or Azure went away mid-attempt. What was heard is graded as
+       it stands rather than leaving the student talking to nobody for half a
+       minute and then calling it wrong. */
+    function onSocketGone() {
+      if (finished) return;
+      if (practiceState === 'finishing') { settle(); return; }
+      if (practiceState !== 'listening') return;
+      if (locked.some(Boolean)) finalize();
+      else practiceError('The connection dropped. Press the mic and try again.');
+    }
 
     // Safari (and iOS especially) still exposes webkitAudioContext, ignores a
     // requested sampleRate, and starts the context SUSPENDED until a gesture —
@@ -210,38 +284,59 @@ export function createPractice(opts = {}) {
       const pcm = new Int16Array(ds.length);
       for (let i = 0; i < ds.length; i++) { const s = Math.max(-1, Math.min(1, ds[i])); pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF; }
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(pcm.buffer);
+      else if (ws && earlyBytes < EARLY_LIMIT) { earlyAudio.push(pcm.buffer); earlyBytes += pcm.buffer.byteLength; }
     };
 
     setMic('listening');
+    if (ws.readyState !== WebSocket.OPEN) verdictEl.textContent = 'Connecting…';
     pump();
-    keepTryingTimer = setTimeout(() => { if (practiceState === 'listening') verdictEl.textContent = 'Keep Trying'; }, 5000);
+    keepTryingTimer = setTimeout(() => { if (practiceState === 'listening') verdictEl.textContent = 'Keep Trying'; }, 6000);
     maxTimer = setTimeout(() => { if (practiceState === 'listening') finalize(); }, 30000);
   }
 
-  function onSpeechText(fullText) {
-    if (practiceState !== 'listening' || finished) return;
+  function onSpeechText(fullText, isFinal) {
+    if ((practiceState !== 'listening' && practiceState !== 'finishing') || finished) return;
     const words = currentTarget.split(/\s+/).filter(Boolean);
     const res = evaluatePartial(words, locked, fullText);
     for (const i of res.changed) paintWord(i, res.locked[i]);
     locked = res.locked;
-    if (locked.length && !locked.includes(null)) pass();
+    if (!locked.length || locked.includes(null)) { clearTimeout(passTimer); passTimer = null; return; }
+    /* Every word is in. On Azure's final word that is the verdict; on a
+       partial it waits a moment, because the next partial often turns a
+       rough "math" into "maith", and the verdict should be the better one. */
+    if (isFinal || practiceState === 'finishing') pass();
+    else if (!passTimer) passTimer = setTimeout(() => { passTimer = null; if (!finished && locked.length && !locked.includes(null)) pass(); }, 700);
   }
   function pass() {
+    if (finished) return;
     finished = true;
     stopHardware();
     showVerdict(locked.includes('goodEffort') ? 'goodEffort' : 'correct');
   }
+  /* Tapped to finish, or out of time. The mic stops at once; the socket is
+     given a moment and told the audio has ended, so what Azure heard last
+     counts. Then whatever is still unmatched is wrong. */
   function finalize() {
     if (practiceState !== 'listening') return;
+    practiceState = 'finishing';
+    stopCapture();
+    clearTimeout(keepTryingTimer); clearTimeout(maxTimer);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify({ type: 'end' })); } catch {}
+      settleTimer = setTimeout(settle, 1800);
+    } else settle();
+  }
+  function settle() {
+    if (finished) return;
     finished = true;
     stopHardware();
     const spans = [...irishEl.children];
     locked = locked.map((g, i) => {
-      if (g == null) { setTimeout(() => { if (spans[i]) spans[i].className = 'wrong hit'; }, colourDelay + i * 80); return 'wrong'; }
+      if (g == null) { later(() => { if (spans[i]) spans[i].className = 'wrong hit'; }, colourDelay + i * 80); return 'wrong'; }
       return g;
     });
     const verdict = locked.includes('wrong') ? 'incorrect' : locked.includes('goodEffort') ? 'goodEffort' : 'correct';
-    setTimeout(() => showVerdict(verdict), colourDelay + 300);
+    later(() => showVerdict(verdict), colourDelay + 300);
   }
   function showVerdict(verdict) {
     const target = currentTarget;
@@ -249,7 +344,7 @@ export function createPractice(opts = {}) {
     verdictEl.className = 'verdict js-verdict on ' + verdict;
     setMic('verdict', verdict);
     setGlow(verdict === 'incorrect' ? 'gg-glow-red' : 'gg-glow-green');
-    try { (verdict === 'incorrect' ? sndIncorrect : sndSuccess).cloneNode().play(); } catch {}
+    playSound(verdict === 'incorrect' ? sndIncorrect : sndSuccess);
     verdictTimer = setTimeout(() => {
       if (currentTarget !== target) return;
       setGlow(null);
@@ -274,7 +369,7 @@ export function createPractice(opts = {}) {
   });
 
   async function playReplay() {
-    if (!currentTarget) return;
+    if (!currentTarget || replayBtn.disabled) return;
     const voiceId = localStorage.getItem('gglive_voice') || '';
     replayBtn.classList.add('playing');
     try {

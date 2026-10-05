@@ -43,11 +43,24 @@ function levenshtein(s1, s2) {
   return v1[s2.length];
 }
 
+/* Keyed by the normalised form of the target word, since that is what is
+   looked up: 'an-ghnothach' never matched anything because normalising had
+   already made it 'anghnothach'. */
 const phoneticAliases = {
   eirinn: ['erin', 'aarron', 'eireann', 'irinn', 'eirrin', 'aaron', 'erinn'],
   se: ['shay', 'shea', 'say', 'she', 'se', 'sé', 'shae'],
-  'an-ghnothach': ['angnotach', 'unnotach', 'angnooch', 'anghnotach', 'an gnotach', 'angnotoc']
+  anghnothach: ['angnotach', 'unnotach', 'angnooch', 'anghnotach', 'angnotach', 'angnotoc']
 };
+
+/* Short words get a little more room. A two-letter word with one letter
+   wrong scores 0.5 and could never match, so "tú" heard as "ta" was a fail
+   for the whole phrase. */
+export function matchGrade(target, sim) {
+  const short = target.length <= 3;
+  if (sim >= 0.85) return 'correct';
+  if (sim >= 0.58 || (short && sim >= 0.5)) return 'goodEffort';
+  return null;
+}
 
 export function phoneticSimilarity(target, spoken) {
   if (target === spoken) return 1.0;
@@ -71,10 +84,15 @@ function replaceDigitsWithWords(text) {
   let res = String(text);
   const symbolMap = { '€': ' euro ', $: ' dollar ', '%': ' faoin gcéad ', '&': ' agus ', '+': ' móide ' };
   for (const [sym, word] of Object.entries(symbolMap)) res = res.replaceAll(sym, word);
-  const numMap = { 0: 'náid', 1: 'aon', 2: 'dó', 3: 'trí', 4: 'ceathair', 5: 'cúig', 6: 'sé', 7: 'seacht', 8: 'ocht', 9: 'naoi' };
-  res = res.replace(/\b10\b/g, ' deich ');
-  for (const [k, v] of Object.entries(numMap)) res = res.replace(new RegExp(`\\b${k}\\b`, 'g'), ` ${v} `);
-  return res.replace(/\s+/g, ' ').trim();
+  /* Azure writes numbers as digits. The ones a class says out loud. */
+  const numMap = {
+    100: 'céad', 90: 'nócha', 80: 'ochtó', 70: 'seachtó', 60: 'seasca', 50: 'caoga', 40: 'daichead', 30: 'tríocha', 20: 'fiche',
+    19: 'naoi déag', 18: 'ocht déag', 17: 'seacht déag', 16: 'sé déag', 15: 'cúig déag', 14: 'ceathair déag', 13: 'trí déag', 12: 'dó dhéag', 11: 'aon déag', 10: 'deich',
+    9: 'naoi', 8: 'ocht', 7: 'seacht', 6: 'sé', 5: 'cúig', 4: 'ceathair', 3: 'trí', 2: 'dó', 1: 'aon', 0: 'náid',
+  };
+  for (const k of Object.keys(numMap).sort((a, b) => Number(b) - Number(a))) res = res.replace(new RegExp(`\\b${k}\\b`, 'g'), ` ${numMap[k]} `);
+  // A hyphen is a space to the ear: "an-mhaith" and "an mhaith" are the same thing said.
+  return res.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 // Grade a transcript against the target phrase. Final mode fills unmatched
@@ -107,8 +125,9 @@ export function scoreAttempt(targetPhrase, transcript, opts = {}) {
       }
       if (sim > bestSim) { bestSim = sim; bestJ = j; bestConsumed = consumed; }
     }
-    if (bestSim >= 0.58) {
-      matched[i] = bestSim >= 0.85 ? 'correct' : 'goodEffort';
+    const grade = matchGrade(target, bestSim);
+    if (grade) {
+      matched[i] = grade;
       if (bestJ !== -1) {
         available.splice(bestJ, 1);
         if (bestConsumed === 2 && bestJ < available.length) available.splice(bestJ, 1);
@@ -123,9 +142,13 @@ export function scoreAttempt(targetPhrase, transcript, opts = {}) {
   return finalizeScore(targetWords, matched);
 }
 
-// The app's _evaluatePartialSpeech, 1:1: called every time new recognized text
-// arrives while listening. Already-locked words are skipped (their spoken words
-// are not re-consumed), new grades lock in at first sight.
+// The app's _evaluatePartialSpeech: called every time new recognized text
+// arrives while listening. A word graded correct stays correct. A word graded
+// fair is looked at again on later text, because Azure's first guess at a word
+// is often rough and its final one right: "math" became "maith" a moment later
+// and the old rule had already locked the phrase as Fair. A grade only ever
+// goes up. A target that is nothing but punctuation (a dash between two
+// halves) is counted as said, since nobody can pronounce a dash.
 export function evaluatePartial(targetWords, locked, fullText) {
   let text = replaceDigitsWithWords(fullText);
   let spokenWords = text.trim().split(/\s+/);
@@ -139,8 +162,9 @@ export function evaluatePartial(targetWords, locked, fullText) {
   const changed = [];
 
   for (let i = 0; i < targetWords.length; i++) {
-    if (updated[i] != null) continue;
+    if (updated[i] === 'correct') continue;
     const target = normalize(targetWords[i]);
+    if (!target) { if (updated[i] !== 'correct') { updated[i] = 'correct'; changed.push(i); } continue; }
     let bestSim = 0.0, bestJ = -1, bestConsumed = 1;
     for (let j = 0; j < available.length; j++) {
       const spoken = normalize(available[j]);
@@ -153,13 +177,17 @@ export function evaluatePartial(targetWords, locked, fullText) {
       }
       if (sim > bestSim) { bestSim = sim; bestJ = j; bestConsumed = consumed; }
     }
-    if (bestSim >= 0.58) {
-      updated[i] = bestSim >= 0.85 ? 'correct' : 'goodEffort';
-      changed.push(i);
+    const grade = matchGrade(target, bestSim);
+    if (grade && (updated[i] == null || grade === 'correct')) {
+      if (updated[i] !== grade) { updated[i] = grade; changed.push(i); }
       if (bestJ !== -1) {
         available.splice(bestJ, 1);
         if (bestConsumed === 2 && bestJ < available.length) available.splice(bestJ, 1);
       }
+    } else if (updated[i] != null && bestJ !== -1) {
+      // Still fair: its word is still spoken for, so the next target cannot take it.
+      available.splice(bestJ, 1);
+      if (bestConsumed === 2 && bestJ < available.length) available.splice(bestJ, 1);
     }
   }
   return { locked: updated, changed };
