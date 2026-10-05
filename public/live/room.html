@@ -108,6 +108,13 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
 .bonote{position:absolute;left:12px;right:12px;top:12px;z-index:96;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.96);color:var(--text);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:700;line-height:1.4;box-shadow:var(--shadow-md)}
 .bonote .btn{margin-left:auto;padding:6px 12px;font-size:12.5px}
 .micnote{position:absolute;left:12px;right:12px;bottom:12px;z-index:96;background:rgba(255,255,255,.96);color:var(--text-secondary);border-radius:10px;padding:10px 12px;font-size:13px;font-weight:600;line-height:1.4;box-shadow:var(--shadow-md)}
+/* On a phone the class is Zoom's own full-page client, drawn by Zoom into
+   #zmmtg-root over the whole frame; the stage becomes a clear sheet over
+   it carrying only the door, the phrase card and the notes. */
+body.clientview .videowrap{position:relative;z-index:2147483000;background:transparent;border:0;box-shadow:none;pointer-events:none}
+body.clientview .videowrap>*{pointer-events:auto}
+body.clientview #zoomRoot,body.clientview .stagenote{display:none}
+body.clientview .gg-practice{pointer-events:none}
 .nextclass{margin:-4px 0 14px;font-size:13px;font-weight:600;color:var(--text-secondary)}
 .nextclass.on{color:var(--success-700)}
 </style>
@@ -176,6 +183,8 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
   </nav>
 </div>
 
+<div id="zmmtg-root"></div>
+<div id="aria-notify-area"></div>
 <script src="https://source.zoom.us/6.2.0/lib/vendor/react.min.js"></script>
 <script src="https://source.zoom.us/6.2.0/lib/vendor/react-dom.min.js"></script>
 <script src="https://source.zoom.us/6.2.0/zoom-meeting-embedded-6.2.0.min.js"></script>
@@ -336,6 +345,33 @@ function setStatus(on, text){
 function showError(msg){ const e = $('#err'); e.textContent = msg; e.style.display = 'block'; }
 
 let joined = false, inMeeting = false, client = null, fitObserver = null, endedAt = 0;
+/* Zoom's embedded player (the component view) is, in Zoom's own words,
+   "designed specifically for desktop browser use cases, not mobile
+   environments", and on an iPhone it says Unable to Join Audio and means
+   it. Phones and tablets get Zoom's client view instead: the full web
+   client, drawn over the frame, which Zoom supports on iOS and Android
+   with audio both ways and its own breakout room prompts. The phrase
+   card sits over it the same as ever. */
+const mobile = !preview && !demo && (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)));
+const loaded = new Map();
+const loadScript = (src) => loaded.get(src) || loaded.set(src, new Promise((resolve, reject) => { const el = document.createElement('script'); el.src = src; el.onload = resolve; el.onerror = () => reject(new Error('Could not load ' + src)); document.head.appendChild(el); })).get(src);
+async function joinClientView({ signature, webinarId, pwd, name, email }){
+  document.body.classList.add('clientview');
+  for (const src of ['https://source.zoom.us/6.2.0/lib/vendor/redux.min.js', 'https://source.zoom.us/6.2.0/lib/vendor/redux-thunk.min.js', 'https://source.zoom.us/6.2.0/lib/vendor/lodash.min.js', 'https://source.zoom.us/6.2.0/zoom-meeting-6.2.0.min.js']) await loadScript(src);
+  const Z = window.ZoomMtg;
+  Z.setZoomJSLib('https://source.zoom.us/6.2.0/lib', '/av');
+  Z.preLoadWasm(); Z.prepareWebSDK();
+  /* Leaving, or the host ending it, sends Zoom's client to leaveUrl. That is
+     this page again, without wait=1, so it boots on its own and joins again
+     if the class is still on, or waits for the next one. */
+  const back = new URL(location.href); back.searchParams.delete('wait');
+  await new Promise((resolve, reject) => Z.init({
+    leaveUrl: back.toString(), patchJsMedia: true, disablePreview: true, disableInvite: true, showMeetingHeader: false,
+    isSupportBreakout: true, meetingInfo: ['topic', 'host', 'participant'], success: resolve, error: reject,
+  }));
+  try { Z.inMeetingServiceListener('onMeetingStatus', (d) => { console.log('[gglive] meeting status', d && d.meetingStatus); if (d && d.meetingStatus === 3) classOver('ended by host'); }); } catch (e) { console.log('[gglive] listener', e?.message || e); }
+  await new Promise((resolve, reject) => Z.join({ signature, meetingNumber: webinarId, userName: name, userEmail: email, passWord: pwd, success: resolve, error: reject }));
+}
 const root = $('#zoomRoot'), wrap = $('#stage');
 /* Speaker view, filling the stage. Zoom's component view opens in its
    "ribbon" layout by default: one small draggable tile in the middle of a
@@ -457,6 +493,9 @@ async function join({ countdown = false } = {}){
     const sig = await fetch('/api/live/signature', { method:'POST', headers: {'content-type':'application/json'},
       body: JSON.stringify({ meetingNumber: webinarId }) }).then(r=>r.json());
     if (!sig.signature) throw new Error(sig.error || 'Could not get a join signature.');
+    if (mobile) {
+      await joinClientView({ signature: sig.signature, webinarId, pwd, name, email: me.zoomEmail || me.email || '' });
+    } else {
     if (!client) {
       client = ZoomMtgEmbedded.createClient();
       await client.init({
@@ -484,6 +523,7 @@ async function join({ countdown = false } = {}){
       client.on('room-state-change', (p) => { console.log('[gglive] room state', p?.status); onRoomState(); });
     }
     await client.join({ signature: sig.signature, meetingNumber: webinarId, password: pwd, userName: name, userEmail: me.zoomEmail || me.email || '' });
+    }
     inMeeting = true;
     watchRooms();
     $('#stageNote').style.display = 'none';
@@ -534,11 +574,16 @@ $('#joinBtn').onclick = join;
    Tap to hear the class, does the pressing inside the tap. The preview never
    joins audio: the teacher is in the same room on the Zoom app, and a second
    connection on the same desk is an echo. */
-const zoomButton = (label) => [...root.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label || b.title === label) || null;
+const zoomButtons = () => [...document.querySelectorAll('#zoomRoot button, #zmmtg-root button')];
+const zoomButton = (label) => zoomButtons().find((b) => b.getAttribute('aria-label') === label || b.title === label) || null;
 /* Zoom's button for joining audio is called Join Audio in a webinar and plain
    Audio in a meeting or a breakout room; once audio is in it becomes Audio
-   Setting, Mute or Unmute. So "not yet joined" is one of the first two. */
-const audioButton = () => zoomButton('Join Audio') || zoomButton('Audio');
+   Setting, Mute or Unmute. So "not yet joined" is one of the first two. In
+   the client view on a phone it is found by its words instead. */
+const audioButton = () => zoomButton('Join Audio') || zoomButton('Audio')
+  || zoomButtons().find((b) => /^\s*join audio\s*$/i.test(((b.getAttribute('aria-label') || '') + ' ' + b.textContent).trim()) || /join audio/i.test(b.getAttribute('aria-label') || '') || /join-audio-container__btn/.test(b.className)) || null;
+const audioDialogButton = () => document.querySelector('.join-audio-by-voip__join-btn')
+  || [...document.querySelectorAll('#zmmtg-root button, button[class*="zoom-MuiButton"]')].find((b) => /join (audio by|with) computer|computer audio|device audio/i.test(b.textContent)) || null;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 function soundAllowed(){
   try { const AC = window.AudioContext || window.webkitAudioContext; const ac = new AC(); const state = ac.state; ac.close().catch(() => {}); console.log('[gglive] sound probe', state, 'active', navigator.userActivation?.hasBeenActive); return state === 'running'; } catch { return true; }
@@ -559,7 +604,18 @@ function waitForSound(){
     if (!(await pressJoinAudio())) $('#hear').hidden = false;
   }, 1000);
 }
-const audioJoined = () => { try { return Boolean(client?.getCurrentUser()?.audio); } catch { return false; } };
+const audioJoined = () => {
+  if (client) { try { return Boolean(client.getCurrentUser()?.audio); } catch { return false; } }
+  // The client view: audio is in once it offers Disconnect Audio, Mute or Unmute.
+  const words = (b) => ((b.getAttribute('aria-label') || '') + ' ' + (b.title || '') + ' ' + b.textContent).trim();
+  return zoomButtons().some((b) => /disconnect audio|^(mute|unmute)\b/i.test(words(b)));
+};
+/* The mobile client answers Join Audio with a sheet of ways to connect; once
+   the audio is in, the sheet is cleared away for them. */
+function closeAudioSheet(){
+  const sheet = [...document.querySelectorAll('#zmmtg-root button')].find((b) => /^cancel$/i.test(b.textContent.trim()) && b.offsetParent && /wifi or cellular|device audio|computer audio/i.test(b.closest('[class]')?.parentElement?.innerText || ''));
+  if (sheet) sheet.click();
+}
 async function pressJoinAudio(){
   let btn = null;
   for (let i = 0; i < 40 && !(btn = audioButton()); i++) { if (audioJoined()) return true; await pause(300); }
@@ -567,12 +623,13 @@ async function pressJoinAudio(){
   $('#micNote').hidden = false;
   btn.click();
   for (let i = 0; i < 20 && !audioJoined(); i++) {
-    const box = [...document.querySelectorAll('button[class*="zoom-MuiButton"]')].find((b) => /join (audio by|with) computer/i.test(b.textContent));
+    const box = audioDialogButton();
     if (box) { box.click(); break; }
     await pause(300);
   }
   for (let i = 0; i < 8 && !audioJoined(); i++) await pause(300);
   $('#micNote').hidden = true;
+  if (audioJoined()) closeAudioSheet();
   return audioJoined();
 }
 async function joinAudio(){
@@ -640,7 +697,7 @@ async function roomAudio(text){
     const btn = audioButton();
     if (btn) btn.click();
     for (let i = 0; i < 20 && !current().audio; i++) {
-      const box = [...document.querySelectorAll('button[class*="zoom-MuiButton"]')].find((b) => /join (audio by|with) computer/i.test(b.textContent));
+      const box = audioDialogButton();
       if (box) box.click();
       await pause(400);
     }
@@ -656,7 +713,7 @@ async function roomAudio(text){
   }
 }
 function watchRooms(){
-  if (roomPoll || preview || demo) return;
+  if (roomPoll || preview || demo || !client) return;
   roomPoll = setInterval(onRoomState, 3000);
 }
 $('#boLeave').onclick = async () => { try { await client.leaveBreakoutRoom(); } catch (e) { console.log('[gglive] leaveBreakoutRoom', e?.reason || e?.message || e); } };

@@ -86,7 +86,29 @@ test('inside a breakout room the student is moved, heard and able to talk', () =
   assert.match(room, /leaveOnPageUnload: false/, 'with it on, Zoom does not move an assigned participant');
   assert.match(room, /client\.on\('room-state-change'/);
   assert.match(room, /await client\.joinBreakoutRoom\(room\.roomId\)/);
-  assert.match(room, /const audioButton = \(\) => zoomButton\('Join Audio'\) \|\| zoomButton\('Audio'\);/);
+  assert.match(room, /const audioButton = \(\) => zoomButton\('Join Audio'\) \|\| zoomButton\('Audio'\)/);
   assert.match(room, /await client\.mute\(false\)/);
   assert.match(room, /id="boLeave"/);
+});
+
+/* Eamon's iPhone, 5 Oct 2026: Zoom's "Unable to Join Audio". Zoom's own
+   docs: the component view "is not supported on mobile or tablet browsers.
+   For mobile and tablet use cases, use client view." So phones get the
+   client view, with the same door, audio press and phrase card over it. */
+test('a phone gets Zoom\'s client view, the desktop keeps the embedded one', () => {
+  assert.match(room, /const mobile = !preview && !demo && \(\/iPhone\|iPad\|iPod\|Android\/i\.test\(navigator\.userAgent\)/);
+  assert.match(room, /async function joinClientView\(/);
+  assert.match(room, /zoom-meeting-6\.2\.0\.min\.js/);
+  assert.match(room, /Z\.setZoomJSLib\('https:\/\/source\.zoom\.us\/6\.2\.0\/lib', '\/av'\)/);
+  assert.match(room, /if \(mobile\) \{\s*await joinClientView\(/);
+  assert.match(room, /<div id="zmmtg-root"><\/div>\s*<div id="aria-notify-area"><\/div>/);
+  // Leaving sends Zoom to this page without wait=1, so it boots and joins again.
+  assert.match(room, /back\.searchParams\.delete\('wait'\)/);
+  // The host ending the class reaches the student through Zoom's own status.
+  assert.match(room, /d\.meetingStatus === 3\) classOver\('ended by host'\)/);
+  // Audio is recognised by what the client offers, and its sheet is closed after.
+  assert.match(room, /disconnect audio\|\^\(mute\|unmute\)/);
+  assert.match(room, /function closeAudioSheet\(\)/);
+  // The phrase card stays above Zoom's full-page client.
+  assert.match(room, /body\.clientview \.videowrap\{position:relative;z-index:2147483000/);
 });
