@@ -27,11 +27,30 @@ export async function phoneticsRoute(req, res) {
   const text = String(req.query.text || '').slice(0, 200).trim();
   if (!text) return res.status(400).json({ error: 'No text.' });
   if (phonCache.has(text)) return res.json({ phonetic: phonCache.get(text) });
-  if (!process.env.OPENAI_API_KEY) return res.status(502).json({ error: 'No phonetics available.' });
+  /* The keys live on the settings screen, not only in the environment: this
+     read process.env alone, so on the live portal, where the keys are pasted
+     in Settings, every press of Phonetics came back "No phonetics available."
+     Claude first, since that key is always there for the feedback drafts;
+     OpenAI when it is not. */
+  const { getAnthropicConfig, getOpenAIConfig } = await import('../settings.js');
+  const anthropic = await getAnthropicConfig();
+  if (anthropic.apiKey) {
+    try {
+      const { phoneticsFor } = await import('../ai.js');
+      const phonetic = await phoneticsFor(text);
+      if (phonetic) {
+        phonCache.set(text, phonetic);
+        if (phonCache.size > 300) phonCache.delete(phonCache.keys().next().value);
+        return res.json({ phonetic });
+      }
+    } catch (error) { console.error('phonetics on Claude failed', error?.message); }
+  }
+  const openai = await getOpenAIConfig();
+  if (!openai.apiKey) return res.status(502).json({ error: 'No phonetics available.' });
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
+      headers: { Authorization: `Bearer ${openai.apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o-mini', temperature: 0,
         messages: [{ role: 'user', content: `Give an intuitive, easy-to-read English phonetic respelling of this Irish phrase for absolute beginners (like 'slawn' for 'slán'). NO IPA symbols, simple lowercase syllables with hyphens inside words. Keep the same number of words. Reply with ONLY the respelling: ${text}` }],
@@ -53,7 +72,8 @@ export async function phoneticsRoute(req, res) {
 /* Batch fallback when the live mic is unavailable: transcribe the recording
    and grade it with the same scoring the browser uses. */
 export async function analyzeRoute(req, res) {
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const { getOpenAIConfig } = await import('../settings.js');
+  const openaiKey = (await getOpenAIConfig()).apiKey;
   if (!openaiKey) return res.status(503).json({ error: 'Recorded practice is not set up on this portal.' });
   const { audioBase64, mime = 'audio/webm', target = '', partial = false } = req.body || {};
   const cleanTarget = String(target).slice(0, 200).trim();

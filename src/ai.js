@@ -183,6 +183,21 @@ const MARKING_SCHEMA = {
   additionalProperties: false,
 };
 
+/* A beginner's respelling of an Irish phrase, for the Phonetics tile on the
+   practice card. Written on Claude, which the portal already has a key for;
+   the OpenAI route is the fallback when it does not. */
+const PHONETICS_SYSTEM = `You write easy English respellings of Irish phrases for absolute beginners, the way "slán" is written "slawn".
+Rules: no IPA, lowercase syllables joined with hyphens inside a word, one respelled word for each Irish word, in the same order, separated by single spaces. Standard Irish pronunciation unless the spelling is clearly a dialect form. Reply with the respelling only. Never use an em dash or an en dash.`;
+export async function phoneticsFor(text) {
+  const { phonetic } = await draft({
+    system: PHONETICS_SYSTEM,
+    payload: { phrase: String(text).slice(0, 200) },
+    effort: 'low',
+    schema: { type: 'object', properties: { phonetic: { type: 'string' } }, required: ['phonetic'], additionalProperties: false },
+  });
+  return String(phonetic || '').trim().replace(/^["“]|["”]$/g, '');
+}
+
 export async function markListening(payload) {
   const { marks } = await draft({
     system: MARKING_SYSTEM,

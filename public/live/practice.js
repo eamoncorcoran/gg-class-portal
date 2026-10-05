@@ -392,11 +392,26 @@ export function createPractice(opts = {}) {
     showPhon = !showPhon;
     phoneticsBtn.classList.toggle('active', showPhon);
     if (showPhon && !currentPhraseData.phonetic) {
+      const asked = currentPhraseData;
       englishEl.textContent = '“…”';
+      englishEl.style.display = 'block';
+      let got = '';
       try {
-        const r = await fetch('/api/live/phonetics?text=' + encodeURIComponent(currentPhraseData.irish)).then(x => x.json());
-        if (r.phonetic) currentPhraseData.phonetic = r.phonetic;
+        const r = await fetch('/api/live/phonetics?text=' + encodeURIComponent(asked.irish)).then(x => x.json());
+        got = r.phonetic || '';
       } catch {}
+      if (currentPhraseData !== asked) return; // the phrase moved on while we waited
+      if (got) asked.phonetic = got;
+      else {
+        /* Said, rather than quietly showing the English again as if the
+           tile did nothing. */
+        showPhon = false;
+        phoneticsBtn.classList.remove('active');
+        englishEl.textContent = 'No phonetics for this one yet';
+        englishEl.style.display = 'block';
+        setTimeout(() => { if (currentPhraseData === asked && !showPhon) updateQuoteLine(); }, 2200);
+        return;
+      }
     }
     updateQuoteLine();
   });
