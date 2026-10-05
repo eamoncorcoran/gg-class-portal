@@ -18,7 +18,7 @@ import { ttsFor } from './tts.js';
 /* classIds: the classes this session is for (any number; none means every
    class). joinUrl/joinNote: the Zoom link the teacher is hosting today; when
    blank, the first class's own link from Class setup is used instead. */
-export const access = { mode: 'open', classIds: [], joinUrl: '', joinNote: '', meetingId: '', startedAt: null };
+export const access = { mode: 'open', classIds: [], joinUrl: '', joinNote: '', meetingId: '', startedAt: null, sessionId: null };
 Object.defineProperty(access, 'classId', { get: () => access.classIds[0] || '' });
 /* The host's own door into the meeting the portal created. Carries the
    host's key, so it lives in memory for this run only, never in the table. */
@@ -36,18 +36,38 @@ export function isLive(session = access, now = Date.now()) {
 }
 
 export async function loadAccess() {
-  const row = await one('SELECT mode, class_id, class_ids, join_url, join_note, meeting_id, started_at FROM live_access WHERE id=1');
+  const row = await one('SELECT mode, class_id, class_ids, join_url, join_note, meeting_id, started_at, session_id FROM live_access WHERE id=1');
   access.mode = row?.mode === 'entitled' ? 'entitled' : 'open';
   access.classIds = Array.isArray(row?.class_ids) && row.class_ids.length ? row.class_ids : (row?.class_id ? [row.class_id] : []);
   access.joinUrl = row?.join_url || '';
   access.joinNote = row?.join_note || '';
   access.meetingId = row?.meeting_id || '';
   access.startedAt = row?.started_at ? new Date(row.started_at) : null;
+  access.sessionId = row?.session_id || null;
+  if (access.sessionId) currentPrompt = await openPromptFor(access.sessionId);
   return access;
 }
 async function saveAccess() {
-  await query(`UPDATE live_access SET mode=$1, class_id=$2, class_ids=$3, join_url=$4, join_note=$5, meeting_id=$6, started_at=$7, updated_at=now() WHERE id=1`,
-    [access.mode, access.classIds[0] || null, access.classIds, access.joinUrl, access.joinNote, access.meetingId, access.startedAt]);
+  await query(`UPDATE live_access SET mode=$1, class_id=$2, class_ids=$3, join_url=$4, join_note=$5, meeting_id=$6, started_at=$7, session_id=$8, updated_at=now() WHERE id=1`,
+    [access.mode, access.classIds[0] || null, access.classIds, access.joinUrl, access.joinNote, access.meetingId, access.startedAt, access.sessionId]);
+}
+
+/* ---- the evening, written down ---------------------------------------- */
+/* Everything a student does in a session is one row: present, left, a
+   phrase said or skipped (with each word's grade), an answer to a check, a
+   quiz answer, how they found the class. Nothing is written without a
+   session to belong to, which is what being live means. */
+export async function logEvent(studentId, kind, payload = {}, sessionId = access.sessionId) {
+  if (!sessionId) return;
+  try {
+    await query('INSERT INTO live_events(session_id, student_id, kind, payload) VALUES ($1,$2,$3,$4::jsonb)',
+      [sessionId, studentId || null, kind, JSON.stringify(payload)]);
+  } catch (error) { console.error('live event not written', error?.message); }
+}
+export async function recordPresence(user, state) {
+  const kind = state === 'left' ? 'left' : 'present';
+  await logEvent(user.id, kind, { name: user.name });
+  return { ok: true };
 }
 
 /** Live right now, and for this student (or for everyone). */
@@ -137,6 +157,7 @@ export function phraseStream(req, res) {
   listeners.add(entry);
   if (cid) { addPresence(cid); scheduleStats(); }
   sseSend(res, currentPhrase);
+  if (currentPrompt && !currentPrompt.closed_at) sseSend(res, { type: 'prompt', prompt: publicPrompt(currentPrompt) });
   // Staggered, so thousands of clients do not all wake the process together.
   const ping = setInterval(() => sseWrite(res, ': ping\n\n'), 25000 + Math.floor(Math.random() * 10000));
   const done = () => { clearInterval(ping); listeners.delete(entry); if (cid) { dropPresence(cid); scheduleStats(); } };
@@ -146,8 +167,16 @@ export function phraseStream(req, res) {
 
 export function recordResult(user, body) {
   const phraseId = Number(body?.phraseId) || 0;
-  const result = body?.result === 'skipped' ? 'skipped' : 'passed';
+  const result = body?.result === 'skipped' ? 'skipped' : body?.result === 'failed' ? 'failed' : 'passed';
   if (!phraseId || phraseId !== phraseResults.id) return { ok: true, stale: true };
+  /* Each word's grade, for the report's list of what the class is getting
+     wrong. Kept short and clean: the word as shown and one of correct, fair,
+     wrong. */
+  const words = (Array.isArray(body?.words) ? body.words : []).slice(0, 40)
+    .map((w) => ({ w: String(w?.w || '').slice(0, 60), g: ['correct', 'goodEffort', 'wrong'].includes(w?.g) ? w.g : 'wrong' }))
+    .filter((w) => w.w);
+  logEvent(user.id, 'phrase', { phraseId, irish: currentPhrase.irish, result, words });
+  if (result === 'failed') return { ok: true };
   phraseResults.passed.delete(user.id);
   phraseResults.skipped.delete(user.id);
   phraseResults[result].add(user.id);
@@ -174,6 +203,7 @@ export function noteJoinFailure(user, reason) {
   joinFailures.unshift({ name: String(user?.name || 'Somebody').slice(0, 60), reason: String(reason || 'Could not join.').slice(0, 200), at: new Date().toISOString() });
   if (joinFailures.length > 50) joinFailures.length = 50;
 }
+export function currentPromptPublic() { return currentPrompt && !currentPrompt.closed_at ? publicPrompt(currentPrompt) : null; }
 export function roomStatus() {
   let students = 0;
   for (const l of listeners) if (l.who === 'student') students += 1;
@@ -301,6 +331,7 @@ export async function sessionSummary() {
     joinNote: access.joinNote,
     webinar: await sessionWebinar(),
     live: isLive(),
+    sessionId: isLive() ? access.sessionId : null,
     startedAt: isLive() && access.startedAt ? access.startedAt.toISOString() : null,
     meetingId: access.meetingId,
     // The host's door, only while this process remembers it.
@@ -329,6 +360,10 @@ export async function goLive({ mode, classIds, joinUrl, joinNote, topic } = {}) 
     hostStartUrl = '';
   }
   access.startedAt = new Date();
+  const made = await one('INSERT INTO live_sessions(class_ids, join_url, started_at) VALUES ($1,$2,$3) RETURNING id',
+    [access.classIds, access.joinUrl, access.startedAt]);
+  access.sessionId = made?.id || null;
+  currentPrompt = null;
   await saveAccess();
   return sessionSummary();
 }
@@ -341,11 +376,199 @@ export async function endLive() {
     try { const { endMeeting } = await import('../zoom.js'); await endMeeting(access.meetingId); }
     catch (error) { ended = false; console.error('could not end the Zoom meeting', error?.message); }
   }
-  access.joinUrl = ''; access.joinNote = ''; access.meetingId = ''; access.startedAt = null; hostStartUrl = '';
+  if (access.sessionId) {
+    await query('UPDATE live_sessions SET ended_at=now() WHERE id=$1 AND ended_at IS NULL', [access.sessionId]);
+    await query('UPDATE live_prompts SET closed_at=now() WHERE session_id=$1 AND closed_at IS NULL', [access.sessionId]);
+  }
+  if (currentPrompt) { broadcastToStudents({ type: 'prompt-close', id: currentPrompt.id }); currentPrompt = null; }
+  // Students outside the Zoom hear from the portal that the class is over.
+  if (access.sessionId) broadcastToStudents({ type: 'ended', sessionId: access.sessionId });
+  access.joinUrl = ''; access.joinNote = ''; access.meetingId = ''; access.startedAt = null; access.sessionId = null; hostStartUrl = '';
   await saveAccess();
   // The last phrase does not stay on screen over an empty stage.
   if (currentPhrase.show) pushPhrase({ show: false });
   return { ...(await sessionSummary()), zoomEnded: ended };
+}
+
+/* ---- what the teacher asks the room ---------------------------------- */
+/* One open prompt at a time: an understanding check (yes or not yet), a
+   rating out of ten, a pop quiz of a few typed answers, or how the class
+   was. It goes to students on the phrase stream, answers come back one at a
+   time and are written as events, and the teacher's console is kept up to
+   date over its own stream. The quiz answers never leave the server: the
+   student's typed answer is checked here. */
+let currentPrompt = null;
+function broadcastToStudents(obj) { const f = sseFrame(obj); for (const l of listeners) if (l.who === 'student') sseWrite(l.res, f); }
+export function publicPrompt(p) {
+  return {
+    id: p.id, kind: p.kind, topic: p.topic, createdAt: p.created_at,
+    questions: (p.questions || []).map((q, i) => ({ index: i, q: q.q })),
+  };
+}
+async function openPromptFor(sessionId) {
+  return one('SELECT * FROM live_prompts WHERE session_id=$1 AND closed_at IS NULL ORDER BY created_at DESC LIMIT 1', [sessionId]);
+}
+export function cleanQuestions(input) {
+  return (Array.isArray(input) ? input : []).slice(0, 8).map((q) => ({
+    q: String(q?.q || '').slice(0, 300).trim(),
+    answers: String(q?.answers ?? q?.a ?? '').split(/[|/;,]/).map((a) => a.trim()).filter(Boolean).slice(0, 10).map((a) => a.slice(0, 120)),
+  })).filter((q) => q.q && q.answers.length);
+}
+export async function createPrompt({ kind, topic, questions }, user) {
+  if (!access.sessionId || !isLive()) throw Object.assign(new Error('Go live first: a check goes to the students in the room.'), { status: 409 });
+  if (!['understand', 'rating', 'quiz', 'enjoy'].includes(kind)) throw Object.assign(new Error('Unknown kind of check.'), { status: 400 });
+  const cleanTopic = String(topic || '').slice(0, 200).trim();
+  const qs = kind === 'quiz' ? cleanQuestions(questions) : [];
+  if (kind === 'quiz' && !qs.length) throw Object.assign(new Error('Add at least one question with an answer.'), { status: 400 });
+  if (currentPrompt && !currentPrompt.closed_at) await closePrompt(currentPrompt.id);
+  const row = await one(
+    'INSERT INTO live_prompts(session_id, kind, topic, questions) VALUES ($1,$2,$3,$4::jsonb) RETURNING *',
+    [access.sessionId, kind, cleanTopic, JSON.stringify(qs)]);
+  currentPrompt = row;
+  broadcastToStudents({ type: 'prompt', prompt: publicPrompt(row) });
+  await pushPromptStats(row.id);
+  return publicPrompt(row);
+}
+export async function closePrompt(id) {
+  const row = await one('UPDATE live_prompts SET closed_at=now() WHERE id=$1 AND closed_at IS NULL RETURNING *', [id]);
+  if (currentPrompt && currentPrompt.id === id) currentPrompt = null;
+  broadcastToStudents({ type: 'prompt-close', id });
+  if (row) await pushPromptStats(row.id);
+  return { ok: true, closed: Boolean(row) };
+}
+
+/* A typed quiz answer against the teacher's answers. Case, fadas and
+   punctuation are forgiven, so are one letter's worth of typo in a word of
+   six or more; a wrong word is wrong. */
+const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+function editDistance(a, b) {
+  if (a === b) return 0;
+  const v = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 0; i < a.length; i += 1) {
+    let prev = v[0]; v[0] = i + 1;
+    for (let j = 0; j < b.length; j += 1) { const cur = v[j + 1]; v[j + 1] = Math.min(v[j] + 1, v[j + 1] + 1, prev + (a[i] === b[j] ? 0 : 1)); prev = cur; }
+  }
+  return v[b.length];
+}
+export function answerMatches(answer, accepted) {
+  const given = fold(answer);
+  if (!given) return false;
+  return (accepted || []).some((a) => {
+    const want = fold(a);
+    if (!want) return false;
+    if (given === want) return true;
+    return want.length >= 6 && editDistance(given, want) <= 1;
+  });
+}
+
+async function recentSession(id) {
+  const sid = String(id || '');
+  if (!/^[0-9a-f-]{36}$/i.test(sid)) return null;
+  const row = await one(`SELECT id FROM live_sessions WHERE id=$1 AND (ended_at IS NULL OR ended_at > now() - interval '4 hours')`, [sid]);
+  return row ? row.id : null;
+}
+export async function respond(user, body) {
+  const promptId = String(body?.promptId || '');
+  const kind = String(body?.kind || '');
+  /* How the class was, and ideas for it, come from the student's own screen
+     when the host ends the class, with no prompt behind them. They belong to
+     the session all the same. */
+  if (!promptId && (kind === 'enjoy' || kind === 'idea')) {
+    /* The host ends the webinar, the console ends the session a moment
+       later, and the student is still choosing a number. The page says
+       which session it means, and a session that ended in the last few
+       hours still takes the answer. */
+    const sessionId = await recentSession(body?.sessionId) || access.sessionId;
+    if (!sessionId) return { ok: true, stale: true };
+    if (kind === 'enjoy') { const score = Math.max(1, Math.min(10, Number(body?.score) || 0)); if (!score) return { ok: false, error: 'Pick a number.' }; await logEvent(user.id, 'enjoy', { score, name: user.name }, sessionId); }
+    else { const text = String(body?.text || '').slice(0, 1200).trim(); if (!text) return { ok: true, empty: true }; await logEvent(user.id, 'idea', { text, name: user.name }, sessionId); }
+    return { ok: true };
+  }
+  const prompt = currentPrompt && currentPrompt.id === promptId ? currentPrompt : await one('SELECT * FROM live_prompts WHERE id=$1', [promptId]);
+  if (!prompt) return { ok: false, error: 'That check is gone.' };
+  if (prompt.closed_at) return { ok: false, error: 'That check has closed.' };
+  if (prompt.kind === 'understand') {
+    const yes = Boolean(body?.yes);
+    await logEvent(user.id, 'understand', { promptId, topic: prompt.topic, yes, name: user.name });
+    await pushPromptStats(prompt.id);
+    return { ok: true };
+  }
+  if (prompt.kind === 'rating' || prompt.kind === 'enjoy') {
+    const score = Math.max(1, Math.min(10, Number(body?.score) || 0));
+    if (!score) return { ok: false, error: 'Pick a number.' };
+    await logEvent(user.id, prompt.kind, { promptId, topic: prompt.topic, score, name: user.name });
+    await pushPromptStats(prompt.id);
+    return { ok: true };
+  }
+  if (prompt.kind === 'quiz') {
+    const index = Number(body?.index);
+    const q = (prompt.questions || [])[index];
+    if (!q) return { ok: false, error: 'No such question.' };
+    const answer = String(body?.answer || '').slice(0, 300);
+    const correct = answerMatches(answer, q.answers);
+    await logEvent(user.id, 'quiz_answer', { promptId, index, answer, correct, name: user.name });
+    const last = index === prompt.questions.length - 1;
+    if (last) {
+      const mine = await query(`SELECT DISTINCT ON (payload->>'index') payload FROM live_events WHERE session_id=$1 AND student_id=$2 AND kind='quiz_answer' AND payload->>'promptId'=$3 ORDER BY payload->>'index', at DESC`, [access.sessionId, user.id, promptId]);
+      const right = mine.rows.filter((r) => r.payload.correct).length;
+      await logEvent(user.id, 'quiz_done', { promptId, correct: right, total: prompt.questions.length, name: user.name });
+    }
+    await pushPromptStats(prompt.id);
+    return { ok: true, correct, expected: correct ? null : q.answers[0] };
+  }
+  return { ok: false, error: 'Unknown kind of check.' };
+}
+
+/* What the console shows while a check is open, and the results after. */
+export async function promptResults(id) {
+  const prompt = await one('SELECT * FROM live_prompts WHERE id=$1', [id]);
+  if (!prompt) return null;
+  const rows = (await query(
+    `SELECT e.kind, e.payload, e.at, e.student_id, u.name FROM live_events e LEFT JOIN users u ON u.id=e.student_id
+     WHERE e.session_id=$1 AND e.payload->>'promptId'=$2 ORDER BY e.at`, [prompt.session_id, id])).rows;
+  const present = presentStudents.size;
+  const out = { id, kind: prompt.kind, topic: prompt.topic, open: !prompt.closed_at, createdAt: prompt.created_at, closedAt: prompt.closed_at, inRoom: present, responded: 0 };
+  if (prompt.kind === 'understand') {
+    const latest = new Map(); for (const r of rows) if (r.kind === 'understand') latest.set(r.student_id, r);
+    const yes = [...latest.values()].filter((r) => r.payload.yes), no = [...latest.values()].filter((r) => !r.payload.yes);
+    Object.assign(out, { responded: latest.size, yes: yes.length, no: no.length, notYet: no.map((r) => r.name || r.payload.name).sort(), understood: yes.map((r) => r.name || r.payload.name).sort() });
+  } else if (prompt.kind === 'rating' || prompt.kind === 'enjoy') {
+    const latest = new Map(); for (const r of rows) if (r.kind === prompt.kind) latest.set(r.student_id, r);
+    const scores = [...latest.values()].map((r) => Number(r.payload.score));
+    const dist = Array.from({ length: 10 }, (_, i) => scores.filter((s) => s === i + 1).length);
+    Object.assign(out, { responded: latest.size, average: scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null, distribution: dist,
+      low: [...latest.values()].filter((r) => Number(r.payload.score) <= 5).map((r) => ({ name: r.name || r.payload.name, score: Number(r.payload.score) })).sort((a, b) => a.score - b.score) });
+  } else if (prompt.kind === 'quiz') {
+    const byStudent = new Map();
+    for (const r of rows) {
+      if (r.kind !== 'quiz_answer') continue;
+      const s = byStudent.get(r.student_id) || { name: r.name || r.payload.name, answers: new Map() };
+      s.answers.set(Number(r.payload.index), { answer: r.payload.answer, correct: Boolean(r.payload.correct) });
+      byStudent.set(r.student_id, s);
+    }
+    const total = (prompt.questions || []).length;
+    const questions = (prompt.questions || []).map((q, i) => {
+      const given = [...byStudent.values()].map((s) => s.answers.get(i)).filter(Boolean);
+      const wrong = {}; for (const g of given) if (!g.correct) wrong[g.answer] = (wrong[g.answer] || 0) + 1;
+      return { index: i, q: q.q, answer: q.answers[0], answered: given.length, correct: given.filter((g) => g.correct).length,
+        commonWrong: Object.entries(wrong).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([answer, n]) => ({ answer, n })) };
+    });
+    const students = [...byStudent.values()].map((s) => ({ name: s.name, answered: s.answers.size, correct: [...s.answers.values()].filter((a) => a.correct).length, total, done: s.answers.size >= total }))
+      .sort((a, b) => b.correct - a.correct || a.name.localeCompare(b.name));
+    Object.assign(out, { responded: students.length, total, finished: students.filter((s) => s.done).length,
+      completion: present ? Math.round((students.filter((s) => s.done).length / present) * 100) : 0,
+      correctPct: students.length && total ? Math.round((students.reduce((a, s) => a + s.correct, 0) / (students.length * total)) * 100) : 0,
+      questions, students });
+  }
+  return out;
+}
+let promptStatsTimer = null;
+async function pushPromptStats(id) {
+  if (promptStatsTimer) return;
+  promptStatsTimer = setTimeout(async () => {
+    promptStatsTimer = null;
+    try { const r = await promptResults(id); if (r) toTeachers({ type: 'promptstats', results: r }); } catch (error) { console.error('prompt stats', error?.message); }
+  }, 250);
 }
 
 const sessionKey = (ids) => [...ids].sort().join(',');
@@ -369,7 +592,7 @@ export async function setSession({ mode, classId, classIds, joinUrl, joinNote })
   }
   access.mode = nextMode;
   access.classIds = nextClasses;
-  if (nextUrl !== access.joinUrl) { access.meetingId = ''; access.startedAt = null; hostStartUrl = ''; }
+  if (nextUrl !== access.joinUrl) { access.meetingId = ''; access.startedAt = null; access.sessionId = null; hostStartUrl = ''; }
   access.joinUrl = nextUrl;
   access.joinNote = nextNote;
   await saveAccess();

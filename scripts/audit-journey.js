@@ -757,13 +757,41 @@ try {
     if (ready?.sdk?.configured) {
       expectOk('Go live with a pasted link starts the session for that class', went, (d) => d?.live === true && d?.classIds?.[0] === made.classId && d?.startedAt);
       expectOk('the session reports itself live', await admin.call('/api/live/session'), (d) => d?.live === true && d?.startedAt);
+      made.sessionId = went.data?.sessionId || null;
+      /* What the teacher asks the room while it is live. */
+      const asked = expectOk('the teacher asks whether the class understands', await admin.call('/api/live/prompt',
+        { method: 'POST', body: { kind: 'understand', topic: 'an aimsir chaite' } }), (d) => d?.ok === true && d?.prompt?.kind === 'understand' && d?.prompt?.id);
+      if (asked?.prompt?.id) expectOk('and sees the running results', await admin.call(`/api/live/prompt/${asked.prompt.id}/results`), (d) => d?.kind === 'understand' && typeof d?.yes === 'number');
+      const quiz = expectOk('a pop quiz with two questions takes its place', await admin.call('/api/live/prompt',
+        { method: 'POST', body: { kind: 'quiz', topic: 'Warm-up', questions: [{ q: 'How do you say "thank you"?', a: 'go raibh maith agat' }, { q: 'Say "I was"', a: 'bhí mé | bhíos' }] } }),
+        (d) => d?.ok === true && d?.prompt?.kind === 'quiz' && d?.prompt?.questions?.length === 2);
+      made.quizId = quiz?.prompt?.id || null;
+      expectStatus('a quiz with no questions is refused', await admin.call('/api/live/prompt', { method: 'POST', body: { kind: 'quiz', topic: 'Empty', questions: [] } }), 400);
+      expectStatus('and so is a kind of check that does not exist', await admin.call('/api/live/prompt', { method: 'POST', body: { kind: 'dance', topic: 'x' } }), 400);
+      if (made.quizId) expectOk('a check can be closed early', await admin.call(`/api/live/prompt/${made.quizId}/close`, { method: 'POST', body: {} }));
+      expectStatus('results for a check that never was are a 404', await admin.call('/api/live/prompt/00000000-0000-4000-8000-000000000000/results'), 404);
       expectOk('End session clears it', await admin.call('/api/live/end', { method: 'POST', body: {} }), (d) => d?.live === false && d?.joinUrl === '');
+      expectStatus('a check cannot be asked once the class is over', await admin.call('/api/live/prompt', { method: 'POST', body: { kind: 'understand', topic: 'x' } }), 409);
+      /* The class that was, and its report. */
+      expectOk('the sessions that ran are listed', await admin.call('/api/live/sessions'), (d) => Array.isArray(d?.sessions) && (!made.sessionId || d.sessions.some((x) => x.id === made.sessionId)));
+      if (made.sessionId) {
+        expectOk('a session has a summary', await admin.call(`/api/live/sessions/${made.sessionId}/summary`), (d) => d?.session?.id === made.sessionId && Array.isArray(d?.attendance) && Array.isArray(d?.checks));
+        expectOk('and a PDF report', await admin.call(`/api/live/sessions/${made.sessionId}/report.pdf`), (d) => typeof d?.nonJson === 'string' && d.nonJson.startsWith('%PDF'));
+      }
+      expectStatus('a session that never was is a 404', await admin.call('/api/live/sessions/00000000-0000-4000-8000-000000000000/summary'), 404);
+      expectStatus('and so is its report', await admin.call('/api/live/sessions/00000000-0000-4000-8000-000000000000/report.pdf'), 404);
       const noLink = await admin.call('/api/live/go-live', { method: 'POST', body: { mode: 'open', classIds: [made.classId] } });
       expect('Go live with no link and no Zoom account says what to do', (noLink.status === 503 && /Paste the Zoom link|connect the Zoom account/.test(noLink.data?.error || '')) || noLink.status === 200, `status ${noLink.status} ${JSON.stringify(noLink.data).slice(0, 120)}`);
       if (noLink.status === 200) await admin.call('/api/live/end', { method: 'POST', body: {} });
     } else {
       expectStatus('Go live is refused plainly until the SDK secret is pasted', went, 503);
       expectStatus('and End session is harmless', await admin.call('/api/live/end', { method: 'POST', body: {} }), 200);
+      expectStatus('a check cannot be asked when nobody is live', await admin.call('/api/live/prompt', { method: 'POST', body: { kind: 'understand', topic: 'x' } }), 409);
+      expectStatus('results for a check that never was are a 404', await admin.call('/api/live/prompt/00000000-0000-4000-8000-000000000000/results'), 404);
+      expectOk('closing a check that never was is harmless', await admin.call('/api/live/prompt/00000000-0000-4000-8000-000000000000/close', { method: 'POST', body: {} }));
+      expectOk('the sessions that ran are listed', await admin.call('/api/live/sessions'), (d) => Array.isArray(d?.sessions));
+      expectStatus('a session that never was is a 404', await admin.call('/api/live/sessions/00000000-0000-4000-8000-000000000000/summary'), 404);
+      expectStatus('and so is its report', await admin.call('/api/live/sessions/00000000-0000-4000-8000-000000000000/report.pdf'), 404);
     }
     expectStatus('a class that does not exist is refused', await admin.call('/api/live/session',
       { method: 'POST', body: { mode: 'open', classId: '00000000-0000-4000-8000-000000000000' } }), 400);
@@ -1040,6 +1068,17 @@ try {
     expectOk('a question goes to the teacher', await student.call('/api/live/chat', { method: 'POST', body: { text: 'Cad is brí le "duit"?' } }));
     expectStatus('an empty question is refused', await student.call('/api/live/chat', { method: 'POST', body: { text: '  ' } }), 400);
     expectOk('a failed join is reported to the console', await student.call('/api/live/join-failed', { method: 'POST', body: { reason: 'The passcode is wrong' } }));
+    expectOk('the room notes the student is present', await student.call('/api/live/presence', { method: 'POST', body: { state: 'present' } }), (d) => d?.ok === true);
+    expectOk('how the class was is kept for the session that just ended', await student.call('/api/live/respond',
+      { method: 'POST', body: { kind: 'enjoy', score: 9, sessionId: made.sessionId } }), (d) => d?.ok === true && (!made.sessionId || !d.stale));
+    expectOk('and an idea for it', await student.call('/api/live/respond',
+      { method: 'POST', body: { kind: 'idea', text: 'More songs', sessionId: made.sessionId } }), (d) => d?.ok === true);
+    if (made.quizId) expectOk('an answer to a quiz that has closed is turned away kindly', await student.call('/api/live/respond',
+      { method: 'POST', body: { promptId: made.quizId, kind: 'quiz', index: 0, answer: 'go raibh maith agat' } }), (d) => d?.ok === false && /closed/.test(d?.error || ''));
+    expectOk('and so is a check that never was', await student.call('/api/live/respond',
+      { method: 'POST', body: { promptId: '00000000-0000-4000-8000-000000000000', kind: 'understand', yes: true } }), (d) => d?.ok === false);
+    expectStatus('a student cannot ask the room a check', await student.call('/api/live/prompt', { method: 'POST', body: { kind: 'understand', topic: 'x' } }), 403);
+    expectStatus('nor list the sessions', await student.call('/api/live/sessions'), 403);
     expectOk('and the console sees who could not get in and why', await admin.call('/api/live/status'), (d) => (d?.joinFailures || []).some((f) => /passcode/.test(f.reason)));
     if (made.liveLessonId) expectOk('a student can read a lesson the studio made', await student.call(`/api/live/lessons/${made.liveLessonId}`), (d) => d?.title === 'Audit deck');
     expectStatus('but cannot put a phrase on screen', await student.call('/api/live/phrase', { method: 'POST', body: { irish: 'x' } }), 403);
@@ -1503,6 +1542,7 @@ try {
   console.error(error);
 } finally {
   // Whatever the journey did or failed to do, leave nothing behind.
+  if (made.sessionId) await query('DELETE FROM live_sessions WHERE id=$1', [made.sessionId]).catch(() => {});
   await query('DELETE FROM users WHERE email LIKE $1', [`audit.%@gaeilgeoirguides.test`]).catch(() => {});
   await query('DELETE FROM classes WHERE programme_name LIKE $1', [`Audit ${stamp}%`]).catch(() => {});
   await query('DELETE FROM courses WHERE title LIKE $1', [`Audit course ${stamp}%`]).catch(() => {});

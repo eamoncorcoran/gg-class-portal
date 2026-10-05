@@ -307,6 +307,12 @@ export function createPractice(opts = {}) {
     if (isFinal || practiceState === 'finishing') pass();
     else if (!passTimer) passTimer = setTimeout(() => { passTimer = null; if (!finished && locked.length && !locked.includes(null)) pass(); }, 700);
   }
+  /* Each word with its grade, for the teacher's report of what the class is
+     getting wrong. */
+  function graded() {
+    const words = currentTarget.split(/\s+/).filter(Boolean);
+    return words.map((w, i) => ({ w, g: locked[i] || 'wrong' }));
+  }
   function pass() {
     if (finished) return;
     finished = true;
@@ -345,6 +351,7 @@ export function createPractice(opts = {}) {
     setMic('verdict', verdict);
     setGlow(verdict === 'incorrect' ? 'gg-glow-red' : 'gg-glow-green');
     playSound(verdict === 'incorrect' ? sndIncorrect : sndSuccess);
+    const words = graded();
     verdictTimer = setTimeout(() => {
       if (currentTarget !== target) return;
       setGlow(null);
@@ -353,10 +360,10 @@ export function createPractice(opts = {}) {
         clearWordColours();
         verdictEl.className = 'verdict js-verdict';
         setMic('idle');
-        onFail && onFail(verdict);
+        onFail && onFail(verdict, words);
       } else {
         // Nailed it: the card leaves and the caller resumes the video.
-        onPass && onPass(verdict);
+        onPass && onPass(verdict, words);
         hide();
       }
     }, verdict === 'incorrect' ? 1800 : 2000);
@@ -417,7 +424,7 @@ export function createPractice(opts = {}) {
   });
   skipBtn.addEventListener('click', () => {
     if (!currentTarget) return;
-    onSkip && onSkip();
+    onSkip && onSkip(graded());
     hide();
   });
 

@@ -14,6 +14,7 @@ import { nextClassWithSessions } from '../classtime.js';
 import { zoomClientId, signZoom, liveRoomOn } from '../live/zoom.js';
 import { speechConfigured } from '../live/speech.js';
 import * as room from '../live/room.js';
+import { listSessions, sessionData, renderReportPdf } from '../live/report.js';
 import * as lessons from '../live/lessons.js';
 import { voices, ttsRoute, phoneticsRoute, analyzeRoute } from '../live/practice.js';
 
@@ -60,6 +61,8 @@ router.get('/me', asyncRoute(async (req, res) => {
     joinUrl: session.joinUrl || (classId ? (await liveClass(classId))?.joinUrl || null : null),
     liveNow: req.user.role === 'admin' ? session.live : await room.liveFor(req.user.id),
     zoomClientId: await zoomClientId(), live: await liveRoomOn(), mic: await speechConfigured(),
+    // The check on screen right now, for a page that has just loaded.
+    prompt: room.currentPromptPublic(),
   });
 }));
 
@@ -88,6 +91,44 @@ router.post('/phrase-result', requireStudent, asyncRoute(async (req, res) => {
   res.json(room.recordResult(req.user, req.body));
 }));
 router.post('/phrase', requireAdmin, (req, res) => res.json({ ok: true, phrase: room.pushPhrase(req.body) }));
+/* A student arriving and leaving, written down for the report. The leaving
+   one usually comes by sendBeacon as the tab closes. */
+router.post('/presence', requireStudent, asyncRoute(async (req, res) => res.json(await room.recordPresence(req.user, req.body?.state))));
+
+/* What the teacher asks the room: an understanding check, a rating, a pop
+   quiz, how the class was. One open at a time. */
+router.post('/prompt', requireAdmin, asyncRoute(async (req, res) => {
+  try { res.json({ ok: true, prompt: await room.createPrompt(req.body || {}, req.user) }); }
+  catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+}));
+router.post('/prompt/:id/close', requireAdmin, asyncRoute(async (req, res) => res.json(await room.closePrompt(req.params.id))));
+router.get('/prompt/:id/results', requireAdmin, asyncRoute(async (req, res) => {
+  const results = await room.promptResults(req.params.id);
+  if (!results) return res.status(404).json({ error: 'No such check.' });
+  res.json(results);
+}));
+router.post('/respond', requireStudent, asyncRoute(async (req, res) => {
+  const gate = await room.studentGate(req.user);
+  if (!gate.ok) return res.status(403).json({ error: gate.error });
+  res.json(await room.respond(req.user, req.body || {}));
+}));
+
+/* The sessions that happened, and the report for one of them. */
+router.get('/sessions', requireAdmin, asyncRoute(async (_req, res) => res.json({ sessions: await listSessions() })));
+router.get('/sessions/:id/summary', requireAdmin, asyncRoute(async (req, res) => {
+  const data = await sessionData(req.params.id);
+  if (!data) return res.status(404).json({ error: 'No such session.' });
+  res.json(data);
+}));
+router.get('/sessions/:id/report.pdf', requireAdmin, asyncRoute(async (req, res) => {
+  const data = await sessionData(req.params.id);
+  if (!data) return res.status(404).json({ error: 'No such session.' });
+  const pdf = await renderReportPdf(data);
+  const day = new Date(data.session.startedAt).toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="class-report-${day}.pdf"`);
+  res.send(pdf);
+}));
 router.get('/status', requireAdmin, (_req, res) => res.json(room.roomStatus()));
 /* A join that failed, in Zoom's own words, so the console can say who could
    not get in and why instead of the teacher finding out from an empty room. */

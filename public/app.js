@@ -9172,6 +9172,14 @@ function mountLiveFrame() {
   liveFrameRoot.innerHTML = `<iframe src="${liveUrl('/live/room.html?embed=1&wait=1')}" title="Live class"
     allow="camera; microphone; autoplay; fullscreen; display-capture; speaker-selection" allowfullscreen></iframe>`;
   document.body.appendChild(liveFrameRoot);
+  /* Full screen is the room's own button; the frame around it is ours to
+     grow, so the room says and the portal makes the frame the whole window. */
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || !e.data || e.data.source !== 'gglive' || e.data.type !== 'fullscreen') return;
+    liveFrameRoot.classList.toggle('full', Boolean(e.data.on));
+    document.body.classList.toggle('live-full', Boolean(e.data.on));
+    if (!e.data.on) placeLiveFrame();
+  });
   const place = () => placeLiveFrame();
   window.addEventListener('resize', place);
   document.addEventListener('scroll', place, true);
@@ -9179,6 +9187,7 @@ function mountLiveFrame() {
 let liveSlotWatch = null;
 function placeLiveFrame() {
   if (!liveFrameRoot) return;
+  if (liveFrameRoot.classList.contains('full')) { if (state.view !== 'live') { liveFrameRoot.classList.remove('full'); document.body.classList.remove('live-full'); } else return; }
   const slot = state.view === 'live' ? document.getElementById('live-slot') : null;
   if (!slot) { liveFrameRoot.hidden = true; return; }
   const r = slot.getBoundingClientRect();

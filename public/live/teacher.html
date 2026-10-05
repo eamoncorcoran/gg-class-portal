@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/live/live.css">
 <style>
 .console{display:grid;grid-template-columns:minmax(0,1fr) 452px;gap:20px;align-items:start}
-@media(max-width:1160px){.console{grid-template-columns:1fr}}
+
 .stack{display:flex;flex-direction:column;gap:18px}
 
 /* Going live */
@@ -111,10 +111,63 @@
 .statpct{font-size:12px;font-weight:800;color:var(--brand-700);font-variant-numeric:tabular-nums}
 .jumpchip{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--gray-900);color:#fff;font-weight:700;font-size:13px;padding:8px 14px;border-radius:999px;box-shadow:var(--shadow-lg);z-index:130;opacity:0;transition:opacity .15s}
 .jumpchip.on{opacity:1}
+/* Checks: what the teacher asks the room */
+.checks{display:flex;flex-direction:column;gap:12px}
+.check{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--gray-25)}
+.check h4{margin:0 0 6px;font-size:13px;font-weight:800;color:var(--text)}
+.check .row{display:flex;gap:8px;align-items:center}
+.check .row input{flex:1;min-width:0}
+.quizq{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:6px;margin-bottom:6px}
+.quizq input{min-width:0}
+.quizq .x{border:0;background:var(--gray-100);border-radius:8px;width:34px;cursor:pointer;color:var(--text-tertiary);font-weight:800}
+.results{border:1px solid var(--brand-100);background:var(--brand-50);border-radius:12px;padding:12px 14px}
+.results .rhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.results .rhead b{font-size:13.5px;color:var(--text)}
+.results .big{display:flex;gap:16px;margin:8px 0 6px;flex-wrap:wrap}
+.results .big div{font-size:11px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.05em}
+.results .big div span{display:block;font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.02em;text-transform:none;letter-spacing:0}
+.results .names{font-size:12.5px;color:var(--text-secondary);line-height:1.5}
+.results .names b{color:var(--error-700)}
+.results table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.results td,.results th{padding:4px 6px;text-align:left;border-top:1px solid var(--brand-100)}
+.results th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-tertiary);border:0}
+.results td.n{text-align:right;font-variant-numeric:tabular-nums}
+.dist{display:flex;gap:3px;align-items:flex-end;height:36px;margin-top:6px}
+.dist i{flex:1;background:var(--brand-400);border-radius:3px 3px 0 0;min-height:2px;position:relative}
+.dist i.low{background:var(--warning-400)}
+.sessions{display:flex;flex-direction:column;gap:6px}
+.session{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;font-size:13px}
+.session .sm{flex:1;min-width:0}
+.session .sm b{display:block;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session .sm span{color:var(--text-tertiary);font-size:12px}
 @media(max-width:820px){
   .console{gap:14px}
   .steplist{max-height:none}
 }
+/* One iPad window. Two columns that each scroll on their own, nothing
+   taller than the screen, and the padding taken in: the whole console on
+   an iPad held sideways, the preview and the questions always in view. */
+@media(min-width:900px) and (max-width:1240px){
+  /* An iPad on its side: the sidebar folds to its icon rail, the console is
+     two columns that scroll on their own, and the page itself never does. */
+  .app-shell{grid-template-columns:76px minmax(0,1fr)}
+  .sidebar{padding-left:10px;padding-right:10px}
+  .sidebar-brand .bt,.nav-button>span:not(.nav-icon),.nav-label,.side-foot .who{display:none}
+  .sidebar-brand{justify-content:center;padding-left:0;padding-right:0}
+  .nav-button{justify-content:center;padding:9px}
+  .nav-button.active:before{left:-10px}
+  .side-foot{justify-content:center}
+  .app-main{padding-bottom:18px}
+  .console{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+  .stack{max-height:calc(100vh - 125px);max-height:calc(100dvh - 125px);overflow-y:auto;padding-right:2px;gap:12px}
+  .card-header{padding:12px 14px}
+  .card-body{padding:12px 14px}
+  .steplist{max-height:min(34vh,320px)}
+  .qwrap{height:min(36vh,330px)}
+  .acc-classes{max-height:120px}
+  .kbhint{display:none}
+}
+@media(max-width:899px){.console{grid-template-columns:1fr}}
 .gate .fox{width:56px;height:56px;border-radius:15px;background:var(--brand-600);display:grid;place-items:center;font-size:28px;margin:0 auto 14px}
 /* Inside the portal: its sidebar is around this page. */
 body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb{display:none !important}
@@ -222,6 +275,25 @@ body.embed .app-main{padding:0 0 18px;max-width:none}
             <button class="btn primary block" id="qpSend">Show on screen</button>
           </div>
         </div>
+
+        <div class="card">
+          <div class="card-header"><div><h2>Check the class</h2><p>Each one appears on every student's screen; the answers come back here as they arrive.</p></div></div>
+          <div class="card-body checks">
+            <div id="checkResults" hidden></div>
+            <div class="check"><h4>Do you understand?</h4>
+              <div class="row"><input id="ckUnderstandTopic" placeholder="the topic, for example an aimsir chaite" maxlength="200"><button class="btn primary" id="ckUnderstand">Ask</button></div>
+              <div class="field-hint">Yes or not yet. A yes gets confetti; every not yet is listed here with the name.</div></div>
+            <div class="check"><h4>Rate your understanding, 1 to 10</h4>
+              <div class="row"><input id="ckRatingTopic" placeholder="the topic" maxlength="200"><button class="btn primary" id="ckRating">Ask</button></div>
+              <div class="field-hint">Six or more gets confetti. You see the average, the spread and who is at five or under.</div></div>
+            <div class="check"><h4>Pop quiz</h4>
+              <div id="quizRows"></div>
+              <div class="row" style="margin-top:4px"><button class="btn small" id="quizAdd">Add a question</button><input id="quizTopic" placeholder="name for this quiz (optional)" maxlength="200" style="flex:1"><button class="btn primary" id="quizLaunch">Launch quiz</button></div>
+              <div class="field-hint">Typed answers, checked here. Several right answers go in one box separated by commas. Case, fadas and one typo are forgiven.</div></div>
+            <div class="check"><h4>How was the class?</h4>
+              <div class="row"><button class="btn" id="ckEnjoy">Ask them now</button><span class="field-hint" style="margin:0">Asked by itself when you end the webinar, with a box for ideas. This asks sooner.</span></div></div>
+          </div>
+        </div>
       </div>
 
       <!-- RIGHT: live preview (top) + questions (under) -->
@@ -253,6 +325,12 @@ body.embed .app-main{padding:0 0 18px;max-width:none}
               <div class="qcbox"><input id="qreply" placeholder="Message the whole class…"><button class="send" id="qsend">➤</button></div>
             </div>
           </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div><h2>Class reports</h2><p>Who was there and for how long, every phrase, the words going wrong, the checks and quizzes, how they found it.</p></div>
+            <button class="btn small" id="sessionsRefresh">Refresh</button></div>
+          <div class="card-body"><div class="sessions" id="sessions"><span style="color:var(--text-tertiary);font-size:12.5px">Loading</span></div></div>
         </div>
       </div>
     </div>
@@ -553,8 +631,70 @@ function connectChat(){
     } else if (d.type==='msg'){ addMessage(d.cid,d.name,d.message); }
     else if (d.type==='broadcast'){ addBroadcast(d.message); }
     else if (d.type==='phrasestats'){ renderStats(d); }
+    else if (d.type==='promptstats'){ renderCheck(d.results); }
   };
 }
+
+/* ---------- Checks: what the teacher asks the room ---------- */
+async function ask(body){
+  try {
+    const r = await api('/api/live/prompt', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+    flash('On every screen now');
+    renderCheck({ id: r.prompt.id, kind: r.prompt.kind, topic: r.prompt.topic, open: true, responded: 0, inRoom: lastStudents });
+  } catch(e){ flash(e.message, true); }
+}
+$('#ckUnderstand').onclick = () => ask({ kind: 'understand', topic: $('#ckUnderstandTopic').value.trim() });
+$('#ckRating').onclick = () => ask({ kind: 'rating', topic: $('#ckRatingTopic').value.trim() });
+$('#ckEnjoy').onclick = () => ask({ kind: 'enjoy', topic: '' });
+function quizAddRow(q = '', a = ''){
+  const row = document.createElement('div'); row.className = 'quizq';
+  row.innerHTML = `<input class="qq" placeholder="Question, for example: 'I was' in Irish" maxlength="300" value="${esc(q)}"><input class="qa" placeholder="Answer(s), comma separated" maxlength="300" value="${esc(a)}"><button class="x" title="Remove">✕</button>`;
+  row.querySelector('.x').onclick = () => { row.remove(); if (!$('#quizRows').children.length) quizAddRow(); };
+  $('#quizRows').appendChild(row);
+}
+$('#quizAdd').onclick = () => quizAddRow();
+$('#quizLaunch').onclick = () => {
+  const questions = [...$('#quizRows').querySelectorAll('.quizq')].map((r) => ({ q: r.querySelector('.qq').value.trim(), answers: r.querySelector('.qa').value.trim() })).filter((q) => q.q && q.answers);
+  if (!questions.length) return flash('Add a question and its answer first', true);
+  ask({ kind: 'quiz', topic: $('#quizTopic').value.trim(), questions });
+};
+let shownCheck = null;
+function renderCheck(r){
+  const box = $('#checkResults'); if (!r) return;
+  // The old check's closing figures arrive after the new one was asked; the newest asked stays on top.
+  if (shownCheck && shownCheck.id !== r.id && !r.open) return;
+  shownCheck = r;
+  box.hidden = false;
+  const title = r.kind === 'understand' ? `Do you understand${r.topic ? ': ' + esc(r.topic) : ''}?` : r.kind === 'rating' ? `Rate your understanding${r.topic ? ': ' + esc(r.topic) : ''}` : r.kind === 'enjoy' ? 'How was the class?' : `Pop quiz${r.topic ? ': ' + esc(r.topic) : ''}`;
+  let body = '';
+  if (r.kind === 'understand') {
+    body = `<div class="big"><div>Yes<span>${r.yes || 0}</span></div><div>Not yet<span>${r.no || 0}</span></div><div>Answered<span>${r.responded || 0} of ${r.inRoom || 0}</span></div></div>`
+      + (r.notYet && r.notYet.length ? `<div class="names"><b>Not yet:</b> ${r.notYet.map(esc).join(', ')}</div>` : '');
+  } else if (r.kind === 'rating' || r.kind === 'enjoy') {
+    const d = r.distribution || [];
+    const max = Math.max(1, ...d);
+    body = `<div class="big"><div>Average<span>${r.average ?? '–'}</span></div><div>Answered<span>${r.responded || 0} of ${r.inRoom || 0}</span></div></div>`
+      + `<div class="dist">${d.map((n, i) => `<i class="${i < 5 ? 'low' : ''}" style="height:${Math.max(6, (n / max) * 100)}%" title="${i + 1}: ${n}"></i>`).join('')}</div>`
+      + (r.low && r.low.length ? `<div class="names" style="margin-top:6px"><b>Five or under:</b> ${r.low.map((x) => esc(x.name) + ' (' + x.score + ')').join(', ')}</div>` : '');
+  } else {
+    body = `<div class="big"><div>Finished<span>${r.finished || 0} of ${r.inRoom || 0}</span></div><div>Completion<span>${r.completion || 0}%</span></div><div>Right<span>${r.correctPct || 0}%</span></div></div>`
+      + (r.questions ? `<table><tr><th>Question</th><th>Right</th><th>Common wrong</th></tr>${r.questions.map((q) => `<tr><td>${esc(q.q)}</td><td class="n">${q.correct}/${q.answered}</td><td>${(q.commonWrong || []).map((w) => esc(w.answer) + ' (' + w.n + ')').join(', ')}</td></tr>`).join('')}</table>` : '')
+      + (r.students && r.students.length ? `<table><tr><th>Student</th><th>Score</th></tr>${r.students.map((st) => `<tr><td>${esc(st.name)}</td><td class="n">${st.correct} of ${st.total}${st.done ? '' : ' · going'}</td></tr>`).join('')}</table>` : '');
+  }
+  box.innerHTML = `<div class="results"><div class="rhead"><b>${title}</b>${r.open ? `<button class="btn small" id="ckClose">Close</button>` : '<span class="pill">closed</span>'}</div>${body}</div>`;
+  const close = $('#ckClose'); if (close) close.onclick = async () => { try { await api(`/api/live/prompt/${r.id}/close`, { method:'POST', headers:{'content-type':'application/json'}, body:'{}' }); } catch(e){ flash(e.message, true); } };
+}
+
+/* ---------- The sessions that happened ---------- */
+async function loadSessions(){
+  const box = $('#sessions');
+  try {
+    const r = await api('/api/live/sessions');
+    if (!r.sessions.length) { box.innerHTML = '<span style="color:var(--text-tertiary);font-size:12.5px">No class has run yet. Go live and the report builds itself as you teach.</span>'; return; }
+    box.innerHTML = r.sessions.map((s) => `<div class="session"><div class="sm"><b>${esc(s.classes)}</b><span>${new Date(s.startedAt).toLocaleString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · ${s.minutes} min · ${s.present} present${s.endedAt ? '' : ' · running'}</span></div><a class="btn small" href="/api/live/sessions/${s.id}/report.pdf" target="_blank" rel="noopener">PDF</a></div>`).join('');
+  } catch(e){ box.innerHTML = `<span style="color:var(--error-700);font-size:12.5px">${esc(e.message)}</span>`; }
+}
+$('#sessionsRefresh').onclick = loadSessions;
 
 /* ---------- Live answered / skipped for the phrase on screen ---------- */
 function renderStats(d){
@@ -581,10 +721,12 @@ async function boot(){
     $('#sideName').textContent = me.name || 'Teacher';
     $('#sideAv').textContent = (me.name || 'GG').trim().slice(0,2).toUpperCase();
     const es = new EventSource('/api/live/phrase-stream');
-    es.onmessage = ev => { try { preview(JSON.parse(ev.data)); } catch {} };
+    es.onmessage = ev => { try { const d = JSON.parse(ev.data); if (!d || d.type) return; preview(d); } catch {} };
     connectChat();
     loadLessons();
     loadAccess();
+    loadSessions();
+    quizAddRow(); quizAddRow();
   } catch (e) {
     if (/401|403|Authentication|Administrator/.test(e.message)) { location.href = '/'; return; }
     flash(e.message, true);
@@ -694,6 +836,7 @@ $('#endLive').onclick = async () => {
     flash(r.zoomEnded === false ? 'Session ended here. End the meeting in Zoom yourself.' : 'Session ended');
     $('#accLink').value = ''; $('#accNote').value = '';
     await loadAccess();
+    loadSessions();
   } catch(e){ flash(e.message, true); }
 };
 setInterval(async () => {
