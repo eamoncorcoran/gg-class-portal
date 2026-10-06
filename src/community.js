@@ -357,6 +357,13 @@ export async function draftReplyFor({ threadId, force = false }) {
     return { draft: thread.ai_draft, state: 'drafted', cached: true };
   }
 
+  /* Off unless the switch on the Feedback drafting screen is on. Checked after
+     the cache, because a draft that was already paid for costs nothing to show
+     again, and before the comments are fetched, because nothing is about to be
+     done with them. */
+  const { draftingSwitches, draftCommunityReply } = await import('./ai.js');
+  if (!(await draftingSwitches()).board) return { draft: null, state: 'off' };
+
   // What has already been said, so the draft does not repeat somebody.
   const comments = await query(
     `SELECT p.body, u.name, u.role FROM discussion_posts p
@@ -365,7 +372,6 @@ export async function draftReplyFor({ threadId, force = false }) {
     [threadId],
   );
 
-  const { draftCommunityReply } = await import('./ai.js');
   try {
     const draft = await draftCommunityReply({
       post: { title: thread.title, body: thread.body, author: thread.author_name },

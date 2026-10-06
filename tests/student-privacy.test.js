@@ -168,11 +168,11 @@ test('the reply recorder and the draft never render for a student', () => {
   const end = app.indexOf('function openScheduleModal', start);
   const drawer = app.slice(start, end);
 
-  assert.match(drawer, /\$\{admin \? `<div class="rd" id="reply-draft"/,
+  assert.match(drawer, /\$\{admin && draftingFor\('board'\)\.on \? `<div class="rd" id="reply-draft"/,
     'the draft slot must be behind the admin check');
   assert.match(drawer, /\$\{admin \? replyRecorder\(\) : ''\}/,
     'the recorder must be behind the admin check');
-  assert.match(drawer, /if \(admin\) loadReplyDraft\(thread\.id\)/,
+  assert.match(drawer, /if \(admin && draftingFor\('board'\)\.on\) loadReplyDraft\(thread\.id\)/,
     'drafting must only be requested for an administrator');
 });
 

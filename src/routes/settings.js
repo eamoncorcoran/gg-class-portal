@@ -6,7 +6,7 @@ import { query } from '../db.js';
 import { config } from '../config.js';
 import { requireAdmin } from '../session.js';
 import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig, getZoomConfig, saveZoomConfig } from '../settings.js';
-import { draftCheckinFeedback } from '../ai.js';
+import { draftCheckinFeedback, draftingSwitches } from '../ai.js';
 import { auditReminders } from '../reminders.js';
 import { sendEmail } from '../email.js';
 import { audit } from '../audit.js';
@@ -16,9 +16,10 @@ const router = Router();
 router.use(requireAdmin);
 
 router.get('/', asyncRoute(async (_req, res) => {
-  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech, zoomCfg] = await Promise.all([
+  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech, zoomCfg, drafting] = await Promise.all([
     getAnthropicConfig(), getOpenAIConfig(), getEmailConfig(), getSetting('prompts', {}), getSetting('reminders', {}),
     getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}), getSpeechConfig(), getZoomConfig(),
+    draftingSwitches(),
   ]);
   res.json({
     anthropic: { configured: anthropic.configured, model: anthropic.model },
@@ -30,11 +31,30 @@ router.get('/', asyncRoute(async (_req, res) => {
       hostEmail: zoomCfg.hostEmail, apiConfigured: zoomApiConfigured() },
     email: { ...email, smtpPassword: undefined },
     prompts,
+    // Which drafts Claude writes at all. Defaults applied, so the screen never
+    // has to guess what an unset switch means.
+    drafting,
     reminders,
     dictation,
     voicePrompts,
     nudge,
   });
+}));
+
+/* What Claude is asked to write. Each switch is a separate bill: the Irish
+   corrections are the one thing that is slow to do by hand, so that is the one
+   on by default; the rest are off until somebody turns them on here. */
+router.put('/drafting', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    corrections: z.boolean(),
+    generalFeedback: z.boolean(),
+    checkins: z.boolean(),
+    board: z.boolean(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Each drafting switch must be either on or off.') });
+  await setSetting('drafting', parsed.data, req.user.id);
+  await audit({ actorId: req.user.id, action: 'settings.drafting_updated', entityType: 'settings', entityId: 'drafting', metadata: parsed.data, ip: req.ip });
+  res.json(parsed.data);
 }));
 
 /* Drafting runs on Claude. Dictation still runs on OpenAI, so both keys are
@@ -97,7 +117,7 @@ router.post('/anthropic/test', asyncRoute(async (_req, res) => {
         weeklyWin: 'I got one Sraith learned off and said it out loud a few times.',
         support: "I'm finding the Sraith overwhelming, there's so much in learning it.",
       },
-    });
+    }, { test: true });
     res.json({ ok: true, preview: reply });
   } catch (error) {
     /* Same reasoning as the email test below: a generic "Something went wrong"

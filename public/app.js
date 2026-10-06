@@ -1335,6 +1335,9 @@ async function loadAdmin() {
   const bootstrap = await api('/api/admin/bootstrap');
   state.classes = bootstrap.classes;
   state.liveRoom = Boolean(bootstrap.liveRoom);
+  // Which drafts Claude writes. Null when the server did not say, which the
+  // screens take as everything on, the way they behaved before the switches.
+  state.drafting = bootstrap.drafting && typeof bootstrap.drafting === 'object' ? bootstrap.drafting : null;
   state.activeClassId ||= state.classes[0]?.id || null;
   state.view ||= state.activeClassId ? 'tracker' : 'people';
   await renderAdmin();
@@ -5578,7 +5581,7 @@ function renderThreadDrawer() {
       </article>
       <h4 class="cmt-count">${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}</h4>
       <div class="cmts">${tree.map(({ comment, replies }) => feedComment(comment, admin, replies, canComment)).join('') || '<p class="side-empty">No comments yet. Be the first.</p>'}</div>
-      ${admin ? `<div class="rd" id="reply-draft"><p class="muted small">Drafting a reply…</p></div>` : ''}
+      ${admin && draftingFor('board').on ? `<div class="rd" id="reply-draft"><p class="muted small">Drafting a reply…</p></div>` : ''}
       ${canComment ? `<div class="reply">
         ${boardAvatar(me(), 'sm')}
         <div class="reply-box">
@@ -5598,7 +5601,8 @@ function renderThreadDrawer() {
       bindEmojiButtons(modalRoot);
       bindFormatBars(modalRoot);
       bindAutoGrow(modalRoot);
-      if (admin) loadReplyDraft(thread.id);
+      // No request when board drafting is known to be off: nothing would come back.
+      if (admin && draftingFor('board').on) loadReplyDraft(thread.id);
       if (admin) bindReplyRecorder();
       document.getElementById('send-reply')?.addEventListener('click', async () => {
         const body = document.getElementById('reply-body').value.trim();
@@ -6055,6 +6059,12 @@ async function loadReplyDraft(threadId, { regenerate = false } = {}) {
   try { result = await api(`/api/admin/community/thread/${threadId}/draft`, { method: 'POST', body: { regenerate } }); }
   catch (error) {
     holder.innerHTML = `<div class="rd-fail">${escapeHtml(error.message)}</div>`;
+    return;
+  }
+  /* Switched off under Feedback drafting: no box at all, since there is no
+     draft to show and nothing to try again. */
+  if (result.state === 'off') {
+    holder.remove();
     return;
   }
   if (result.state !== 'drafted' || !result.draft) {
@@ -6983,8 +6993,16 @@ function dictationSettingsCard() {
   </div></section>`;
 }
 
+/* One switch on the What Claude drafts card. Unset (an older server) reads as
+   on, the way everything was before the switches existed. */
+function draftingSwitchRow(id, on, title, hint) {
+  return `<div class="setting-row"><div class="setting-copy"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(hint)}</span></div>
+    <div><label class="toggle-row"><span class="toggle"><input id="${id}" type="checkbox" ${on !== false ? 'checked' : ''}><span></span></span>${on !== false ? 'On' : 'Off'}</label></div></div>`;
+}
+
 function aiSettingsView() {
   const prompts = state.settings.prompts || {};
+  const drafting = state.settings.drafting || {};
   const anthropic = state.settings.anthropic || {};
   const openai = state.settings.openai || {};
   return `${pageHeader('Feedback drafting', 'Claude keys and correction prompts', 'AI drafting starts only after a student submits actual work.', `<button class="btn" id="test-anthropic">Test connection</button><button class="btn primary" id="save-ai">Save configuration</button>`)}
@@ -6993,6 +7011,13 @@ function aiSettingsView() {
         <div class="connection"><span class="connection-dot ${anthropic.configured ? 'ok' : ''}"></span><div><strong>${anthropic.configured ? 'Connected' : 'Not configured'}</strong><span>${anthropic.configured ? `Using ${escapeHtml(anthropic.model)}` : 'Add a server-side API key.'}</span></div></div>
         <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="anthropic-key" type="password" placeholder="sk-ant-..."></div></div>
         <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used for check-in, homework and board drafts.</span></div><div><input id="anthropic-model" value="${escapeHtml(anthropic.model || 'claude-opus-5')}"></div></div>
+      </div></section>
+      <section class="card"><div class="card-header"><div><h2>What Claude drafts</h2><p>Each switch is a separate bill. Anything off is left for you to write.</p></div></div><div class="card-body">
+        ${draftingSwitchRow('drafting-corrections', drafting.corrections, 'Irish corrections on homework', 'The slow part to do by hand. Drafted on every homework submission.')}
+        ${draftingSwitchRow('drafting-general', drafting.generalFeedback, 'General feedback on homework', 'The note under the corrections. Off, and the box is empty for you to fill.')}
+        ${draftingSwitchRow('drafting-checkins', drafting.checkins, 'Weekly check-in replies', 'Off, and a submitted check-in reads "No draft" until you reply.')}
+        ${draftingSwitchRow('drafting-board', drafting.board, 'Suggested replies on the class board', 'Off, and no draft is offered when you open a post.')}
+        <p class="muted small">Listening comprehensions are still marked and the Test connection button still works whatever is switched off here.</p>
       </div></section>
       <section class="card"><div class="card-header"><div><h2>Your voice</h2><p>Built into the app, not editable here.</p></div></div><div class="card-body">
         <p class="muted small">The check-in and board drafts are written to a voice measured from 362 replies you sent students on WhatsApp between January and August 2026: how you open, that you never sign off, the length you actually write, no em dashes, and the advice you give over and over. It is held in the code so an edit here cannot undo it.</p>
@@ -7026,6 +7051,10 @@ function aiSettingsView() {
 
 /* Admin bindings and modals */
 function bindAdminView() {
+  for (const id of ['drafting-corrections', 'drafting-general', 'drafting-checkins', 'drafting-board']) {
+    const box = document.getElementById(id);
+    box?.addEventListener('change', () => { box.closest('.toggle-row').lastChild.textContent = box.checked ? 'On' : 'Off'; });
+  }
   document.getElementById('open-attendance')?.addEventListener('click', () => { state.view = 'attendance'; renderAdmin(); });
   document.getElementById('new-assignment')?.addEventListener('click', () => openAssignmentModal(null, state.activeClassId));
   document.getElementById('import-assignments')?.addEventListener('click', openAssignmentImport);
@@ -8185,6 +8214,14 @@ function bindAISettings() {
         azureRegion: document.getElementById('azure-region').value.trim() || undefined,
         abairKey: document.getElementById('abair-key').value.trim() || undefined,
       } });
+      const drafting = await api('/api/settings/drafting', { method: 'PUT', body: {
+        corrections: document.getElementById('drafting-corrections').checked,
+        generalFeedback: document.getElementById('drafting-general').checked,
+        checkins: document.getElementById('drafting-checkins').checked,
+        board: document.getElementById('drafting-board').checked,
+      } });
+      // The review drawer and the board read this, so it follows the save at once.
+      state.drafting = drafting;
       await api('/api/settings/prompts', { method: 'PUT', body: { correctionPrompt: document.getElementById('correction-prompt').value, generalFeedbackPrompt: document.getElementById('general-prompt').value, checkinNotes: document.getElementById('checkin-notes').value, communityNotes: document.getElementById('community-notes').value } });
       await api('/api/settings/dictation', { method: 'PUT', body: {
         transcribeModel: document.getElementById('dictation-transcribe-model').value,
@@ -8476,18 +8513,38 @@ function buildReviewQueue(type, weekId, assignmentId) {
   return state.tracker.students.map((student) => recordForReview({ reviewType: type, studentId: student.id, weekId, assignmentId })).filter((record) => type === 'checkin' ? record.checkin?.status !== 'draft' && record.checkin : record.homework?.status !== 'draft' && record.homework);
 }
 
-function lifecycle(stateName) {
-  const labels = { none: 'No draft', generating: 'Generating', ai_drafted: 'AI drafted', teacher_edited: 'Teacher edited', returned: 'Submitted to student', failed: 'Draft failed' };
-  const notes = {
-    ai_drafted: 'Review and edit before sending.',
-    failed: 'The AI draft could not be generated. Write the reply yourself, or try again.',
-    none: 'No AI draft was generated for this submission.',
+/* Which of the drafts are switched on, for one kind of work. `null` from the
+   bootstrap means the server did not say, and is read as on. */
+function draftingFor(kind) {
+  const drafting = state.drafting;
+  if (!drafting) return { on: true, correctionsOnly: false };
+  if (kind === 'checkin') return { on: Boolean(drafting.checkins), correctionsOnly: false };
+  if (kind === 'board') return { on: Boolean(drafting.board), correctionsOnly: false };
+  return {
+    on: Boolean(drafting.corrections || drafting.generalFeedback),
+    correctionsOnly: Boolean(drafting.corrections && !drafting.generalFeedback),
   };
-  const retryable = ['failed', 'none', 'ai_drafted', 'teacher_edited'].includes(stateName);
+}
+
+function lifecycle(stateName, kind = 'checkin') {
+  const labels = { none: 'No draft', generating: 'Generating', ai_drafted: 'AI drafted', teacher_edited: 'Teacher edited', returned: 'Submitted to student', failed: 'Draft failed' };
+  const { on, correctionsOnly } = draftingFor(kind);
+  /* With drafting off for this kind of work there is no button to offer and the
+     note says so, rather than claiming a draft could not be generated. With
+     only the corrections drafted, the note says which half is the teacher's. */
+  const noun = kind === 'checkin' ? 'reply' : 'feedback';
+  const notes = {
+    ai_drafted: correctionsOnly ? 'The Irish corrections are drafted. Check them, then write the general feedback yourself.' : 'Review and edit before sending.',
+    failed: on ? `The AI draft could not be generated. Write the ${noun} yourself, or try again.` : `The AI draft could not be generated. Write the ${noun} yourself.`,
+    none: on ? 'No AI draft was generated for this submission.' : `Drafting is switched off for ${kind === 'checkin' ? 'check-ins' : 'homework'} under Feedback drafting. Write the ${noun} yourself.`,
+  };
+  const retryable = on && ['failed', 'none', 'ai_drafted', 'teacher_edited'].includes(stateName);
+  const fresh = stateName === 'failed' || stateName === 'none';
+  const buttonLabel = correctionsOnly ? (fresh ? 'Draft Irish corrections' : 'Redraft Irish corrections') : (fresh ? 'Generate AI draft' : 'Regenerate draft');
   return `<div class="lifecycle-row">
     <span class="ai-state"><span class="pill ${stateName === 'returned' ? 'green' : stateName === 'failed' ? 'red' : 'orange'}">${escapeHtml(labels[stateName] || stateName)}</span></span>
     ${notes[stateName] ? `<span class="muted small">${escapeHtml(notes[stateName])}</span>` : ''}
-    ${retryable ? `<button class="btn small" id="redraft-feedback">${svg.spark} ${stateName === 'failed' || stateName === 'none' ? 'Generate AI draft' : 'Regenerate draft'}</button>` : ''}
+    ${retryable ? `<button class="btn small" id="redraft-feedback">${svg.spark} ${buttonLabel}</button>` : ''}
   </div>`;
 }
 
@@ -8513,7 +8570,7 @@ async function redraftFeedback() {
   } catch (error) {
     showToast(error.message, 'error');
     button.disabled = false;
-    button.textContent = 'Generate AI draft';
+    button.textContent = isCheckin || !draftingFor('homework').correctionsOnly ? 'Generate AI draft' : 'Draft Irish corrections';
   }
 }
 
@@ -8550,7 +8607,7 @@ function renderReviewDrawer() {
       body = `<div class="detail-grid"><div class="detail"><small>Understanding</small><strong>${answers.understanding || '—'}/10</strong></div><div class="detail"><small>Confidence</small><strong>${answers.confidence || '—'}/10</strong></div><div class="detail"><small>Reviewed material</small><strong>${escapeHtml(answers.reviewed || '—')}</strong></div><div class="detail"><small>Status</small><strong>${row.status === 'returned' ? 'Returned' : 'Submitted'}</strong></div></div>
         <div class="section-title">Weekly win</div><div class="answer-box">${escapeHtml(answers.weeklyWin || 'No weekly win submitted.')}</div>
         <div class="section-title">Support requested</div><div class="answer-box">${escapeHtml(answers.support || 'No support requested.')}</div>
-        ${lifecycle(row.feedback_state)}
+        ${lifecycle(row.feedback_state, 'checkin')}
         <div class="form-field"><div class="input-row"><label for="checkin-feedback">Teacher response</label>${formatBar('checkin-feedback')}${dictateButton('checkin-feedback')}</div><textarea id="checkin-feedback">${escapeHtml(row.teacher_feedback || row.ai_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
         ${voiceNoteBlock(record)}`;
       actions = `<button class="btn" id="save-checkin-draft">Save draft</button><button class="btn primary" id="return-checkin">${row.status === 'returned' ? 'Update submitted reply' : 'Submit reply'}</button>`;
@@ -8566,7 +8623,7 @@ function renderReviewDrawer() {
         ${record.assignment.questions.map((question, index) => `<div class="section-title">Question ${index + 1}</div><div class="answer-box"><strong>${escapeHtml(question.prompt)}</strong><br><br>${escapeHtml(answers[index] || 'No answer submitted.')}</div>${markRow(record, row, index)}`).join('')}
         ${markSummary(record, row)}
         ${submittedFilesBlock(row.files)}
-        ${lifecycle(row.feedback_state)}
+        ${lifecycle(row.feedback_state, 'homework')}
         <div class="form-field"><div class="input-row"><label for="homework-corrections">1. Irish corrections</label>${formatBar('homework-corrections')}${dictateButton('homework-corrections', 'light')}</div><textarea class="corrections" id="homework-corrections">${escapeHtml(row.teacher_corrections || row.ai_corrections || '')}</textarea><div class="muted small">If there are no genuine errors, this should say “No Irish corrections needed.” Dictation here only adds punctuation, so your Irish is never rewritten.</div></div>
         <div class="form-field"><div class="input-row"><label for="homework-general">2. General feedback</label>${formatBar('homework-general')}${dictateButton('homework-general')}</div><textarea id="homework-general">${escapeHtml(row.teacher_general_feedback || row.ai_general_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
         ${voiceNoteBlock(record)}`;
@@ -8831,7 +8888,9 @@ async function submitReview(type) {
       const corrections = document.getElementById('homework-corrections').value.trim();
       const generalFeedback = document.getElementById('homework-general').value.trim();
       const hasVoiceNote = Boolean(state.activeReview.homework.voice_note);
-      if ((!corrections || !generalFeedback) && !hasVoiceNote) throw new Error('Complete both feedback sections, or record a voice note.');
+      // Either section is a complete reply on its own now that only the
+      // corrections are drafted; the server applies the same rule.
+      if (!corrections && !generalFeedback && !hasVoiceNote) throw new Error('Write some feedback, or record a voice note, before returning this homework.');
       const row = await api(`/api/admin/homework/${state.activeReview.homework.id}/return`, { method: 'POST', body: { corrections, generalFeedback, marks: marksFromScreen() } });
       Object.assign(state.activeReview.homework, row);
     }

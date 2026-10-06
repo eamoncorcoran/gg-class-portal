@@ -112,6 +112,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--brand-400);box-shadow
 .live-embed{border-radius:var(--radius-xl);overflow:hidden;background:var(--surface)}
 .live-embed iframe{display:block;width:100%;height:calc(100vh - 150px);min-height:640px;border:0;background:var(--surface)}
 .live-embed.admin iframe{height:calc(100vh - 170px);min-height:720px}
+/* The student's room: a slot in the page, and the frame laid over it from outside the shell. */
+.live-embed.slot{height:calc(100vh - 150px);min-height:640px}
+.live-root{position:fixed;z-index:15;overflow:hidden;border-radius:var(--radius-xl);background:var(--surface)}
+.live-root[hidden]{display:none}
+.live-root iframe{display:block;width:100%;height:100%;border:0;background:var(--surface)}
+.live-root.full{top:0 !important;left:0 !important;width:100vw !important;height:100vh !important;height:100dvh !important;border-radius:0;z-index:2147483000}
+body.live-full{overflow:hidden}
 .nav-badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;display:grid;place-items:center;border-radius:999px;background:var(--error-500);color:#fff;font-size:9px;font-weight:700}
 .avatar{width:36px;height:36px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;color:var(--brand-800);background:var(--brand-50);border:1px solid var(--brand-200);font-size:11px;font-weight:700}
 .icon-button{width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-quaternary)}
@@ -2121,6 +2128,9 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .calendar-event.assignment[draggable="true"]{cursor:grab}
 .calendar-event.assignment.is-dragging{opacity:.45;cursor:grabbing}
 .calendar-day.is-over{outline:2px dashed var(--brand-500);outline-offset:-3px;background:var(--brand-25,#f6faf4)}
+
+/* The explanation page before a homework's first question. */
+.hw-intro-text{margin:10px 0 18px;max-width:640px;color:var(--text-secondary);font-size:16px;line-height:1.65}.hw-intro-text strong{color:var(--text)}.hw-intro-files{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}.hw-intro-count{color:var(--text-quaternary);font-size:12px;font-weight:600}
 </style>
 </head>
 <body>
@@ -2299,6 +2309,8 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
           thirtyMinutes:{enabled:true,subject:'30 minutes left for {{assignment_title}}',body:'Hi {{first_name}},\n\nThere are 30 minutes left.\n\n{{assignment_link}}'}
         },
         anthropic:{configured:true,model:'claude-opus-5'},
+        // Which drafts Claude writes. Corrections only, the live default.
+        drafting:{corrections:true,generalFeedback:false,checkins:false,board:false},
         openai:{configured:true,model:'gpt-5.6'},
         nudge:{
           checkinSubject:'Your weekly check-in, {{first_name}}',
@@ -2801,7 +2813,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     if(path==='/api/auth/change-password'&&method==='POST') return json({ok:true});
     if(!user) return error('Not signed in',401);
 
-    if(path==='/api/admin/bootstrap'&&method==='GET') return json({classes:db.classes.map((item)=>({...item,label:classLabel(item),student_count:studentRows(item.id).length})),counts:{students:studentRows().length,assignments:db.assignments.length}});
+    if(path==='/api/admin/bootstrap'&&method==='GET') return json({classes:db.classes.map((item)=>({...item,label:classLabel(item),student_count:studentRows(item.id).length})),counts:{students:studentRows().length,assignments:db.assignments.length},drafting:deepCopy(db.settings.drafting)});
     if(path==='/api/admin/classes'&&method==='GET') return json(db.classes.map((item)=>({...item,label:classLabel(item),student_count:studentRows(item.id).length})));
     if(path==='/api/admin/classes'&&method==='POST'){
       const id=`c${db.counters.class++}`;const row={id,programme_name:body.programmeName,day_of_week:Number(body.dayOfWeek),start_time:body.startTime,timezone:body.timezone||'Europe/Dublin',active:true,has_community:body.hasCommunity!==false,created_at:new RealDate(PREVIEW_NOW).toISOString()};
@@ -2947,13 +2959,13 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     params=match(path,'/api/admin/checkins/:id/return');
     if(params&&method==='POST'){const row=db.checkins.find((item)=>item.id===params.id);if(!row)return error('Check-in not found',404);Object.assign(row,{teacher_feedback:body.feedback,status:'returned',feedback_state:'returned',feedback_returned_at:new RealDate(PREVIEW_NOW).toISOString(),feedback_read_at:null});save();return json(row);}
     params=match(path,'/api/admin/checkins/:id/redraft');
-    if(params&&method==='POST'){const row=db.checkins.find((item)=>item.id===params.id);if(!row)return error('Check-in not found',404);row.ai_feedback=aiCheckin(row.answers||{});row.teacher_feedback=row.ai_feedback;row.feedback_state='ai_drafted';save();return json(row);}
+    if(params&&method==='POST'){const row=db.checkins.find((item)=>item.id===params.id);if(!row)return error('Check-in not found',404);if(db.settings.drafting&&!db.settings.drafting.checkins)return error('Drafting check-in replies is switched off under Feedback drafting.',409);row.ai_feedback=aiCheckin(row.answers||{});row.teacher_feedback=row.ai_feedback;row.feedback_state='ai_drafted';save();return json(row);}
     params=match(path,'/api/admin/homework/:id/feedback-draft');
     if(params&&method==='PATCH'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Homework not found',404);row.teacher_corrections=body.corrections;row.teacher_general_feedback=body.generalFeedback;row.feedback_state=row.status==='returned'?'returned':'teacher_edited';save();return json(row);}
     params=match(path,'/api/admin/homework/:id/return');
     if(params&&method==='POST'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Homework not found',404);Object.assign(row,{teacher_corrections:body.corrections,teacher_general_feedback:body.generalFeedback,status:'returned',feedback_state:'returned',feedback_returned_at:new RealDate(PREVIEW_NOW).toISOString(),feedback_read_at:null});save();return json(row);}
     params=match(path,'/api/admin/homework/:id/redraft');
-    if(params&&method==='POST'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Homework not found',404);const feedback=aiHomework(row.answers||[]);Object.assign(row,{ai_corrections:feedback.corrections,teacher_corrections:feedback.corrections,ai_general_feedback:feedback.generalFeedback,teacher_general_feedback:feedback.generalFeedback,feedback_state:'ai_drafted'});save();return json(row);}
+    if(params&&method==='POST'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Homework not found',404);const sw=db.settings.drafting||{};if(sw.corrections===false&&sw.generalFeedback===false)return error('Drafting homework feedback is switched off under Feedback drafting.',409);const feedback=aiHomework(row.answers||[]);if(sw.generalFeedback===false)feedback.generalFeedback='';if(sw.corrections===false)feedback.corrections='';Object.assign(row,{ai_corrections:feedback.corrections,teacher_corrections:feedback.corrections,ai_general_feedback:feedback.generalFeedback,teacher_general_feedback:feedback.generalFeedback,feedback_state:'ai_drafted'});save();return json(row);}
     if(path==='/api/admin/reminders/run'&&method==='POST') return json({ok:true,sent:3});
 
     // --- Voice: dictation and voice notes -------------------------------------
@@ -3435,6 +3447,7 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
     if(path==='/api/settings/anthropic/test'&&method==='POST') return json({ok:true,preview:'Hey Niamh, one Sraith learned off and said out loud is a proper week\'s work, fair play.\n\nThe overwhelmed feeling is the Sraith doing what it does to everyone, so you are in good company there. Do not learn it as a block of text. Break each box into three or four short sentences in your own Irish, the ones you would actually say.\n\nJust the one Sraith again this week. Send it on if you want a look over it 🙂'});
     if(path==='/api/settings/openai'&&method==='PUT'){db.settings.openai={...db.settings.openai,...body,configured:true};save();return json(db.settings.openai);}
     if(path==='/api/settings/prompts'&&method==='PUT'){db.settings.prompts={...db.settings.prompts,...body};save();return json(db.settings.prompts);}
+    if(path==='/api/settings/drafting'&&method==='PUT'){db.settings.drafting={...db.settings.drafting,...body};save();return json(db.settings.drafting);}
     if(path==='/api/settings/openai/test'&&method==='POST') return json({ok:true,preview:'Great work this week. Your confidence is improving, and your weekly win shows genuine progress. Keep using one short Irish phrase aloud each day.'});
 
     if(path==='/api/student/bootstrap'&&method==='GET'){
@@ -3692,6 +3705,12 @@ window.__GG_LOGO__ = "data:image/webp;base64,UklGRoIeAABXRUJQVlA4WAoAAAAQAAAAKwE
 })();
 </script>
 <script>
+/* The version stamped on this module's URL by the server; framed pages carry
+   it too, so a student's browser fetches a fresh copy after every deploy
+   instead of the hour-old one it kept. */
+const ASSET_V = (() => { try { return new URL(import.meta.url).searchParams.get('v') || ''; } catch { return ''; } })();
+const liveUrl = (path) => path + (ASSET_V ? '&v=' + encodeURIComponent(ASSET_V) : '');
+
 const app = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
 const toastRoot = document.getElementById('toast-root');
@@ -4967,7 +4986,7 @@ function liveAdminView() {
   /* Without the live room switched on, this is the studio and nothing else. */
   if (!state.liveRoom) {
     return `${pageHeader('Courses', 'Studio', 'Build a lesson: a video with the phrases to say aloud. Then add it to a course as a practice lesson.')}
-    <div class="live-embed admin"><iframe src="/live/studio.html?embed=1" title="Studio" allow="fullscreen" allowfullscreen></iframe></div>`;
+    <div class="live-embed admin"><iframe src="${liveUrl('/live/studio.html?embed=1')}" title="Studio" allow="fullscreen" allowfullscreen></iframe></div>`;
   }
   const tab = state.liveTab === 'studio' ? 'studio' : 'console';
   const src = tab === 'studio'
@@ -5023,6 +5042,9 @@ async function loadAdmin() {
   const bootstrap = await api('/api/admin/bootstrap');
   state.classes = bootstrap.classes;
   state.liveRoom = Boolean(bootstrap.liveRoom);
+  // Which drafts Claude writes. Null when the server did not say, which the
+  // screens take as everything on, the way they behaved before the switches.
+  state.drafting = bootstrap.drafting && typeof bootstrap.drafting === 'object' ? bootstrap.drafting : null;
   state.activeClassId ||= state.classes[0]?.id || null;
   state.view ||= state.activeClassId ? 'tracker' : 'people';
   await renderAdmin();
@@ -9266,7 +9288,7 @@ function renderThreadDrawer() {
       </article>
       <h4 class="cmt-count">${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}</h4>
       <div class="cmts">${tree.map(({ comment, replies }) => feedComment(comment, admin, replies, canComment)).join('') || '<p class="side-empty">No comments yet. Be the first.</p>'}</div>
-      ${admin ? `<div class="rd" id="reply-draft"><p class="muted small">Drafting a reply…</p></div>` : ''}
+      ${admin && draftingFor('board').on ? `<div class="rd" id="reply-draft"><p class="muted small">Drafting a reply…</p></div>` : ''}
       ${canComment ? `<div class="reply">
         ${boardAvatar(me(), 'sm')}
         <div class="reply-box">
@@ -9286,7 +9308,8 @@ function renderThreadDrawer() {
       bindEmojiButtons(modalRoot);
       bindFormatBars(modalRoot);
       bindAutoGrow(modalRoot);
-      if (admin) loadReplyDraft(thread.id);
+      // No request when board drafting is known to be off: nothing would come back.
+      if (admin && draftingFor('board').on) loadReplyDraft(thread.id);
       if (admin) bindReplyRecorder();
       document.getElementById('send-reply')?.addEventListener('click', async () => {
         const body = document.getElementById('reply-body').value.trim();
@@ -9743,6 +9766,12 @@ async function loadReplyDraft(threadId, { regenerate = false } = {}) {
   try { result = await api(`/api/admin/community/thread/${threadId}/draft`, { method: 'POST', body: { regenerate } }); }
   catch (error) {
     holder.innerHTML = `<div class="rd-fail">${escapeHtml(error.message)}</div>`;
+    return;
+  }
+  /* Switched off under Feedback drafting: no box at all, since there is no
+     draft to show and nothing to try again. */
+  if (result.state === 'off') {
+    holder.remove();
     return;
   }
   if (result.state !== 'drafted' || !result.draft) {
@@ -10496,6 +10525,33 @@ async function openCheckinReminderModal() {
   });
 }
 
+/* The audit card: every homework and check-in reminder of the last month,
+   against who had already handed in when it went. The number that matters is
+   the one that should be zero, and it is shown first, with the names when it
+   is not. */
+async function loadReminderAudit() {
+  const card = document.getElementById('reminder-audit-card');
+  if (!card) return;
+  let audit;
+  try { audit = await api('/api/settings/reminders/audit?days=30'); }
+  catch (error) { card.innerHTML = `<div class="card-body"><p class="muted small">${escapeHtml(error.message)}</p></div>`; return; }
+  const wrong = audit.wrong || [];
+  const total = (audit.homework?.sent || 0) + (audit.checkins?.sent || 0);
+  const when = (iso) => iso ? fmtDate(iso, { weekday: true, time: true, dateStyle: 'medium' }) : '';
+  card.innerHTML = `
+    <div class="card-header">
+      <div><h2>Who the reminders reached</h2><p>Last ${audit.days} days: ${total} reminder${total === 1 ? '' : 's'} about work, ${audit.homework?.sent || 0} homework and ${audit.checkins?.sent || 0} check-in.</p></div>
+      <span class="pill ${wrong.length ? 'warn' : 'ok'}">${wrong.length ? `${wrong.length} went to somebody who had already handed in` : 'None went to anybody who had already handed in'}</span>
+    </div>
+    <div class="card-body">
+      <p class="muted small">A reminder only goes to a student whose work is not in, checked when the list is drawn up and again at the moment of sending. ${audit.doneAfterReminder || 0} of these were followed by the work coming in.</p>
+      ${(audit.reverted?.homework || 0) + (audit.reverted?.checkins || 0) ? `<p class="muted small" style="color:var(--error-700)">${audit.reverted.homework} homework and ${audit.reverted.checkins} check-ins are sitting as drafts although they were handed in. That should not happen any more; tell Claude if it does.</p>` : ''}
+      ${wrong.length ? `<table class="table"><thead><tr><th>Student</th><th>About</th><th>Reminder sent</th><th>Handed in</th></tr></thead><tbody>
+        ${wrong.map((row) => `<tr><td>${escapeHtml(row.name)}<br><span class="muted small">${escapeHtml(row.email)}</span></td><td>${escapeHtml(row.what)}</td><td>${escapeHtml(when(row.sentAt))}</td><td>${escapeHtml(when(row.submittedAt))}</td></tr>`).join('')}
+      </tbody></table>` : ''}
+    </div>`;
+}
+
 async function loadEmailPause() {
   const card = document.getElementById('email-pause-card');
   if (!card) return;
@@ -10567,6 +10623,7 @@ function remindersView() {
   };
   return `${pageHeader('Automation', 'Email reminders', 'Configure the delivery provider, templates and automatic deadline sequence.', `<button class="btn" id="send-checkin-now">Send the check-in reminder now</button><button class="btn" id="run-reminders">Run reminder check</button><button class="btn primary" id="save-reminders">Save settings</button>`)}
     <section class="card" id="email-pause-card"><div class="card-body"><p class="muted small">Checking what has been sent…</p></div></section>
+    <section class="card" id="reminder-audit-card"><div class="card-body"><p class="muted small">Checking who the reminders reached…</p></div></section>
     <div class="settings-grid"><div class="settings-stack">
       <section class="card"><div class="card-header"><div><h2>Delivery settings</h2><p>Use a GoHighLevel webhook, SMTP or console mode.</p></div></div><div class="card-body">
         <div class="setting-row"><div class="setting-copy"><strong>Provider</strong><span>Console mode logs email locally without sending.</span></div><div><select id="email-provider"><option value="console" ${email.provider === 'console' ? 'selected' : ''}>Console / test</option><option value="ghl_webhook" ${email.provider === 'ghl_webhook' ? 'selected' : ''}>GoHighLevel webhook</option><option value="smtp" ${email.provider === 'smtp' ? 'selected' : ''}>SMTP</option></select></div></div>
@@ -10643,8 +10700,16 @@ function dictationSettingsCard() {
   </div></section>`;
 }
 
+/* One switch on the What Claude drafts card. Unset (an older server) reads as
+   on, the way everything was before the switches existed. */
+function draftingSwitchRow(id, on, title, hint) {
+  return `<div class="setting-row"><div class="setting-copy"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(hint)}</span></div>
+    <div><label class="toggle-row"><span class="toggle"><input id="${id}" type="checkbox" ${on !== false ? 'checked' : ''}><span></span></span>${on !== false ? 'On' : 'Off'}</label></div></div>`;
+}
+
 function aiSettingsView() {
   const prompts = state.settings.prompts || {};
+  const drafting = state.settings.drafting || {};
   const anthropic = state.settings.anthropic || {};
   const openai = state.settings.openai || {};
   return `${pageHeader('Feedback drafting', 'Claude keys and correction prompts', 'AI drafting starts only after a student submits actual work.', `<button class="btn" id="test-anthropic">Test connection</button><button class="btn primary" id="save-ai">Save configuration</button>`)}
@@ -10653,6 +10718,13 @@ function aiSettingsView() {
         <div class="connection"><span class="connection-dot ${anthropic.configured ? 'ok' : ''}"></span><div><strong>${anthropic.configured ? 'Connected' : 'Not configured'}</strong><span>${anthropic.configured ? `Using ${escapeHtml(anthropic.model)}` : 'Add a server-side API key.'}</span></div></div>
         <div class="setting-row"><div class="setting-copy"><strong>API key</strong><span>Leave blank to keep the existing key.</span></div><div><input id="anthropic-key" type="password" placeholder="sk-ant-..."></div></div>
         <div class="setting-row"><div class="setting-copy"><strong>Model</strong><span>Used for check-in, homework and board drafts.</span></div><div><input id="anthropic-model" value="${escapeHtml(anthropic.model || 'claude-opus-5')}"></div></div>
+      </div></section>
+      <section class="card"><div class="card-header"><div><h2>What Claude drafts</h2><p>Each switch is a separate bill. Anything off is left for you to write.</p></div></div><div class="card-body">
+        ${draftingSwitchRow('drafting-corrections', drafting.corrections, 'Irish corrections on homework', 'The slow part to do by hand. Drafted on every homework submission.')}
+        ${draftingSwitchRow('drafting-general', drafting.generalFeedback, 'General feedback on homework', 'The note under the corrections. Off, and the box is empty for you to fill.')}
+        ${draftingSwitchRow('drafting-checkins', drafting.checkins, 'Weekly check-in replies', 'Off, and a submitted check-in reads "No draft" until you reply.')}
+        ${draftingSwitchRow('drafting-board', drafting.board, 'Suggested replies on the class board', 'Off, and no draft is offered when you open a post.')}
+        <p class="muted small">Listening comprehensions are still marked and the Test connection button still works whatever is switched off here.</p>
       </div></section>
       <section class="card"><div class="card-header"><div><h2>Your voice</h2><p>Built into the app, not editable here.</p></div></div><div class="card-body">
         <p class="muted small">The check-in and board drafts are written to a voice measured from 362 replies you sent students on WhatsApp between January and August 2026: how you open, that you never sign off, the length you actually write, no em dashes, and the advice you give over and over. It is held in the code so an edit here cannot undo it.</p>
@@ -10686,6 +10758,10 @@ function aiSettingsView() {
 
 /* Admin bindings and modals */
 function bindAdminView() {
+  for (const id of ['drafting-corrections', 'drafting-general', 'drafting-checkins', 'drafting-board']) {
+    const box = document.getElementById(id);
+    box?.addEventListener('change', () => { box.closest('.toggle-row').lastChild.textContent = box.checked ? 'On' : 'Off'; });
+  }
   document.getElementById('open-attendance')?.addEventListener('click', () => { state.view = 'attendance'; renderAdmin(); });
   document.getElementById('new-assignment')?.addEventListener('click', () => openAssignmentModal(null, state.activeClassId));
   document.getElementById('import-assignments')?.addEventListener('click', openAssignmentImport);
@@ -10984,7 +11060,7 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
         <span class="muted small">What students hear. One is usually all you need.</span></div></div>
       <div id="listening-render" class="listen-render"></div>
     </section>
-    <div class="form-field"><label>Instructions</label><textarea name="instructions">${escapeHtml(assignment?.instructions || '')}</textarea></div>
+    <div class="form-field"><label>Instructions page ${formatBar('assignment-instructions')}</label><textarea id="assignment-instructions" name="instructions" rows="6" placeholder="What to do, roughly how long it takes, what to hand in.">${escapeHtml(assignment?.instructions || '')}</textarea><div class="muted small">Students read this as a page of its own, then press Start. Leave it blank and they go straight to the first question.</div></div>
     <div class="form-field"><label>Loom share or embed URL</label><input name="loomUrl" type="url" value="${escapeHtml(assignment?.loom_url || '')}" placeholder="https://www.loom.com/share/..."></div>
     <div class="form-field"><label>Visible from</label><input name="visibleAt" type="datetime-local" value="${toZonedInput(assignment?.visible_at || new Date())}" required><div class="muted small">Times are ${escapeHtml(classTimezone())} (${escapeHtml(timezoneAbbreviation())}).</div></div>
     <div class="form-field"><label>Deadline</label><input name="deadlineAt" type="datetime-local" value="${assignment?.deadline_at ? toZonedInput(assignment.deadline_at) : (prefillDeadline || toZonedInput(new Date(Date.now() + 7 * 86400000)))}" required></div>
@@ -11039,7 +11115,7 @@ function uploadSettingsBlock(assignment) {
 }
 
 function questionBuilder(question, index, hidden = true) {
-  return `<div class="question-builder" data-question><div class="question-builder-head"><strong>Question <span data-question-number>${index + 1}</span></strong><button type="button" class="text-link" data-remove-question>Remove</button></div><div class="form-field"><label>Question</label><textarea data-question-prompt required>${escapeHtml(question.prompt || '')}</textarea></div><div class="form-field"><label>Embedded image, optional</label><input data-question-image type="url" value="${escapeHtml(question.imageUrl || question.image_url || '')}" placeholder="Existing image URL"><input data-question-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-top:7px"></div><div class="answer-key listening-only" ${hidden ? 'hidden' : ''}><div class="form-field"><label>What a right answer looks like</label><textarea data-question-expected rows="2" placeholder="Marking is against this. Different wording that means the same thing still gets the marks.">${escapeHtml(question.expectedAnswer || question.expected_answer || '')}</textarea></div><div class="form-field marks-field"><label>Marks</label><input data-question-marks type="number" min="0" max="100" value="${Number(question.marks ?? 1)}"></div></div><label class="toggle-row"><span class="toggle"><input data-question-required type="checkbox" ${question.required !== false ? 'checked' : ''}><span></span></span>Required</label></div>`;
+  return `<div class="question-builder" data-question><div class="question-builder-head"><strong>Question <span data-question-number>${index + 1}</span></strong><button type="button" class="text-link" data-remove-question>Remove</button></div><div class="form-field"><label>Question</label><textarea data-question-prompt required>${escapeHtml(question.prompt || '')}</textarea></div><div class="form-field"><label>Embedded image, optional</label><input data-question-image type="url" value="${escapeHtml(question.imageUrl || question.image_url || '')}" placeholder="Existing image URL"><input data-question-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-top:7px"></div><div class="answer-key listening-only" ${hidden ? 'hidden' : ''}><div class="form-field"><label>What a right answer looks like, optional</label><textarea data-question-expected rows="2" placeholder="Leave blank and the marking takes the answer from the story. Type one only if a particular point must count.">${escapeHtml(question.expectedAnswer || question.expected_answer || '')}</textarea></div><div class="form-field marks-field"><label>Marks</label><input data-question-marks type="number" min="0" max="100" value="${Number(question.marks ?? 1)}"></div></div><label class="toggle-row"><span class="toggle"><input data-question-required type="checkbox" ${question.required !== false ? 'checked' : ''}><span></span></span>Required</label></div>`;
 }
 
 
@@ -11347,6 +11423,7 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
     footer: `<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="save-assignment">${assignment ? 'Save changes' : 'Publish assignment'}</button>`,
     onOpen() {
       const form = document.getElementById('assignment-form');
+      bindFormatBars(form);
       const showListening = () => {
         const on = form.kind.value === 'listening';
         document.querySelectorAll('.listening-only').forEach((field) => { field.hidden = !on; });
@@ -11783,6 +11860,7 @@ function bindReminderSettings() {
   document.getElementById('save-email')?.addEventListener('click', saveEmailSettings);
   document.getElementById('test-email')?.addEventListener('click', testEmail);
   if (document.getElementById('email-pause-card')) loadEmailPause();
+  if (document.getElementById('reminder-audit-card')) loadReminderAudit();
   document.getElementById('send-checkin-now')?.addEventListener('click', openCheckinReminderModal);
   document.getElementById('run-reminders')?.addEventListener('click', async () => {
     try { await api('/api/admin/reminders/run', { method: 'POST' }); showToast('Reminder cycle completed'); }
@@ -11843,6 +11921,14 @@ function bindAISettings() {
         azureRegion: document.getElementById('azure-region').value.trim() || undefined,
         abairKey: document.getElementById('abair-key').value.trim() || undefined,
       } });
+      const drafting = await api('/api/settings/drafting', { method: 'PUT', body: {
+        corrections: document.getElementById('drafting-corrections').checked,
+        generalFeedback: document.getElementById('drafting-general').checked,
+        checkins: document.getElementById('drafting-checkins').checked,
+        board: document.getElementById('drafting-board').checked,
+      } });
+      // The review drawer and the board read this, so it follows the save at once.
+      state.drafting = drafting;
       await api('/api/settings/prompts', { method: 'PUT', body: { correctionPrompt: document.getElementById('correction-prompt').value, generalFeedbackPrompt: document.getElementById('general-prompt').value, checkinNotes: document.getElementById('checkin-notes').value, communityNotes: document.getElementById('community-notes').value } });
       await api('/api/settings/dictation', { method: 'PUT', body: {
         transcribeModel: document.getElementById('dictation-transcribe-model').value,
@@ -12134,18 +12220,38 @@ function buildReviewQueue(type, weekId, assignmentId) {
   return state.tracker.students.map((student) => recordForReview({ reviewType: type, studentId: student.id, weekId, assignmentId })).filter((record) => type === 'checkin' ? record.checkin?.status !== 'draft' && record.checkin : record.homework?.status !== 'draft' && record.homework);
 }
 
-function lifecycle(stateName) {
-  const labels = { none: 'No draft', generating: 'Generating', ai_drafted: 'AI drafted', teacher_edited: 'Teacher edited', returned: 'Submitted to student', failed: 'Draft failed' };
-  const notes = {
-    ai_drafted: 'Review and edit before sending.',
-    failed: 'The AI draft could not be generated. Write the reply yourself, or try again.',
-    none: 'No AI draft was generated for this submission.',
+/* Which of the drafts are switched on, for one kind of work. `null` from the
+   bootstrap means the server did not say, and is read as on. */
+function draftingFor(kind) {
+  const drafting = state.drafting;
+  if (!drafting) return { on: true, correctionsOnly: false };
+  if (kind === 'checkin') return { on: Boolean(drafting.checkins), correctionsOnly: false };
+  if (kind === 'board') return { on: Boolean(drafting.board), correctionsOnly: false };
+  return {
+    on: Boolean(drafting.corrections || drafting.generalFeedback),
+    correctionsOnly: Boolean(drafting.corrections && !drafting.generalFeedback),
   };
-  const retryable = ['failed', 'none', 'ai_drafted', 'teacher_edited'].includes(stateName);
+}
+
+function lifecycle(stateName, kind = 'checkin') {
+  const labels = { none: 'No draft', generating: 'Generating', ai_drafted: 'AI drafted', teacher_edited: 'Teacher edited', returned: 'Submitted to student', failed: 'Draft failed' };
+  const { on, correctionsOnly } = draftingFor(kind);
+  /* With drafting off for this kind of work there is no button to offer and the
+     note says so, rather than claiming a draft could not be generated. With
+     only the corrections drafted, the note says which half is the teacher's. */
+  const noun = kind === 'checkin' ? 'reply' : 'feedback';
+  const notes = {
+    ai_drafted: correctionsOnly ? 'The Irish corrections are drafted. Check them, then write the general feedback yourself.' : 'Review and edit before sending.',
+    failed: on ? `The AI draft could not be generated. Write the ${noun} yourself, or try again.` : `The AI draft could not be generated. Write the ${noun} yourself.`,
+    none: on ? 'No AI draft was generated for this submission.' : `Drafting is switched off for ${kind === 'checkin' ? 'check-ins' : 'homework'} under Feedback drafting. Write the ${noun} yourself.`,
+  };
+  const retryable = on && ['failed', 'none', 'ai_drafted', 'teacher_edited'].includes(stateName);
+  const fresh = stateName === 'failed' || stateName === 'none';
+  const buttonLabel = correctionsOnly ? (fresh ? 'Draft Irish corrections' : 'Redraft Irish corrections') : (fresh ? 'Generate AI draft' : 'Regenerate draft');
   return `<div class="lifecycle-row">
     <span class="ai-state"><span class="pill ${stateName === 'returned' ? 'green' : stateName === 'failed' ? 'red' : 'orange'}">${escapeHtml(labels[stateName] || stateName)}</span></span>
     ${notes[stateName] ? `<span class="muted small">${escapeHtml(notes[stateName])}</span>` : ''}
-    ${retryable ? `<button class="btn small" id="redraft-feedback">${svg.spark} ${stateName === 'failed' || stateName === 'none' ? 'Generate AI draft' : 'Regenerate draft'}</button>` : ''}
+    ${retryable ? `<button class="btn small" id="redraft-feedback">${svg.spark} ${buttonLabel}</button>` : ''}
   </div>`;
 }
 
@@ -12171,7 +12277,7 @@ async function redraftFeedback() {
   } catch (error) {
     showToast(error.message, 'error');
     button.disabled = false;
-    button.textContent = 'Generate AI draft';
+    button.textContent = isCheckin || !draftingFor('homework').correctionsOnly ? 'Generate AI draft' : 'Draft Irish corrections';
   }
 }
 
@@ -12208,7 +12314,7 @@ function renderReviewDrawer() {
       body = `<div class="detail-grid"><div class="detail"><small>Understanding</small><strong>${answers.understanding || '—'}/10</strong></div><div class="detail"><small>Confidence</small><strong>${answers.confidence || '—'}/10</strong></div><div class="detail"><small>Reviewed material</small><strong>${escapeHtml(answers.reviewed || '—')}</strong></div><div class="detail"><small>Status</small><strong>${row.status === 'returned' ? 'Returned' : 'Submitted'}</strong></div></div>
         <div class="section-title">Weekly win</div><div class="answer-box">${escapeHtml(answers.weeklyWin || 'No weekly win submitted.')}</div>
         <div class="section-title">Support requested</div><div class="answer-box">${escapeHtml(answers.support || 'No support requested.')}</div>
-        ${lifecycle(row.feedback_state)}
+        ${lifecycle(row.feedback_state, 'checkin')}
         <div class="form-field"><div class="input-row"><label for="checkin-feedback">Teacher response</label>${formatBar('checkin-feedback')}${dictateButton('checkin-feedback')}</div><textarea id="checkin-feedback">${escapeHtml(row.teacher_feedback || row.ai_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
         ${voiceNoteBlock(record)}`;
       actions = `<button class="btn" id="save-checkin-draft">Save draft</button><button class="btn primary" id="return-checkin">${row.status === 'returned' ? 'Update submitted reply' : 'Submit reply'}</button>`;
@@ -12224,7 +12330,7 @@ function renderReviewDrawer() {
         ${record.assignment.questions.map((question, index) => `<div class="section-title">Question ${index + 1}</div><div class="answer-box"><strong>${escapeHtml(question.prompt)}</strong><br><br>${escapeHtml(answers[index] || 'No answer submitted.')}</div>${markRow(record, row, index)}`).join('')}
         ${markSummary(record, row)}
         ${submittedFilesBlock(row.files)}
-        ${lifecycle(row.feedback_state)}
+        ${lifecycle(row.feedback_state, 'homework')}
         <div class="form-field"><div class="input-row"><label for="homework-corrections">1. Irish corrections</label>${formatBar('homework-corrections')}${dictateButton('homework-corrections', 'light')}</div><textarea class="corrections" id="homework-corrections">${escapeHtml(row.teacher_corrections || row.ai_corrections || '')}</textarea><div class="muted small">If there are no genuine errors, this should say “No Irish corrections needed.” Dictation here only adds punctuation, so your Irish is never rewritten.</div></div>
         <div class="form-field"><div class="input-row"><label for="homework-general">2. General feedback</label>${formatBar('homework-general')}${dictateButton('homework-general')}</div><textarea id="homework-general">${escapeHtml(row.teacher_general_feedback || row.ai_general_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
         ${voiceNoteBlock(record)}`;
@@ -12489,7 +12595,9 @@ async function submitReview(type) {
       const corrections = document.getElementById('homework-corrections').value.trim();
       const generalFeedback = document.getElementById('homework-general').value.trim();
       const hasVoiceNote = Boolean(state.activeReview.homework.voice_note);
-      if ((!corrections || !generalFeedback) && !hasVoiceNote) throw new Error('Complete both feedback sections, or record a voice note.');
+      // Either section is a complete reply on its own now that only the
+      // corrections are drafted; the server applies the same rule.
+      if (!corrections && !generalFeedback && !hasVoiceNote) throw new Error('Write some feedback, or record a voice note, before returning this homework.');
       const row = await api(`/api/admin/homework/${state.activeReview.homework.id}/return`, { method: 'POST', body: { corrections, generalFeedback, marks: marksFromScreen() } });
       Object.assign(state.activeReview.homework, row);
     }
@@ -12545,8 +12653,29 @@ function studentNavButton(view, icon, label, badge = 0) {
 
 async function loadStudent() {
   state.studentData = await api('/api/student/bootstrap');
+  mountLiveFrame();
   state.view ||= 'calendar';
   renderStudent();
+  watchForStaleStudent();
+}
+
+/* A tab left open overnight, or a second device, showed yesterday's list:
+   homework handed in on the phone still read "To do" on the laptop, and the
+   badge did not budge. Coming back to the tab after a while asks again. */
+let studentLoadedAt = Date.now(), staleWatch = false;
+function watchForStaleStudent() {
+  studentLoadedAt = Date.now();
+  if (staleWatch) return;
+  staleWatch = true;
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !state.studentData || Date.now() - studentLoadedAt < 60 * 1000) return;
+    if (document.querySelector('.modal-open, .modal')) return; // never under somebody's feet mid-form
+    try {
+      state.studentData = await api('/api/student/bootstrap');
+      studentLoadedAt = Date.now();
+      renderStudent();
+    } catch { /* the next visit will */ }
+  });
 }
 
 const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message', live: 'Live class' };
@@ -12666,6 +12795,7 @@ function renderStudent() {
   else content = studentCalendarView();
   shell({ nav: studentNav(), content, title: STUDENT_TITLES[state.view] || 'Calendar', roleLabel: 'Student', notificationCount: state.studentData.notifications });
   bindStudentView();
+  placeLiveFrame();
   if (state.view === 'courses') bindCourse();
   if (state.view === 'private') {
     mountChatWidget();
@@ -12787,8 +12917,58 @@ function liveRoomView() {
   const copy = STUDENT_PAGE.live;
   return `<header class="sh"><div><h1>${copy.title}</h1><p>${copy.line}</p></div>
     ${state.studentData?.class ? `<span class="sh-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}</header>
-  <div class="live-embed"><iframe src="/live/room.html?embed=1" title="Live class"
-    allow="camera; microphone; autoplay; fullscreen; display-capture; speaker-selection" allowfullscreen></iframe></div>`;
+  <div class="live-embed slot" id="live-slot"></div>`;
+}
+
+/* The room's frame is made once, when the student's portal loads, and kept
+   outside the shell (which is redrawn on every view) hidden until the Live
+   class view is on screen, where it is laid over the slot above. The reason
+   is sound: a browser lets a page play audio only after a tap on it, or on a
+   same-origin page that was already holding it when the tap came. A frame
+   made at the moment the Live class tab is pressed has missed that tap and
+   Zoom's audio stays silent until the student taps again; this one was
+   there for it, so the class is heard with nothing pressed. The frame does
+   nothing at all until it is shown. */
+let liveFrameRoot = null;
+function mountLiveFrame() {
+  if (liveFrameRoot || !state.studentData?.liveClassroom) return;
+  liveFrameRoot = document.createElement('div');
+  liveFrameRoot.className = 'live-root';
+  liveFrameRoot.hidden = true;
+  liveFrameRoot.innerHTML = `<iframe src="${liveUrl('/live/room.html?embed=1&wait=1')}" title="Live class"
+    allow="camera; microphone; autoplay; fullscreen; display-capture; speaker-selection" allowfullscreen></iframe>`;
+  document.body.appendChild(liveFrameRoot);
+  /* Full screen is the room's own button; the frame around it is ours to
+     grow, so the room says and the portal makes the frame the whole window. */
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || !e.data || e.data.source !== 'gglive' || e.data.type !== 'fullscreen') return;
+    liveFrameRoot.classList.toggle('full', Boolean(e.data.on));
+    document.body.classList.toggle('live-full', Boolean(e.data.on));
+    if (!e.data.on) placeLiveFrame();
+  });
+  const place = () => placeLiveFrame();
+  window.addEventListener('resize', place);
+  document.addEventListener('scroll', place, true);
+}
+let liveSlotWatch = null;
+function placeLiveFrame() {
+  if (!liveFrameRoot) return;
+  if (liveFrameRoot.classList.contains('full')) {
+    if (state.view === 'live') return;
+    // The view moved on under a full-screen room: the frame shrinks back and the room is told to follow.
+    liveFrameRoot.classList.remove('full'); document.body.classList.remove('live-full');
+    liveFrameRoot.querySelector('iframe')?.contentWindow?.postMessage({ source: 'gg-portal', type: 'unfull' }, location.origin);
+  }
+  const slot = state.view === 'live' ? document.getElementById('live-slot') : null;
+  if (!slot) { liveFrameRoot.hidden = true; return; }
+  const r = slot.getBoundingClientRect();
+  Object.assign(liveFrameRoot.style, { top: `${Math.round(r.top)}px`, left: `${Math.round(r.left)}px`, width: `${Math.round(r.width)}px`, height: `${Math.round(r.height)}px` });
+  if (liveFrameRoot.hidden) {
+    liveFrameRoot.hidden = false;
+    liveFrameRoot.querySelector('iframe')?.contentWindow?.postMessage({ source: 'gg-portal', type: 'show' }, location.origin);
+  }
+  if (!liveSlotWatch && window.ResizeObserver) { liveSlotWatch = new ResizeObserver(() => placeLiveFrame()); }
+  try { liveSlotWatch?.disconnect(); liveSlotWatch?.observe(slot); } catch { /* fine */ }
 }
 
 /* A page title, not a greeting.
@@ -12916,8 +13096,12 @@ function studentCalendarView() {
   });
 
   // Anything already handed in disappears from this list entirely — it is not work
-  // to do. What is left splits by whether the deadline has gone.
-  const outstanding = items.filter((item) => !item.submitted);
+  // to do. What is left splits by whether the deadline has gone. Work that had
+  // already closed when this student joined the class was never theirs to do,
+  // so it is not theirs to have missed either: a student starting in week six
+  // used to open the portal to five missed check-ins and two missed homeworks.
+  const joinedAt = state.studentData.enrolledAt ? new Date(state.studentData.enrolledAt).getTime() : 0;
+  const outstanding = items.filter((item) => !item.submitted && !(item.status.tone === 'red' && joinedAt && new Date(item.due).getTime() < joinedAt));
   const upcoming = outstanding.filter((item) => item.status.tone !== 'red').sort((a, b) => new Date(a.due) - new Date(b.due));
   const overdue = outstanding
     .filter((item) => item.status.tone === 'red' && !isDismissed(item))
@@ -13045,7 +13229,12 @@ function studentTrackerView() {
       disabled: true,
       attributes: '',
     }];
-    if (week.checkin_available) {
+    /* The tile stays once the check-in has opened, closed or not: a
+       submitted or returned check-in, and its unread dot, has to be
+       reachable from the tracker the badge points at. Only a check-in that
+       is switched off, or has not opened yet, has no tile. */
+    const released = week.checkin_enabled !== false && week.checkin_release_at && Date.now() >= new Date(week.checkin_release_at).getTime();
+    if (released || checkin) {
       const unread = checkin?.status === 'returned' && !checkin.feedback_read_at;
       actions.push({ state: { ...checkinState(checkin, week), unread }, name: 'Check-in', unread, attributes: `data-open-student-item="checkin" data-week-id="${week.id}"` });
     }
@@ -13071,7 +13260,7 @@ function studentTrackerView() {
           ${statusIcon(action.state)}<span class="wk-name">${escapeHtml(action.name)}</span>
         </button>`).join('')}
       </div>
-      ${week.checkin_available ? '' : `<p class="week-card-note">Your check-in opens ${escapeHtml(fmtDate(week.checkin_release_at, { time: true, weekday: true, dateStyle: 'short' }))}.</p>`}
+      ${released || checkin || week.checkin_enabled === false ? '' : `<p class="week-card-note">Your check-in opens ${escapeHtml(fmtDate(week.checkin_release_at, { time: true, weekday: true, dateStyle: 'short' }))}.</p>`}
     </article>`;
   }).join('');
   return `${studentHeader()}${studentTabs('tracker')}
@@ -13380,7 +13569,9 @@ function openStudentItem(dataset) {
     if (week.checkin_release_at && Date.now() < new Date(week.checkin_release_at).getTime()) {
       return showToast(`This check-in opens ${fmtDate(week.checkin_release_at, { weekday: true, time: true, dateStyle: 'short' })}`);
     }
-    if (Date.now() > new Date(week.checkin_due_at).getTime()) {
+    /* A soft deadline keeps taking check-ins, marked late, which is what the
+       server does and what the card says ("Open, late"). Only a hard one closes. */
+    if (Date.now() > new Date(week.checkin_due_at).getTime() && week.checkin_hard_deadline !== false) {
       return showToast(`This check-in closed ${fmtDate(week.checkin_due_at, { weekday: true, time: true, dateStyle: 'short' })}`, 'error');
     }
     openCheckinForm(week, checkin);
@@ -13503,7 +13694,12 @@ async function openHomeworkForm(assignment, submission) {
         textShown: Boolean(data.assignment.listening_text_shown),
         at: 0, plays: 0,
       } };
-    renderHomeworkStep();
+    /* The teacher's explanation page comes first, the once: a student who
+       has started (an answer in the draft, or a later question) lands back
+       where they were, with the page a button away. */
+    const form = state.homeworkForm;
+    const started = form.step > 0 || form.answers.some((a) => String(a || '').trim());
+    if (homeworkHasIntro(data.assignment) && !started) renderHomeworkIntro(); else renderHomeworkStep();
   } catch (error) { showToast(error.message, 'error'); }
 }
 
@@ -13631,18 +13827,44 @@ function bindListeningPanel() {
   });
 }
 
-function renderHomeworkStep() {
-  const form = state.homeworkForm, assignment = form.assignment, question = assignment.questions[form.step];
+const homeworkHasIntro = (assignment) => Boolean(String(assignment?.instructions || '').trim());
+
+/* The page a student reads before the first question: what the teacher
+   wrote under Instructions, with the video and any files, and one button.
+   Reached again from any question, so nobody has to remember it all. */
+function renderHomeworkIntro() {
+  const form = state.homeworkForm, assignment = form.assignment;
+  const started = form.step > 0 || form.answers.some((a) => String(a || '').trim());
   modal({
     title: assignment.title, subtitle: `Due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true })}`, wide: true,
-    body: `<div class="rolling-form"><div class="progress"><span style="width:${((form.step + 1) / assignment.questions.length) * 100}%"></span></div><div class="rolling-stage">${listeningPanel(assignment, form)}${form.step === 0 ? loomEmbed(assignment.loom_url) : ''}${form.step === 0 && assignment.resources.length ? `<div style="margin-bottom:14px">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}<div class="rolling-kicker">Question ${form.step + 1} of ${assignment.questions.length}</div><div class="rolling-question">${escapeHtml(question.prompt)}</div>${question.imageUrl ? `<img src="${escapeHtml(question.imageUrl)}" alt="" style="max-width:100%;max-height:260px;border-radius:10px;margin-bottom:13px">` : ''}<div class="required-note">${question.required ? 'Required' : 'Optional'}</div><textarea id="homework-answer" placeholder="Type your answer">${escapeHtml(form.answers[form.step] || '')}</textarea>${form.step === assignment.questions.length - 1 ? homeworkUploadPanel(assignment, form) : ''}<div id="rolling-error"></div></div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div><button class="btn" id="homework-back" ${form.step === 0 ? 'disabled' : ''}>Previous</button> <button class="btn primary" id="homework-next">${form.step === assignment.questions.length - 1 ? 'Submit homework' : 'Save and continue'}</button></div></div></div>`,
+    body: `<div class="rolling-form"><div class="progress"><span style="width:0%"></span></div><div class="rolling-stage hw-intro">
+      <div class="rolling-kicker">Before you start</div>
+      <div class="hw-intro-text">${richText(assignment.instructions)}</div>
+      ${loomEmbed(assignment.loom_url)}
+      ${assignment.resources.length ? `<div class="hw-intro-files">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}
+      <div class="hw-intro-count">${assignment.questions.length} ${assignment.questions.length === 1 ? 'question' : 'questions'}</div>
+    </div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div><button class="btn primary" id="homework-start">${started ? 'Back to the questions' : 'Start the homework'}</button></div></div></div>`,
+    onOpen() {
+      document.getElementById('homework-exit').addEventListener('click', closeModal);
+      document.getElementById('homework-start').addEventListener('click', () => renderHomeworkStep());
+    },
+  });
+}
+
+function renderHomeworkStep() {
+  const form = state.homeworkForm, assignment = form.assignment, question = assignment.questions[form.step];
+  const hasIntro = homeworkHasIntro(assignment);
+  modal({
+    title: assignment.title, subtitle: `Due ${fmtDate(assignment.reopened_until || assignment.deadline_at, { time: true })}`, wide: true,
+    body: `<div class="rolling-form"><div class="progress"><span style="width:${((form.step + 1) / assignment.questions.length) * 100}%"></span></div><div class="rolling-stage">${listeningPanel(assignment, form)}${form.step === 0 && !hasIntro ? loomEmbed(assignment.loom_url) : ''}${form.step === 0 && !hasIntro && assignment.resources.length ? `<div style="margin-bottom:14px">${assignment.resources.map((resource) => `<a class="resource-chip" target="_blank" rel="noopener" href="${escapeHtml(resource.fileUrl || resource.file_url)}">📎 ${escapeHtml(resource.fileName || resource.file_name)}</a>`).join('')}</div>` : ''}<div class="rolling-kicker">Question ${form.step + 1} of ${assignment.questions.length}</div><div class="rolling-question">${escapeHtml(question.prompt)}</div>${question.imageUrl ? `<img src="${escapeHtml(question.imageUrl)}" alt="" style="max-width:100%;max-height:260px;border-radius:10px;margin-bottom:13px">` : ''}<div class="required-note">${question.required ? 'Required' : 'Optional'}</div><textarea id="homework-answer" placeholder="Type your answer">${escapeHtml(form.answers[form.step] || '')}</textarea>${form.step === assignment.questions.length - 1 ? homeworkUploadPanel(assignment, form) : ''}<div id="rolling-error"></div></div><div class="rolling-footer"><button class="btn" id="homework-exit">Back to deadlines</button><div>${hasIntro ? '<button class="btn" id="homework-instructions">Instructions</button> ' : ''}<button class="btn" id="homework-back" ${form.step === 0 && !hasIntro ? 'disabled' : ''}>Previous</button> <button class="btn primary" id="homework-next">${form.step === assignment.questions.length - 1 ? 'Submit homework' : 'Save and continue'}</button></div></div></div>`,
     onOpen() {
       const answer = document.getElementById('homework-answer');
       bindHomeworkUploads();
       bindListeningPanel();
       answer.addEventListener('input', debounce(() => { form.answers[form.step] = answer.value; saveHomeworkDraft(); }, 500));
       document.getElementById('homework-exit').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); closeModal(); });
-      document.getElementById('homework-back').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); if (form.step > 0) { form.step -= 1; renderHomeworkStep(); } });
+      document.getElementById('homework-back').addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); if (form.step > 0) { form.step -= 1; renderHomeworkStep(); } else if (hasIntro) renderHomeworkIntro(); });
+      document.getElementById('homework-instructions')?.addEventListener('click', async () => { form.answers[form.step] = answer.value; await saveHomeworkDraft(); renderHomeworkIntro(); });
       document.getElementById('homework-next').addEventListener('click', async () => {
         form.answers[form.step] = answer.value.trim();
         if (question.required && !form.answers[form.step]) { document.getElementById('rolling-error').innerHTML = '<div class="error-banner" style="margin-top:10px">Please answer this question.</div>'; return; }
@@ -13936,7 +14158,10 @@ async function followLink() {
       const assignment = (state.studentData?.assignments || []).find((row) => row.id === id);
       /* An assignment that is gone, or belongs to somebody else's class, simply
          leaves them on the calendar rather than on an error. */
-      if (assignment) openHomeworkForm(assignment);
+      /* Through the same door as the calendar card: work already handed in is
+         shown as handed in, not reopened as a form whose autosave would have
+         turned the submission back into a draft. */
+      if (assignment) openStudentItem({ openStudentItem: 'homework', assignmentId: assignment.id });
       return;
     }
   } catch (error) {

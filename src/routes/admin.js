@@ -15,7 +15,7 @@ import { generateStrongPassword, hashPassword } from '../security.js';
 import { sendStudentInvite, sendNudge } from '../email.js';
 import { ensureWeeksForClass, scheduleCheckins, CHECKIN_DEFAULTS } from '../weeks.js';
 import { audit } from '../audit.js';
-import { draftCheckinFeedback, draftHomeworkFeedback } from '../ai.js';
+import { draftCheckinFeedback, draftHomeworkFeedback, draftingSwitches } from '../ai.js';
 import { VOICE_MIME_TYPES, audioExtension, audioTypeFor, dictate, originalName, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
 import { FILE_TYPE_GROUPS } from '../documents.js';
@@ -168,7 +168,10 @@ router.get('/bootstrap', asyncRoute(async (_req, res) => {
     /* The switch alone, not the switch and the keys: the console is where the
        teacher is told what is still missing, so it must be reachable before
        everything is in place. Students only get their tab once it all is. */
-    liveRoom: await liveRoomEnabled() });
+    liveRoom: await liveRoomEnabled(),
+    /* Which drafts Claude writes, so the review drawer and the board know
+       whether to offer a draft button before any settings screen is opened. */
+    drafting: await draftingSwitches() });
 }));
 
 router.get('/classes', asyncRoute(async (_req, res) => {
@@ -2359,6 +2362,11 @@ router.post('/checkins/:id/return', asyncRoute(async (req, res) => {
 router.post('/checkins/:id/redraft', asyncRoute(async (req, res) => {
   const row = await one(`SELECT ch.*,u.name,u.email,w.week_start FROM checkins ch JOIN users u ON u.id=ch.student_id JOIN weeks w ON w.id=ch.week_id WHERE ch.id=$1`, [req.params.id]);
   if (!row || row.status === 'draft') return res.status(400).json({ error: 'A submitted check-in is required.' });
+  /* Asked before the state is touched: a draft that is switched off is not a
+     draft that failed, and must not leave the row reading "Draft failed". */
+  if (!(await draftingSwitches()).checkins) {
+    return res.status(409).json({ error: 'Drafting check-in replies is switched off under Feedback drafting.' });
+  }
   await query(`UPDATE checkins SET feedback_state='generating' WHERE id=$1`, [row.id]);
   try {
     const feedback = await draftCheckinFeedback({ student: { name: row.name, email: row.email }, weekStart: row.week_start, answers: row.answers });
@@ -2393,9 +2401,12 @@ router.post('/homework/:id/return', asyncRoute(async (req, res) => {
   }
   const current = await one('SELECT id, teacher_audio_path FROM homework_submissions WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Homework submission not found.' });
-  const hasText = parsed.data.corrections.trim() && parsed.data.generalFeedback.trim();
+  /* Either section carries the feedback on its own. Both used to be required
+     because both were always drafted; with the general note no longer written
+     for the teacher, a set of corrections is a complete reply. */
+  const hasText = parsed.data.corrections.trim() || parsed.data.generalFeedback.trim();
   if (!hasText && !current.teacher_audio_path) {
-    return res.status(400).json({ error: 'Complete both feedback sections, or record a voice note.' });
+    return res.status(400).json({ error: 'Write some feedback, or record a voice note, before returning this homework.' });
   }
   if (parsed.data.marks) {
     const awarded = parsed.data.marks.reduce((total, mark) => total + Math.min(mark.awarded, mark.available), 0);
@@ -2415,6 +2426,10 @@ router.post('/homework/:id/redraft', asyncRoute(async (req, res) => {
   if (!row || row.status === 'draft') return res.status(400).json({ error: 'Submitted homework is required.' });
   const questions = await query(`SELECT position,prompt FROM assignment_questions WHERE assignment_id=$1 ORDER BY position`, [row.assignment_id]);
   const answers = Array.isArray(row.answers) ? row.answers : [];
+  const drafting = await draftingSwitches();
+  if (!drafting.corrections && !drafting.generalFeedback) {
+    return res.status(409).json({ error: 'Drafting homework feedback is switched off under Feedback drafting.' });
+  }
   await query(`UPDATE homework_submissions SET feedback_state='generating' WHERE id=$1`, [row.id]);
   try {
     const feedback = await draftHomeworkFeedback({ student: { name: row.name, email: row.email }, assignment: { title: row.title, instructions: row.instructions }, questions: questions.rows.map((q, index) => ({ prompt: q.prompt, answer: answers[index] || '' })) });

@@ -26,6 +26,37 @@ function withNotes(system, notes) {
   return extra ? `${system}\n\nNOTES FROM ÉAMON FOR THIS CLASS, these take priority over the general guidance above:\n${extra}` : system;
 }
 
+/* What Claude is asked to write at all.
+   ------------------------------------------------------------------
+   Every draft is billed, and most of them were being thrown away: the teacher
+   reads a check-in and types two lines of their own, the board reply is
+   written fresh, and the general note under the corrections is personal. What
+   is actually hard to do by hand is the Irish correction, so that is the one
+   left on. The others are switches on the Feedback drafting screen, off until
+   somebody turns them on, and every call site asks here before it spends. */
+export const DRAFTING_DEFAULTS = Object.freeze({
+  corrections: true,
+  generalFeedback: false,
+  checkins: false,
+  board: false,
+});
+
+export async function draftingSwitches() {
+  const stored = await getSetting('drafting', {});
+  const out = { ...DRAFTING_DEFAULTS };
+  for (const key of Object.keys(DRAFTING_DEFAULTS)) {
+    if (typeof stored?.[key] === 'boolean') out[key] = stored[key];
+  }
+  return out;
+}
+
+/* Thrown when a call site asks for a draft that is switched off. 409 rather
+   than 500 so the screen says what to change instead of "Something went
+   wrong", the same as a missing key. */
+function switchedOff(what) {
+  return Object.assign(new Error(`${what} is switched off under Feedback drafting.`), { status: 409 });
+}
+
 const REPLY_SCHEMA = {
   type: 'object',
   properties: { reply: { type: 'string' } },
@@ -63,7 +94,12 @@ async function draft({ system, payload, effort = 'medium', schema = REPLY_SCHEMA
   return JSON.parse(text);
 }
 
-export async function draftCheckinFeedback(payload) {
+/* `test` is the Test connection button on the settings screen, which drafts an
+   invented check-in to show what the voice sounds like and writes nothing. It
+   goes ahead with the switch off, because the switch is about not paying for
+   drafts nobody reads, and that one was asked for by hand. */
+export async function draftCheckinFeedback(payload, { test = false } = {}) {
+  if (!test && !(await draftingSwitches()).checkins) throw switchedOff('Drafting check-in replies');
   const prompts = await getSetting('prompts', {});
   const { reply } = await draft({
     system: withNotes(CHECKIN_SYSTEM, prompts.checkinNotes),
@@ -75,6 +111,8 @@ export async function draftCheckinFeedback(payload) {
 export async function draftHomeworkFeedback(payload) {
   const answers = payload.questions?.map((item) => item.answer).filter((value) => String(value || '').trim()) || [];
   if (!answers.length) throw new Error('Homework has no submitted answers.');
+  const switches = await draftingSwitches();
+  if (!switches.corrections && !switches.generalFeedback) throw switchedOff('Drafting homework feedback');
   const prompts = await getSetting('prompts', {});
   /* Corrections are a marking standard rather than a voice, so that prompt is
      still the one on the settings screen. Effort stays at the default because
@@ -84,23 +122,35 @@ export async function draftHomeworkFeedback(payload) {
      wins with a model the same way it does with a person, and the layout of a
      correction is not a marking standard to be tuned on a settings screen: it is
      the shape the student's screen renders. */
+  /* With general feedback off, the model is asked for the corrections and
+     nothing else: the schema has one field, the feedback prompt and the voice
+     are not sent, and the stored corrections prompt is told in so many words,
+     because an older one may still describe two sections. Output it never
+     writes is output nobody pays for. */
+  const correctionsOnly = !switches.generalFeedback;
   const instructions = [
-    prompts.correctionPrompt || '',
-    prompts.generalFeedbackPrompt || '',
-    CORRECTION_FORMAT,
-    HOMEWORK_VOICE,
+    switches.corrections ? prompts.correctionPrompt || '' : '',
+    correctionsOnly ? '' : prompts.generalFeedbackPrompt || '',
+    switches.corrections ? CORRECTION_FORMAT : '',
+    correctionsOnly ? '' : HOMEWORK_VOICE,
+    correctionsOnly
+      ? 'Return the Irish corrections only. Do not write any general feedback, comment, praise or sign-off: the teacher writes that part themselves.'
+      : '',
+    switches.corrections
+      ? ''
+      : 'Do not correct the Irish and do not return any corrections: the teacher marks the Irish themselves. Write the general feedback only.',
   ].filter(Boolean).join('\n\n');
+  const properties = {};
+  if (switches.corrections) properties.corrections = { type: 'string' };
+  if (!correctionsOnly) properties.generalFeedback = { type: 'string' };
   const parsed = await draft({
     system: instructions,
     payload,
     effort: 'high',
     schema: {
       type: 'object',
-      properties: {
-        corrections: { type: 'string' },
-        generalFeedback: { type: 'string' },
-      },
-      required: ['corrections', 'generalFeedback'],
+      properties,
+      required: Object.keys(properties),
       additionalProperties: false,
     },
   });
@@ -108,7 +158,7 @@ export async function draftHomeworkFeedback(payload) {
     /* Corrections are quoted Irish, so they are left exactly as returned. Only
        the feedback underneath is passed through the voice scrub, or an em dash
        inside a corrected sentence would be rewritten into a comma. */
-    corrections: parsed.corrections?.trim() || 'No Irish corrections needed.',
+    corrections: parsed.corrections?.trim() || (switches.corrections ? 'No Irish corrections needed.' : ''),
     generalFeedback: inEamonsVoice(parsed.generalFeedback || ''),
   };
 }
@@ -122,6 +172,7 @@ export async function draftHomeworkFeedback(payload) {
  * without them.
  */
 export async function draftCommunityReply(payload) {
+  if (!(await draftingSwitches()).board) throw switchedOff('Drafting board replies');
   const prompts = await getSetting('prompts', {});
   const { reply } = await draft({
     system: withNotes(COMMUNITY_SYSTEM, prompts.communityNotes),

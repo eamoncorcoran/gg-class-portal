@@ -5,7 +5,7 @@ import { asyncRoute } from '../middleware.js';
 import { requireStudent } from '../session.js';
 import { studentProgress } from '../status.js';
 import { one, query, transaction } from '../db.js';
-import { draftCheckinFeedback, draftHomeworkFeedback, markListening } from '../ai.js';
+import { draftCheckinFeedback, draftHomeworkFeedback, draftingSwitches, markListening } from '../ai.js';
 import { audit } from '../audit.js';
 import { COUNTIES, normaliseCounty, normaliseEircode, hasAddress } from '../address.js';
 import { notifyNewComment, notifyNewPost } from '../boardnotify.js';
@@ -373,34 +373,42 @@ router.post('/checkins/:weekId/submit', asyncRoute(async (req, res) => {
      reply. A form left open in another tab is the usual way that happens. */
   const already = await one('SELECT status FROM checkins WHERE week_id=$1 AND student_id=$2', [week.id, req.user.id]);
   if (already?.status === 'returned') return res.status(409).json({ error: 'Your teacher has already replied to this check-in. Open it from your tracker to read the reply.' });
+  /* Whether a reply is drafted at all is a switch on the Feedback drafting
+     screen, read before the row is written so a check-in nobody is going to
+     draft for never shows the teacher "Generating": it lands as "No draft",
+     which is the truth, and they write the reply themselves. */
+  const drafting = await draftingSwitches();
+  const initialState = drafting.checkins ? 'generating' : 'none';
   const row = await one(
     `INSERT INTO checkins(week_id,student_id,status,answers,submitted_at,feedback_state,updated_at)
-     VALUES ($1,$2,'submitted',$3::jsonb,now(),'generating',now())
+     VALUES ($1,$2,'submitted',$3::jsonb,now(),$4,now())
      ON CONFLICT (week_id,student_id) DO UPDATE
        SET answers=EXCLUDED.answers,status='submitted',submitted_at=now(),
-           ai_feedback=NULL,teacher_feedback=NULL,feedback_state='generating',
+           ai_feedback=NULL,teacher_feedback=NULL,feedback_state=EXCLUDED.feedback_state,
            feedback_returned_at=NULL,feedback_read_at=NULL,updated_at=now()
      RETURNING *`,
-    [week.id, req.user.id, JSON.stringify(parsed.data.answers)],
+    [week.id, req.user.id, JSON.stringify(parsed.data.answers), initialState],
   );
-  let feedbackState = 'generating';
-  try {
-    const reply = await draftCheckinFeedback({
-      student: { name: req.user.name, email: req.user.email },
-      class: { programmeName: week.programme_name },
-      weekStart: week.week_start,
-      checkin: parsed.data.answers,
-    });
-    await query(
-      `UPDATE checkins SET ai_feedback=$1,teacher_feedback=$1,feedback_state='ai_drafted',updated_at=now()
-       WHERE id=$2`,
-      [reply, row.id],
-    );
-    feedbackState = 'ai_drafted';
-  } catch (error) {
-    console.error('Check-in draft generation failed', error);
-    await query(`UPDATE checkins SET feedback_state='failed',updated_at=now() WHERE id=$1`, [row.id]);
-    feedbackState = 'failed';
+  let feedbackState = initialState;
+  if (drafting.checkins) {
+    try {
+      const reply = await draftCheckinFeedback({
+        student: { name: req.user.name, email: req.user.email },
+        class: { programmeName: week.programme_name },
+        weekStart: week.week_start,
+        checkin: parsed.data.answers,
+      });
+      await query(
+        `UPDATE checkins SET ai_feedback=$1,teacher_feedback=$1,feedback_state='ai_drafted',updated_at=now()
+         WHERE id=$2`,
+        [reply, row.id],
+      );
+      feedbackState = 'ai_drafted';
+    } catch (error) {
+      console.error('Check-in draft generation failed', error);
+      await query(`UPDATE checkins SET feedback_state='failed',updated_at=now() WHERE id=$1`, [row.id]);
+      feedbackState = 'failed';
+    }
   }
   await audit({ actorId: req.user.id, action: 'checkin.submitted', entityType: 'checkin', entityId: row.id, ip: req.ip });
   res.json(forStudent({ ...row, feedback_state: feedbackState }));
@@ -506,18 +514,24 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
      reopening the assignment cannot rewrite somebody's history. */
   const late = Date.now() > new Date(assignment.deadline_at).getTime();
 
+  /* The Irish corrections are drafted; the general note underneath is not,
+     unless its switch on the Feedback drafting screen is on. With both off the
+     row lands as "No draft" rather than "Generating", because nothing is. */
+  const drafting = await draftingSwitches();
+  const draftsHomework = drafting.corrections || drafting.generalFeedback;
+  const initialState = draftsHomework ? 'generating' : 'none';
   const row = await one(
     `INSERT INTO homework_submissions(
        assignment_id,student_id,status,answers,current_question,submitted_at,submitted_late,feedback_state,updated_at
-     ) VALUES ($1,$2,'submitted',$3::jsonb,$4,now(),$5,'generating',now())
+     ) VALUES ($1,$2,'submitted',$3::jsonb,$4,now(),$5,$6,now())
      ON CONFLICT (assignment_id,student_id) DO UPDATE
        SET answers=EXCLUDED.answers,current_question=EXCLUDED.current_question,status='submitted',
            submitted_at=now(),submitted_late=EXCLUDED.submitted_late,
            ai_corrections=NULL,ai_general_feedback=NULL,
-           teacher_corrections=NULL,teacher_general_feedback=NULL,feedback_state='generating',
+           teacher_corrections=NULL,teacher_general_feedback=NULL,feedback_state=EXCLUDED.feedback_state,
            feedback_returned_at=NULL,feedback_read_at=NULL,updated_at=now()
      RETURNING *`,
-    [assignment.id, req.user.id, JSON.stringify(parsed.data.answers), Math.max(0, questions.length - 1), late],
+    [assignment.id, req.user.id, JSON.stringify(parsed.data.answers), Math.max(0, questions.length - 1), late, initialState],
   );
 
   if (assignment.kind === 'listening') {
@@ -526,36 +540,40 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
       [parsed.data.listeningDialect || null, parsed.data.listeningPlays || 0, row.id],
     );
   }
-  let feedbackState = 'generating';
-  try {
-    const feedback = await draftHomeworkFeedback({
-      student: { name: req.user.name, email: req.user.email },
-      assignment: { title: assignment.title, instructions: assignment.instructions },
-      questions: [
-        ...questions.map((question, index) => ({
-          prompt: question.prompt,
-          answer: parsed.data.answers[index] || '',
-        })),
-        // Work handed up as a file is read into text on upload, so corrections
-        // cover a photo of handwriting the same as anything typed in.
-        ...uploaded
-          .filter((file) => file.extraction_state === 'done' && String(file.extracted_text || '').trim())
-          .map((file) => ({ prompt: `Uploaded work: ${file.file_name}`, answer: file.extracted_text })),
-      ],
-    });
-    await query(
-      `UPDATE homework_submissions SET
-         ai_corrections=$1,ai_general_feedback=$2,
-         teacher_corrections=$1,teacher_general_feedback=$2,
-         feedback_state='ai_drafted',updated_at=now()
-       WHERE id=$3`,
-      [feedback.corrections, feedback.generalFeedback, row.id],
-    );
-    feedbackState = 'ai_drafted';
-  } catch (error) {
-    console.error('Homework draft generation failed', error);
-    await query(`UPDATE homework_submissions SET feedback_state='failed',updated_at=now() WHERE id=$1`, [row.id]);
-    feedbackState = 'failed';
+  let feedbackState = initialState;
+  if (draftsHomework) {
+    try {
+      const feedback = await draftHomeworkFeedback({
+        student: { name: req.user.name, email: req.user.email },
+        assignment: { title: assignment.title, instructions: assignment.instructions },
+        questions: [
+          ...questions.map((question, index) => ({
+            prompt: question.prompt,
+            answer: parsed.data.answers[index] || '',
+          })),
+          // Work handed up as a file is read into text on upload, so corrections
+          // cover a photo of handwriting the same as anything typed in.
+          ...uploaded
+            .filter((file) => file.extraction_state === 'done' && String(file.extracted_text || '').trim())
+            .map((file) => ({ prompt: `Uploaded work: ${file.file_name}`, answer: file.extracted_text })),
+        ],
+      });
+      /* A section that was not drafted is stored as nothing, not as an empty
+         string, so the review drawer offers an empty box rather than a draft. */
+      await query(
+        `UPDATE homework_submissions SET
+           ai_corrections=NULLIF($1,''),ai_general_feedback=NULLIF($2,''),
+           teacher_corrections=NULLIF($1,''),teacher_general_feedback=NULLIF($2,''),
+           feedback_state='ai_drafted',updated_at=now()
+         WHERE id=$3`,
+        [feedback.corrections, feedback.generalFeedback, row.id],
+      );
+      feedbackState = 'ai_drafted';
+    } catch (error) {
+      console.error('Homework draft generation failed', error);
+      await query(`UPDATE homework_submissions SET feedback_state='failed',updated_at=now() WHERE id=$1`, [row.id]);
+      feedbackState = 'failed';
+    }
   }
   /* A listening comprehension is marked as well as commented on.
      ------------------------------------------------------------------

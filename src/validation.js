@@ -109,6 +109,7 @@ export const FIELD_NAMES = Object.freeze({
   corrections: 'the Irish corrections', generalFeedback: 'the general feedback', feedback: 'the reply',
   correctionPrompt: 'the corrections prompt', generalFeedbackPrompt: 'the general feedback prompt',
   checkinNotes: 'the check-in notes', communityNotes: 'the community notes',
+  checkins: 'the check-in replies switch', board: 'the board replies switch',
   transcribeModel: 'the transcription model', cleanupModel: 'the cleanup model',
   cleanupPrompt: 'the cleanup prompt', correctionsCleanupPrompt: 'the corrections cleanup prompt',
   dictionary: { name: 'the personal dictionary', item: 'dictionary line' },

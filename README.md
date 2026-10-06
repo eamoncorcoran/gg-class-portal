@@ -90,7 +90,8 @@ reading them happens to be in.
   - Weekly win
 - Optional support request
 - Drafts save during completion
-- Claude drafts a teacher response only after submission, in Éamon's own voice
+- Claude drafts a teacher response only after submission, in Éamon's own voice,
+  and only when the check-in switch under Feedback drafting is on (it is off by default)
 - Missing check-ins never receive an AI draft
 
 ### Homework
@@ -764,11 +765,29 @@ After deploying:
 
 ## Drafting, and the voice it is written in
 
-Two providers, two jobs. **Claude writes every draft**: the weekly check-in reply,
-the homework feedback, and the suggested reply on the class board. **OpenAI stays
-for dictation and transcription only**, because there is no Anthropic equivalent
-of Whisper and the pipeline in `src/voice.js` is already matched to it. Revoking
-one key does not take the other down.
+Two providers, two jobs. **Claude writes the drafts**: the Irish corrections on
+homework, and, when switched on, the general feedback under them, the weekly
+check-in reply and the suggested reply on the class board. **OpenAI stays for
+dictation and transcription only**, because there is no Anthropic equivalent of
+Whisper and the pipeline in `src/voice.js` is already matched to it. Revoking one
+key does not take the other down.
+
+### What is drafted is a switch
+
+Every draft is billed, and most of them were being thrown away: the teacher reads
+a check-in and types two lines of their own, the board reply is written fresh,
+and the note under the corrections is personal. The one thing that is slow to do
+by hand is the Irish correction. So the **What Claude drafts** card on the
+Feedback drafting screen has four switches, stored as the `drafting` row in
+`app_settings`, and with the row unset only *Irish corrections on homework* is
+on. With general feedback off the homework request asks the model for the
+corrections alone, with a one-field schema, so nothing is paid for that is not
+kept. A check-in submitted with its switch off lands as *No draft* rather than
+*Generating*, the review drawer offers no draft button for it, and the board
+asks for nothing when a post is opened. Listening comprehensions are still
+marked, and the Test connection button still drafts its sample, whatever is
+switched off. Returning homework needs either section written, or a voice note,
+not both sections.
 
 ### The voice is code, not configuration
 

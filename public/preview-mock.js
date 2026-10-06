@@ -169,6 +169,8 @@
           thirtyMinutes:{enabled:true,subject:'30 minutes left for {{assignment_title}}',body:'Hi {{first_name}},\n\nThere are 30 minutes left.\n\n{{assignment_link}}'}
         },
         anthropic:{configured:true,model:'claude-opus-5'},
+        // Which drafts Claude writes. Corrections only, the live default.
+        drafting:{corrections:true,generalFeedback:false,checkins:false,board:false},
         openai:{configured:true,model:'gpt-5.6'},
         nudge:{
           checkinSubject:'Your weekly check-in, {{first_name}}',
@@ -671,7 +673,7 @@
     if(path==='/api/auth/change-password'&&method==='POST') return json({ok:true});
     if(!user) return error('Not signed in',401);
 
-    if(path==='/api/admin/bootstrap'&&method==='GET') return json({classes:db.classes.map((item)=>({...item,label:classLabel(item),student_count:studentRows(item.id).length})),counts:{students:studentRows().length,assignments:db.assignments.length}});
+    if(path==='/api/admin/bootstrap'&&method==='GET') return json({classes:db.classes.map((item)=>({...item,label:classLabel(item),student_count:studentRows(item.id).length})),counts:{students:studentRows().length,assignments:db.assignments.length},drafting:deepCopy(db.settings.drafting)});
     if(path==='/api/admin/classes'&&method==='GET') return json(db.classes.map((item)=>({...item,label:classLabel(item),student_count:studentRows(item.id).length})));
     if(path==='/api/admin/classes'&&method==='POST'){
       const id=`c${db.counters.class++}`;const row={id,programme_name:body.programmeName,day_of_week:Number(body.dayOfWeek),start_time:body.startTime,timezone:body.timezone||'Europe/Dublin',active:true,has_community:body.hasCommunity!==false,created_at:new RealDate(PREVIEW_NOW).toISOString()};
@@ -817,13 +819,13 @@
     params=match(path,'/api/admin/checkins/:id/return');
     if(params&&method==='POST'){const row=db.checkins.find((item)=>item.id===params.id);if(!row)return error('Check-in not found',404);Object.assign(row,{teacher_feedback:body.feedback,status:'returned',feedback_state:'returned',feedback_returned_at:new RealDate(PREVIEW_NOW).toISOString(),feedback_read_at:null});save();return json(row);}
     params=match(path,'/api/admin/checkins/:id/redraft');
-    if(params&&method==='POST'){const row=db.checkins.find((item)=>item.id===params.id);if(!row)return error('Check-in not found',404);row.ai_feedback=aiCheckin(row.answers||{});row.teacher_feedback=row.ai_feedback;row.feedback_state='ai_drafted';save();return json(row);}
+    if(params&&method==='POST'){const row=db.checkins.find((item)=>item.id===params.id);if(!row)return error('Check-in not found',404);if(db.settings.drafting&&!db.settings.drafting.checkins)return error('Drafting check-in replies is switched off under Feedback drafting.',409);row.ai_feedback=aiCheckin(row.answers||{});row.teacher_feedback=row.ai_feedback;row.feedback_state='ai_drafted';save();return json(row);}
     params=match(path,'/api/admin/homework/:id/feedback-draft');
     if(params&&method==='PATCH'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Homework not found',404);row.teacher_corrections=body.corrections;row.teacher_general_feedback=body.generalFeedback;row.feedback_state=row.status==='returned'?'returned':'teacher_edited';save();return json(row);}
     params=match(path,'/api/admin/homework/:id/return');
     if(params&&method==='POST'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Homework not found',404);Object.assign(row,{teacher_corrections:body.corrections,teacher_general_feedback:body.generalFeedback,status:'returned',feedback_state:'returned',feedback_returned_at:new RealDate(PREVIEW_NOW).toISOString(),feedback_read_at:null});save();return json(row);}
     params=match(path,'/api/admin/homework/:id/redraft');
-    if(params&&method==='POST'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Homework not found',404);const feedback=aiHomework(row.answers||[]);Object.assign(row,{ai_corrections:feedback.corrections,teacher_corrections:feedback.corrections,ai_general_feedback:feedback.generalFeedback,teacher_general_feedback:feedback.generalFeedback,feedback_state:'ai_drafted'});save();return json(row);}
+    if(params&&method==='POST'){const row=db.homework.find((item)=>item.id===params.id);if(!row)return error('Homework not found',404);const sw=db.settings.drafting||{};if(sw.corrections===false&&sw.generalFeedback===false)return error('Drafting homework feedback is switched off under Feedback drafting.',409);const feedback=aiHomework(row.answers||[]);if(sw.generalFeedback===false)feedback.generalFeedback='';if(sw.corrections===false)feedback.corrections='';Object.assign(row,{ai_corrections:feedback.corrections,teacher_corrections:feedback.corrections,ai_general_feedback:feedback.generalFeedback,teacher_general_feedback:feedback.generalFeedback,feedback_state:'ai_drafted'});save();return json(row);}
     if(path==='/api/admin/reminders/run'&&method==='POST') return json({ok:true,sent:3});
 
     // --- Voice: dictation and voice notes -------------------------------------
@@ -1305,6 +1307,7 @@
     if(path==='/api/settings/anthropic/test'&&method==='POST') return json({ok:true,preview:'Hey Niamh, one Sraith learned off and said out loud is a proper week\'s work, fair play.\n\nThe overwhelmed feeling is the Sraith doing what it does to everyone, so you are in good company there. Do not learn it as a block of text. Break each box into three or four short sentences in your own Irish, the ones you would actually say.\n\nJust the one Sraith again this week. Send it on if you want a look over it 🙂'});
     if(path==='/api/settings/openai'&&method==='PUT'){db.settings.openai={...db.settings.openai,...body,configured:true};save();return json(db.settings.openai);}
     if(path==='/api/settings/prompts'&&method==='PUT'){db.settings.prompts={...db.settings.prompts,...body};save();return json(db.settings.prompts);}
+    if(path==='/api/settings/drafting'&&method==='PUT'){db.settings.drafting={...db.settings.drafting,...body};save();return json(db.settings.drafting);}
     if(path==='/api/settings/openai/test'&&method==='POST') return json({ok:true,preview:'Great work this week. Your confidence is improving, and your weekly win shows genuine progress. Keep using one short Irish phrase aloud each day.'});
 
     if(path==='/api/student/bootstrap'&&method==='GET'){
