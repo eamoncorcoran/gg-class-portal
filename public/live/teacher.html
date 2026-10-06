@@ -691,7 +691,7 @@ async function loadSessions(){
   try {
     const r = await api('/api/live/sessions');
     if (!r.sessions.length) { box.innerHTML = '<span style="color:var(--text-tertiary);font-size:12.5px">No class has run yet. Go live and the report builds itself as you teach.</span>'; return; }
-    box.innerHTML = r.sessions.map((s) => `<div class="session"><div class="sm"><b>${esc(s.classes)}</b><span>${new Date(s.startedAt).toLocaleString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · ${s.minutes} min · ${s.present} present${s.endedAt ? '' : ' · running'}</span></div><a class="btn small" href="/api/live/sessions/${s.id}/report.pdf" target="_blank" rel="noopener">PDF</a></div>`).join('');
+    box.innerHTML = r.sessions.map((s) => `<div class="session"><div class="sm"><b>${esc(s.classes)}</b><span>${new Date(s.startedAt).toLocaleString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · ${s.minutes} min · ${s.present} present${s.running ? ' · running' : ''}</span></div><a class="btn small" href="/api/live/sessions/${s.id}/report.pdf" target="_blank" rel="noopener">PDF</a></div>`).join('');
   } catch(e){ box.innerHTML = `<span style="color:var(--error-700);font-size:12.5px">${esc(e.message)}</span>`; }
 }
 $('#sessionsRefresh').onclick = loadSessions;
@@ -727,6 +727,8 @@ async function boot(){
     loadAccess();
     loadSessions();
     quizAddRow(); quizAddRow();
+    // A check still open when the console was reloaded comes back with its figures.
+    if (me.prompt && me.prompt.id) api('/api/live/prompt/' + me.prompt.id + '/results').then(renderCheck).catch(() => {});
   } catch (e) {
     if (/401|403|Authentication|Administrator/.test(e.message)) { location.href = '/'; return; }
     flash(e.message, true);

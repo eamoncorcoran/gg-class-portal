@@ -357,6 +357,19 @@ function hidePrompt(id){
   activePrompt = null; promptLayer.hidden = true; pcard.innerHTML = '';
 }
 function closeSoon(ms){ const id = activePrompt && activePrompt.id; setTimeout(() => { if (!activePrompt || activePrompt.id === id) hidePrompt(); }, ms); }
+/* The answer goes before the cheer: a tap that never reached the server is
+   told so and can be tapped again, rather than celebrated and lost. */
+async function sendAnswer(pr, body){
+  const r = await post('/api/live/respond', body);
+  if (!r || r.ok === false) {
+    const note = pcard.querySelector('.psub');
+    if (note) { note.textContent = (r && r.error) || 'That did not send. Tap again.'; note.style.color = 'var(--error-700)'; }
+    pcard.querySelectorAll('.pick').forEach((b) => b.classList.remove('pick'));
+    return false;
+  }
+  remember(pr.id);
+  return true;
+}
 function cheer(title, line, big){
   pcard.innerHTML = `<div class="pbig">🎉</div><h3>${esc(title)}</h3><p class="psub">${esc(line || '')}</p>`;
   confetti(big);
@@ -370,8 +383,7 @@ function showPrompt(pr){
       <div class="pyn"><button class="btn primary" data-yes="1">Yes, got it</button><button class="btn no" data-yes="0">Not yet</button></div>`;
     pcard.querySelectorAll('[data-yes]').forEach((b) => b.onclick = async () => {
       const yes = b.dataset.yes === '1';
-      remember(pr.id);
-      post('/api/live/respond', { promptId: pr.id, kind: 'understand', yes });
+      if (!(await sendAnswer(pr, { promptId: pr.id, kind: 'understand', yes }))) return;
       if (yes) cheer('Maith thú!', 'On we go.', false);
       else pcard.innerHTML = `<div class="pbig">👍</div><h3>Thanks for saying</h3><p class="psub">Éamon will go over it again.</p>`;
       closeSoon(1700);
@@ -382,12 +394,15 @@ function showPrompt(pr){
       <div class="pscale">${Array.from({ length: 10 }, (_, i) => `<button data-score="${i + 1}">${i + 1}</button>`).join('')}</div><div class="pends"><span>1</span><span>10</span></div>`;
     pcard.querySelectorAll('[data-score]').forEach((b) => b.onclick = async () => {
       const score = Number(b.dataset.score); b.classList.add('pick');
-      remember(pr.id);
-      post('/api/live/respond', { promptId: pr.id, kind: pr.kind, score });
+      if (!(await sendAnswer(pr, { promptId: pr.id, kind: pr.kind, score }))) return;
+      /* Asked how the class was by the teacher: the end of the class will
+         not ask again, and the idea question follows as it would then. */
+      const sid = me?.session?.sessionId || '';
+      if (enjoy && sid) { try { localStorage.setItem('gglive_enjoyed_' + sid, '1'); } catch {} }
       setTimeout(() => {
         if (score > 5) cheer(score >= 9 ? 'Ar fheabhas!' : 'Maith thú!', enjoy ? 'Go raibh maith agat.' : 'Keep it up.', score >= 9);
         else pcard.innerHTML = `<div class="pbig">💪</div><h3>Thanks for saying</h3><p class="psub">${enjoy ? 'That helps the next class be better.' : 'Éamon will go over it again.'}</p>`;
-        closeSoon(1700);
+        if (enjoy) setTimeout(() => askForIdeas(sid), 1900); else closeSoon(1700);
       }, 250);
     });
   } else if (pr.kind === 'quiz') {
@@ -430,8 +445,9 @@ async function askHowItWas(sessionId){
   const sid = sessionId || me?.session?.sessionId || '';
   if (!sid || me?.role !== 'student') return;
   const key = 'gglive_enjoyed_' + sid;
-  if (localStorage.getItem(key)) return;
-  localStorage.setItem(key, '1');
+  let asked = false;
+  try { asked = Boolean(localStorage.getItem(key)); localStorage.setItem(key, '1'); } catch { /* private mode: ask, once per load */ }
+  if (asked) return;
   activePrompt = { id: 'enjoy-' + sid, kind: 'enjoy' }; promptLayer.hidden = false;
   pcard.innerHTML = `<div class="pk">That's the class</div><h3>How much did you enjoy today's class?</h3><p class="psub">1 is not at all, 10 is loved it.</p>
     <div class="pscale">${Array.from({ length: 10 }, (_, i) => `<button data-score="${i + 1}">${i + 1}</button>`).join('')}</div><div class="pends"><span>1</span><span>10</span></div>`;
@@ -446,6 +462,8 @@ async function askHowItWas(sessionId){
   });
 }
 function askForIdeas(sid){
+  // Its own card: the check that led here closing on the server does not take it away mid-sentence.
+  activePrompt = { id: 'ideas-' + (sid || ''), kind: 'idea' }; promptLayer.hidden = false;
   pcard.innerHTML = `<div class="pk">One more thing</div><h3>Any ideas for how to improve the class?</h3><p class="psub">A line is plenty. It goes to Éamon only.</p>
     <textarea id="pidea" placeholder="Something you'd change, or something to keep doing"></textarea>
     <div class="prow"><button class="btn primary" id="pideaSend">Send</button></div><button class="pskip" id="pideaSkip">Not today</button>`;
@@ -1030,6 +1048,8 @@ const boot = async () => {
 };
 if (waitForShow) window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.source === 'gg-portal' && e.data.type === 'show') boot(); });
 else boot();
+// The portal moved on to another view under a full-screen room: follow it out.
+window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.source === 'gg-portal' && e.data.type === 'unfull' && document.body.classList.contains('full')) setFull(false); });
 </script>
 </body>
 </html>

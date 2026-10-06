@@ -9187,7 +9187,12 @@ function mountLiveFrame() {
 let liveSlotWatch = null;
 function placeLiveFrame() {
   if (!liveFrameRoot) return;
-  if (liveFrameRoot.classList.contains('full')) { if (state.view !== 'live') { liveFrameRoot.classList.remove('full'); document.body.classList.remove('live-full'); } else return; }
+  if (liveFrameRoot.classList.contains('full')) {
+    if (state.view === 'live') return;
+    // The view moved on under a full-screen room: the frame shrinks back and the room is told to follow.
+    liveFrameRoot.classList.remove('full'); document.body.classList.remove('live-full');
+    liveFrameRoot.querySelector('iframe')?.contentWindow?.postMessage({ source: 'gg-portal', type: 'unfull' }, location.origin);
+  }
   const slot = state.view === 'live' ? document.getElementById('live-slot') : null;
   if (!slot) { liveFrameRoot.hidden = true; return; }
   const r = slot.getBoundingClientRect();

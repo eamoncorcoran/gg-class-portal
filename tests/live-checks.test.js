@@ -72,7 +72,15 @@ test('how the class was is kept even when the console has already ended the sess
   assert.match(roomServer, /await recentSession\(body\?\.sessionId\) \|\| access\.sessionId/);
   assert.match(roomServer, /ended_at > now\(\) - interval '4 hours'/);
   // The portal's own End session reaches students outside the Zoom.
-  assert.match(roomServer, /broadcastToStudents\(\{ type: 'ended', sessionId: access\.sessionId \}\)/);
+  assert.match(roomServer, /broadcastToStudents\(\{ type: 'ended', sessionId: sid \}\)/);
+  // Wherever a session ends, its row is closed and the room told: End session, a fresh Go live, a changed link.
+  assert.equal((roomServer.match(/await closeSessionRow\(\)/g) || []).length, 3);
+  assert.match(roomServer, /if \(nextUrl !== access\.joinUrl\) \{ await closeSessionRow\(\);/);
+  // Answers are written against the check's own session, and the console hears about every check that changed.
+  assert.equal((roomServer.match(/, prompt\.session_id\);/g) || []).length, 4);
+  assert.match(roomServer, /const promptStatsPending = new Set\(\)/);
+  assert.match(room, /if \(!\(await sendAnswer\(pr, \{ promptId: pr\.id, kind: 'understand', yes \}\)\)\) return;/);
+  assert.match(room, /if \(enjoy\) setTimeout\(\(\) => askForIdeas\(sid\), 1900\); else closeSoon\(1700\);/);
   assert.match(room, /d\.type === 'ended'\) return sessionEnded\(d\)/);
   assert.match(room, /function sessionEnded\(d\)\{\s*if \(preview \|\| inMeeting\) return;/);
 });

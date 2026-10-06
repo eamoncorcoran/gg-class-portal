@@ -9,8 +9,13 @@
  */
 import PDFDocument from 'pdfkit';
 import { query, one } from '../db.js';
+import { LIVE_MAX_MS } from './room.js';
 
 const minutes = (a, b) => Math.max(0, Math.round((new Date(b) - new Date(a)) / 60000));
+/* A session nobody ended (the server went down mid-class) is taken to have
+   run its course, not to be running still. */
+const endOf = (s) => s.ended_at || new Date(Math.min(Date.now(), new Date(s.started_at).getTime() + LIVE_MAX_MS));
+const running = (s) => !s.ended_at && Date.now() - new Date(s.started_at).getTime() < LIVE_MAX_MS;
 
 export async function listSessions(limit = 20) {
   const rows = (await query(
@@ -18,19 +23,20 @@ export async function listSessions(limit = 20) {
        (SELECT count(DISTINCT student_id)::int FROM live_events e WHERE e.session_id=s.id AND e.student_id IS NOT NULL) present,
        (SELECT string_agg(c.programme_name, ', ' ORDER BY c.programme_name) FROM classes c WHERE c.id = ANY(s.class_ids)) classes
      FROM live_sessions s ORDER BY s.started_at DESC LIMIT $1`, [limit])).rows;
-  return rows.map((s) => ({ id: s.id, classes: s.classes || 'Every class', startedAt: s.started_at, endedAt: s.ended_at, present: s.present,
-    minutes: minutes(s.started_at, s.ended_at || new Date()) }));
+  return rows.map((s) => ({ id: s.id, classes: s.classes || 'Every class', startedAt: s.started_at, endedAt: s.ended_at, running: running(s), present: s.present,
+    minutes: minutes(s.started_at, endOf(s)) }));
 }
 
 export async function sessionData(sessionId) {
   const session = await one('SELECT * FROM live_sessions WHERE id=$1', [sessionId]);
   if (!session) return null;
-  const endedAt = session.ended_at || new Date();
-  const classes = (await query('SELECT id, programme_name FROM classes WHERE id = ANY($1::uuid[])', [session.class_ids])).rows;
-  const roster = session.class_ids.length
+  const endedAt = endOf(session);
+  const classIds = session.class_ids || [];
+  const classes = (await query('SELECT id, programme_name FROM classes WHERE id = ANY($1::uuid[])', [classIds])).rows;
+  const roster = classIds.length
     ? (await query(
       `SELECT DISTINCT u.id, u.name FROM class_students cs JOIN users u ON u.id=cs.student_id
-       WHERE cs.class_id = ANY($1::uuid[]) AND cs.active=true AND u.active=true AND u.withdrawn_at IS NULL ORDER BY u.name`, [session.class_ids])).rows
+       WHERE cs.class_id = ANY($1::uuid[]) AND cs.active=true AND u.active=true AND u.withdrawn_at IS NULL ORDER BY u.name`, [classIds])).rows
     : [];
   const events = (await query(
     `SELECT e.kind, e.payload, e.at, e.student_id, COALESCE(u.name, e.payload->>'name') name
@@ -85,8 +91,9 @@ export async function sessionData(sessionId) {
   const hardWords = [...wordTally.values()].filter((t) => t.wrong + t.fair > 0)
     .sort((a, b) => (b.wrong * 2 + b.fair) - (a.wrong * 2 + a.fair)).slice(0, 15);
 
-  /* The checks and the quizzes. */
-  const checks = prompts.map((pr) => {
+  /* The checks and the quizzes. How the class was, whether the teacher asked
+     it from the console or the page asked at the end, is its own section. */
+  const checks = prompts.filter((pr) => pr.kind !== 'enjoy').map((pr) => {
     const mine = events.filter((e) => e.payload?.promptId === pr.id);
     if (pr.kind === 'understand') {
       const latest = new Map(); for (const e of mine) if (e.kind === 'understand') latest.set(e.student_id, e);
@@ -117,17 +124,17 @@ export async function sessionData(sessionId) {
         return { q: q.q, answer: q.answers[0], answered: given.length, correct: given.filter((g) => g.correct).length,
           commonWrong: Object.entries(wrong).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([a, n]) => `${a} (${n})`) };
       }),
-      students: [...byStudent.values()].map((s) => ({ name: s.name, correct: [...s.answers.values()].filter((a) => a.correct).length, answered: s.answers.size, total })).sort((a, b) => b.correct - a.correct) };
+      students: [...byStudent.entries()].map(([id, s]) => ({ id, name: s.name, correct: [...s.answers.values()].filter((a) => a.correct).length, answered: s.answers.size, total })).sort((a, b) => b.correct - a.correct) };
   });
 
   /* How the class was. */
-  const enjoyLatest = new Map(); for (const e of events) if (e.kind === 'enjoy' && !e.payload.promptId) enjoyLatest.set(e.student_id, e);
+  const enjoyLatest = new Map(); for (const e of events) if (e.kind === 'enjoy') enjoyLatest.set(e.student_id, e);
   const enjoyScores = [...enjoyLatest.values()].map((e) => Number(e.payload.score));
   const ideas = events.filter((e) => e.kind === 'idea').map((e) => ({ name: e.name, text: e.payload.text, at: e.at }));
 
   const students = [...perStudent.entries()].map(([id, s]) => {
     const att = attendance.find((a) => a.id === id);
-    const quiz = checks.filter((c) => c.kind === 'quiz').flatMap((c) => c.students.filter((q) => q.name === s.name));
+    const quiz = checks.filter((c) => c.kind === 'quiz').flatMap((c) => c.students.filter((q) => q.id === id));
     return { name: s.name, minutes: att ? att.minutes : 0, passed: s.passed, skipped: s.skipped, failedAttempts: s.failedAttempts,
       quizCorrect: quiz.reduce((a, q) => a + q.correct, 0), quizTotal: quiz.reduce((a, q) => a + q.total, 0),
       enjoyed: enjoyLatest.get(id) ? Number(enjoyLatest.get(id).payload.score) : null };
