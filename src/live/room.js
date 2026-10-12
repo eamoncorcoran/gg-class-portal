@@ -382,8 +382,8 @@ async function closeSessionRow() {
   if (!sid) return;
   await query('UPDATE live_sessions SET ended_at=now() WHERE id=$1 AND ended_at IS NULL', [sid]);
   await query('UPDATE live_prompts SET closed_at=now() WHERE session_id=$1 AND closed_at IS NULL', [sid]);
-  if (currentPrompt) { broadcastToStudents({ type: 'prompt-close', id: currentPrompt.id }); currentPrompt = null; }
-  broadcastToStudents({ type: 'ended', sessionId: sid });
+  if (currentPrompt) { broadcastToRoom({ type: 'prompt-close', id: currentPrompt.id }); currentPrompt = null; }
+  broadcastToRoom({ type: 'ended', sessionId: sid });
   access.sessionId = null;
 }
 export async function endLive() {
@@ -408,7 +408,9 @@ export async function endLive() {
    date over its own stream. The quiz answers never leave the server: the
    student's typed answer is checked here. */
 let currentPrompt = null;
-function broadcastToStudents(obj) { const f = sseFrame(obj); for (const l of listeners) if (l.who === 'student') sseWrite(l.res, f); }
+/* Everyone on the phrase stream: the students, and the console's preview of
+   what they see. The console page itself ignores typed messages. */
+function broadcastToRoom(obj) { const f = sseFrame(obj); for (const l of listeners) sseWrite(l.res, f); }
 export function publicPrompt(p) {
   return {
     id: p.id, kind: p.kind, topic: p.topic, createdAt: p.created_at,
@@ -435,7 +437,7 @@ export async function createPrompt({ kind, topic, questions }, user) {
     'INSERT INTO live_prompts(session_id, kind, topic, questions) VALUES ($1,$2,$3,$4::jsonb) RETURNING *',
     [access.sessionId, kind, cleanTopic, JSON.stringify(qs)]);
   currentPrompt = row;
-  broadcastToStudents({ type: 'prompt', prompt: publicPrompt(row) });
+  broadcastToRoom({ type: 'prompt', prompt: publicPrompt(row) });
   await pushPromptStats(row.id);
   return publicPrompt(row);
 }
@@ -443,7 +445,7 @@ export async function closePrompt(id) {
   if (!isUuid(id)) return { ok: true, closed: false };
   const row = await one('UPDATE live_prompts SET closed_at=now() WHERE id=$1 AND closed_at IS NULL RETURNING *', [id]);
   if (currentPrompt && currentPrompt.id === id) currentPrompt = null;
-  broadcastToStudents({ type: 'prompt-close', id });
+  broadcastToRoom({ type: 'prompt-close', id });
   if (row) await pushPromptStats(row.id);
   return { ok: true, closed: Boolean(row) };
 }

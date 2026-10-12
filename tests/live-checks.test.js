@@ -72,7 +72,7 @@ test('how the class was is kept even when the console has already ended the sess
   assert.match(roomServer, /await recentSession\(body\?\.sessionId\) \|\| access\.sessionId/);
   assert.match(roomServer, /ended_at > now\(\) - interval '4 hours'/);
   // The portal's own End session reaches students outside the Zoom.
-  assert.match(roomServer, /broadcastToStudents\(\{ type: 'ended', sessionId: sid \}\)/);
+  assert.match(roomServer, /broadcastToRoom\(\{ type: 'ended', sessionId: sid \}\)/);
   // Wherever a session ends, its row is closed and the room told: End session, a fresh Go live, a changed link.
   assert.equal((roomServer.match(/await closeSessionRow\(\)/g) || []).length, 3);
   assert.match(roomServer, /if \(nextUrl !== access\.joinUrl\) \{ await closeSessionRow\(\);/);
@@ -90,7 +90,9 @@ test('the room has the overlay, the confetti, the full-screen switch and the que
   assert.match(room, /<canvas id="confetti">/);
   assert.match(room, /<button class="fsbtn" id="fsBtn"/);
   assert.match(room, /<button class="qfab" id="qfab" hidden>/);
-  assert.match(room, /body\.preview \.prompt\{pointer-events:none\}/, 'the console preview never traps the teacher behind a prompt');
+  assert.match(room, /body\.preview \.prompt,body\.teacherview \.prompt\{pointer-events:none\}/, 'a teacher watching the room is never trapped behind a check');
+  assert.match(room, /body\.preview \.pcard\{zoom:\.6\}/, 'the card fits the console preview');
+  assert.match(room, /\.fsbtn\{position:absolute;top:10px;right:10px;z-index:98;/, 'full screen stays reachable over a check');
   assert.match(room, /tellPortal\(\{ type: 'fullscreen', on \}\)/);
   assert.match(room, /if \(d && d\.type === 'prompt'\) return showPrompt\(d\.prompt\)/);
   assert.match(room, /if \(d && d\.type === 'prompt-close'\) return hidePrompt\(d\.id\)/);

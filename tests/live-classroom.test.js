@@ -263,7 +263,7 @@ test('a student lands on a live class and is in it, sound and all, without press
   assert.match(room, /id="hearBtn">Tap to hear the class</);
   assert.match(room, /function soundAllowed\(\)/);
   // A host still in the practice session is retried quietly, and logged once.
-  assert.match(room, /if \(notStarted\) setTimeout\(\(\) => \{ if \(!joined\) join\(\); \}, 15000\);/);
+  assert.match(room, /if \(notStarted\) \{ clearTimeout\(joinRetry\); joinRetry = setTimeout\(\(\) => \{ joinRetry = null; if \(!joined\) join\(\); \}, 15000\); \}/);
   assert.match(room, /if \(!reported\.has\(reason\)\) \{ reported\.add\(reason\);/);
 });
 
@@ -290,5 +290,5 @@ test('a student who has just arrived sees ten seconds counting down on the door'
   // Past zero without the video, it says so rather than inventing a number.
   assert.match(room, /num\.textContent = 'almost there'/);
   // Retries while the host is in the practice session do not count down again.
-  assert.match(room, /if \(notStarted\) setTimeout\(\(\) => \{ if \(!joined\) join\(\); \}, 15000\);/);
+  assert.match(room, /if \(notStarted\) \{ clearTimeout\(joinRetry\); joinRetry = setTimeout\(\(\) => \{ joinRetry = null; if \(!joined\) join\(\); \}, 15000\); \}/);
 });

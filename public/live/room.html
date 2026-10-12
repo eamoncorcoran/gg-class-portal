@@ -79,7 +79,7 @@ body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb,body.embed .pa
 body.embed .app-shell{display:block}
 body.embed .app-main{padding:0 0 18px;max-width:none}
 body.embed .page-header{margin-bottom:12px;justify-content:flex-end}
-body.preview .page-header,body.preview .qpanel{display:none !important}
+body.preview .page-header,body.preview .qpanel,body.preview .fsbtn,body.preview .qfab{display:none !important}
 body.preview .app-main{padding:0}
 body.preview .live-grid{display:block}
 body.preview .videowrap{border-radius:10px}
@@ -135,14 +135,18 @@ body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
 .pcard textarea{width:100%;min-height:84px;font-size:15px;padding:12px;border-radius:12px;border:1.5px solid var(--border-strong);font-family:inherit}
 .pcard .prow{display:flex;gap:8px;justify-content:center;margin-top:12px}
 .pcard .pskip{background:none;border:0;color:var(--text-tertiary);font-weight:700;font-size:13px;cursor:pointer;margin-top:10px}
-body.preview .prompt{pointer-events:none}
-body.preview .pcard::after{content:'what students see';display:block;margin-top:10px;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-quaternary)}
+/* A teacher looking at the room (the console's preview, or Student view) watches the check; only a student answers it. */
+body.preview .prompt,body.teacherview .prompt{pointer-events:none}
+body.preview .prompt{padding:6px}
+/* The preview box is a third the size of a student's screen; the card shrinks to be seen whole. zoom, not transform: the pop-in animation owns transform. */
+body.preview .pcard{zoom:.6}
+body.preview .pcard::after,body.teacherview .pcard::after{content:'what students see';display:block;margin-top:10px;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-quaternary)}
 /* Confetti, over everything on the stage. */
 #confetti{position:absolute;inset:0;z-index:99;pointer-events:none}
 /* Full screen: the stage takes the whole frame, the questions fold into a
    drawer behind one button, and the portal around it makes the frame the
    whole window. Everything on the stage carries on as it is. */
-.fsbtn{position:absolute;top:10px;right:10px;z-index:94;width:34px;height:34px;border-radius:9px;border:0;background:rgba(0,0,0,.55);color:#fff;display:grid;place-items:center;cursor:pointer}
+.fsbtn{position:absolute;top:10px;right:10px;z-index:98;width:34px;height:34px;border-radius:9px;border:0;background:rgba(0,0,0,.55);color:#fff;display:grid;place-items:center;cursor:pointer}
 .fsbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .fsbtn .ic-exit{display:none}
 body.full .fsbtn .ic-exit{display:block} body.full .fsbtn .ic-enter{display:none}
@@ -274,6 +278,7 @@ const preview = qs.get('preview') === '1';
    tap, this one was there for it. */
 const waitForShow = qs.get('wait') === '1';
 if (preview) document.body.classList.add('preview');
+function markSeat(){ if (me && me.role === 'admin' && !preview) document.body.classList.add('teacherview'); }
 function tellPortal(msg) {
   if (window.parent === window) return;
   try { window.parent.postMessage({ source: 'gglive', ...msg }, location.origin); } catch {}
@@ -646,14 +651,23 @@ const root = $('#zoomRoot'), wrap = $('#stage');
    toolbar with Join Audio on it. So it is done the other way round: the
    video takes the stage's full width, and the stage grows to the height
    of the whole player, measured after every draw. */
-const stageSize = () => { const w = Math.max(320, root.clientWidth); return { width: w, height: Math.round(w * 9 / 16) }; };
+const stageSize = () => {
+  // Full screen: the whole screen, Zoom fits the video inside it. Otherwise 16:9 of the stage's width.
+  if (document.body.classList.contains('full')) return { width: Math.max(320, window.innerWidth), height: Math.max(180, window.innerHeight) };
+  const w = Math.max(320, root.clientWidth); return { width: w, height: Math.round(w * 9 / 16) };
+};
 const fitStage = () => {
   const box = root.querySelector('.react-resizable');
   if (!box) return;
   const b = box.getBoundingClientRect();
   if (b.height > 100) { wrap.style.aspectRatio = 'auto'; wrap.style.height = Math.round(b.height) + 'px'; }
   const holder = root.firstElementChild;
-  if (holder) { holder.style.position = 'absolute'; holder.style.top = '0px'; holder.style.left = Math.max(0, Math.round((root.clientWidth - b.width) / 2)) + 'px'; }
+  if (holder) {
+    const full = document.body.classList.contains('full');
+    holder.style.position = 'absolute';
+    holder.style.top = full ? Math.max(0, Math.round((root.clientHeight - b.height) / 2)) + 'px' : '0px';
+    holder.style.left = Math.max(0, Math.round((root.clientWidth - b.width) / 2)) + 'px';
+  }
   // The console's preview frame sizes itself to this.
   tellPortal({ type: 'stage', height: Math.round(wrap.getBoundingClientRect().height) + 8 });
   if (!fitObserver && window.ResizeObserver) { fitObserver = new ResizeObserver(() => fitStage()); fitObserver.observe(box); }
@@ -702,6 +716,10 @@ let sessionWatch = null;
    the Zoom already, hears it here and is asked how the class was. */
 function sessionEnded(d){
   if (preview || inMeeting) return;
+  // A join still being tried (the ring past zero, the retry in 15 s) stops: there is nothing to join now.
+  clearTimeout(joinRetry); joinRetry = null;
+  endCountdown();
+  $('#err').style.display = 'none';
   const nc = $('#nextClass'), btn = $('#joinBtn');
   if (nc) nc.textContent = 'The class has ended. Go raibh maith agaibh, see you at the next one.';
   btn.hidden = true; $('#zoomOut').hidden = true;
@@ -726,7 +744,7 @@ function watchLive(endedStart){
    it; the door opens when the count is done and the video is in, whichever
    is later. Past zero without the video, the ring stays full and the number
    gives way to "almost there", which is the truth of it. */
-let countdownDone = Promise.resolve(), countdownTick = null;
+let countdownDone = Promise.resolve(), countdownTick = null, joinRetry = null;
 function startCountdown(seconds = 10){
   const box = $('#countdown'), num = $('#countNum'), title = document.querySelector('.gatecard h2');
   if (!box) return;
@@ -762,6 +780,7 @@ async function join({ countdown = false } = {}){
   const btn = $('#joinBtn'); btn.disabled = true; btn.textContent = 'Joining…';
   try {
     me = await whoAmI(); if (!me) return;
+    markSeat();
     if (!me.allowed) throw new Error(me.reason || 'You do not have access to this session.');
     const name = studentName || 'Student';
     const webinarId = (qs.get('webinar') || me.webinar?.webinarId || '').replace(/\D/g,'');
@@ -837,7 +856,7 @@ async function join({ countdown = false } = {}){
       if (me && me.joinUrl) { $('#zoomOutLink').href = me.joinUrl; $('#zoomOut').hidden = false; }
     }
     // The host pressing Start is the only thing missing: try again by ourselves.
-    if (notStarted) setTimeout(() => { if (!joined) join(); }, 15000);
+    if (notStarted) { clearTimeout(joinRetry); joinRetry = setTimeout(() => { joinRetry = null; if (!joined) join(); }, 15000); }
   }
 }
 const reported = new Set();
@@ -1007,6 +1026,7 @@ const boot = async () => {
   if (booted) return; booted = true;
   try {
     me = await whoAmI(); if (!me) return;
+    markSeat();
     studentName = preview ? 'Teacher preview (silent)' : (me.name || 'Student');
     $('#sideName').textContent = studentName;
     $('#sideAv').textContent = studentName.trim().slice(0,2).toUpperCase();
