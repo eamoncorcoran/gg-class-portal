@@ -123,5 +123,5 @@ test('the admin has the Zoom account card, the From Zoom attendance card and a c
   assert.match(app, /if \(!status\.zoom\) \{/, 'the account alone is needed; Bunny is optional');
   // Nothing written for this lands with an em dash in it.
   const mine = app.slice(app.indexOf('function zoomAccountCard()'), app.indexOf('function dictationSettingsCard()')) + app.slice(app.indexOf('async function renderZoomAttendance()'), app.indexOf('function bindReminderSettings()'));
-  assert.doesNotMatch(mine, /,/, 'no em dashes in the new cards');
+  assert.doesNotMatch(mine, /\u2014/, 'no em dashes in the new cards');
 });
