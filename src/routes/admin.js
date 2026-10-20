@@ -35,6 +35,7 @@ import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashT
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
+import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, rememberIdentity, rematchSittings } from '../zoomattendance.js';
 import { bunnyConfigured, bunnySigning } from '../bunny.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 
@@ -3750,15 +3751,17 @@ router.get('/zoom/status', asyncRoute(async (_req, res) => {
 router.get('/zoom/recordings', asyncRoute(async (req, res) => {
   if (!zoomConfigured()) return res.json({ configured: false, recordings: [], sources: [] });
   const months = Math.min(Math.max(Number(req.query.months) || 3, 1), 12);
-  const [recordings, sources] = await Promise.all([
+  const [recordings, sources, classes] = await Promise.all([
     availableRecordings({ months }),
-    query(`SELECT s.*, m.title module_title, c.title course_title
+    query(`SELECT s.*, m.title module_title, c.title course_title, k.programme_name class_label
            FROM zoom_sources s
            LEFT JOIN course_modules m ON m.id=s.module_id
            LEFT JOIN courses c ON c.id=m.course_id
+           LEFT JOIN classes k ON k.id=s.class_id
            ORDER BY s.created_at`),
+    zoomClasses(),
   ]);
-  res.json({ configured: true, recordings, sources: sources.rows });
+  res.json({ configured: true, recordings, sources: sources.rows, classes, bunny: bunnyConfigured() });
 }));
 
 router.post('/zoom/import', asyncRoute(async (req, res) => {
@@ -3795,15 +3798,27 @@ router.put('/zoom/sources', asyncRoute(async (req, res) => {
     zoomId: z.string().trim().min(3).max(60),
     label: z.string().trim().max(200).optional().default(''),
     moduleId: z.string().uuid().nullable().optional(),
+    classId: z.string().uuid().nullable().optional(),
     autoImport: z.boolean().optional().default(false),
+    autoPublish: z.boolean().optional().default(false),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Give the webinar id and where its recordings should land.') });
+  /* The section has to belong to a course the class is enrolled in, or the
+     recording lands where the students it is for will never see it, and
+     students it is not for might. */
+  if (parsed.data.moduleId && parsed.data.classId) {
+    const fit = await one(
+      `SELECT 1 FROM course_modules m JOIN courses c ON c.id=m.course_id
+       WHERE m.id=$1 AND (c.class_id=$2 OR EXISTS (SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=$2))`,
+      [parsed.data.moduleId, parsed.data.classId]);
+    if (!fit) return res.status(400).json({ error: 'That section belongs to a course this class is not enrolled in, so its students would never see the recording. Pick a section of one of the class\u2019s own courses.' });
+  }
   const row = await one(
-    `INSERT INTO zoom_sources(zoom_id,label,module_id,auto_import) VALUES ($1,$2,$3,$4)
+    `INSERT INTO zoom_sources(zoom_id,label,module_id,auto_import,class_id,auto_publish) VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (zoom_id) DO UPDATE SET label=EXCLUDED.label, module_id=EXCLUDED.module_id,
-       auto_import=EXCLUDED.auto_import
+       auto_import=EXCLUDED.auto_import, class_id=EXCLUDED.class_id, auto_publish=EXCLUDED.auto_publish
      RETURNING *`,
-    [parsed.data.zoomId, parsed.data.label, parsed.data.moduleId || null, parsed.data.autoImport],
+    [parsed.data.zoomId, parsed.data.label, parsed.data.moduleId || null, parsed.data.autoImport, parsed.data.classId || null, parsed.data.autoPublish],
   );
   await audit({ actorId: req.user.id, action: 'zoom.source_saved', entityType: 'zoom_source', entityId: row.id, metadata: parsed.data, ip: req.ip });
   res.json(row);
@@ -3821,6 +3836,39 @@ router.get('/zoom/imports', asyncRoute(async (_req, res) => {
      ORDER BY i.started_at DESC LIMIT 50`,
   );
   res.json({ imports: rows.rows });
+}));
+
+/* ------------------------------------------------------------------
+   Attendance from Zoom
+   ------------------------------------------------------------------
+   Each class's Zoom link names its webinar; Zoom's report of each past
+   sitting is read into the attendance the teacher used to upload. */
+router.get('/zoom/attendance', asyncRoute(async (_req, res) => {
+  res.json(await attendanceOverview());
+}));
+
+/* Recent sittings of every class, one class, or everything Zoom still has
+   (`all`) to fill in the past. */
+router.post('/zoom/attendance/sync', asyncRoute(async (req, res) => {
+  const parsed = z.object({ classId: z.string().uuid().optional(), all: z.boolean().optional().default(false), refresh: z.boolean().optional().default(false) }).safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose a class, or all of them.') });
+  if (!zoomConfigured()) return res.status(503).json({ error: 'The Zoom account is not connected. Paste its credentials under Settings first.' });
+  if (parsed.data.classId) return res.json(await syncClassAttendance(parsed.data.classId, { all: parsed.data.all, refresh: parsed.data.refresh, actorId: req.user.id }));
+  res.json(await syncAttendance({ all: parsed.data.all, actorId: req.user.id }));
+}));
+
+/* "That name on Zoom is this student": remembered, and every sitting that
+   had the name unplaced is matched again. */
+router.post('/zoom/attendance/identity', asyncRoute(async (req, res) => {
+  const parsed = z.object({ studentId: z.string().uuid(), email: z.string().trim().max(200).optional().default(''), name: z.string().trim().max(200).optional().default('') }).safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose the student, and the name or email Zoom showed.') });
+  res.json(await rememberIdentity(parsed.data, req.user.id));
+}));
+
+router.post('/zoom/attendance/rematch', asyncRoute(async (req, res) => {
+  const parsed = z.object({ classId: z.string().uuid().optional() }).safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose a class.') });
+  res.json(await rematchSittings({ classId: parsed.data.classId || null }));
 }));
 
 /* ------------------------------------------------------------------

@@ -1374,6 +1374,16 @@ try {
   expectGraceful('an import can be asked for', await admin.call('/api/admin/zoom/import', { method: 'POST', body: { meetingId: '123', classId: made.classId } }));
   expectGraceful('the sources can be saved', await admin.call('/api/admin/zoom/sources', { method: 'PUT', body: { sources: [] } }));
   expectGraceful('a source can be removed', await admin.call('/api/admin/zoom/sources/00000000-0000-0000-0000-000000000000', { method: 'DELETE' }));
+  /* Attendance from Zoom: answers plainly whether or not the account is connected. */
+  expectOk('what Zoom has seen is listed', await admin.call('/api/admin/zoom/attendance'), (d) => typeof d?.configured === 'boolean' && Array.isArray(d?.classes) && d?.liveMinutes === 30);
+  const sync = await admin.call('/api/admin/zoom/attendance/sync', { method: 'POST', body: { all: false } });
+  expect('a sync is refused plainly without the account, or runs with it', sync.status === 503 || (sync.status === 200 && (sync.data?.ok === false || Array.isArray(sync.data?.classes))), `status ${sync.status}`);
+  expectStatus('a sync for a class that is not one is refused', await admin.call('/api/admin/zoom/attendance/sync', { method: 'POST', body: { classId: 'nope' } }), 400);
+  if (made.studentId) expectOk('a name Zoom showed can be matched to a student and remembered', await admin.call('/api/admin/zoom/attendance/identity', { method: 'POST', body: { studentId: made.studentId, name: 'Audit Zoom Name' } }), (d) => typeof d?.placed === 'number');
+  expectStatus('but not without a name or email', await admin.call('/api/admin/zoom/attendance/identity', { method: 'POST', body: { studentId: made.studentId || '00000000-0000-4000-8000-000000000000' } }), 400);
+  expectOk('sittings can be matched again', await admin.call('/api/admin/zoom/attendance/rematch', { method: 'POST', body: {} }), (d) => typeof d?.placed === 'number');
+  expectOk('the Zoom account settings can be saved, blank secrets keeping what is there', await admin.call('/api/settings/zoomapi', { method: 'PUT', body: { accountId: '', clientId: '' } }), (d) => typeof d?.configured === 'boolean');
+  expectStatus('a student cannot read attendance from Zoom', await student.call('/api/admin/zoom/attendance'), 403);
 
   section('The student’s own screens');
   if (made.assignmentId) expectOk('the student opens the assignment', await student.call(`/api/student/assignments/${made.assignmentId}`));
@@ -1543,6 +1553,7 @@ try {
 } finally {
   // Whatever the journey did or failed to do, leave nothing behind.
   if (made.sessionId) await query('DELETE FROM live_sessions WHERE id=$1', [made.sessionId]).catch(() => {});
+  await query("DELETE FROM zoom_identities WHERE key='name:audit zoom name'").catch(() => {});
   await query('DELETE FROM users WHERE email LIKE $1', [`audit.%@gaeilgeoirguides.test`]).catch(() => {});
   await query('DELETE FROM classes WHERE programme_name LIKE $1', [`Audit ${stamp}%`]).catch(() => {});
   await query('DELETE FROM courses WHERE title LIKE $1', [`Audit course ${stamp}%`]).catch(() => {});

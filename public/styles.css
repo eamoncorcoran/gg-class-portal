@@ -2122,3 +2122,12 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 
 /* The explanation page before a homework's first question. */
 .hw-intro-text{margin:10px 0 18px;max-width:640px;color:var(--text-secondary);font-size:16px;line-height:1.65}.hw-intro-text strong{color:var(--text)}.hw-intro-files{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}.hw-intro-count{color:var(--text-quaternary);font-size:12px;font-weight:600}
+
+/* Attendance from Zoom: a class, its sittings, who was placed */
+.zoom-att-class{padding:12px 0;border-top:1px solid var(--border)}
+.zoom-att-class:first-child{border-top:0;padding-top:0}
+.zoom-att-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.zoom-att-actions{display:flex;gap:8px;flex-wrap:wrap}
+.zoom-att-match{display:flex;gap:6px;align-items:center}
+.zoom-att-match .select{min-width:160px}
+.data-table td.n{text-align:right;font-variant-numeric:tabular-nums}

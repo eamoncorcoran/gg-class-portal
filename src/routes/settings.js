@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { zoomConfigured as zoomApiConfigured, whoAmI as zoomWhoAmI } from '../zoom.js';
+import { zoomConfigured as zoomApiConfigured, whoAmI as zoomWhoAmI, refreshZoomApi } from '../zoom.js';
 import { z } from 'zod';
 import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
 import { config } from '../config.js';
 import { requireAdmin } from '../session.js';
-import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig, getZoomConfig, saveZoomConfig } from '../settings.js';
+import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig, getZoomConfig, saveZoomConfig, getZoomApiConfig, saveZoomApiConfig } from '../settings.js';
 import { draftCheckinFeedback, draftingSwitches } from '../ai.js';
 import { auditReminders } from '../reminders.js';
 import { sendEmail } from '../email.js';
@@ -16,9 +16,9 @@ const router = Router();
 router.use(requireAdmin);
 
 router.get('/', asyncRoute(async (_req, res) => {
-  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech, zoomCfg, drafting] = await Promise.all([
+  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech, zoomCfg, zoomApi, drafting] = await Promise.all([
     getAnthropicConfig(), getOpenAIConfig(), getEmailConfig(), getSetting('prompts', {}), getSetting('reminders', {}),
-    getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}), getSpeechConfig(), getZoomConfig(),
+    getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}), getSpeechConfig(), getZoomConfig(), getZoomApiConfig(),
     draftingSwitches(),
   ]);
   res.json({
@@ -29,6 +29,9 @@ router.get('/', asyncRoute(async (_req, res) => {
     // The client id is public (it is in every signature); the secret never comes back.
     zoom: { clientId: zoomCfg.clientId, secretConfigured: Boolean(zoomCfg.clientSecret), configured: zoomCfg.configured, enabled: zoomCfg.enabled,
       hostEmail: zoomCfg.hostEmail, apiConfigured: zoomApiConfigured() },
+    // The account itself: ids come back, the two secrets only as set or not.
+    zoomApi: { accountId: zoomApi.accountId, clientId: zoomApi.clientId, secretConfigured: Boolean(zoomApi.clientSecret),
+      webhookConfigured: Boolean(zoomApi.webhookSecret), configured: zoomApi.configured },
     email: { ...email, smtpPassword: undefined },
     prompts,
     // Which drafts Claude writes at all. Defaults applied, so the screen never
@@ -164,6 +167,23 @@ router.put('/zoom', asyncRoute(async (req, res) => {
   res.json(saved);
 }));
 
+/* The Zoom account: the Server-to-Server app that lists recordings and
+   reads attendance. Blank secrets keep the ones that are there. */
+router.put('/zoomapi', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    accountId: z.string().trim().max(200).optional(),
+    clientId: z.string().trim().max(200).optional(),
+    clientSecret: z.string().max(200).optional(),
+    webhookSecret: z.string().max(200).optional(),
+    clearSecrets: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Check the Zoom account id, client id and secret.') });
+  const saved = await saveZoomApiConfig(parsed.data, req.user.id);
+  await refreshZoomApi();
+  await audit({ actorId: req.user.id, action: 'settings.zoomapi_updated', entityType: 'settings', entityId: 'zoomapi', ip: req.ip });
+  res.json(saved);
+}));
+
 /* Is the Zoom account reachable, and does the SDK app have what it needs? */
 router.post('/zoom/test', asyncRoute(async (_req, res) => {
   const sdk = await getZoomConfig();
@@ -171,12 +191,12 @@ router.post('/zoom/test', asyncRoute(async (_req, res) => {
     sdk: sdk.configured
       ? { ok: true, message: 'Meeting SDK id and secret are set. Whether Zoom accepts them shows the first time a student joins.' }
       : { ok: false, message: sdk.clientId ? 'The Meeting SDK client secret is not set.' : 'The Meeting SDK client id and secret are not set.' },
-    api: { ok: false, message: 'The Zoom account is not connected: ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET are not set on the server.' },
+    api: { ok: false, message: 'The Zoom account is not connected: paste its Account ID, Client ID and Client Secret in the Zoom account card.' },
   };
   if (zoomApiConfigured()) {
     try {
       const me = await zoomWhoAmI();
-      out.api = { ok: true, message: `Zoom account connected as ${me.name || me.email} (${me.email}). Go live can start meetings for you.`, owner: me.email };
+      out.api = { ok: true, message: `Zoom account connected as ${me.name || me.email} (${me.email}). Recordings and attendance can be read, and Go live can start meetings for you.`, owner: me.email };
     } catch (error) { out.api = { ok: false, message: error.message }; }
   }
   res.json(out);

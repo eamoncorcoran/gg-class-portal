@@ -195,3 +195,42 @@ export async function saveZoomConfig({ clientId, clientSecret, enabled, hostEmai
   const fresh = await getZoomConfig();
   return { clientId: fresh.clientId, secretConfigured: Boolean(fresh.clientSecret), configured: fresh.configured, enabled: fresh.enabled, hostEmail: fresh.hostEmail };
 }
+
+/* The Zoom account itself: the Server-to-Server OAuth app that lists
+   recordings and reads attendance. A different app from the Meeting SDK one
+   above, with its own four values. Pasted here, encrypted at rest, the
+   environment the fallback for each. The secrets never come back to a
+   browser beyond "set" or "not set". */
+let zoomApiCache = { at: 0, value: null };
+export async function getZoomApiConfig() {
+  if (zoomApiCache.value && Date.now() - zoomApiCache.at < 30 * 1000) return zoomApiCache.value;
+  let stored = {};
+  try { stored = await getSetting('zoomapi', {}); } catch (error) { console.error('zoom account settings unreadable, using the environment', error?.message); }
+  let secret = '', webhook = '';
+  try { secret = decryptSecret(stored.clientSecretEncrypted || ''); } catch (error) { console.error(error); }
+  try { webhook = decryptSecret(stored.webhookSecretEncrypted || ''); } catch (error) { console.error(error); }
+  const value = {
+    accountId: (stored.accountId || config.zoom.accountId || '').trim(),
+    clientId: (stored.clientId || config.zoom.clientId || '').trim(),
+    clientSecret: secret || config.zoom.clientSecret || '',
+    webhookSecret: webhook || config.zoom.webhookSecret || '',
+  };
+  value.configured = Boolean(value.accountId && value.clientId && value.clientSecret);
+  zoomApiCache = { at: Date.now(), value };
+  return value;
+}
+
+export async function saveZoomApiConfig({ accountId, clientId, clientSecret, webhookSecret, clearSecrets = false }, userId) {
+  const current = await getSetting('zoomapi', {});
+  const next = {
+    ...current,
+    accountId: accountId !== undefined ? String(accountId || '').trim() : (current.accountId || ''),
+    clientId: clientId !== undefined ? String(clientId || '').trim() : (current.clientId || ''),
+    clientSecretEncrypted: clearSecrets ? null : (clientSecret ? encryptSecret(clientSecret.trim()) : current.clientSecretEncrypted || null),
+    webhookSecretEncrypted: clearSecrets ? null : (webhookSecret ? encryptSecret(webhookSecret.trim()) : current.webhookSecretEncrypted || null),
+  };
+  await setSetting('zoomapi', next, userId);
+  zoomApiCache = { at: 0, value: null };
+  const fresh = await getZoomApiConfig();
+  return { accountId: fresh.accountId, clientId: fresh.clientId, secretConfigured: Boolean(fresh.clientSecret), webhookConfigured: Boolean(fresh.webhookSecret), configured: fresh.configured };
+}

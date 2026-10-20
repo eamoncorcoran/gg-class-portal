@@ -3,7 +3,8 @@ import express from 'express';
 import { asyncRoute } from '../middleware.js';
 import { verifyWebhook, urlValidationReply } from '../zoom.js';
 import { importWatched } from '../zoomimport.js';
-import { config } from '../config.js';
+import { syncForZoomId } from '../zoomattendance.js';
+import { zoomWebhookSecret } from '../zoom.js';
 import { audit } from '../audit.js';
 
 /**
@@ -26,7 +27,7 @@ const router = Router();
 router.post('/', express.raw({ type: '*/*', limit: '1mb' }), asyncRoute(async (req, res) => {
   const rawBody = req.body?.toString('utf8') || '';
 
-  if (!config.zoom.webhookSecret) return res.status(503).json({ error: 'Not configured.' });
+  if (!zoomWebhookSecret()) return res.status(503).json({ error: 'Not configured.' });
   const valid = verifyWebhook({
     signature: req.get('x-zm-signature'),
     timestamp: req.get('x-zm-request-timestamp'),
@@ -56,6 +57,15 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), asyncRoute(async (r
         if (result.imported) console.log(`Zoom import: ${result.imported} recording(s) from meeting ${meetingId}`);
       })
       .catch((error) => console.error('Zoom webhook import failed', error));
+    return undefined;
+  }
+
+  /* A webinar over: Zoom's attendance report is ready a few minutes later,
+     and only a class whose link names this webinar is read. */
+  if (payload.event === 'webinar.ended' || payload.event === 'meeting.ended') {
+    const zoomId = payload.payload?.object?.id;
+    res.json({ ok: true });
+    syncForZoomId(zoomId).catch((error) => console.error('Zoom attendance after the webinar failed', error));
     return undefined;
   }
 

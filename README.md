@@ -480,11 +480,34 @@ unread, so it waits for you.
 Until an import has demonstrably worked Zoom holds the only copy, and nothing in
 this application has permission to change that.
 
+A webinar named for automatic import can also **publish on arrival**, titled
+with the class date, when the recording is the class itself and needs no
+reading first. Naming the class it belongs to lets the portal check that the
+section chosen is in a course that class is enrolled in, so a recording never
+lands where its students would not see it.
+
+Without a Bunny Stream library the recording is **linked** rather than moved:
+a Zoom recording lesson carrying the share page and its passcode.
+
+#### Attendance from Zoom
+
+Each class's Zoom link names its webinar. After every class, Zoom's report of
+who was in the sitting and for how long is read into the same attendance the
+teacher used to upload as a CSV: thirty minutes or more is live, less is
+partial, nobody on the roster that evening is missed. A row set by hand is
+never overwritten. The webhook asks for it ten minutes after the webinar ends
+and the hourly sweep catches anything missed; **Attendance** in the admin shows
+every sitting, lets a name Zoom showed be matched to a student once and
+remembered, and can fill in the past from everything Zoom still has.
+
 #### Setting it up
 
-**A Zoom Server-to-Server OAuth app**, created at `marketplace.zoom.us`, with the
-recording read scopes. Put its credentials in `ZOOM_ACCOUNT_ID`,
-`ZOOM_CLIENT_ID` and `ZOOM_CLIENT_SECRET`.
+**A Zoom Server-to-Server OAuth app**, created at `marketplace.zoom.us`, with
+the scopes `recording:read:admin`, `report:read:admin`, `webinar:read:admin`,
+`meeting:read:admin` and `user:read:admin`. Paste its Account ID, Client ID
+and Client Secret in the **Zoom account** card under Settings (the
+environment variables `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID` and
+`ZOOM_CLIENT_SECRET` still work as a fallback).
 
 **A Bunny Stream library.** Its id and API key go in `BUNNY_LIBRARY_ID` and
 `BUNNY_API_KEY`; the token authentication key in `BUNNY_TOKEN_KEY`.

@@ -54,7 +54,24 @@ export async function sessionData(sessionId) {
     if (e.kind === 'left') s.left = e.at; else if (e.kind === 'present') s.left = null;
     seen.set(e.student_id, s);
   }
-  const attendance = [...seen.values()].map((s) => ({ ...s, minutes: minutes(s.first, s.left || endedAt) })).sort((a, b) => b.minutes - a.minutes);
+  /* Students who joined from the Zoom app rather than the portal are in
+     Zoom's own report of the sitting; it is folded in so nobody who was there
+     is written down as absent. */
+  if (classIds.length) {
+    const sittings = (await query(
+      `SELECT participants FROM zoom_sittings WHERE class_id = ANY($1::uuid[]) AND started_at BETWEEN $2::timestamptz - interval '3 hours' AND $3::timestamptz + interval '3 hours'`,
+      [classIds, session.started_at, endedAt])).rows;
+    for (const sitting of sittings) {
+      for (const p of sitting.participants || []) {
+        if (!p.studentId) continue;
+        const s = seen.get(p.studentId) || { id: p.studentId, name: p.studentName || p.name || 'Student', first: p.joinedAt || session.started_at, last: p.leftAt || endedAt, left: p.leftAt || null, zoomMinutes: 0 };
+        s.zoomMinutes = Math.max(s.zoomMinutes || 0, Number(p.minutes) || 0);
+        if (p.joinedAt && p.joinedAt < s.first) s.first = p.joinedAt;
+        seen.set(p.studentId, s);
+      }
+    }
+  }
+  const attendance = [...seen.values()].map((s) => ({ ...s, minutes: Math.max(minutes(s.first, s.left || endedAt), s.zoomMinutes || 0) })).sort((a, b) => b.minutes - a.minutes);
   const presentIds = new Set(attendance.map((s) => s.id));
   const absent = roster.filter((r) => !presentIds.has(r.id)).map((r) => r.name);
 

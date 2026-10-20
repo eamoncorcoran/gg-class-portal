@@ -4118,19 +4118,13 @@ async function openZoomImport() {
   try { status = await api('/api/admin/zoom/status'); }
   catch (error) { return showToast(error.message, 'error'); }
 
-  if (!status.zoom || !status.bunny) {
+  if (!status.zoom) {
     return modal({
       title: 'Import from Zoom',
       subtitle: 'Not connected yet.',
       body: `<div class="zi-setup">
-        <p>Two things are needed before recordings can come across, and neither is in the interface — both are keys that belong in the environment file:</p>
-        <ol>
-          <li><strong>A Zoom Server-to-Server OAuth app</strong> ${status.zoom ? '<b class="zi-ok">connected</b>' : '<b class="zi-no">not set</b>'}<br>
-            <span class="muted small">Create one at marketplace.zoom.us, give it the recording read scopes, and put the account id, client id and secret in <code>ZOOM_ACCOUNT_ID</code>, <code>ZOOM_CLIENT_ID</code> and <code>ZOOM_CLIENT_SECRET</code>. It is never given permission to delete anything.</span></li>
-          <li><strong>A Bunny Stream library</strong> ${status.bunny ? '<b class="zi-ok">connected</b>' : '<b class="zi-no">not set</b>'}<br>
-            <span class="muted small">Put the library id and API key in <code>BUNNY_LIBRARY_ID</code> and <code>BUNNY_API_KEY</code>. Add <code>BUNNY_TOKEN_KEY</code> as well and playback links are signed, so a forwarded link stops working.</span></li>
-        </ol>
-        <p class="muted small">The README has the full walkthrough under <em>Importing from Zoom</em>.</p>
+        <p>The Zoom account is not connected yet. Under <strong>Settings</strong>, the <em>Zoom account</em> card takes the Account ID, Client ID and Client Secret of a Server-to-Server OAuth app from marketplace.zoom.us, and lists the scopes it needs.</p>
+        <p class="muted small">With the account connected, a recording is linked straight to Zoom's own share page with its passcode. Add a Bunny Stream library (<code>BUNNY_LIBRARY_ID</code> and <code>BUNNY_API_KEY</code>) and recordings are moved into the portal's own player instead.</p>
       </div>`,
       footer: '<button class="btn primary" data-close-modal>Close</button>',
     });
@@ -4138,9 +4132,11 @@ async function openZoomImport() {
 
   modal({
     title: 'Import from Zoom',
-    subtitle: status.signedPlayback
-      ? 'Playback links are signed, so a forwarded link will not work.'
-      : 'Playback is unsigned — add BUNNY_TOKEN_KEY to lock links to your students.',
+    subtitle: !status.bunny
+      ? 'Recordings are linked to Zoom\u2019s own share page, passcode included. Add a Bunny Stream library to move them into the portal\u2019s player.'
+      : status.signedPlayback
+        ? 'Playback links are signed, so a forwarded link will not work.'
+        : 'Playback is unsigned: add BUNNY_TOKEN_KEY to lock links to your students.',
     wide: true,
     body: '<div id="zi-body"><p class="muted small">Asking Zoom what is there…</p></div>',
     footer: '<button class="btn" data-close-modal>Close</button><button class="btn" id="zi-sweep">Run automatic import</button>',
@@ -4197,17 +4193,34 @@ async function renderZoomList() {
     <p class="muted small">A recurring webinar keeps the same id every week. Name one here and its recordings come across on their own — everything else stays in the list above until you say so.</p>
     ${data.sources.length ? `<div class="zi-rules">${data.sources.map((source) => `<div class="zi-rule">
       <strong>${escapeHtml(source.label || source.zoom_id)}</strong>
-      <span class="muted small">${escapeHtml(source.zoom_id)}${source.module_title ? ` → ${escapeHtml(source.course_title)} · ${escapeHtml(source.module_title)}` : ' → no section chosen'}</span>
-      <span class="pill ${source.auto_import ? 'green' : ''}">${source.auto_import ? 'Automatic' : 'Manual only'}</span>
+      <span class="muted small">${escapeHtml(source.zoom_id)}${source.class_label ? ` · ${escapeHtml(source.class_label)}` : ''}${source.module_title ? ` → ${escapeHtml(source.course_title)} · ${escapeHtml(source.module_title)}` : ' → no section chosen'}</span>
+      <span class="pill ${source.auto_import ? 'green' : ''}">${source.auto_import ? (source.auto_publish ? 'Automatic, published' : 'Automatic, as a draft') : 'Manual only'}</span>
       <button class="btn small danger" data-zi-forget="${source.id}">Remove</button>
     </div>`).join('')}</div>` : ''}
     <form id="zi-rule-form" class="zi-newrule">
+      <select name="classId" class="select compact" id="zi-rule-class"><option value="">Which class is this webinar?</option>${(data.classes || []).map((k) => `<option value="${k.id}" data-zoom="${escapeHtml(k.zoomId || '')}">${escapeHtml(k.label)}${k.active ? '' : ' (not active)'}</option>`).join('')}</select>
       <input name="zoomId" placeholder="Webinar or meeting id" required>
       <input name="label" placeholder="What it is, e.g. Monday class">
       ${picker('new', '')}
       <label class="check-row"><input type="checkbox" name="autoImport"> Bring new recordings across on their own</label>
+      <label class="check-row"><input type="checkbox" name="autoPublish"> Publish them on arrival, titled with the class date</label>
       <button type="button" class="btn small" id="zi-save-rule">Save</button>
     </form>`;
+
+  /* Picking the class fills in its webinar id and narrows the sections to
+     the courses that class is enrolled in, so a recording cannot be sent
+     where its students would never see it. */
+  const ruleClass = holder.querySelector('#zi-rule-class');
+  ruleClass?.addEventListener('change', () => {
+    const form = document.getElementById('zi-rule-form');
+    const option = ruleClass.selectedOptions[0];
+    if (option?.dataset.zoom) form.zoomId.value = option.dataset.zoom;
+    const classId = ruleClass.value;
+    const allowed = classId ? new Set((state.courses || []).filter((c) => c.class_id === classId || (c.classes || []).some((k) => k.id === classId)).map((c) => c.title)) : null;
+    const select = holder.querySelector('[data-zi-module="new"]');
+    [...select.options].forEach((o) => { if (!o.value) return; const courseTitle = o.textContent.split(' · ')[0]; o.hidden = Boolean(allowed) && !allowed.has(courseTitle); });
+    if (select.selectedOptions[0]?.hidden) select.value = '';
+  });
 
   holder.querySelectorAll('[data-zi-import]').forEach((button) => button.addEventListener('click', async () => {
     const moduleId = holder.querySelector(`[data-zi-module="${button.dataset.ziImport}"]`)?.value;
@@ -4235,7 +4248,9 @@ async function renderZoomList() {
       zoomId: String(data2.get('zoomId') || '').trim(),
       label: String(data2.get('label') || '').trim(),
       moduleId: holder.querySelector('[data-zi-module="new"]')?.value || null,
+      classId: String(data2.get('classId') || '') || null,
       autoImport: form.autoImport.checked,
+      autoPublish: form.autoPublish.checked,
     };
     if (!body.zoomId) return showToast('Give the webinar id.', 'error');
     try {
@@ -6734,8 +6749,11 @@ function openAdminModal() {
 }
 
 function attendanceView() {
-  return `${pageHeader('Attendance', 'Upload webinar attendance', 'Import a Zoom or webinar CSV for one class and teaching week.')}
-    <section class="card" style="max-width:760px"><div class="card-header"><div><h2>Attendance import</h2><p>Students are matched by email first, then by exact name.</p></div></div>
+  return `${pageHeader('Attendance', 'Who was in the class', 'Read from Zoom after every class, or uploaded as a CSV.')}
+    <section class="card" id="zoom-attendance-card"><div class="card-header"><div><h2>From Zoom</h2><p>Each class\u2019s Zoom link names its webinar. After every class Zoom\u2019s report of who was there, and for how long, is read into the tracker: thirty minutes or more counts as live.</p></div>
+      <div class="card-actions"><button class="btn small" id="zoom-att-sync">Sync new sittings</button></div></div>
+    <div class="card-body" id="zoom-attendance"><p class="muted small">Asking the portal what Zoom has seen\u2026</p></div></section>
+    <section class="card" style="max-width:760px"><div class="card-header"><div><h2>Attendance CSV</h2><p>For a class with no Zoom link, or a one-off. Students are matched by email first, then by exact name.</p></div></div>
     <form class="card-body" id="attendance-form">
       <div class="form-field"><label>Class</label><select name="classId" id="attendance-class" required>${state.classes.map((klass) => `<option value="${klass.id}">${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div>
       <div class="form-field"><label>Teaching week</label><select name="weekId" id="attendance-week" required><option value="">Choose a class first</option></select></div>
@@ -6975,6 +6993,25 @@ function zoomSettingsCard() {
   </div></section>`;
 }
 
+/* The Zoom account: the Server-to-Server app that lists recordings and reads
+   attendance. Four values from marketplace.zoom.us; the two secrets are
+   encrypted on the server and shown only as set or not set. */
+function zoomAccountCard() {
+  const z = state.settings.zoomApi || {};
+  const hook = `${location.origin}/api/zoom/webhook`;
+  return `<section class="card" id="zoom-account-card"><div class="card-header"><div><h2>Zoom account (recordings and attendance)</h2><p>A "Server-to-Server OAuth" app from marketplace.zoom.us, on the account that hosts the classes. With it, each class's recording lands in its course by itself and attendance is read from Zoom after every class.</p></div></div><div class="card-body">
+    <div class="connection"><span class="connection-dot ${z.configured ? 'ok' : ''}"></span><div><strong>${z.configured ? 'Zoom account connected' : 'Zoom account not set'}</strong><span>${z.configured ? 'Recordings and attendance can be read.' : 'Paste the Account ID, Client ID and Client Secret from the app\u2019s App Credentials page.'}</span></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Account ID</strong><span>From the app\u2019s App Credentials page.</span></div><div><input id="zoomapi-account-id" autocomplete="off" value="${escapeHtml(z.accountId || '')}"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Client ID</strong></div><div><input id="zoomapi-client-id" autocomplete="off" value="${escapeHtml(z.clientId || '')}"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Client Secret</strong><span>${z.secretConfigured ? 'Set. Leave blank to keep it.' : 'Not set.'}</span></div><div><input id="zoomapi-client-secret" type="password" autocomplete="new-password" placeholder="${z.secretConfigured ? 'unchanged' : ''}"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Webhook secret token</strong><span>${z.webhookConfigured ? 'Set. Leave blank to keep it.' : 'Optional: lets Zoom tell the portal the moment a recording is ready or a class ends.'}</span></div><div><input id="zoomapi-webhook-secret" type="password" autocomplete="new-password" placeholder="${z.webhookConfigured ? 'unchanged' : ''}"></div></div>
+    <div class="notice stack-top"><strong>Scopes the app needs</strong><span>Under Scopes in the Marketplace app: <code>recording:read:admin</code>, <code>report:read:admin</code>, <code>webinar:read:admin</code>, <code>meeting:read:admin</code> and <code>user:read:admin</code>. Add <code>meeting:write:admin</code> if Go live should be able to start a meeting for you. The app is never given permission to delete anything.</span></div>
+    <div class="notice stack-top"><strong>Webhook</strong><span>Under Feature, Event Subscriptions: endpoint <code>${escapeHtml(hook)}</code>, events <code>recording.completed</code>, <code>webinar.ended</code> and <code>meeting.ended</code>. Paste its Secret Token above. Without it, an hourly sweep does the same work an hour later.</span></div>
+    <div style="margin-top:10px"><button class="btn small" id="test-zoomapi">Test the account</button></div>
+    <p class="muted small" id="zoomapi-test-result"></p>
+  </div></section>`;
+}
+
 function dictationSettingsCard() {
   const dictation = state.settings.dictation || {};
   const voicePrompts = state.settings.voicePrompts || {};
@@ -7042,6 +7079,7 @@ function aiSettingsView() {
       ${dictationSettingsCard()}
       ${speechSettingsCard()}
       ${zoomSettingsCard()}
+      ${zoomAccountCard()}
     </div><aside class="settings-stack"><section class="card"><div class="card-header"><div><h3>Draft lifecycle</h3><p>Clear states on the teacher side.</p></div></div><div class="card-body">
       <div class="connection"><span class="connection-dot ok"></span><div><strong>Submission-triggered only</strong><span>No reply is drafted for missing work.</span></div></div>
       <div class="mini-stats"><span class="mini-stat">AI drafted</span><span class="mini-stat">Teacher edited</span><span class="mini-stat">Returned</span></div>
@@ -8128,12 +8166,119 @@ function bindAttendance() {
     document.getElementById('attendance-week').innerHTML = data.weeks.map((week) => `<option value="${week.id}">Week of ${fmtWeek(week.week_start)}</option>`).join('');
   };
   classSelect.addEventListener('change', loadWeeks); loadWeeks();
+  renderZoomAttendance();
+  document.getElementById('zoom-att-sync')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; button.disabled = true; button.textContent = 'Asking Zoom\u2026';
+    try {
+      const result = await api('/api/admin/zoom/attendance/sync', { method: 'POST', body: { all: false } });
+      const fresh = (result.classes || []).reduce((a, c) => a + (c.newSittings || 0), 0);
+      showToast(result.ok === false ? result.reason : `${fresh} new sitting${fresh === 1 ? '' : 's'} read from Zoom`);
+      renderZoomAttendance();
+    } catch (error) { showToast(error.message, 'error'); }
+    button.disabled = false; button.textContent = 'Sync new sittings';
+  });
   document.getElementById('attendance-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
       const result = await api('/api/admin/attendance/import', { method: 'POST', body: new FormData(event.currentTarget) });
       modal({ title: 'Attendance imported', subtitle: `${result.rows.filter((row) => row.matched).length} students matched`, body: `<div class="table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Status</th><th>Minutes</th></tr></thead><tbody>${result.rows.map((row) => `<tr><td>${escapeHtml(row.name || row.email || 'Unknown')}</td><td><span class="pill ${row.matched ? 'green' : 'red'}">${row.matched ? escapeHtml(row.status) : 'Unmatched'}</span></td><td>${row.minutes ?? '—'}</td></tr>`).join('')}</tbody></table></div>`, footer: `<button class="btn primary" data-close-modal>Done</button>` });
     } catch (error) { showToast(error.message, 'error'); }
+  });
+}
+
+/* What Zoom saw, class by class: every sitting, who was placed, who was
+   not. A name Zoom shows that the portal could not place is matched here
+   once and remembered. */
+async function renderZoomAttendance() {
+  const holder = document.getElementById('zoom-attendance');
+  if (!holder) return;
+  let data;
+  try { data = await api('/api/admin/zoom/attendance'); }
+  catch (error) { holder.innerHTML = `<p class="muted small">${escapeHtml(error.message)}</p>`; return; }
+  if (!data.configured) {
+    holder.innerHTML = `<div class="notice warning"><strong>The Zoom account is not connected.</strong><span>Under Settings, the Zoom account card takes the Account ID, Client ID and Client Secret of a Server-to-Server app. Once it is in, attendance reads itself after every class and the past can be filled in from here.</span></div>`;
+    return;
+  }
+  if (!data.classes.length) {
+    holder.innerHTML = '<p class="muted small">No class has a Zoom link yet. Put the webinar link in Class setup and its attendance can be read.</p>';
+    return;
+  }
+  const dayName = (d) => ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][d] || '';
+  holder.innerHTML = data.classes.map((klass) => {
+    const last = klass.sittings[0];
+    const unplaced = klass.sittings.reduce((a, s) => a + (s.unmatched || 0), 0);
+    return `<div class="zoom-att-class" data-class="${klass.id}">
+      <div class="zoom-att-head">
+        <div><strong>${escapeHtml(klass.label)}</strong><span class="muted small"> · ${escapeHtml(dayName(klass.dayOfWeek))} ${escapeHtml(String(klass.startTime || '').slice(0, 5))} · Zoom ${escapeHtml(klass.zoomIds.join(', '))}${klass.active ? '' : ' · class not active'}</span>
+          <div class="muted small">${klass.sittings.length ? `${klass.sittings.length} sitting${klass.sittings.length === 1 ? '' : 's'} on record, latest ${escapeHtml(fmtDate(last.startedAt, { dateStyle: 'medium' }))}${unplaced ? `, <b>${unplaced} name${unplaced === 1 ? '' : 's'} not placed</b>` : ''}` : 'Nothing read from Zoom yet.'}</div></div>
+        <div class="zoom-att-actions">
+          <button class="btn small" data-zoom-att-sync="${klass.id}">Sync new</button>
+          <button class="btn small" data-zoom-att-all="${klass.id}" title="Every past sitting Zoom still has for this webinar">Fill in the past</button>
+        </div>
+      </div>
+      ${klass.sittings.length ? `<div class="table-wrap"><table class="data-table compact"><thead><tr><th>Sitting</th><th>Length</th><th>Week</th><th>Placed</th><th>Not placed</th><th></th></tr></thead><tbody>
+        ${klass.sittings.map((s) => `<tr>
+          <td>${escapeHtml(fmtDate(s.startedAt, { dateStyle: 'medium', time: true, weekday: true }))}</td>
+          <td>${s.durationMinutes ? `${s.durationMinutes} min` : ''}</td>
+          <td>${s.weekStart ? escapeHtml(fmtWeek(s.weekStart)) : '<span class="muted">no teaching week</span>'}</td>
+          <td class="n">${s.matched}</td>
+          <td class="n">${s.unmatched ? `<b>${s.unmatched}</b>` : '0'}</td>
+          <td><button class="btn small" data-zoom-att-people="${s.id}" data-class="${klass.id}">Who</button></td>
+        </tr>`).join('')}
+      </tbody></table></div>` : ''}
+    </div>`;
+  }).join('');
+
+  const sync = async (button, body, label) => {
+    button.disabled = true; button.textContent = 'Asking Zoom\u2026';
+    try {
+      const result = await api('/api/admin/zoom/attendance/sync', { method: 'POST', body });
+      if (result.ok === false) showToast(result.reason, 'error');
+      else showToast(`${result.newSittings} new sitting${result.newSittings === 1 ? '' : 's'} read${result.errors?.length ? `, ${result.errors.length} could not be: ${result.errors[0]}` : ''}`, result.errors?.length ? 'error' : undefined);
+      renderZoomAttendance();
+    } catch (error) { showToast(error.message, 'error'); button.disabled = false; button.textContent = label; }
+  };
+  holder.querySelectorAll('[data-zoom-att-sync]').forEach((b) => b.addEventListener('click', () => sync(b, { classId: b.dataset.zoomAttSync, all: false }, 'Sync new')));
+  holder.querySelectorAll('[data-zoom-att-all]').forEach((b) => b.addEventListener('click', () => sync(b, { classId: b.dataset.zoomAttAll, all: true }, 'Fill in the past')));
+  holder.querySelectorAll('[data-zoom-att-people]').forEach((b) => b.addEventListener('click', () => {
+    const klass = data.classes.find((k) => k.id === b.dataset.class);
+    const sitting = klass?.sittings.find((s) => s.id === b.dataset.zoomAttPeople);
+    if (sitting) openSittingPeople(klass, sitting);
+  }));
+}
+
+/* One sitting's people. The unplaced ones get a dropdown of the class, and
+   a choice is remembered for every sitting before and after. */
+async function openSittingPeople(klass, sitting) {
+  let roster = [];
+  try { roster = (await api(`/api/admin/tracker/${klass.id}`)).students || []; } catch { roster = []; }
+  const people = [...sitting.people].sort((a, b) => (a.studentId ? 1 : 0) - (b.studentId ? 1 : 0) || b.minutes - a.minutes);
+  modal({
+    title: `${escapeHtml(klass.label)}, ${escapeHtml(fmtDate(sitting.startedAt, { dateStyle: 'medium', weekday: true }))}`,
+    subtitle: `${sitting.matched} placed, ${sitting.unmatched} not. Thirty minutes or more counts as live.`,
+    wide: true,
+    body: `<div class="table-wrap"><table class="data-table compact"><thead><tr><th>On Zoom as</th><th>Minutes</th><th>Student</th></tr></thead><tbody>
+      ${people.map((p, i) => `<tr>
+        <td>${escapeHtml(p.name || '')}${p.email ? `<br><span class="muted small">${escapeHtml(p.email)}</span>` : ''}</td>
+        <td class="n">${p.minutes}</td>
+        <td>${p.studentId ? escapeHtml(p.studentName || '') : `<div class="zoom-att-match"><select class="select compact" data-match-person="${i}"><option value="">Not a student</option>${roster.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}</select><button class="btn small" data-match-save="${i}">Remember</button></div>`}</td>
+      </tr>`).join('')}
+    </tbody></table></div>`,
+    footer: '<button class="btn primary" data-close-modal>Close</button>',
+    onOpen() {
+      document.querySelectorAll('[data-match-save]').forEach((button) => button.addEventListener('click', async () => {
+        const i = Number(button.dataset.matchSave);
+        const studentId = document.querySelector(`[data-match-person="${i}"]`)?.value;
+        if (!studentId) return showToast('Choose the student first.', 'error');
+        button.disabled = true;
+        try {
+          const result = await api('/api/admin/zoom/attendance/identity', { method: 'POST', body: { studentId, email: people[i].email || '', name: people[i].name || '' } });
+          showToast(`Remembered. ${result.placed} sitting${result.placed === 1 ? '' : 's'} updated.`);
+          closeModal();
+          renderZoomAttendance();
+        } catch (error) { showToast(error.message, 'error'); button.disabled = false; }
+      }));
+    },
   });
 }
 
@@ -8209,6 +8354,14 @@ function bindAISettings() {
       } });
       // The sidebar item reads Live classroom or Studio by this, so it follows the switch at once.
       state.liveRoom = Boolean(zoomSaved.configured && zoomSaved.enabled);
+      if (document.getElementById('zoomapi-account-id')) {
+        await api('/api/settings/zoomapi', { method: 'PUT', body: {
+          accountId: document.getElementById('zoomapi-account-id').value.trim(),
+          clientId: document.getElementById('zoomapi-client-id').value.trim(),
+          clientSecret: document.getElementById('zoomapi-client-secret').value.trim() || undefined,
+          webhookSecret: document.getElementById('zoomapi-webhook-secret').value.trim() || undefined,
+        } });
+      }
       await api('/api/settings/speech', { method: 'PUT', body: {
         azureKey: document.getElementById('azure-key').value.trim() || undefined,
         azureRegion: document.getElementById('azure-region').value.trim() || undefined,
@@ -8240,6 +8393,15 @@ function bindAISettings() {
     try {
       const result = await api('/api/settings/zoom/test', { method: 'POST', body: {} });
       out.innerHTML = `<span class="${result.sdk.ok ? 'ok' : 'error'}">${escapeHtml(result.sdk.message)}</span><br><span class="${result.api.ok ? 'ok' : 'error'}">${escapeHtml(result.api.message)}</span>`;
+    } catch (error) { out.textContent = error.message; }
+    button.disabled = false;
+  });
+  document.getElementById('test-zoomapi')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; const out = document.getElementById('zoomapi-test-result');
+    button.disabled = true; out.textContent = 'Asking Zoom';
+    try {
+      const result = await api('/api/settings/zoom/test', { method: 'POST', body: {} });
+      out.innerHTML = `<span class="${result.api.ok ? 'ok' : 'error'}">${escapeHtml(result.api.message)}</span>`;
     } catch (error) { out.textContent = error.message; }
     button.disabled = false;
   });
