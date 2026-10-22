@@ -10868,10 +10868,25 @@ function srPlay(lines, allButton = null) {
       li.classList.remove('playing');
       if (queue.length) setTimeout(next, 500); else srStop();
     };
+    /* A request dropped mid-way (a page restarting, a phone changing
+       network) is tried again once, quietly, before anything is said. A
+       load cut short by pressing another sentence is not an error at all. */
+    let tries = 0;
     srAudio.onerror = () => {
       if (run !== srRun) return;
+      if (srAudio.error && srAudio.error.code === 1) return;
+      if (tries < 2) {
+        tries += 1;
+        setTimeout(() => {
+          if (run !== srRun) return;
+          srAudio.src = `/api/sraith/audio/${encodeURIComponent(li.dataset.audio)}.mp3?r=${tries}`;
+          srAudio.defaultPlaybackRate = srAudio.playbackRate = sraithPrefs().slow ? 0.75 : 1;
+          srAudio.play().catch(() => { /* onerror decides */ });
+        }, 700 * tries);
+        return;
+      }
       srStop();
-      showToast('That sentence would not play. Check your connection and try again.', 'error');
+      showToast('That sentence did not play. Tap it again.', 'error');
     };
     srAudio.src = `/api/sraith/audio/${encodeURIComponent(li.dataset.audio)}.mp3`;
     // A new source resets the rate to the default, so both are set.
@@ -10879,7 +10894,8 @@ function srPlay(lines, allButton = null) {
     srAudio.play().catch((error) => {
       if (run !== srRun || error?.name === 'AbortError') return;
       srStop();
-      showToast(error?.name === 'NotAllowedError' ? 'Your browser held the sound back. Tap the sentence again.' : 'That sentence would not play. Try again in a moment.', 'error');
+      if (error?.name !== 'NotAllowedError') return; // a failed load is onerror's to retry
+      showToast('Your browser held the sound back. Tap the sentence again.', 'error');
     });
   };
   next();

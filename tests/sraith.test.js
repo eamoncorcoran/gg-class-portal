@@ -109,6 +109,10 @@ test('the page: Irish bold, English beneath in italics, a speaker on every line,
   assert.match(app, /seg\('sr-en', 'show', 'Show', prefs\.english\)/);
   assert.match(app, /seg\('sr-speed', 'slow', 'Slow', prefs\.slow\)/);
   assert.match(app, /data-sr-playall=/);
+  // A dropped load is retried quietly; a load cut short by another tap is no error.
+  assert.match(app, /if \(srAudio\.error && srAudio\.error\.code === 1\) return;/);
+  assert.match(app, /if \(tries < 2\) \{/);
+  assert.doesNotMatch(app, /How to revise a Sraith/, 'the old how-to box is gone');
   assert.match(app, /srAudio\.defaultPlaybackRate = srAudio\.playbackRate = sraithPrefs\(\)\.slow \? 0\.75 : 1;/);
   const css = read('public/styles.css');
   assert.match(css, /\.sr-ga\{[^}]*font-weight:650/);
