@@ -39,7 +39,7 @@ test('every sentence has its Irish and its English, tidied, with no dashes or wo
       assert.ok(line.ga && line.en, `${s.title}: ${JSON.stringify(line)}`);
       assert.match(line.ga, /^["\u201c]?\p{Lu}|^[nbdgmt]\p{Lu}/u, `${s.title} starts with a capital: ${line.ga}`);
       assert.match(line.en, /^["\u201c]?\p{Lu}/u, `${s.title} English starts with a capital: ${line.en}`);
-      assert.doesNotMatch(line.ga + line.en, /[–—]/, 'no dashes');
+      assert.doesNotMatch(line.ga + line.en, /[\u2013\u2014]/, 'no dashes');
       assert.doesNotMatch(line.ga, /^\d|^[••]/, 'no bullet or number left on the front');
     }
     for (const b of s.boxes) assert.ok(b.sentences.length >= 2, `${s.title} box ${b.n} has sentences`);
@@ -115,7 +115,7 @@ test('the page: Irish bold, English beneath in italics, a speaker on every line,
   assert.match(css, /\.sr-en\{[^}]*font-style:italic/);
   assert.match(css, /\.sr-box\{display:grid;grid-template-columns:minmax\(0,1\.08fr\) minmax\(0,\.92fr\)/);
   const mine = app.slice(app.indexOf('/* ---- Sraith Pictiúr'));
-  assert.doesNotMatch(mine, /—/, 'no em dashes in the Sraith page');
+  assert.doesNotMatch(mine, /\u2014/, 'no em dashes in the Sraith page');
   assert.ok(fs.existsSync(new URL('scripts/build-sraith.py', root)));
   assert.equal(path.basename(data.source).startsWith('Irish for Primary Teaching'), true);
 });

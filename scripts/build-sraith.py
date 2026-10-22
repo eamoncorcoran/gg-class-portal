@@ -19,7 +19,7 @@ R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 def q(ns, tag): return '{%s}%s' % (ns, tag)
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'content', 'sraith')
-DASHES = '–—'
+DASHES = '\u2013\u2014'
 CLOSERS = '.!?"”’'
 
 
