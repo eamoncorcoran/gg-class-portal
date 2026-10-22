@@ -25,6 +25,7 @@ import path from 'node:path';
 import { config } from '../config.js';
 import { liveRoomOn, liveRoomEnabled } from '../live/zoom.js';
 import { liveFor } from '../live/room.js';
+import { canSeeSraith } from '../sraith.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 
@@ -289,6 +290,8 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
        student into it once the Zoom keys are in place, and hand out the plain
        class link until then, so nobody loses their door on a class night. */
     liveClassroom: await liveRoomEnabled(),
+    // The Sraith Pictiúr section, for the Irish for Primary Teaching class.
+    sraith: await canSeeSraith(req.user),
     liveReady: await liveRoomOn(),
     // The teacher has pressed Go live for this student's class.
     liveNow: (await liveRoomOn()) && await liveFor(req.user.id),

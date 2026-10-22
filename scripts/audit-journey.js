@@ -1374,6 +1374,22 @@ try {
   expectGraceful('an import can be asked for', await admin.call('/api/admin/zoom/import', { method: 'POST', body: { meetingId: '123', classId: made.classId } }));
   expectGraceful('the sources can be saved', await admin.call('/api/admin/zoom/sources', { method: 'PUT', body: { sources: [] } }));
   expectGraceful('a source can be removed', await admin.call('/api/admin/zoom/sources/00000000-0000-0000-0000-000000000000', { method: 'DELETE' }));
+  /* The Sraith Pictiúr: the teacher sees every one, a student off the course sees none. */
+  const sraith = expectOk('the Sraith Pictiúr are listed', await admin.call('/api/sraith'), (d) => Array.isArray(d?.sraith) && d.sraith.length >= 1);
+  const firstSraith = sraith?.sraith?.[0];
+  if (firstSraith) {
+    const story = expectOk('a Sraith opens with its boxes', await admin.call(`/api/sraith/s/${firstSraith.slug}`),
+      (d) => Array.isArray(d?.boxes) && d.boxes.length >= 1 && d.boxes[0].sentences?.[0]?.ga && d.boxes[0].sentences[0].audio);
+    const pic = story?.boxes?.find((b) => b.image)?.image;
+    if (pic) expectStatus('its picture is served', await admin.call(pic.src), 200);
+    const clip = story?.boxes?.[0]?.sentences?.[0]?.audio;
+    if (clip) expectGraceful('a sentence can be heard, or the reason it cannot is given', await admin.call(`/api/sraith/audio/${clip}.mp3`));
+  }
+  expectStatus('a Sraith that does not exist is a 404', await admin.call('/api/sraith/s/nope'), 404);
+  expectStatus('nothing outside the picture folder can be asked for', await admin.call('/api/sraith/img/..%2Fsraith.json'), 404);
+  expectStatus('a sentence that is not in a Sraith cannot be spoken', await admin.call('/api/sraith/audio/0000000000000000.mp3'), 404);
+  expectStatus('a student who is not on the course does not see the Sraith', await student.call('/api/sraith'), 403);
+
   /* Attendance from Zoom: answers plainly whether or not the account is connected. */
   expectOk('what Zoom has seen is listed', await admin.call('/api/admin/zoom/attendance'), (d) => typeof d?.configured === 'boolean' && Array.isArray(d?.classes) && d?.liveMinutes === 30);
   const sync = await admin.call('/api/admin/zoom/attendance/sync', { method: 'POST', body: { all: false } });
@@ -1563,7 +1579,7 @@ try {
 /* Which routes this journey never called. Named rather than counted, because a
    number tells you there is a gap and not where it is. */
 const MOUNTS = { 'admin.js': '/api/admin', 'student.js': '/api/student', 'auth.js': '/api/auth',
-  'settings.js': '/api/settings', 'media.js': '/api/media', 'zoom.js': '/api/zoom', 'live.js': '/api/live' };
+  'settings.js': '/api/settings', 'media.js': '/api/media', 'zoom.js': '/api/zoom', 'live.js': '/api/live', 'sraith.js': '/api/sraith' };
 const defined = [];
 for (const file of fs.readdirSync(new URL('../src/routes/', import.meta.url))) {
   const mount = MOUNTS[file];

@@ -27,6 +27,8 @@ import { startReminderScheduler, runReminderCycle } from './src/reminders.js';
 import { startBackupScheduler } from './src/backup.js';
 import { startZoomScheduler } from './src/zoomscheduler.js';
 import { refreshZoomApi } from './src/zoom.js';
+import sraithRoutes from './src/routes/sraith.js';
+import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -207,6 +209,8 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/media', mediaRoutes);
 // The live classroom: the room, the questions, the studio's lessons, the mic.
 app.use('/api/live', liveRoutes);
+// The Sraith Pictiúr revision section, for the Irish for Primary Teaching class.
+app.use('/api/sraith', sraithRoutes);
 // Calendar apps subscribe with no cookies, so this one authenticates by URL token.
 app.use('/calendar', calendarRoutes);
 
@@ -263,6 +267,8 @@ async function start() {
   startBackupScheduler();
   await refreshZoomApi();
   startZoomScheduler();
+  // Every Sraith sentence spoken once and kept on disk, a minute after boot.
+  setTimeout(() => { warmSraithAudio().catch((error) => console.error('Sraith audio warm-up failed', error?.message)); }, 60 * 1000).unref?.();
   // Scheduled board posts become visible by the clock passing rather than by
   // anything running, so without this nothing would notice they had appeared.
   startBoardNotifier();

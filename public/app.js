@@ -56,6 +56,10 @@ const state = {
 
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const svg = {
+  pictures: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="2"/></svg>`,
+  speaker: `<svg viewBox="0 0 24 24" fill="none"><path d="M11 5 6.5 8.5H3.8a.8.8 0 0 0-.8.8v5.4c0 .44.36.8.8.8h2.7L11 19V5Z" fill="currentColor"/><path d="M15.2 9.2a4 4 0 0 1 0 5.6M17.9 6.5a8 8 0 0 1 0 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  stop: `<svg viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>`,
+  playFill: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 5.6v12.8c0 .78.85 1.26 1.52.86l10.4-6.4a1 1 0 0 0 0-1.72L9.52 4.74A1 1 0 0 0 8 5.6Z" fill="currentColor"/></svg>`,
   camera: `<svg viewBox="0 0 24 24" fill="none"><path d="M2 8.377c0-.35 0-.525.015-.673a3 3 0 0 1 2.69-2.69C4.851 5 5.035 5 5.404 5c.143 0 .214 0 .274-.004a2 2 0 0 0 1.735-1.25c.023-.056.044-.12.086-.246.042-.127.063-.19.086-.246a2 2 0 0 1 1.735-1.25C9.38 2 9.448 2 9.58 2h4.838c.133 0 .2 0 .26.004a2 2 0 0 1 1.735 1.25c.023.056.044.12.086.246.042.127.063.19.086.246a2 2 0 0 0 1.735 1.25c.06.004.131.004.273.004.37 0 .554 0 .702.015a3 3 0 0 1 2.69 2.69c.014.147.014.322.014.672V16.2c0 1.68 0 2.52-.327 3.162a3 3 0 0 1-1.311 1.311C19.72 21 18.88 21 17.2 21H6.8c-1.68 0-2.52 0-3.162-.327a3 3 0 0 1-1.311-1.311C2 18.72 2 17.88 2 16.2V8.377Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 16.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   x: `<svg viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   book: `<svg viewBox="0 0 24 24" fill="none"><path d="m12 21-.1-.15c-.695-1.042-1.042-1.563-1.5-1.94a4 4 0 0 0-1.378-.737C8.453 18 7.827 18 6.575 18H5.2c-1.12 0-1.68 0-2.108-.218a2 2 0 0 1-.874-.874C2 16.48 2 15.92 2 14.8V6.2c0-1.12 0-1.68.218-2.108a2 2 0 0 1 .874-.874C3.52 3 4.08 3 5.2 3h.4c2.24 0 3.36 0 4.216.436a4 4 0 0 1 1.748 1.748C12 6.04 12 7.16 12 9.4M12 21V9.4M12 21l.1-.15c.695-1.042 1.042-1.563 1.5-1.94a3.999 3.999 0 0 1 1.378-.737C15.547 18 16.173 18 17.425 18H18.8c1.12 0 1.68 0 2.108-.218a2 2 0 0 0 .874-.874C22 16.48 22 15.92 22 14.8V6.2c0-1.12 0-1.68-.218-2.108a2 2 0 0 0-.874-.874C20.48 3 19.92 3 18.8 3h-.4c-2.24 0-3.36 0-4.216.436a4 4 0 0 0-1.748 1.748C12 6.04 12 7.16 12 9.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -1018,6 +1022,7 @@ function mobileNav() {
         ['calendar', svg.calendar, 'Calendar'],
         ['tracker', svg.grid, 'Tracker'],
         ['courses', svg.cap, 'Courses'],
+        ...(state.studentData?.sraith ? [['sraith', svg.pictures, 'Sraith']] : []),
         // The room, once the portal has one: on a phone the bottom bar is the
         // navigation, and a tab that only exists in a sidebar is no tab at all.
         ...(state.studentData?.liveClassroom ? [['live', svg.video, 'Live']] : []),
@@ -1258,6 +1263,7 @@ function adminNav() {
       ${adminNavButton('people', svg.users, 'Classes & students')}
       ${adminNavButton('assignments', svg.calendar, 'Calendar')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
+      ${adminNavButton('sraith', svg.pictures, 'Sraith Pictiúr')}
       ${adminNavButton('live', svg.video, state.liveRoom ? 'Live classroom' : 'Studio')}
       ${adminNavButton('plans', svg.grid, 'Plans')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
@@ -1301,6 +1307,7 @@ function bindShellNavigation() {
     /* Pressing Courses in the sidebar means "show me the courses", not "stay
        where I am" — so the one being viewed is let go of first. */
     if (button.dataset.adminView === 'courses') { state.course = null; state.lessonId = null; }
+    if (button.dataset.adminView === 'sraith') state.sraithSlug = null;
     state.view = button.dataset.adminView;
     if (button.dataset.classId) state.activeClassId = button.dataset.classId;
     await renderAdmin();
@@ -1314,6 +1321,7 @@ function bindShellNavigation() {
 async function showStudentView(view) {
   // Same reasoning as the sidebar: the nav item goes to the shelf.
   if (view === 'courses') { state.course = null; state.lessonId = null; }
+  if (view === 'sraith') state.sraithSlug = null;
   state.view = view;
   try {
     if (view === 'courses' && !state.course) await loadCourses();
@@ -1395,6 +1403,8 @@ async function renderAdmin() {
       title = 'Community'; content = communityView();
     } else if (state.view === 'live') {
       title = 'Live classroom'; content = liveAdminView();
+    } else if (state.view === 'sraith') {
+      title = 'Sraith Pictiúr'; content = sraithView();
     } else if (state.view === 'admins') {
       /* Guarded on the server as well: the navigation item being hidden is a
          courtesy, not the control. */
@@ -1410,6 +1420,7 @@ async function renderAdmin() {
     }
     shell({ nav: adminNav(), content, title, roleLabel: 'Administrator' });
     bindAdminView();
+    if (state.view === 'sraith') bindSraith(); else srStop();
     if (state.view === 'courses') bindCourse();
     if (state.view === 'plans') bindPlans();
   } catch (error) {
@@ -9093,6 +9104,7 @@ function studentNav() {
     ${studentNavButton('calendar', svg.calendar, 'Calendar')}
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
+    ${state.studentData?.sraith ? studentNavButton('sraith', svg.pictures, 'Sraith Pictiúr') : ''}
     ${state.studentData?.liveClassroom ? `<button class="nav-button ${state.view === 'live' ? 'active' : ''}" data-student-view="live"><span class="nav-icon">${svg.video}</span>Live class${state.studentData?.nextClass?.live || state.studentData?.liveNow ? '<span class="live-dot" title="Your class is on now"></span>' : ''}</button>` : ''}
     ${/* A class set up without a board never shows Community at all. */
       state.studentData?.hasCommunity
@@ -9133,7 +9145,7 @@ function watchForStaleStudent() {
   });
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message', live: 'Live class' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message', live: 'Live class', sraith: 'Sraith Pictiúr' };
 
 /* The one thing we need from a student that the course itself does not produce.
    ------------------------------------------------------------------
@@ -9242,6 +9254,7 @@ function renderStudent() {
   else if (state.view === 'courses') content = state.course ? coursePage() : coursesView();
   else if (state.view === 'private') content = privateMessageView();
   else if (state.view === 'live') content = liveRoomView();
+  else if (state.view === 'sraith' && state.studentData?.sraith) content = sraithView();
   else if (state.view === 'community') {
     // Reachable by a stale hash after a class loses its board.
     if (state.studentData?.hasCommunity) content = studentCommunityView();
@@ -9252,6 +9265,7 @@ function renderStudent() {
   bindStudentView();
   placeLiveFrame();
   if (state.view === 'courses') bindCourse();
+  if (state.view === 'sraith') bindSraith(); else srStop();
   if (state.view === 'private') {
     mountChatWidget();
     document.getElementById('private-to-board')?.addEventListener('click', () => {
@@ -9363,6 +9377,7 @@ const STUDENT_PAGE = {
   community: { title: 'Community', line: 'Ask a question, or answer somebody else.' },
   private: { title: 'Private message', line: 'For anything you would rather not put on the board.' },
   live: { title: 'Live class', line: 'Your class plays here, with each phrase to practise as it comes up.' },
+  sraith: { title: 'Sraith Pictiúr', line: 'Every Sraith, box by box. Hear each sentence, then say it yourself.' },
 };
 
 /* The live room, inside the portal. The room is its own page (it carries
@@ -10637,3 +10652,243 @@ async function boot() {
 }
 
 boot();
+
+/* ---- Sraith Pictiúr -------------------------------------------------- */
+/* The ten picture stories from the Irish for Primary Teaching course book,
+   for revision. Each Sraith is its six boxes: the sentences for the box on
+   the left, Irish in bold with the English beneath it, and the box picture
+   on the right. Every Irish sentence plays aloud from a speaker button, and a
+   whole box can be played through. The English can be hidden to test
+   yourself, and the speech slowed down. Both choices are remembered on the
+   device. */
+const SRAITH_PREFS = 'gg_sraith_prefs';
+function sraithPrefs() {
+  try { return { english: true, slow: false, ...JSON.parse(localStorage.getItem(SRAITH_PREFS) || '{}') }; }
+  catch { return { english: true, slow: false }; }
+}
+function saveSraithPrefs(prefs) { try { localStorage.setItem(SRAITH_PREFS, JSON.stringify(prefs)); } catch { /* private window */ } }
+const sraithCache = new Map();
+
+function sraithView() {
+  if (state.sraithSlug) return '<div id="sraith-root" class="sraith"><div class="sr-loading">Opening the Sraith…</div></div>';
+  const header = state.user.role === 'admin'
+    ? pageHeader('Revision', 'Sraith Pictiúr', 'What students on Irish for Primary Teaching see: every Sraith, box by box, with each sentence read aloud.')
+    : studentHeader();
+  return `${header}<div id="sraith-root" class="sraith"><div class="sr-loading">Loading the Sraith…</div></div>`;
+}
+
+async function bindSraith() {
+  const root = document.getElementById('sraith-root');
+  if (!root) return;
+  try {
+    if (state.sraithSlug) {
+      const key = `s:${state.sraithSlug}`;
+      if (!sraithCache.has(key)) sraithCache.set(key, await api(`/api/sraith/s/${encodeURIComponent(state.sraithSlug)}`));
+      renderSraithStory(root, sraithCache.get(key));
+    } else {
+      if (!sraithCache.has('index')) sraithCache.set('index', (await api('/api/sraith')).sraith);
+      renderSraithIndex(root, sraithCache.get('index'));
+    }
+  } catch (error) {
+    root.innerHTML = `<div class="empty-state"><h3>The Sraith did not open</h3><p>${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+function openSraith(slug) {
+  srStop();
+  state.sraithSlug = slug || null;
+  if (state.user.role === 'admin') renderAdmin(); else renderStudent();
+  window.scrollTo({ top: 0 });
+  document.querySelector('.app-main')?.scrollTo?.({ top: 0 });
+}
+
+function renderSraithIndex(root, list) {
+  root.innerHTML = `
+    <div class="sr-howto">
+      <span class="sr-howto-icon">${svg.speaker}</span>
+      <div><strong>How to revise a Sraith</strong><span>Open one, read a box with the picture beside it, and press the speaker beside any sentence to hear it. Then hide the English and tell the story yourself.</span></div>
+    </div>
+    <div class="sr-grid">${list.map((s) => `
+      <button class="sr-card" data-sraith-open="${escapeHtml(s.slug)}">
+        <span class="sr-cover">${s.cover
+          ? `<img src="${escapeHtml(s.cover.src)}" alt="" loading="lazy" width="${s.cover.width}" height="${s.cover.height}">`
+          : `<span class="sr-cover-empty">${svg.pictures}</span>`}
+          <span class="sr-num">${s.n}</span></span>
+        <span class="sr-card-body"><strong lang="ga">${escapeHtml(s.title)}</strong>
+          <span>${s.pictures ? `${s.boxes} pictures` : 'Pictures to come'} · ${s.sentences} sentences</span></span>
+      </button>`).join('')}
+    </div>`;
+  root.querySelectorAll('[data-sraith-open]').forEach((b) => b.addEventListener('click', () => openSraith(b.dataset.sraithOpen)));
+}
+
+function sraithLine(s, key) {
+  return `<li class="sr-line" data-audio="${escapeHtml(s.audio)}" data-key="${key}">
+    <button class="sr-say" type="button" aria-label="Play: ${escapeHtml(s.ga)}">${svg.speaker}</button>
+    <div class="sr-words">
+      <p class="sr-ga" lang="ga">${escapeHtml(s.ga)}</p>
+      ${s.en ? `<p class="sr-en"><span>${escapeHtml(s.en)}</span></p>` : ''}
+    </div>
+  </li>`;
+}
+
+function renderSraithStory(root, s) {
+  const prefs = sraithPrefs();
+  const pictureless = !s.boxes.some((b) => b.image);
+  root.classList.toggle('sr-hide-en', !prefs.english);
+  root.innerHTML = `
+    <div class="sr-top">
+      <button class="sr-back" type="button" data-sraith-back>${svg.chevronDown}<span>All Sraith</span></button>
+      <div class="sr-heading">
+        <span class="sr-kicker">Sraith ${s.n} of ${s.total}</span>
+        <h1 lang="ga">${escapeHtml(s.title)}</h1>
+      </div>
+      <div class="sr-tools">
+        <label class="sr-toggle"><input type="checkbox" id="sr-english" ${prefs.english ? 'checked' : ''}><span class="sr-toggle-track"><span></span></span>English</label>
+        <label class="sr-toggle"><input type="checkbox" id="sr-slow" ${prefs.slow ? 'checked' : ''}><span class="sr-toggle-track"><span></span></span>Slower</label>
+      </div>
+    </div>
+    <nav class="sr-jump" aria-label="Pictures">${s.boxes.map((b) => `<a href="#sr-box-${b.n}" data-sr-jump="${b.n}">Pictiúr ${b.n}</a>`).join('')}${s.ending.length ? '<a href="#sr-box-end" data-sr-jump="end">Críoch</a>' : ''}</nav>
+    ${!prefs.english ? '<p class="sr-peek-hint">English is hidden. Tap a blurred line to peek at it.</p>' : ''}
+    ${pictureless ? '<div class="notice stack-top sr-nopics"><strong>No pictures for this one yet.</strong><span>The course book has the sentences for this Sraith but not its pictures. They will appear here once they are added.</span></div>' : ''}
+    ${s.boxes.map((b) => `
+      <section class="sr-box ${b.image ? '' : 'no-pic'}" id="sr-box-${b.n}">
+        <div class="sr-text">
+          <div class="sr-box-head">
+            <span class="sr-box-n">Pictiúr ${b.n}</span>
+            <button class="sr-playall" type="button" data-sr-playall="${b.n}">${svg.playFill}<span>Play the picture</span></button>
+          </div>
+          <ul class="sr-lines">${b.sentences.map((x, i) => sraithLine(x, `${b.n}-${i}`)).join('')}</ul>
+        </div>
+        ${b.image ? `<figure class="sr-pic"><button type="button" class="sr-pic-btn" data-sr-zoom="${escapeHtml(b.image.src)}" data-sr-zoom-n="${b.n}" aria-label="Open Pictiúr ${b.n} larger"><img src="${escapeHtml(b.image.src)}" alt="Pictiúr ${b.n}" width="${b.image.width}" height="${b.image.height}" loading="${b.n <= 2 ? 'eager' : 'lazy'}"></button></figure>` : ''}
+      </section>`).join('')}
+    ${s.ending.length ? `
+      <section class="sr-box sr-end no-pic" id="sr-box-end">
+        <div class="sr-text">
+          <div class="sr-box-head">
+            <span class="sr-box-n">Críoch</span>
+            <button class="sr-playall" type="button" data-sr-playall="end">${svg.playFill}<span>Play the ending</span></button>
+          </div>
+          <ul class="sr-lines">${s.ending.map((x, i) => sraithLine(x, `end-${i}`)).join('')}</ul>
+        </div>
+      </section>` : ''}
+    <div class="sr-pager">
+      ${s.prev ? `<button class="sr-pager-btn" type="button" data-sraith-open="${escapeHtml(s.prev.slug)}"><span>Previous</span><strong lang="ga">${escapeHtml(s.prev.title)}</strong></button>` : '<span></span>'}
+      ${s.next ? `<button class="sr-pager-btn next" type="button" data-sraith-open="${escapeHtml(s.next.slug)}"><span>Next</span><strong lang="ga">${escapeHtml(s.next.title)}</strong></button>` : '<span></span>'}
+    </div>`;
+
+  root.querySelector('[data-sraith-back]')?.addEventListener('click', () => openSraith(null));
+  root.querySelectorAll('[data-sraith-open]').forEach((b) => b.addEventListener('click', () => openSraith(b.dataset.sraithOpen)));
+  root.querySelector('#sr-english')?.addEventListener('change', (event) => {
+    const next = { ...sraithPrefs(), english: event.target.checked };
+    saveSraithPrefs(next);
+    root.classList.toggle('sr-hide-en', !next.english);
+    root.querySelectorAll('.sr-line.peek').forEach((n) => n.classList.remove('peek'));
+    const hint = root.querySelector('.sr-peek-hint');
+    if (!next.english && !hint) root.querySelector('.sr-jump')?.insertAdjacentHTML('afterend', '<p class="sr-peek-hint">English is hidden. Tap a blurred line to peek at it.</p>');
+    if (next.english) hint?.remove();
+  });
+  root.querySelector('#sr-slow')?.addEventListener('change', (event) => {
+    saveSraithPrefs({ ...sraithPrefs(), slow: event.target.checked });
+    if (srAudio) srAudio.defaultPlaybackRate = srAudio.playbackRate = event.target.checked ? 0.75 : 1;
+  });
+  const jumpTo = (a) => {
+    root.querySelectorAll('[data-sr-jump]').forEach((x) => x.classList.toggle('on', x === a));
+    a.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  };
+  root.querySelectorAll('[data-sr-jump]').forEach((a) => a.addEventListener('click', (event) => {
+    event.preventDefault();
+    jumpTo(a);
+    document.getElementById(`sr-box-${a.dataset.srJump}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  root.querySelectorAll('.sr-line').forEach((li) => li.addEventListener('click', (event) => {
+    // With the English hidden, its blurred line is a peek, not a play.
+    if (root.classList.contains('sr-hide-en') && event.target.closest('.sr-en')) { li.classList.toggle('peek'); return; }
+    if (li.classList.contains('playing') || li.classList.contains('loading')) { srStop(); return; }
+    srPlay([li]);
+  }));
+  root.querySelectorAll('[data-sr-playall]').forEach((button) => button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (button.classList.contains('on')) { srStop(); return; }
+    const box = button.closest('.sr-box');
+    srPlay([...box.querySelectorAll('.sr-line')], button);
+  }));
+  root.querySelectorAll('[data-sr-zoom]').forEach((button) => button.addEventListener('click', () => {
+    modal({ title: `Pictiúr ${button.dataset.srZoomN}`, subtitle: s.title, wide: true,
+      body: `<img class="sr-zoomed" src="${escapeHtml(button.dataset.srZoom)}" alt="Pictiúr ${escapeHtml(button.dataset.srZoomN)}">`,
+      footer: '<button class="btn primary" data-close-modal>Close</button>' });
+  }));
+  // Which picture is on screen, in the jump bar.
+  if ('IntersectionObserver' in window) {
+    const links = new Map([...root.querySelectorAll('[data-sr-jump]')].map((a) => [`sr-box-${a.dataset.srJump}`, a]));
+    const seen = new IntersectionObserver((entries) => {
+      for (const entry of entries) if (entry.isIntersecting) {
+        links.forEach((a) => a.classList.remove('on'));
+        links.get(entry.target.id)?.classList.add('on');
+      }
+    }, { rootMargin: '-35% 0px -60% 0px' });
+    root.querySelectorAll('.sr-box').forEach((box) => seen.observe(box));
+    /* The last box is too short to reach the middle of the screen: at the
+       foot of the page it is the one being read. */
+    const atFoot = () => {
+      if (!document.body.contains(root)) { window.removeEventListener('scroll', atFoot); return; }
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+        const all = [...root.querySelectorAll('[data-sr-jump]')];
+        if (all.length) jumpTo(all[all.length - 1]);
+      }
+    };
+    window.addEventListener('scroll', atFoot, { passive: true });
+  }
+}
+
+/* One player for the whole page: pressing a new line stops the last one, and
+   "Play the picture" walks through the box with a short pause between lines
+   and the line being spoken lit up. */
+let srAudio = null;
+let srRun = 0;
+function srStop() {
+  srRun += 1;
+  if (srAudio) { try { srAudio.pause(); } catch { /* gone */ } }
+  document.querySelectorAll('.sr-line.playing, .sr-line.loading').forEach((n) => n.classList.remove('playing', 'loading'));
+  document.querySelectorAll('.sr-playall.on').forEach((b) => {
+    b.classList.remove('on');
+    b.innerHTML = `${svg.playFill}<span>${b.dataset.srPlayall === 'end' ? 'Play the ending' : 'Play the picture'}</span>`;
+  });
+}
+function srPlay(lines, allButton = null) {
+  srStop();
+  const run = srRun;
+  const queue = [...lines];
+  if (allButton) { allButton.classList.add('on'); allButton.innerHTML = `${svg.stop}<span>Stop</span>`; }
+  if (!srAudio) srAudio = new Audio();
+  const next = () => {
+    if (run !== srRun) return;
+    const li = queue.shift();
+    if (!li) { srStop(); return; }
+    document.querySelectorAll('.sr-line.playing').forEach((n) => n.classList.remove('playing'));
+    li.classList.add('loading');
+    srAudio.onplaying = () => {
+      if (run !== srRun) return;
+      li.classList.remove('loading'); li.classList.add('playing');
+      if (allButton) li.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+    srAudio.onended = () => {
+      if (run !== srRun) return;
+      li.classList.remove('playing');
+      if (queue.length) setTimeout(next, 500); else srStop();
+    };
+    srAudio.onerror = () => {
+      if (run !== srRun) return;
+      srStop();
+      showToast('That sentence would not play. Check your connection and try again.', 'error');
+    };
+    srAudio.src = `/api/sraith/audio/${encodeURIComponent(li.dataset.audio)}.mp3`;
+    // A new source resets the rate to the default, so both are set.
+    srAudio.defaultPlaybackRate = srAudio.playbackRate = sraithPrefs().slow ? 0.75 : 1;
+    srAudio.play().catch((error) => {
+      if (run !== srRun || error?.name === 'AbortError') return;
+      srStop();
+      showToast(error?.name === 'NotAllowedError' ? 'Your browser held the sound back. Tap the speaker again.' : 'That sentence would not play. Try again in a moment.', 'error');
+    });
+  };
+  next();
+}
