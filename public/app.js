@@ -9377,7 +9377,7 @@ const STUDENT_PAGE = {
   community: { title: 'Community', line: 'Ask a question, or answer somebody else.' },
   private: { title: 'Private message', line: 'For anything you would rather not put on the board.' },
   live: { title: 'Live class', line: 'Your class plays here, with each phrase to practise as it comes up.' },
-  sraith: { title: 'Sraith Pictiúr', line: 'Every Sraith, box by box. Hear each sentence, then say it yourself.' },
+  sraith: { title: 'Sraith Pictiúr', line: '' },
 };
 
 /* The live room, inside the portal. The room is its own page (it carries
@@ -9451,7 +9451,7 @@ function studentHeader() {
   return `<header class="sh">
     <div>
       <h1>${escapeHtml(copy.title)}</h1>
-      <p>${escapeHtml(copy.line)}</p>
+      ${copy.line ? `<p>${escapeHtml(copy.line)}</p>` : ''}
     </div>
     ${state.studentData?.class ? `<span class="sh-class">${escapeHtml(state.studentData.class.label)}</span>` : ''}
   </header>
@@ -10672,7 +10672,7 @@ const srTwo = (n) => String(n).padStart(2, '0');
 function sraithView() {
   if (state.sraithSlug) return '<div id="sraith-root" class="sraith"><div class="sr-loading">Opening the Sraith…</div></div>';
   const header = state.user.role === 'admin'
-    ? pageHeader('Revision', 'Sraith Pictiúr', 'What students on Irish for Primary Teaching see: every Sraith, picture by picture, with each sentence read aloud.')
+    ? '<div class="page-header"><div><div class="page-kicker">Revision</div><h1 class="page-title">Sraith Pictiúr</h1></div></div>'
     : studentHeader();
   return `${header}<div id="sraith-root" class="sraith"><div class="sr-loading">Loading the Sraith…</div></div>`;
 }
