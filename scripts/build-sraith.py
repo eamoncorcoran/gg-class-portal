@@ -10,7 +10,7 @@ lines (a proverb, a moral). Writes content/sraith/sraith.json and one JPEG per
 box picture in content/sraith/img/. Run again whenever the document changes;
 the portal reads the files at start-up. Needs macOS (sips) for the pictures.
 """
-import json, os, re, subprocess, sys, tempfile, unicodedata, zipfile
+import json, os, re, shutil, subprocess, sys, tempfile, unicodedata, zipfile
 import xml.etree.ElementTree as ET
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -153,15 +153,21 @@ def main(docx):
             src = box.pop('image')
             box['n'] = i
             box['image'] = None
-            if not src:
-                continue
-            raw = os.path.join(tmp, os.path.basename(src))
-            with open(raw, 'wb') as f:
-                f.write(z.read('word/' + src))
             out = '%s-%d.jpg' % (s['slug'], i)
             target = os.path.join(img_dir, out)
-            subprocess.run(['sips', '-s', 'format', 'jpeg', '-s', 'formatOptions', '72', '-Z', '900', raw, '--out', target],
-                           check=True, capture_output=True)
+            # A picture cut by hand from the exam booklet (content/sraith/extra)
+            # stands in for one the document does not have.
+            extra = os.path.join(ROOT, 'extra', out)
+            if not src and os.path.exists(extra):
+                shutil.copyfile(extra, target)
+            elif not src:
+                continue
+            else:
+                raw = os.path.join(tmp, os.path.basename(src))
+                with open(raw, 'wb') as f:
+                    f.write(z.read('word/' + src))
+                subprocess.run(['sips', '-s', 'format', 'jpeg', '-s', 'formatOptions', '72', '-Z', '900', raw, '--out', target],
+                               check=True, capture_output=True)
             dims = subprocess.run(['sips', '-g', 'pixelWidth', '-g', 'pixelHeight', target], capture_output=True, text=True).stdout
             box['image'] = {
                 'file': out,

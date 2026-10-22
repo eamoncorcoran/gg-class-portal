@@ -2197,22 +2197,20 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
 .sr-line::before{content:'';position:absolute;left:3px;top:.8em;width:5px;height:5px;border-radius:50%;background:var(--gray-300);transition:background .2s}
 .sr-ga{margin:0;font-size:18px;line-height:1.5;font-weight:650;letter-spacing:-.012em;color:var(--sr-ink);cursor:pointer;transition:color .2s}
 .sr-nowrap{white-space:nowrap}
-.sr-say{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;margin:0 0 0 6px;padding:0;vertical-align:-7px;border:0;border-radius:8px;background:var(--brand-25);color:var(--brand-600);cursor:pointer;transition:color .15s,background .15s}
-.sr-say svg{width:17px;height:17px}
-.sr-say:hover{color:var(--brand-800);background:var(--brand-100)}
-.sr-say:focus-visible{outline:2px solid var(--brand-500);outline-offset:1px}
-.sr-eq{display:none;align-items:flex-end;gap:2px;height:13px}
-.sr-eq i{width:3px;height:40%;border-radius:1px;background:currentColor;animation:srEq .9s ease-in-out infinite}
-.sr-eq i:nth-child(2){animation-delay:-.3s}
-.sr-eq i:nth-child(3){animation-delay:-.6s}
-@keyframes srEq{0%,100%{height:30%}50%{height:100%}}
-.sr-line.loading .sr-say svg{animation:srWait 1s ease-in-out infinite}
-@keyframes srWait{0%,100%{opacity:.25}50%{opacity:.8}}
+.sr-say{position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin:0 0 0 8px;padding:0;vertical-align:-8px;border:1px solid var(--border-strong);border-radius:50%;background:#fff;color:var(--brand-600);box-shadow:0 1px 2px rgba(16,24,40,.05);cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+.sr-say svg{width:15px;height:15px}
+.sr-say:hover{border-color:var(--brand-600)}
+.sr-say:focus-visible{outline:2px solid var(--brand-500);outline-offset:2px}
+/* The same as the dictionary: a pulse while it speaks, a ring while it loads. */
 .sr-line.playing::before{background:var(--brand-500)}
 .sr-line.playing .sr-ga{color:var(--sr-accent)}
-.sr-line.playing .sr-say{background:var(--brand-600);color:#fff}
-.sr-line.playing .sr-say svg{display:none}
-.sr-line.playing .sr-eq{display:inline-flex}
+.sr-line.playing .sr-say{border-color:var(--brand-500);background:var(--brand-25);color:var(--brand-700)}
+.sr-line.playing .sr-say svg{animation:srBeat .9s ease-in-out infinite}
+@keyframes srBeat{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.sr-line.loading .sr-say{border-color:var(--brand-500)}
+.sr-line.loading .sr-say svg{opacity:0}
+.sr-line.loading .sr-say::after{content:'';position:absolute;top:50%;left:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid var(--brand-500);border-right-color:transparent;border-radius:50%;animation:srSpin .7s linear infinite}
+@keyframes srSpin{to{transform:rotate(360deg)}}
 .sr-en{margin:4px 0 0;font-size:15.5px;line-height:1.55;font-style:italic;color:var(--sr-muted)}
 /* English hidden: blurred until tapped. */
 .sr-hide-en .sr-en span{filter:blur(5px);opacity:.55;cursor:pointer;user-select:none;transition:filter .2s,opacity .2s}
@@ -2251,5 +2249,6 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   .sr-line{margin-bottom:20px}
 }
 @media (prefers-reduced-motion:reduce){
-  .sr-thumb img,.sr-eq i,.sr-line.loading .sr-say svg{transition:none;animation:none}
+  .sr-thumb img,.sr-line.playing .sr-say svg{transition:none;animation:none}
+  .sr-line.loading .sr-say::after{animation-duration:1.6s}
 }

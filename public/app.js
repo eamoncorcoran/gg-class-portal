@@ -57,7 +57,7 @@ const state = {
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const svg = {
   pictures: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="2"/></svg>`,
-  speaker: `<svg viewBox="0 0 24 24" fill="none"><path d="M11 5 6.5 8.5H3.8a.8.8 0 0 0-.8.8v5.4c0 .44.36.8.8.8h2.7L11 19V5Z" fill="currentColor"/><path d="M15.2 9.2a4 4 0 0 1 0 5.6M17.9 6.5a8 8 0 0 1 0 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  speaker: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>`,
   stop: `<svg viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>`,
   playFill: `<svg viewBox="0 0 24 24" fill="none"><path d="M8 5.6v12.8c0 .78.85 1.26 1.52.86l10.4-6.4a1 1 0 0 0 0-1.72L9.52 4.74A1 1 0 0 0 8 5.6Z" fill="currentColor"/></svg>`,
   camera: `<svg viewBox="0 0 24 24" fill="none"><path d="M2 8.377c0-.35 0-.525.015-.673a3 3 0 0 1 2.69-2.69C4.851 5 5.035 5 5.404 5c.143 0 .214 0 .274-.004a2 2 0 0 0 1.735-1.25c.023-.056.044-.12.086-.246.042-.127.063-.19.086-.246a2 2 0 0 1 1.735-1.25C9.38 2 9.448 2 9.58 2h4.838c.133 0 .2 0 .26.004a2 2 0 0 1 1.735 1.25c.023.056.044.12.086.246.042.127.063.19.086.246a2 2 0 0 0 1.735 1.25c.06.004.131.004.273.004.37 0 .554 0 .702.015a3 3 0 0 1 2.69 2.69c.014.147.014.322.014.672V16.2c0 1.68 0 2.52-.327 3.162a3 3 0 0 1-1.311 1.311C19.72 21 18.88 21 17.2 21H6.8c-1.68 0-2.52 0-3.162-.327a3 3 0 0 1-1.311-1.311C2 18.72 2 17.88 2 16.2V8.377Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 16.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -10721,7 +10721,7 @@ function sraithLine(s, key) {
   const head = cut > 0 ? escapeHtml(text.slice(0, cut)) + ' ' : '';
   const tail = escapeHtml(cut > 0 ? text.slice(cut + 1) : text);
   return `<li class="sr-line" data-audio="${escapeHtml(s.audio)}" data-key="${key}">
-    <p class="sr-ga" lang="ga">${head}<span class="sr-nowrap">${tail}<button class="sr-say" type="button" aria-label="Listen: ${escapeHtml(text)}" title="Listen">${svg.speaker}<span class="sr-eq" aria-hidden="true"><i></i><i></i><i></i></span></button></span></p>
+    <p class="sr-ga" lang="ga">${head}<span class="sr-nowrap">${tail}<button class="sr-say" type="button" aria-label="Listen: ${escapeHtml(text)}" title="Listen">${svg.speaker}</button></span></p>
     ${s.en ? `<p class="sr-en"><span>${escapeHtml(s.en)}</span></p>` : ''}
   </li>`;
 }

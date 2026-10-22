@@ -1266,7 +1266,11 @@
       }
      ],
      "n": 1,
-     "image": null
+     "image": {
+      "file": "fadhbanna-ar-saoire-1.jpg",
+      "width": 1200,
+      "height": 990
+     }
     },
     {
      "sentences": [
@@ -1288,7 +1292,11 @@
       }
      ],
      "n": 2,
-     "image": null
+     "image": {
+      "file": "fadhbanna-ar-saoire-2.jpg",
+      "width": 1200,
+      "height": 921
+     }
     },
     {
      "sentences": [
@@ -1310,7 +1318,11 @@
       }
      ],
      "n": 3,
-     "image": null
+     "image": {
+      "file": "fadhbanna-ar-saoire-3.jpg",
+      "width": 1200,
+      "height": 1102
+     }
     },
     {
      "sentences": [
@@ -1332,7 +1344,11 @@
       }
      ],
      "n": 4,
-     "image": null
+     "image": {
+      "file": "fadhbanna-ar-saoire-4.jpg",
+      "width": 1200,
+      "height": 895
+     }
     },
     {
      "sentences": [
@@ -1354,7 +1370,11 @@
       }
      ],
      "n": 5,
-     "image": null
+     "image": {
+      "file": "fadhbanna-ar-saoire-5.jpg",
+      "width": 1200,
+      "height": 923
+     }
     },
     {
      "sentences": [
@@ -1376,7 +1396,11 @@
       }
      ],
      "n": 6,
-     "image": null
+     "image": {
+      "file": "fadhbanna-ar-saoire-6.jpg",
+      "width": 1171,
+      "height": 1200
+     }
     }
    ],
    "ending": []

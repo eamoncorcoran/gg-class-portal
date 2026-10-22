@@ -49,23 +49,25 @@ test('every sentence has its Irish and its English, tidied, with no dashes or wo
   assert.ok(samhradh.ending.some((e) => e.ga === 'Ach mar a deir an seanfhocal: Ní bhíonn in aon rud ach seal.'));
 });
 
-test('every picture named is on disk, and only Fadhbanna ar Saoire is without them', () => {
+test('every picture named is on disk, and every box has one', () => {
   for (const s of data.sraith) {
     for (const b of s.boxes) {
-      if (!b.image) { assert.equal(s.slug, 'fadhbanna-ar-saoire', `${s.title} box ${b.n} has no picture`); continue; }
+      assert.ok(b.image, `${s.title} box ${b.n} has a picture`);
       assert.ok(fs.existsSync(new URL(`content/sraith/img/${b.image.file}`, root)), b.image.file);
       assert.ok(b.image.width > 0 && b.image.height > 0);
     }
   }
   const files = fs.readdirSync(new URL('content/sraith/img/', root));
-  assert.equal(files.length, 54);
+  assert.equal(files.length, 60);
+  // Fadhbanna ar Saoire's pictures were cut from the exam booklet, the document having none.
+  for (let n = 1; n <= 6; n += 1) assert.ok(fs.existsSync(new URL(`content/sraith/extra/fadhbanna-ar-saoire-${n}.jpg`, root)));
   assert.ok(files.every((f) => /^[a-z0-9-]+\.jpg$/.test(f)));
 });
 
 test('the content is served with stable audio ids and picture paths behind the API', () => {
   const list = sraithSummaries();
   assert.equal(list.length, 10);
-  assert.equal(list[7].pictures, 0);
+  assert.equal(list[7].pictures, 6);
   assert.equal(list[0].cover.src, '/api/sraith/img/imreoir-gortaithe-1.jpg');
   const story = sraithBySlug('madra-ar-strae');
   const first = story.boxes[0].sentences[0];
