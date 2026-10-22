@@ -105,15 +105,16 @@ test('audio is Azure, cached on disk, warmed at start-up, and answers an iPhoneâ
 test('the page: Irish bold, English beneath in italics, a speaker on every line, and the study tools', () => {
   assert.match(app, /<p class="sr-ga" lang="ga">/);
   assert.match(app, /<p class="sr-en"><span>/);
-  assert.match(app, /<button class="sr-say" type="button" aria-label="Play: /);
-  assert.match(app, /id="sr-english"/);
-  assert.match(app, /id="sr-slow"/);
+  assert.match(app, /<span class="sr-nowrap">\$\{tail\}<button class="sr-say" type="button" aria-label="Listen: /, 'the listen button sits at the end of the sentence, bound to its last word');
+  assert.match(app, /seg\('sr-en', 'show', 'Show', prefs\.english\)/);
+  assert.match(app, /seg\('sr-speed', 'slow', 'Slow', prefs\.slow\)/);
   assert.match(app, /data-sr-playall=/);
   assert.match(app, /srAudio\.defaultPlaybackRate = srAudio\.playbackRate = sraithPrefs\(\)\.slow \? 0\.75 : 1;/);
   const css = read('public/styles.css');
-  assert.match(css, /\.sr-ga\{[^}]*font-weight:700/);
+  assert.match(css, /\.sr-ga\{[^}]*font-weight:650/);
   assert.match(css, /\.sr-en\{[^}]*font-style:italic/);
-  assert.match(css, /\.sr-box\{display:grid;grid-template-columns:minmax\(0,1\.08fr\) minmax\(0,\.92fr\)/);
+  assert.match(css, /\.sr-sec\{display:grid;grid-template-columns:minmax\(0,1fr\) minmax\(0,440px\)/, 'sentences left, picture right');
+  assert.doesNotMatch(app, /No pictures for this one yet|They will appear here once they are added/, 'the missing-pictures note is gone');
   const mine = app.slice(app.indexOf('/* ---- Sraith PictiÃºr'));
   assert.doesNotMatch(mine, /\u2014/, 'no em dashes in the Sraith page');
   assert.ok(fs.existsSync(new URL('scripts/build-sraith.py', root)));

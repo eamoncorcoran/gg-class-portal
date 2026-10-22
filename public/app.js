@@ -10655,12 +10655,11 @@ boot();
 
 /* ---- Sraith Pictiúr -------------------------------------------------- */
 /* The ten picture stories from the Irish for Primary Teaching course book,
-   for revision. Each Sraith is its six boxes: the sentences for the box on
-   the left, Irish in bold with the English beneath it, and the box picture
-   on the right. Every Irish sentence plays aloud from a speaker button, and a
-   whole box can be played through. The English can be hidden to test
-   yourself, and the speech slowed down. Both choices are remembered on the
-   device. */
+   for revision. Each Sraith is its six pictures: the sentences for the
+   picture on the left as a list, Irish with the English beneath it, a listen
+   button at the end of each Irish sentence, and the picture on the right.
+   The English can be hidden to test yourself and the speech slowed; both
+   choices are remembered on the device. */
 const SRAITH_PREFS = 'gg_sraith_prefs';
 function sraithPrefs() {
   try { return { english: true, slow: false, ...JSON.parse(localStorage.getItem(SRAITH_PREFS) || '{}') }; }
@@ -10668,11 +10667,12 @@ function sraithPrefs() {
 }
 function saveSraithPrefs(prefs) { try { localStorage.setItem(SRAITH_PREFS, JSON.stringify(prefs)); } catch { /* private window */ } }
 const sraithCache = new Map();
+const srTwo = (n) => String(n).padStart(2, '0');
 
 function sraithView() {
   if (state.sraithSlug) return '<div id="sraith-root" class="sraith"><div class="sr-loading">Opening the Sraith…</div></div>';
   const header = state.user.role === 'admin'
-    ? pageHeader('Revision', 'Sraith Pictiúr', 'What students on Irish for Primary Teaching see: every Sraith, box by box, with each sentence read aloud.')
+    ? pageHeader('Revision', 'Sraith Pictiúr', 'What students on Irish for Primary Teaching see: every Sraith, picture by picture, with each sentence read aloud.')
     : studentHeader();
   return `${header}<div id="sraith-root" class="sraith"><div class="sr-loading">Loading the Sraith…</div></div>`;
 }
@@ -10699,98 +10699,93 @@ function openSraith(slug) {
   state.sraithSlug = slug || null;
   if (state.user.role === 'admin') renderAdmin(); else renderStudent();
   window.scrollTo({ top: 0 });
-  document.querySelector('.app-main')?.scrollTo?.({ top: 0 });
 }
 
 function renderSraithIndex(root, list) {
-  root.innerHTML = `
-    <div class="sr-howto">
-      <span class="sr-howto-icon">${svg.speaker}</span>
-      <div><strong>How to revise a Sraith</strong><span>Open one, read a box with the picture beside it, and press the speaker beside any sentence to hear it. Then hide the English and tell the story yourself.</span></div>
-    </div>
-    <div class="sr-grid">${list.map((s) => `
-      <button class="sr-card" data-sraith-open="${escapeHtml(s.slug)}">
-        <span class="sr-cover">${s.cover
-          ? `<img src="${escapeHtml(s.cover.src)}" alt="" loading="lazy" width="${s.cover.width}" height="${s.cover.height}">`
-          : `<span class="sr-cover-empty">${svg.pictures}</span>`}
-          <span class="sr-num">${s.n}</span></span>
-        <span class="sr-card-body"><strong lang="ga">${escapeHtml(s.title)}</strong>
-          <span>${s.pictures ? `${s.boxes} pictures` : 'Pictures to come'} · ${s.sentences} sentences</span></span>
-      </button>`).join('')}
-    </div>`;
+  root.innerHTML = `<div class="sr-index">${list.map((s) => `
+    <button class="sr-item" type="button" data-sraith-open="${escapeHtml(s.slug)}">
+      <span class="sr-thumb">${s.cover
+        ? `<img src="${escapeHtml(s.cover.src)}" alt="" loading="lazy" width="${s.cover.width}" height="${s.cover.height}">`
+        : '<span class="sr-thumb-empty">Pictures to come</span>'}</span>
+      <span class="sr-item-meta"><span>${srTwo(s.n)}</span><span>${s.sentences} sentences</span></span>
+      <span class="sr-item-title" lang="ga">${escapeHtml(s.title)}</span>
+    </button>`).join('')}</div>`;
   root.querySelectorAll('[data-sraith-open]').forEach((b) => b.addEventListener('click', () => openSraith(b.dataset.sraithOpen)));
 }
 
+/* The listen button sits at the end of the sentence, bound to its last word
+   so a line that wraps never leaves the button alone on the next row. */
 function sraithLine(s, key) {
+  const text = String(s.ga);
+  const cut = text.lastIndexOf(' ');
+  const head = cut > 0 ? escapeHtml(text.slice(0, cut)) + ' ' : '';
+  const tail = escapeHtml(cut > 0 ? text.slice(cut + 1) : text);
   return `<li class="sr-line" data-audio="${escapeHtml(s.audio)}" data-key="${key}">
-    <button class="sr-say" type="button" aria-label="Play: ${escapeHtml(s.ga)}">${svg.speaker}</button>
-    <div class="sr-words">
-      <p class="sr-ga" lang="ga">${escapeHtml(s.ga)}</p>
-      ${s.en ? `<p class="sr-en"><span>${escapeHtml(s.en)}</span></p>` : ''}
-    </div>
+    <p class="sr-ga" lang="ga">${head}<span class="sr-nowrap">${tail}<button class="sr-say" type="button" aria-label="Listen: ${escapeHtml(text)}" title="Listen">${svg.speaker}<span class="sr-eq" aria-hidden="true"><i></i><i></i><i></i></span></button></span></p>
+    ${s.en ? `<p class="sr-en"><span>${escapeHtml(s.en)}</span></p>` : ''}
   </li>`;
+}
+
+function srSection({ id, label, lines, keyPrefix, image, n, playLabel }) {
+  return `<section class="sr-sec ${image ? '' : 'no-pic'}" id="sr-box-${id}">
+    <div class="sr-sec-text">
+      <div class="sr-sec-head">
+        <h2>${label}</h2>
+        <button class="sr-playall" type="button" data-sr-playall="${id}" data-label="${playLabel}">${svg.playFill}<span>${playLabel}</span></button>
+      </div>
+      <ul class="sr-lines">${lines.map((x, i) => sraithLine(x, `${keyPrefix}-${i}`)).join('')}</ul>
+    </div>
+    ${image ? `<figure class="sr-pic"><button type="button" class="sr-pic-btn" data-sr-zoom="${escapeHtml(image.src)}" data-sr-zoom-n="${n}" aria-label="View Pictiúr ${n} larger"><img src="${escapeHtml(image.src)}" alt="Pictiúr ${n}" width="${image.width}" height="${image.height}" loading="${n <= 2 ? 'eager' : 'lazy'}"></button></figure>` : ''}
+  </section>`;
 }
 
 function renderSraithStory(root, s) {
   const prefs = sraithPrefs();
-  const pictureless = !s.boxes.some((b) => b.image);
+  const seg = (name, value, label, on) => `<button type="button" data-${name}="${value}" aria-pressed="${on}">${label}</button>`;
   root.classList.toggle('sr-hide-en', !prefs.english);
   root.innerHTML = `
-    <div class="sr-top">
-      <button class="sr-back" type="button" data-sraith-back>${svg.chevronDown}<span>All Sraith</span></button>
-      <div class="sr-heading">
-        <span class="sr-kicker">Sraith ${s.n} of ${s.total}</span>
-        <h1 lang="ga">${escapeHtml(s.title)}</h1>
-      </div>
-      <div class="sr-tools">
-        <label class="sr-toggle"><input type="checkbox" id="sr-english" ${prefs.english ? 'checked' : ''}><span class="sr-toggle-track"><span></span></span>English</label>
-        <label class="sr-toggle"><input type="checkbox" id="sr-slow" ${prefs.slow ? 'checked' : ''}><span class="sr-toggle-track"><span></span></span>Slower</label>
-      </div>
-    </div>
-    <nav class="sr-jump" aria-label="Pictures">${s.boxes.map((b) => `<a href="#sr-box-${b.n}" data-sr-jump="${b.n}">Pictiúr ${b.n}</a>`).join('')}${s.ending.length ? '<a href="#sr-box-end" data-sr-jump="end">Críoch</a>' : ''}</nav>
-    ${!prefs.english ? '<p class="sr-peek-hint">English is hidden. Tap a blurred line to peek at it.</p>' : ''}
-    ${pictureless ? '<div class="notice stack-top sr-nopics"><strong>No pictures for this one yet.</strong><span>The course book has the sentences for this Sraith but not its pictures. They will appear here once they are added.</span></div>' : ''}
-    ${s.boxes.map((b) => `
-      <section class="sr-box ${b.image ? '' : 'no-pic'}" id="sr-box-${b.n}">
-        <div class="sr-text">
-          <div class="sr-box-head">
-            <span class="sr-box-n">Pictiúr ${b.n}</span>
-            <button class="sr-playall" type="button" data-sr-playall="${b.n}">${svg.playFill}<span>Play the picture</span></button>
-          </div>
-          <ul class="sr-lines">${b.sentences.map((x, i) => sraithLine(x, `${b.n}-${i}`)).join('')}</ul>
+    <header class="sr-head">
+      <button class="sr-crumb" type="button" data-sraith-back>${svg.chevronDown}<span>Sraith Pictiúr</span></button>
+      <div class="sr-head-row">
+        <div>
+          <p class="sr-eyebrow">Sraith ${srTwo(s.n)} of ${srTwo(s.total)}</p>
+          <h1 lang="ga">${escapeHtml(s.title)}</h1>
         </div>
-        ${b.image ? `<figure class="sr-pic"><button type="button" class="sr-pic-btn" data-sr-zoom="${escapeHtml(b.image.src)}" data-sr-zoom-n="${b.n}" aria-label="Open Pictiúr ${b.n} larger"><img src="${escapeHtml(b.image.src)}" alt="Pictiúr ${b.n}" width="${b.image.width}" height="${b.image.height}" loading="${b.n <= 2 ? 'eager' : 'lazy'}"></button></figure>` : ''}
-      </section>`).join('')}
-    ${s.ending.length ? `
-      <section class="sr-box sr-end no-pic" id="sr-box-end">
-        <div class="sr-text">
-          <div class="sr-box-head">
-            <span class="sr-box-n">Críoch</span>
-            <button class="sr-playall" type="button" data-sr-playall="end">${svg.playFill}<span>Play the ending</span></button>
-          </div>
-          <ul class="sr-lines">${s.ending.map((x, i) => sraithLine(x, `end-${i}`)).join('')}</ul>
+        <div class="sr-controls">
+          <div class="sr-seg"><span class="sr-seg-label">English</span><span class="sr-seg-track" role="group" aria-label="English">${seg('sr-en', 'show', 'Show', prefs.english)}${seg('sr-en', 'hide', 'Hide', !prefs.english)}</span></div>
+          <div class="sr-seg"><span class="sr-seg-label">Speed</span><span class="sr-seg-track" role="group" aria-label="Speed">${seg('sr-speed', 'normal', 'Normal', !prefs.slow)}${seg('sr-speed', 'slow', 'Slow', prefs.slow)}</span></div>
         </div>
-      </section>` : ''}
-    <div class="sr-pager">
+      </div>
+    </header>
+    <nav class="sr-tabs" aria-label="Pictures">
+      <span class="sr-tabs-label">Pictiúr</span>
+      ${s.boxes.map((b) => `<a href="#sr-box-${b.n}" data-sr-jump="${b.n}">${b.n}</a>`).join('')}
+      ${s.ending.length ? '<a href="#sr-box-end" data-sr-jump="end" class="sr-tab-end">Críoch</a>' : ''}
+    </nav>
+    <p class="sr-hint" ${prefs.english ? 'hidden' : ''}>The English is hidden. Tap a line to reveal it.</p>
+    ${s.boxes.map((b) => srSection({ id: b.n, label: `Pictiúr ${b.n}`, lines: b.sentences, keyPrefix: b.n, image: b.image, n: b.n, playLabel: 'Play all' })).join('')}
+    ${s.ending.length ? srSection({ id: 'end', label: 'Críoch', lines: s.ending, keyPrefix: 'end', image: null, n: 0, playLabel: 'Play all' }) : ''}
+    <nav class="sr-pager" aria-label="Other Sraith">
       ${s.prev ? `<button class="sr-pager-btn" type="button" data-sraith-open="${escapeHtml(s.prev.slug)}"><span>Previous</span><strong lang="ga">${escapeHtml(s.prev.title)}</strong></button>` : '<span></span>'}
       ${s.next ? `<button class="sr-pager-btn next" type="button" data-sraith-open="${escapeHtml(s.next.slug)}"><span>Next</span><strong lang="ga">${escapeHtml(s.next.title)}</strong></button>` : '<span></span>'}
-    </div>`;
+    </nav>`;
 
   root.querySelector('[data-sraith-back]')?.addEventListener('click', () => openSraith(null));
   root.querySelectorAll('[data-sraith-open]').forEach((b) => b.addEventListener('click', () => openSraith(b.dataset.sraithOpen)));
-  root.querySelector('#sr-english')?.addEventListener('change', (event) => {
-    const next = { ...sraithPrefs(), english: event.target.checked };
-    saveSraithPrefs(next);
-    root.classList.toggle('sr-hide-en', !next.english);
+  root.querySelectorAll('[data-sr-en]').forEach((b) => b.addEventListener('click', () => {
+    const english = b.dataset.srEn === 'show';
+    saveSraithPrefs({ ...sraithPrefs(), english });
+    root.classList.toggle('sr-hide-en', !english);
+    root.querySelectorAll('[data-sr-en]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
     root.querySelectorAll('.sr-line.peek').forEach((n) => n.classList.remove('peek'));
-    const hint = root.querySelector('.sr-peek-hint');
-    if (!next.english && !hint) root.querySelector('.sr-jump')?.insertAdjacentHTML('afterend', '<p class="sr-peek-hint">English is hidden. Tap a blurred line to peek at it.</p>');
-    if (next.english) hint?.remove();
-  });
-  root.querySelector('#sr-slow')?.addEventListener('change', (event) => {
-    saveSraithPrefs({ ...sraithPrefs(), slow: event.target.checked });
-    if (srAudio) srAudio.defaultPlaybackRate = srAudio.playbackRate = event.target.checked ? 0.75 : 1;
-  });
+    root.querySelector('.sr-hint').hidden = english;
+  }));
+  root.querySelectorAll('[data-sr-speed]').forEach((b) => b.addEventListener('click', () => {
+    const slow = b.dataset.srSpeed === 'slow';
+    saveSraithPrefs({ ...sraithPrefs(), slow });
+    root.querySelectorAll('[data-sr-speed]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    if (srAudio) srAudio.defaultPlaybackRate = srAudio.playbackRate = slow ? 0.75 : 1;
+  }));
   const jumpTo = (a) => {
     root.querySelectorAll('[data-sr-jump]').forEach((x) => x.classList.toggle('on', x === a));
     a.scrollIntoView({ inline: 'nearest', block: 'nearest' });
@@ -10801,34 +10796,31 @@ function renderSraithStory(root, s) {
     document.getElementById(`sr-box-${a.dataset.srJump}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }));
   root.querySelectorAll('.sr-line').forEach((li) => li.addEventListener('click', (event) => {
-    // With the English hidden, its blurred line is a peek, not a play.
+    // With the English hidden, its line is revealed, not played.
     if (root.classList.contains('sr-hide-en') && event.target.closest('.sr-en')) { li.classList.toggle('peek'); return; }
+    if (!event.target.closest('.sr-ga')) return;
     if (li.classList.contains('playing') || li.classList.contains('loading')) { srStop(); return; }
     srPlay([li]);
   }));
-  root.querySelectorAll('[data-sr-playall]').forEach((button) => button.addEventListener('click', (event) => {
-    event.stopPropagation();
+  root.querySelectorAll('[data-sr-playall]').forEach((button) => button.addEventListener('click', () => {
     if (button.classList.contains('on')) { srStop(); return; }
-    const box = button.closest('.sr-box');
-    srPlay([...box.querySelectorAll('.sr-line')], button);
+    srPlay([...button.closest('.sr-sec').querySelectorAll('.sr-line')], button);
   }));
   root.querySelectorAll('[data-sr-zoom]').forEach((button) => button.addEventListener('click', () => {
     modal({ title: `Pictiúr ${button.dataset.srZoomN}`, subtitle: s.title, wide: true,
       body: `<img class="sr-zoomed" src="${escapeHtml(button.dataset.srZoom)}" alt="Pictiúr ${escapeHtml(button.dataset.srZoomN)}">`,
       footer: '<button class="btn primary" data-close-modal>Close</button>' });
   }));
-  // Which picture is on screen, in the jump bar.
+  const firstTab = root.querySelector('[data-sr-jump]');
+  if (firstTab) firstTab.classList.add('on');
   if ('IntersectionObserver' in window) {
     const links = new Map([...root.querySelectorAll('[data-sr-jump]')].map((a) => [`sr-box-${a.dataset.srJump}`, a]));
     const seen = new IntersectionObserver((entries) => {
-      for (const entry of entries) if (entry.isIntersecting) {
-        links.forEach((a) => a.classList.remove('on'));
-        links.get(entry.target.id)?.classList.add('on');
-      }
+      for (const entry of entries) if (entry.isIntersecting) { const a = links.get(entry.target.id); if (a) jumpTo(a); }
     }, { rootMargin: '-35% 0px -60% 0px' });
-    root.querySelectorAll('.sr-box').forEach((box) => seen.observe(box));
-    /* The last box is too short to reach the middle of the screen: at the
-       foot of the page it is the one being read. */
+    root.querySelectorAll('.sr-sec').forEach((sec) => seen.observe(sec));
+    /* The last section is too short to reach the middle of the screen: at
+       the foot of the page it is the one being read. */
     const atFoot = () => {
       if (!document.body.contains(root)) { window.removeEventListener('scroll', atFoot); return; }
       if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
@@ -10841,8 +10833,8 @@ function renderSraithStory(root, s) {
 }
 
 /* One player for the whole page: pressing a new line stops the last one, and
-   "Play the picture" walks through the box with a short pause between lines
-   and the line being spoken lit up. */
+   Play all walks through the picture's sentences with a short pause between
+   them and the sentence being spoken picked out. */
 let srAudio = null;
 let srRun = 0;
 function srStop() {
@@ -10851,7 +10843,7 @@ function srStop() {
   document.querySelectorAll('.sr-line.playing, .sr-line.loading').forEach((n) => n.classList.remove('playing', 'loading'));
   document.querySelectorAll('.sr-playall.on').forEach((b) => {
     b.classList.remove('on');
-    b.innerHTML = `${svg.playFill}<span>${b.dataset.srPlayall === 'end' ? 'Play the ending' : 'Play the picture'}</span>`;
+    b.innerHTML = `${svg.playFill}<span>${escapeHtml(b.dataset.label || 'Play all')}</span>`;
   });
 }
 function srPlay(lines, allButton = null) {
@@ -10887,7 +10879,7 @@ function srPlay(lines, allButton = null) {
     srAudio.play().catch((error) => {
       if (run !== srRun || error?.name === 'AbortError') return;
       srStop();
-      showToast(error?.name === 'NotAllowedError' ? 'Your browser held the sound back. Tap the speaker again.' : 'That sentence would not play. Try again in a moment.', 'error');
+      showToast(error?.name === 'NotAllowedError' ? 'Your browser held the sound back. Tap the sentence again.' : 'That sentence would not play. Try again in a moment.', 'error');
     });
   };
   next();
