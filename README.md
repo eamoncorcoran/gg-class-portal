@@ -503,8 +503,11 @@ remembered, and can fill in the past from everything Zoom still has.
 #### Setting it up
 
 **A Zoom Server-to-Server OAuth app**, created at `marketplace.zoom.us`, with
-the scopes `recording:read:admin`, `report:read:admin`, `webinar:read:admin`,
-`meeting:read:admin` and `user:read:admin`. Paste its Account ID, Client ID
+the read-only scopes `cloud_recording:read:list_user_recordings:admin`,
+`cloud_recording:read:recording:admin`, `webinar:read:list_past_instances:admin`,
+`meeting:read:list_past_instances:admin`, `meeting:read:past_meeting:admin`,
+`report:read:list_webinar_participants:admin`, `report:read:list_meeting_participants:admin`
+and `user:read:user:admin`. Paste its Account ID, Client ID
 and Client Secret in the **Zoom account** card under Settings (the
 environment variables `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID` and
 `ZOOM_CLIENT_SECRET` still work as a fallback).

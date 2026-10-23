@@ -152,7 +152,7 @@ export async function importWatched({ meetingId = null, actorId = null } = {}) {
   if (!importConfigured()) return { imported: 0, skipped: 0, reason: 'not configured' };
 
   const sources = await query(
-    `SELECT zoom_id, module_id, auto_publish, label FROM zoom_sources
+    `SELECT zoom_id, module_id, auto_publish, label, created_at FROM zoom_sources
      WHERE auto_import=true AND module_id IS NOT NULL ${meetingId ? 'AND zoom_id=$1' : ''}`,
     meetingId ? [String(meetingId)] : [],
   );
@@ -166,6 +166,10 @@ export async function importWatched({ meetingId = null, actorId = null } = {}) {
   for (const recording of recordings) {
     const source = wanted.get(recording.meetingId);
     if (!source) { skipped += 1; continue; }
+    /* Only classes taught after the rule was switched on come across by
+       themselves. Earlier recordings are often already in the course, put
+       there by hand, and are brought over with the Import button if wanted. */
+    if (recording.startedAt && source.created_at && new Date(recording.startedAt) < new Date(source.created_at)) { skipped += 1; continue; }
     if (recording.importStatus === 'done' || recording.importStatus === 'uploading') { skipped += 1; continue; }
     try {
       await importRecording({ recording, moduleId: source.module_id, actorId, publish: Boolean(source.auto_publish), title: recordingTitle(recording, source) });

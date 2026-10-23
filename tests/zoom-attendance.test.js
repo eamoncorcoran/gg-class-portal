@@ -109,6 +109,8 @@ test('a recording is linked where it cannot be moved, and a published one is tit
   assert.match(imp, /const moving = bunnyConfigured\(\);/);
   assert.match(imp, /provider === 'zoom' \? \(recording\.passcode \|\| null\) : null/);
   assert.match(imp, /publish: Boolean\(source\.auto_publish\), title: recordingTitle\(recording, source\)/);
+  // Automatic import never reaches back before the rule was made: those recordings may already be in the course.
+  assert.match(imp, /new Date\(recording\.startedAt\) < new Date\(source\.created_at\)\) \{ skipped \+= 1; continue; \}/);
   assert.equal(recordingTitle({ startedAt: '2026-10-13T18:30:00Z' }, { label: 'Irish for Primary Teaching' }), 'Irish for Primary Teaching, Tuesday 13 October 2026');
   assert.equal(recordingTitle({ startedAt: null }, {}), 'Class recording');
   assert.match(zoom, /shareUrl: meeting\.share_url \|\| file\.play_url \|\| ''/);

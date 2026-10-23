@@ -54,7 +54,12 @@ export async function accessToken() {
   const response = await fetch(url, { method: 'POST', headers: { Authorization: `Basic ${basic}` } });
   if (!response.ok) {
     cachedToken = null;
-    throw Object.assign(new Error('Zoom refused those credentials.'), { status: 502 });
+    /* Zoom says which part it did not accept: the account id, or the client
+       id and secret together. That is the difference between a typo in one
+       box and a secret pasted into the wrong card, so it is passed on. */
+    let reason = '';
+    try { const j = await response.json(); reason = j?.reason || j?.error_description || j?.error || ''; } catch { /* no body */ }
+    throw Object.assign(new Error(`Zoom refused those credentials${reason ? `: ${reason}` : ''}.`), { status: 502 });
   }
   const payload = await response.json();
   cachedToken = { value: payload.access_token, expires: Date.now() + (payload.expires_in || 3600) * 1000 };
