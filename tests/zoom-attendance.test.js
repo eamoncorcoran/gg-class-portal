@@ -63,6 +63,8 @@ test('the week is written from every sitting in it, and a hand-set row is left a
   assert.match(attendance, /SELECT participants FROM zoom_sittings WHERE class_id=\$1 AND week_id=\$2/);
   assert.match(attendance, /minutes >= liveMinutes \? 'live' : minutes > 0 \? 'partial' : 'missed'/);
   assert.match(attendance, /WHERE attendance\.source <> 'manual'/);
+  // A practice run or a room test with a handful of people is not the class.
+  assert.match(attendance, /sizes\[i\] >= Math\.max\(3, Math\.ceil\(biggest \* 0\.25\)\)/);
   // A student enrolled after the sitting is not marked missed for it.
   assert.match(attendance, /const onRoster = s\.active && \(!s\.enrolled_at \|\| new Date\(s\.enrolled_at\) < weekEnd\);/);
   // The host is not a student.
@@ -95,8 +97,8 @@ test('the attendance routes are the teacher’s, and a watched webinar’s secti
   assert.match(admin, /router\.post\('\/zoom\/attendance\/sync'/);
   assert.match(admin, /router\.post\('\/zoom\/attendance\/identity'/);
   assert.match(admin, /router\.post\('\/zoom\/attendance\/rematch'/);
-  assert.match(admin, /c\.class_id=\$2 OR EXISTS \(SELECT 1 FROM course_classes cc WHERE cc\.course_id=c\.id AND cc\.class_id=\$2\)/);
-  assert.match(admin, /so its students would never see the recording/);
+  assert.match(admin, /WHERE m\.id=\$1 AND c\.open_to_all IS NOT TRUE\s+AND EXISTS \(SELECT 1 FROM course_classes cc WHERE cc\.course_id=c\.id AND cc\.class_id=\$2\)/);
+  assert.match(admin, /so only this class\\u2019s students see its recordings/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS zoom_sittings/);
   assert.match(migration, /zoom_uuid text NOT NULL UNIQUE/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS zoom_identities/);

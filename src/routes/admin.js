@@ -3809,9 +3809,12 @@ router.put('/zoom/sources', asyncRoute(async (req, res) => {
   if (parsed.data.moduleId && parsed.data.classId) {
     const fit = await one(
       `SELECT 1 FROM course_modules m JOIN courses c ON c.id=m.course_id
-       WHERE m.id=$1 AND (c.class_id=$2 OR EXISTS (SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=$2))`,
+       WHERE m.id=$1 AND c.open_to_all IS NOT TRUE
+         AND EXISTS (SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=$2)`,
       [parsed.data.moduleId, parsed.data.classId]);
-    if (!fit) return res.status(400).json({ error: 'That section belongs to a course this class is not enrolled in, so its students would never see the recording. Pick a section of one of the class\u2019s own courses.' });
+    /* A class's recordings go only where that class, and no other, can see
+       them: a course linked to the class and not open to every student. */
+    if (!fit) return res.status(400).json({ error: 'Pick a section of a course linked to this class and not open to everyone, so only this class\u2019s students see its recordings.' });
   }
   const row = await one(
     `INSERT INTO zoom_sources(zoom_id,label,module_id,auto_import,class_id,auto_publish) VALUES ($1,$2,$3,$4,$5,$6)

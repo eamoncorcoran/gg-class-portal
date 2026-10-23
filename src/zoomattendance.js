@@ -129,7 +129,14 @@ export async function writeWeekAttendance(classId, weekId, { liveMinutes = LIVE_
   if (!weekId) return { written: 0 };
   const week = await one('SELECT id, week_start FROM weeks WHERE id=$1', [weekId]);
   if (!week) return { written: 0 };
-  const sittings = (await query('SELECT participants FROM zoom_sittings WHERE class_id=$1 AND week_id=$2', [classId, weekId])).rows;
+  const all = (await query('SELECT participants FROM zoom_sittings WHERE class_id=$1 AND week_id=$2', [classId, weekId])).rows;
+  /* The class is the big sitting. A practice run or a test of the room with
+     two or three people in it, the same week, is not the class, and a
+     student who wandered into one is not thereby "partial". A sitting counts
+     when it has at least a quarter of the week's biggest crowd. */
+  const sizes = all.map((s) => (s.participants || []).length);
+  const biggest = Math.max(0, ...sizes);
+  const sittings = all.filter((s, i) => sizes[i] >= Math.max(3, Math.ceil(biggest * 0.25)));
   const minutesBy = new Map();
   for (const s of sittings) for (const p of s.participants || []) if (p.studentId) minutesBy.set(p.studentId, (minutesBy.get(p.studentId) || 0) + (Number(p.minutes) || 0));
   const roster = await rosterFor(classId);
@@ -155,6 +162,11 @@ async function importSitting({ klass, zoomId, kind, instance, liveMinutes }) {
   const rows = await participantsReport(instance.uuid, kind);
   const { participants, matched, unmatched } = await placeParticipants(klass.id, aggregateParticipants(rows));
   const startedAt = details.startedAt || instance.startedAt;
+  // Without the past-webinar scope Zoom gives no length; the room's own spans do.
+  if (!details.durationMinutes && participants.length) {
+    const times = participants.flatMap((p) => [p.joinedAt, p.leftAt]).filter(Boolean).map((t) => new Date(t).getTime());
+    if (times.length) { details.durationMinutes = Math.round((Math.max(...times) - Math.min(...times)) / 60000); details.endedAt = details.endedAt || new Date(Math.max(...times)).toISOString(); }
+  }
   const week = await weekFor(klass.id, startedAt);
   const row = await one(
     `INSERT INTO zoom_sittings(class_id, zoom_id, zoom_uuid, kind, topic, started_at, ended_at, duration_minutes, week_id, participants, matched, unmatched)
