@@ -21,6 +21,22 @@ export function checkinTimesFor(monday, options = {}) {
   return { release, due };
 }
 
+/* The tracker week a piece of homework belongs to: the one its deadline falls
+   in, in the class's own timezone. Worked out on every write rather than picked
+   by hand, because a hand-picked week went stale the moment a deadline was
+   edited, and an empty pick took the homework off the tracker entirely. Both
+   teachers then saw weeks with homework missing from them. */
+export async function weekForDeadline(classId, deadlineAt, db = { query }) {
+  if (!classId || !deadlineAt) return null;
+  const result = await db.query(
+    `SELECT w.id FROM weeks w JOIN classes c ON c.id=w.class_id
+     WHERE w.class_id=$1
+       AND w.week_start=(date_trunc('week', $2::timestamptz AT TIME ZONE COALESCE(c.timezone,'Europe/Dublin')))::date`,
+    [classId, deadlineAt],
+  );
+  return result.rows[0]?.id || null;
+}
+
 export async function ensureWeeksForClass(classRow, count = 18) {
   const zone = classRow.timezone || 'Europe/Dublin';
   const monday = DateTime.now().setZone(zone).startOf('week');

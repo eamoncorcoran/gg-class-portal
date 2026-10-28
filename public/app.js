@@ -1485,8 +1485,12 @@ function adminTrackerView() {
   const submittedHomework = t.homework.filter((row) => row.status === 'submitted').length;
   const liveCount = t.attendance.filter((row) => row.status === 'live').length;
   const thisMonday = toZonedInput(new Date()).slice(0, 10);
-  const weeks = t.weeks.filter((week) => String(week.week_start).slice(0, 10) <= thisMonday || new Date(week.checkin_release_at) <= new Date());
-  const currentWeekId = weeks.at(-1)?.id;
+  /* A coming week shows once homework filed in it is open: homework sits in the
+     week of its deadline, and one set early and due a fortnight out is being
+     handed in long before its week arrives. */
+  const openedWeeks = new Set(t.assignments.filter((a) => a.week_id && new Date(a.visible_at) <= new Date()).map((a) => a.week_id));
+  const weeks = t.weeks.filter((week) => String(week.week_start).slice(0, 10) <= thisMonday || new Date(week.checkin_release_at) <= new Date() || openedWeeks.has(week.id));
+  const currentWeekId = weeks.findLast((week) => String(week.week_start).slice(0, 10) <= thisMonday)?.id || weeks.at(-1)?.id;
   const toReview = submittedCheckins + submittedHomework;
   return `
     ${pageHeader('Class workspace', t.class.label, `A separate weekly tracker for this class. Times shown in ${escapeHtml(classTimezone())}.`, `<button class="btn" id="open-attendance">Upload attendance</button><button class="btn primary" id="new-assignment">Assign homework</button>`)}
@@ -7376,7 +7380,6 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
   const resources = assignment?.resources || [];
   return `<form id="assignment-form">
     <div class="form-field"><label>Class</label><select name="classId" ${assignment ? 'disabled' : ''}>${state.classes.map((klass) => `<option value="${klass.id}" ${(assignment?.class_id || defaultClassId) === klass.id ? 'selected' : ''}>${escapeHtml(classLabel(klass))}</option>`).join('')}</select></div>
-    <div class="form-field"><label>Teaching week, optional</label><select name="weekId" id="assignment-week"><option value="">No weekly tracker column</option></select></div>
     <div class="form-field"><label>Title</label><input name="title" value="${escapeHtml(assignment?.title || '')}" required></div>
     <div class="form-field"><label>What kind of assignment</label>
       <div class="kind-choice">
@@ -7405,7 +7408,7 @@ function assignmentForm(assignment, defaultClassId, prefillDeadline = null) {
     <div class="form-field"><label>Instructions page ${formatBar('assignment-instructions')}</label><textarea id="assignment-instructions" name="instructions" rows="6" placeholder="What to do, roughly how long it takes, what to hand in.">${escapeHtml(assignment?.instructions || '')}</textarea><div class="muted small">Students read this as a page of its own, then press Start. Leave it blank and they go straight to the first question.</div></div>
     <div class="form-field"><label>Loom share or embed URL</label><input name="loomUrl" type="url" value="${escapeHtml(assignment?.loom_url || '')}" placeholder="https://www.loom.com/share/..."></div>
     <div class="form-field"><label>Visible from</label><input name="visibleAt" type="datetime-local" value="${toZonedInput(assignment?.visible_at || new Date())}" required><div class="muted small">Times are ${escapeHtml(classTimezone())} (${escapeHtml(timezoneAbbreviation())}).</div></div>
-    <div class="form-field"><label>Deadline</label><input name="deadlineAt" type="datetime-local" value="${assignment?.deadline_at ? toZonedInput(assignment.deadline_at) : (prefillDeadline || toZonedInput(new Date(Date.now() + 7 * 86400000)))}" required></div>
+    <div class="form-field"><label>Deadline</label><input name="deadlineAt" type="datetime-local" value="${assignment?.deadline_at ? toZonedInput(assignment.deadline_at) : (prefillDeadline || toZonedInput(new Date(Date.now() + 7 * 86400000)))}" required><div class="muted small">It shows on the tracker in the week of this deadline.</div></div>
     <div class="form-field"><label>When the deadline passes</label>
       <div class="dl-choice">
         <label class="dl-opt"><input type="radio" name="deadlineKind" value="hard" ${assignment?.hard_deadline !== false ? 'checked' : ''}>
@@ -7460,13 +7463,6 @@ function questionBuilder(question, index, hidden = true) {
   return `<div class="question-builder" data-question><div class="question-builder-head"><strong>Question <span data-question-number>${index + 1}</span></strong><button type="button" class="text-link" data-remove-question>Remove</button></div><div class="form-field"><label>Question</label><textarea data-question-prompt required>${escapeHtml(question.prompt || '')}</textarea></div><div class="form-field"><label>Embedded image, optional</label><input data-question-image type="url" value="${escapeHtml(question.imageUrl || question.image_url || '')}" placeholder="Existing image URL"><input data-question-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-top:7px"></div><div class="answer-key listening-only" ${hidden ? 'hidden' : ''}><div class="form-field"><label>What a right answer looks like, optional</label><textarea data-question-expected rows="2" placeholder="Leave blank and the marking takes the answer from the story. Type one only if a particular point must count.">${escapeHtml(question.expectedAnswer || question.expected_answer || '')}</textarea></div><div class="form-field marks-field"><label>Marks</label><input data-question-marks type="number" min="0" max="100" value="${Number(question.marks ?? 1)}"></div></div><label class="toggle-row"><span class="toggle"><input data-question-required type="checkbox" ${question.required !== false ? 'checked' : ''}><span></span></span>Required</label></div>`;
 }
 
-
-async function loadAssignmentWeeks(classId, selected = '') {
-  if (!classId) return;
-  const tracker = await api(`/api/admin/tracker/${classId}`);
-  const select = document.getElementById('assignment-week');
-  select.innerHTML = `<option value="">No weekly tracker column</option>${tracker.weeks.map((week) => `<option value="${week.id}" ${selected === week.id ? 'selected' : ''}>Week of ${fmtWeek(week.week_start)}</option>`).join('')}`;
-}
 
 /* A term of homework from a spreadsheet.
    ------------------------------------------------------------------
@@ -7776,8 +7772,6 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
       };
       form.querySelectorAll('[name="kind"]').forEach((radio) => radio.addEventListener('change', showListening));
       showListening();
-      loadAssignmentWeeks(assignment?.class_id || defaultClassId || form.classId.value, assignment?.week_id || '');
-      form.classId?.addEventListener('change', () => loadAssignmentWeeks(form.classId.value));
       document.getElementById('add-question').addEventListener('click', () => {
         document.getElementById('question-list').insertAdjacentHTML('beforeend', questionBuilder({}, document.querySelectorAll('[data-question]').length, form.kind.value !== 'listening'));
         bindQuestionRemoval();
@@ -7833,7 +7827,7 @@ function openAssignmentModal(assignment = null, defaultClassId = null, prefillDe
             });
           }
           const payload = {
-            classId: assignment?.class_id || fd.get('classId'), weekId: fd.get('weekId') || null,
+            classId: assignment?.class_id || fd.get('classId'),
             title: fd.get('title'), instructions: fd.get('instructions'), loomUrl: tidyUrl(fd.get('loomUrl')),
             visibleAt: fromZonedInput(fd.get('visibleAt')), deadlineAt: fromZonedInput(fd.get('deadlineAt')),
             hardDeadline: form.deadlineKind.value === 'hard', remindersEnabled: form.remindersEnabled.checked,

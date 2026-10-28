@@ -44,7 +44,8 @@ test('undo writes back the exact instants, not the sum in reverse', () => {
      straight back. */
   assert.match(moveBody, /restore: z\.object\(\{/);
   assert.match(moveBody, /if \(parsed\.data\.restore\) \{/);
-  assert.match(moveBody, /\[r\.deadlineAt, r\.visibleAt, r\.reopenedUntil, r\.weekId, assignment\.id\]/);
+  // The week is not handed back: it is the week of the deadline being restored.
+  assert.match(moveBody, /\[r\.deadlineAt, r\.visibleAt, r\.reopenedUntil, await weekForDeadline\(assignment\.class_id, r\.deadlineAt\), assignment\.id\]/);
   assert.match(moveBody, /previous, keptVisible/);
   assert.match(app, /async function undoMove\(assignmentId, previous\)/);
   assert.match(app, /body: \{ restore: previous \}/);

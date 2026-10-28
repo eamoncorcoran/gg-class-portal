@@ -13,7 +13,7 @@ import { requireAdmin, requireSuperAdmin } from '../session.js';
 import { one, query, transaction } from '../db.js';
 import { generateStrongPassword, hashPassword } from '../security.js';
 import { sendStudentInvite, sendNudge } from '../email.js';
-import { ensureWeeksForClass, scheduleCheckins, CHECKIN_DEFAULTS } from '../weeks.js';
+import { ensureWeeksForClass, scheduleCheckins, CHECKIN_DEFAULTS, weekForDeadline } from '../weeks.js';
 import { audit } from '../audit.js';
 import { draftCheckinFeedback, draftHomeworkFeedback, draftingSwitches } from '../ai.js';
 import { VOICE_MIME_TYPES, audioExtension, audioTypeFor, dictate, originalName, withVoiceNote, withVoiceNotes } from '../voice.js';
@@ -1319,12 +1319,14 @@ router.post('/assignments', asyncRoute(async (req, res) => {
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: assignmentProblem(parsed.error) });
   const a = parsed.data;
+  // Filed under the week its deadline falls in; a weekId sent by an old page is ignored.
+  const weekId = await weekForDeadline(a.classId, a.deadlineAt);
   const assignment = await transaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO assignments(class_id,week_id,title,instructions,loom_url,visible_at,deadline_at,hard_deadline,reminders_enabled,created_by,
          allow_uploads,uploads_required,accepted_file_types,max_files,kind,listening_text,listening_text_shown)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17) RETURNING *`,
-      [a.classId, a.weekId || null, a.title, a.instructions, a.loomUrl || null, a.visibleAt || new Date().toISOString(), a.deadlineAt, a.hardDeadline, a.remindersEnabled, req.user.id,
+      [a.classId, weekId, a.title, a.instructions, a.loomUrl || null, a.visibleAt || new Date().toISOString(), a.deadlineAt, a.hardDeadline, a.remindersEnabled, req.user.id,
        a.allowUploads, a.allowUploads && a.uploadsRequired, JSON.stringify(a.acceptedFileTypes), a.maxFiles,
        a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown],
     );
@@ -1912,6 +1914,7 @@ router.put('/assignments/:id', asyncRoute(async (req, res) => {
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: assignmentProblem(parsed.error) });
   const a = parsed.data;
+  const weekId = await weekForDeadline(assignment.class_id, a.deadlineAt);
   await transaction(async (client) => {
     await client.query(`UPDATE assignments SET title=$1,instructions=$2,loom_url=$3,visible_at=$4,deadline_at=$5,hard_deadline=$6,reminders_enabled=$7,status=$8,
        allow_uploads=$9,uploads_required=$10,accepted_file_types=$11::jsonb,max_files=$12,kind=$13,listening_text=$14,listening_text_shown=$15,
@@ -1919,8 +1922,8 @@ router.put('/assignments/:id', asyncRoute(async (req, res) => {
       [a.title, a.instructions, a.loomUrl || null, a.visibleAt, a.deadlineAt, a.hardDeadline, a.remindersEnabled, a.status,
        a.allowUploads, a.allowUploads && a.uploadsRequired, JSON.stringify(a.acceptedFileTypes), a.maxFiles,
        a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown,
-       /* Omitted means untouched; sent as null means "no weekly tracker column". */
-       a.weekId === undefined ? assignment.week_id : a.weekId, assignment.id]);
+       /* The week follows the deadline, so an edited deadline moves the column with it. */
+       weekId, assignment.id]);
     await deadlineMoved(assignment.id, assignment.deadline_at, a.deadlineAt);
     await client.query('DELETE FROM assignment_questions WHERE assignment_id=$1', [assignment.id]);
     await client.query('DELETE FROM assignment_resources WHERE assignment_id=$1', [assignment.id]);
@@ -2030,7 +2033,7 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
     const row = await one(
       `UPDATE assignments SET deadline_at=$1, visible_at=$2, reopened_until=$3, week_id=$4, updated_at=now()
        WHERE id=$5 RETURNING *`,
-      [r.deadlineAt, r.visibleAt, r.reopenedUntil, r.weekId, assignment.id],
+      [r.deadlineAt, r.visibleAt, r.reopenedUntil, await weekForDeadline(assignment.class_id, r.deadlineAt), assignment.id],
     );
     await deadlineMoved(assignment.id, assignment.deadline_at, r.deadlineAt);
     await audit({ actorId: req.user.id, action: 'assignment.move_undone', entityType: 'assignment', entityId: row.id,
@@ -2061,19 +2064,10 @@ router.patch('/assignments/:id/move', asyncRoute(async (req, res) => {
   const visibleAt = alreadyVisible ? assignment.visible_at : shift(assignment.visible_at);
   const reopenedUntil = shift(assignment.reopened_until);
 
-  /* Which teaching week the new deadline falls in. Only re-filed when it was
-     filed at all: "no weekly tracker column" is a choice and stays one. */
-  let weekId = assignment.week_id;
-  if (weekId) {
-    const newDeadline = DateTime.fromISO(deadlineAt).setZone(zone);
-    const week = await one(
-      `SELECT id FROM weeks WHERE class_id=$1
-         AND week_start <= $2::date AND week_start > ($2::date - interval '7 days')
-       ORDER BY week_start DESC LIMIT 1`,
-      [assignment.class_id, newDeadline.toISODate()],
-    );
-    weekId = week?.id || null;
-  }
+  /* The teaching week the new deadline falls in, so the tracker column follows
+     the drag. Every assignment is filed, unfiled ones included: an unfiled one
+     was missing from the tracker, not deliberately left off it. */
+  const weekId = await weekForDeadline(assignment.class_id, deadlineAt);
 
   const row = await one(
     `UPDATE assignments SET deadline_at=$1, visible_at=$2, reopened_until=$3, week_id=$4, updated_at=now()

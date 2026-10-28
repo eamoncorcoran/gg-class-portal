@@ -551,15 +551,14 @@ test('the answer key reaches the teacher, and only the teacher', () => {
   assert.doesNotMatch(student, /q\.expected_answer/, 'still never on a student request');
 });
 
-test('editing an assignment can change its teaching week', () => {
-  /* The edit form sent weekId from the day it was built; the PUT schema had no
-     such key and zod dropped it without a word. */
+test('editing an assignment re-files it under the week of its deadline', () => {
   const body = admin.slice(admin.indexOf("router.put('/assignments/:id'"));
   const inner = body.slice(0, body.indexOf('\n}));'));
+  // An old page may still send weekId; it is accepted and ignored.
   assert.match(inner, /weekId: z\.string\(\)\.uuid\(\)\.nullable\(\)\.optional\(\)/);
   assert.match(inner, /week_id=\$16/);
-  // Omitted means untouched; sent as null means "no weekly tracker column".
-  assert.match(inner, /a\.weekId === undefined \? assignment\.week_id : a\.weekId/);
+  assert.match(inner, /const weekId = await weekForDeadline\(assignment\.class_id, a\.deadlineAt\);/);
+  assert.doesNotMatch(inner, /a\.weekId === undefined/);
 });
 
 test('"email the class" on a post is a real tick', () => {

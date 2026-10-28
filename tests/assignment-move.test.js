@@ -61,11 +61,11 @@ test('the deadline, the visible date and a reopened date all move together', () 
     'and when the browser does not say which day it dragged from, the reopened date is the plotted one');
 });
 
-test('the teaching week follows the deadline, and only if it was filed at all', () => {
-  assert.match(body, /let weekId = assignment\.week_id;/);
-  assert.match(body, /if \(weekId\) \{/, '"no weekly tracker column" is a choice and stays one');
-  assert.match(body, /week_start <= \$2::date AND week_start > \(\$2::date - interval '7 days'\)/);
-  assert.match(body, /weekId = week\?\.id \|\| null;/, 'a deadline with no covering week is unfiled rather than left in the wrong column');
+test('the teaching week follows the deadline, for every assignment', () => {
+  assert.match(body, /const weekId = await weekForDeadline\(assignment\.class_id, deadlineAt\);/);
+  assert.doesNotMatch(body, /if \(weekId\) \{/, 'an unfiled assignment is filed too: unfiled meant missing from the tracker');
+  // Undo puts it back in the week of the deadline it returns to.
+  assert.match(body, /await weekForDeadline\(assignment\.class_id, r\.deadlineAt\)/);
 });
 
 test('an archived assignment cannot be moved, and a same-day drop is a no-op', () => {
