@@ -5175,12 +5175,12 @@ function openComposer({ restore = false, editing = null } = {}) {
           ${admin ? tool('attach-video', svg.video, 'Upload a video') : ''}
           ${formatBar('composer-body')}
           ${admin ? tool('attach-dictate', svg.mic, 'Dictate') : ''}
-          ${admin && !editingNow ? tool('attach-schedule', svg.calendar, 'Schedule for later') : ''}
         </div>
         <div class="cw-actions">
           ${admin && !editingNow ? `<label class="cw-pin"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin to the top</label>` : ''}
           ${admin && !editingNow ? emailClassToggle(draft) : ''}
           <button type="button" class="btn" data-close-modal>Cancel</button>
+          ${admin && !editingNow ? '<button type="button" class="btn" id="schedule-toggle">Schedule</button>' : ''}
           <button type="button" class="btn primary" id="save-thread">${editingNow ? 'Save changes' : 'Post'}</button>
         </div>
       </footer>
@@ -5203,21 +5203,34 @@ function openComposer({ restore = false, editing = null } = {}) {
         element?.classList.remove('hidden');
         document.getElementById(toolId)?.classList.add('is-on');
       };
-      if (draft?.when) reveal(scheduleRow, 'attach-schedule');
+      /* Scheduling is a button of its own beside Post, not an icon among the
+         formatting tools (Eamon, 2 Nov 2026: "I need a schedule post"). Pressing it
+         opens the time, starting at nine tomorrow morning in the class's time zone,
+         and Post becomes Schedule post; Post now puts it back. */
+      const whenInput = document.getElementById('composer-when');
+      const scheduleToggle = document.getElementById('schedule-toggle');
+      const saveButton = document.getElementById('save-thread');
+      const setScheduling = (on) => {
+        scheduleRow?.classList.toggle('hidden', !on);
+        if (!on && whenInput) whenInput.value = '';
+        if (scheduleToggle) scheduleToggle.textContent = on ? 'Post now' : 'Schedule';
+        if (saveButton && !composerEditingId) saveButton.textContent = on ? 'Schedule post' : 'Post';
+      };
+      if (draft?.when) setScheduling(true);
+      scheduleToggle?.addEventListener('click', () => {
+        if (!scheduleRow?.classList.contains('hidden')) return setScheduling(false);
+        if (whenInput && !whenInput.value) {
+          const today = toZonedInput(new Date()).slice(0, 10);
+          whenInput.value = `${new Date(Date.parse(`${today}T00:00:00Z`) + 86400000).toISOString().slice(0, 10)}T09:00`;
+        }
+        setScheduling(true);
+        whenInput?.focus();
+      });
       document.getElementById('attach-file')?.addEventListener('click', () => {
         if (zone?.classList.contains('hidden')) { reveal(zone, 'attach-file'); document.getElementById('pdf-input')?.click(); }
         else { zone?.classList.add('hidden'); document.getElementById('attach-file')?.classList.remove('is-on'); }
       });
-      document.getElementById('attach-schedule')?.addEventListener('click', () => {
-        if (scheduleRow?.classList.contains('hidden')) reveal(scheduleRow, 'attach-schedule');
-        else { scheduleRow?.classList.add('hidden'); document.getElementById('attach-schedule')?.classList.remove('is-on'); }
-      });
-      document.getElementById('schedule-clear')?.addEventListener('click', () => {
-        const when = document.getElementById('composer-when');
-        if (when) when.value = '';
-        scheduleRow?.classList.add('hidden');
-        document.getElementById('attach-schedule')?.classList.remove('is-on');
-      });
+      document.getElementById('schedule-clear')?.addEventListener('click', () => setScheduling(false));
 
       document.getElementById('attach-video')?.addEventListener('click', () => document.getElementById('video-input')?.click());
       document.getElementById('video-input')?.addEventListener('change', async (event) => {
