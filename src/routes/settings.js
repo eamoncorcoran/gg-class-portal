@@ -5,7 +5,8 @@ import { asyncRoute } from '../middleware.js';
 import { query } from '../db.js';
 import { config } from '../config.js';
 import { requireAdmin } from '../session.js';
-import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig, getZoomConfig, saveZoomConfig, getZoomApiConfig, saveZoomApiConfig } from '../settings.js';
+import { getAnthropicConfig, getEmailConfig, getOpenAIConfig, getSetting, saveAnthropicConfig, saveEmailConfig, saveOpenAIConfig, setSetting, getSpeechConfig, saveSpeechConfig, getZoomConfig, saveZoomConfig, getZoomApiConfig, saveZoomApiConfig, getBunnyConfig, saveBunnyConfig } from '../settings.js';
+import { bunnyConfigured, bunnySigning, refreshBunny, testLibrary } from '../bunny.js';
 import { draftCheckinFeedback, draftingSwitches } from '../ai.js';
 import { auditReminders } from '../reminders.js';
 import { sendEmail } from '../email.js';
@@ -16,9 +17,10 @@ const router = Router();
 router.use(requireAdmin);
 
 router.get('/', asyncRoute(async (_req, res) => {
-  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech, zoomCfg, zoomApi, drafting] = await Promise.all([
+  const [anthropic, openai, email, prompts, reminders, dictation, voicePrompts, nudge, speech, zoomCfg, zoomApi, bunny, drafting] = await Promise.all([
     getAnthropicConfig(), getOpenAIConfig(), getEmailConfig(), getSetting('prompts', {}), getSetting('reminders', {}),
     getSetting('dictation', {}), getSetting('voicePrompts', {}), getSetting('nudge', {}), getSpeechConfig(), getZoomConfig(), getZoomApiConfig(),
+    getBunnyConfig(),
     draftingSwitches(),
   ]);
   res.json({
@@ -32,6 +34,8 @@ router.get('/', asyncRoute(async (_req, res) => {
     // The account itself: ids come back, the two secrets only as set or not.
     zoomApi: { accountId: zoomApi.accountId, clientId: zoomApi.clientId, secretConfigured: Boolean(zoomApi.clientSecret),
       webhookConfigured: Boolean(zoomApi.webhookSecret), configured: zoomApi.configured },
+    // The library id comes back; the two keys only as set or not.
+    bunny: { libraryId: bunny.libraryId, apiKeyConfigured: Boolean(bunny.apiKey), tokenKeyConfigured: Boolean(bunny.tokenKey), configured: bunny.configured },
     email: { ...email, smtpPassword: undefined },
     prompts,
     // Which drafts Claude writes at all. Defaults applied, so the screen never
@@ -182,6 +186,34 @@ router.put('/zoomapi', asyncRoute(async (req, res) => {
   await refreshZoomApi();
   await audit({ actorId: req.user.id, action: 'settings.zoomapi_updated', entityType: 'settings', entityId: 'zoomapi', ip: req.ip });
   res.json(saved);
+}));
+
+/* Bunny Stream: the library videos on the board go to. Blank keys keep the
+   ones that are there. Applied at once, so the next upload uses them. */
+router.put('/bunny', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    libraryId: z.string().trim().regex(/^\d{0,12}$/, 'The library id is a number').optional(),
+    apiKey: z.string().max(200).optional(),
+    tokenKey: z.string().max(200).optional(),
+    clearSecrets: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Check the Bunny library id and keys.') });
+  const saved = await saveBunnyConfig(parsed.data, req.user.id);
+  await refreshBunny();
+  await audit({ actorId: req.user.id, action: 'settings.bunny_updated', entityType: 'settings', entityId: 'bunny', ip: req.ip });
+  res.json(saved);
+}));
+
+router.post('/bunny/test', asyncRoute(async (_req, res) => {
+  if (!bunnyConfigured()) return res.json({ ok: false, message: 'Paste the Video Library ID and its API Key first.' });
+  try {
+    const { videos } = await testLibrary();
+    res.json({
+      ok: true,
+      message: `Connected to library ${config.bunny.libraryId} (${videos} video${videos === 1 ? '' : 's'} in it).`
+        + (bunnySigning() ? ' Playback links are signed.' : ' Playback links are not signed yet: add the token authentication key for private playback.'),
+    });
+  } catch (error) { res.json({ ok: false, message: error.message }); }
 }));
 
 /* Is the Zoom account reachable, and does the SDK app have what it needs? */

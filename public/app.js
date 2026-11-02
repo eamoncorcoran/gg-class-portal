@@ -4688,6 +4688,7 @@ function fileSize(bytes) {
 
 function attachmentFormat(item) {
   if (item.kind === 'gif') return 'GIF';
+  if (item.kind === 'bunny') return 'VIDEO';
   if (item.kind === 'loom') return 'LOOM';
   if (item.kind === 'youtube') return 'VIDEO';
   return /\.docx$/i.test(item.fileName || '') || String(item.mimeType || '').includes('wordprocessingml')
@@ -4752,6 +4753,93 @@ function uploadDocument(file, onProgress) {
     request.addEventListener('error', () => reject(new Error('That file could not be uploaded.')));
     request.send(form);
   });
+}
+
+/* A video for a post goes to Bunny straight from here.
+   ------------------------------------------------------------------
+   The portal reserves the video and signs this one upload; the file itself never
+   passes through the portal's server, which is what lets a phone video of a few
+   hundred megabytes go up with a progress bar instead of timing out. TUS is the
+   resumable protocol Bunny takes: one request to open the upload, then the file
+   in pieces. A piece that fails is retried from wherever Bunny says it got to. */
+const TUS_PIECE = 16 * 1024 * 1024;
+
+function tusSend(location, auth, offset, piece, onSent) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('PATCH', location);
+    for (const [name, value] of Object.entries(auth)) request.setRequestHeader(name, value);
+    request.setRequestHeader('Upload-Offset', String(offset));
+    request.setRequestHeader('Content-Type', 'application/offset+octet-stream');
+    request.upload.addEventListener('progress', (event) => onSent(event.loaded));
+    request.addEventListener('load', () => {
+      if (request.status >= 200 && request.status < 300) {
+        return resolve(Number(request.getResponseHeader('Upload-Offset')) || offset + piece.size);
+      }
+      reject(new Error(`The video upload stopped (${request.status}).`));
+    });
+    request.addEventListener('error', () => reject(new Error('The connection dropped during the video upload.')));
+    request.send(piece);
+  });
+}
+
+async function tusUpload(file, ticket, onProgress) {
+  const auth = {
+    AuthorizationSignature: ticket.signature,
+    AuthorizationExpire: String(ticket.expires),
+    VideoId: ticket.videoId,
+    LibraryId: String(ticket.libraryId),
+    'Tus-Resumable': '1.0.0',
+  };
+  const b64 = (value) => btoa(unescape(encodeURIComponent(value)));
+  const opened = await fetch(ticket.endpoint, {
+    method: 'POST',
+    headers: { ...auth, 'Upload-Length': String(file.size), 'Upload-Metadata': `filetype ${b64(file.type || 'video/mp4')},title ${b64(file.name)}` },
+  });
+  if (!opened.ok || !opened.headers.get('Location')) throw new Error(`Bunny would not take the video (${opened.status}).`);
+  const location = new URL(opened.headers.get('Location'), ticket.endpoint).href;
+  let offset = 0;
+  while (offset < file.size) {
+    const piece = file.slice(offset, offset + TUS_PIECE);
+    const from = offset;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        offset = await tusSend(location, auth, from, piece, (sent) =>
+          onProgress(Math.min(99, Math.floor(((from + sent) / file.size) * 100))));
+        break;
+      } catch (error) {
+        if (attempt >= 4) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+        // Where Bunny got to, so a piece that half arrived is not sent twice.
+        const head = await fetch(location, { method: 'HEAD', headers: auth }).catch(() => null);
+        const at = Number(head?.headers.get('Upload-Offset'));
+        if (head?.ok && Number.isFinite(at) && at !== from) { offset = at; break; }
+      }
+    }
+  }
+  onProgress(100);
+}
+
+async function acceptVideos(files) {
+  for (const file of [...files]) {
+    if (!String(file.type || '').startsWith('video/') && !/\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name)) {
+      draftAttachments.push({ kind: 'bunny', fileName: file.name, sizeBytes: file.size, error: 'That is not a video file.' });
+      renderDraftAttachments();
+      continue;
+    }
+    const row = { kind: 'bunny', fileName: file.name, sizeBytes: file.size, mimeType: file.type || 'video/mp4', progress: 0 };
+    draftAttachments.push(row);
+    renderDraftAttachments();
+    try {
+      const ticket = await api('/api/admin/community/videos', { method: 'POST', body: { fileName: file.name, sizeBytes: file.size } });
+      await tusUpload(file, ticket, (percent) => { row.progress = percent; renderDraftAttachments(); });
+      Object.assign(row, { url: `bunny:${ticket.videoId}`, storedName: ticket.videoId, progress: 100 });
+    } catch (error) {
+      row.error = error.message;
+      delete row.progress;
+    }
+    renderDraftAttachments();
+  }
 }
 
 /* Checked here as well as on the server so somebody does not watch a 60MB file
@@ -5020,11 +5108,24 @@ function emailClassToggle(draft) {
     Email the class (${count} student${count === 1 ? '' : 's'})</label>`;
 }
 
-function openComposer({ restore = false } = {}) {
+/* The post being edited, when the composer was opened from a post's Edit
+   button rather than New post. Kept outside the dialog for the same reason as
+   the draft: a second dialog can open over this one and come back. */
+let composerEditingId = null;
+
+function openComposer({ restore = false, editing = null } = {}) {
   const categories = state.community?.categories || [];
   const admin = isAdmin();
-  const draft = restore ? composerDraft : null;
-  if (!restore) { draftAttachments = []; composerDraft = null; }
+  if (!restore) {
+    composerEditingId = editing?.id || null;
+    // On an edit, what the post already holds sits in the list to keep or take off.
+    draftAttachments = (editing?.attachments || []).map((item) => ({ ...item, existing: true }));
+    composerDraft = editing
+      ? { title: editing.title, body: editing.body, categoryId: editing.category_id || null, when: '', pinned: false }
+      : null;
+  }
+  const draft = composerDraft;
+  const editingNow = Boolean(composerEditingId);
   const tool = (id, icon, label) => `<button type="button" class="tool" id="${id}" title="${label}" aria-label="${label}">${icon}</button>`;
   modal({
     title: '',
@@ -5057,7 +5158,10 @@ function openComposer({ restore = false } = {}) {
       </label>` : ''}
       <div id="draft-attachments" class="fu-list hidden"></div>
 
-      ${admin ? `<div class="schedule-row hidden" id="schedule-row">
+      ${admin ? `<input type="file" id="video-input" multiple class="hidden"
+        accept="video/*,.mp4,.mov,.m4v,.webm">` : ''}
+
+      ${admin && !editingNow ? `<div class="schedule-row hidden" id="schedule-row">
         <label for="composer-when">Appears to students at</label>
         <input type="datetime-local" id="composer-when" value="${escapeHtml(draft?.when || '')}">
         <button type="button" class="cw-x small" id="schedule-clear" aria-label="Do not schedule">${svg.x}</button>
@@ -5068,15 +5172,16 @@ function openComposer({ restore = false } = {}) {
         <div class="composer-tools">
           <button type="button" class="tool" data-emoji-for="composer-body" aria-label="Add an emoji">${svg.smiley}</button>
           ${admin ? tool('attach-file', svg.paperclip || svg.cloudUp, 'Attach a file') : ''}
+          ${admin ? tool('attach-video', svg.video, 'Upload a video') : ''}
           ${formatBar('composer-body')}
           ${admin ? tool('attach-dictate', svg.mic, 'Dictate') : ''}
-          ${admin ? tool('attach-schedule', svg.calendar, 'Schedule for later') : ''}
+          ${admin && !editingNow ? tool('attach-schedule', svg.calendar, 'Schedule for later') : ''}
         </div>
         <div class="cw-actions">
-          ${admin ? `<label class="cw-pin"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin to the top</label>` : ''}
-          ${admin ? emailClassToggle(draft) : ''}
+          ${admin && !editingNow ? `<label class="cw-pin"><input type="checkbox" name="pinned" ${draft?.pinned ? 'checked' : ''}> Pin to the top</label>` : ''}
+          ${admin && !editingNow ? emailClassToggle(draft) : ''}
           <button type="button" class="btn" data-close-modal>Cancel</button>
-          <button type="button" class="btn primary" id="save-thread">Post</button>
+          <button type="button" class="btn primary" id="save-thread">${editingNow ? 'Save changes' : 'Post'}</button>
         </div>
       </footer>
       <div id="dictate-slot" class="hidden">${dictateButton('composer-body')}</div>
@@ -5114,6 +5219,13 @@ function openComposer({ restore = false } = {}) {
         document.getElementById('attach-schedule')?.classList.remove('is-on');
       });
 
+      document.getElementById('attach-video')?.addEventListener('click', () => document.getElementById('video-input')?.click());
+      document.getElementById('video-input')?.addEventListener('change', async (event) => {
+        const chosen = [...event.target.files];
+        event.target.value = '';
+        if (chosen.length) await acceptVideos(chosen);
+      });
+
       const fileInput = document.getElementById('pdf-input');
       fileInput?.addEventListener('change', async (event) => {
         if (event.target.files.length) await acceptDocuments(event.target.files);
@@ -5145,8 +5257,11 @@ function openComposer({ restore = false } = {}) {
       form.addEventListener('drop', async (event) => {
         if (!admin || !event.dataTransfer?.files?.length) return;
         event.preventDefault();
-        reveal(zone, 'attach-file');
-        await acceptDocuments(event.dataTransfer.files);
+        const dropped = [...event.dataTransfer.files];
+        const videos = dropped.filter((file) => String(file.type || '').startsWith('video/'));
+        const documents = dropped.filter((file) => !videos.includes(file));
+        if (documents.length) { reveal(zone, 'attach-file'); await acceptDocuments(documents); }
+        if (videos.length) await acceptVideos(videos);
       });
       const bodyField = document.getElementById('composer-body');
       bodyField.addEventListener('input', debounce(showVideoPreview, 250));
@@ -5180,21 +5295,41 @@ function showVideoPreview() {
 async function submitComposer() {
   const form = document.getElementById('thread-form');
   const data = new FormData(form);
+  // A video still going up has no address yet, and posting now would drop it.
+  if (draftAttachments.some((item) => item.progress != null && item.progress < 100 && !item.error)) {
+    return showToast('Wait for the upload to finish, then post.', 'error');
+  }
   const body = {
     title: String(data.get('title') || '').trim(),
     body: String(data.get('body') || '').trim(),
     categoryId: data.get('categoryId') || null,
     attachments: draftAttachments
-      // A row that failed or is still going up has no address to save.
-      .filter((item) => item.url && !item.error)
-      .map(({ kind, url, storedName, fileName, mimeType, sizeBytes }) =>
-        (kind === 'file' ? { kind, url, storedName, fileName, mimeType, sizeBytes } : { kind, url })),
+      // A row that failed or is still going up has no address to save. One the
+      // post already had is kept by its id.
+      .filter((item) => (item.existing ? item.id : item.url) && !item.error)
+      .map(({ id, existing, kind, url, storedName, fileName, mimeType, sizeBytes }) =>
+        (existing ? { id }
+          : kind === 'file' || kind === 'bunny' ? { kind, url, storedName, fileName, mimeType, sizeBytes } : { kind, url })),
   };
   if (!body.title || !body.body) return showToast('Give your post a line and a message.', 'error');
   /* Checked after the writing, so somebody who has typed a post is not stopped
      before they have said anything — and the picker marks itself rather than
      leaving a toast to explain a control further up the screen. */
   if (!categoryChosen()) return showToast('Choose where this post belongs.', 'error');
+  if (composerEditingId) {
+    const id = composerEditingId;
+    try {
+      await api(`/api/admin/community/thread/${id}/content`, { method: 'PATCH', body });
+      closeModal();
+      draftAttachments = [];
+      composerDraft = null;
+      composerEditingId = null;
+      await openThread(id);
+      await reloadBoard();
+      showToast('Post updated');
+    } catch (error) { showToast(error.message, 'error'); }
+    return;
+  }
   if (isAdmin()) {
     body.pinned = form.pinned.checked;
     body.notifyEmail = Boolean(form.notifyEmail?.checked);
@@ -5232,6 +5367,15 @@ function attachmentsPreview(items = [], full = false) {
   if (!items.length) return '';
   return `<div class="att">${items.map((item) => {
     if (item.kind === 'gif') return `<img class="att-gif" src="${escapeHtml(item.url)}" alt="GIF" loading="lazy">`;
+    /* A video uploaded to the post: Bunny's player, on an address the server
+       signed for this reader. Until Bunny has finished preparing it the player
+       says so itself. */
+    if (item.kind === 'bunny') {
+      if (!/^https:\/\/iframe\.mediadelivery\.net\//.test(item.url || '')) return '';
+      return `<div class="att-video"><iframe src="${escapeHtml(item.url)}"
+        allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
+        allowfullscreen loading="lazy" title="${escapeHtml(item.fileName || 'Video')}"></iframe></div>`;
+    }
     if (item.kind === 'loom' || item.kind === 'youtube') {
       const video = videoEmbed(item.url);
       if (!video) return '';
@@ -5266,6 +5410,7 @@ function feedPost(thread, admin) {
         <span class="post-meta">
           ${thread.scheduled ? `<b class="tag-sched">Scheduled ${escapeHtml(scheduledFor(thread.published_at))}</b>` : escapeHtml(timeAgo(thread.published_at || thread.created_at))}
           ${thread.pinned ? ' · <b>Pinned</b>' : ''}
+          ${thread.edited_at ? ' · edited' : ''}
           ${thread.locked && admin ? ' · Closed' : ''}
           ${thread.deleted_at && admin ? ' · <b class="tag-removed">Removed</b>' : ''}
         </span>
@@ -5590,6 +5735,7 @@ function renderThreadDrawer() {
     body: `
       <button class="close cmt-close" aria-label="Close" data-close-modal>${svg.x}</button>
       ${admin ? `<div class="mod-bar">
+        <button class="btn small" id="edit-post">Edit</button>
         <button class="btn small" data-thread-pin="${thread.id}" data-pinned="${thread.pinned}">${thread.pinned ? 'Unpin' : 'Pin'}</button>
         <button class="btn small" data-thread-lock="${thread.id}" data-locked="${thread.locked}">${thread.locked ? 'Reopen' : 'Close'}</button>
         <button class="btn small" id="reschedule">${thread.scheduled ? 'Reschedule' : 'Schedule'}</button>
@@ -5601,7 +5747,7 @@ function renderThreadDrawer() {
           ${boardAvatar(thread.author)}
           <div class="post-who">
             <span class="post-name">${escapeHtml(thread.author?.name || 'Removed account')}${thread.author?.role === 'admin' ? '<i class="tag-teacher">Teacher</i>' : ''}</span>
-            <span class="post-meta">${escapeHtml(timeAgo(thread.published_at || thread.created_at))}${thread.category_name ? ` · ${escapeHtml(thread.category_name)}` : ''}</span>
+            <span class="post-meta">${escapeHtml(timeAgo(thread.published_at || thread.created_at))}${thread.category_name ? ` · ${escapeHtml(thread.category_name)}` : ''}${thread.edited_at ? ' · edited' : ''}</span>
           </div>
         </div>
         <h3 class="opening-title">${escapeHtml(thread.title)}</h3>
@@ -5659,6 +5805,7 @@ function renderThreadDrawer() {
       document.querySelector('[data-thread-lock]')?.addEventListener('click', (event) =>
         updateThread(thread.id, { locked: event.currentTarget.dataset.locked !== 'true' }));
       document.getElementById('reschedule')?.addEventListener('click', () => openScheduleModal(thread));
+      document.getElementById('edit-post')?.addEventListener('click', () => openComposer({ editing: thread }));
       document.querySelector('[data-thread-removal]')?.addEventListener('click', async (event) => {
         const removed = event.currentTarget.dataset.removed !== 'true';
         if (removed && !(await askConfirm({
@@ -7008,6 +7155,21 @@ function zoomSettingsCard() {
   </div></section>`;
 }
 
+/* Bunny Stream: where videos uploaded to the board go, and where the Zoom
+   import moves recordings once it is set. Three values from the Bunny
+   dashboard; the two keys are encrypted on the server and shown only as set. */
+function bunnyCard() {
+  const b = state.settings.bunny || {};
+  return `<section class="card" id="bunny-card"><div class="card-header"><div><h2>Bunny Stream (videos)</h2><p>Videos you upload to a post go to this library and play inside the post. Playback links are signed for each reader, so a link copied out of the portal stops working.</p></div></div><div class="card-body">
+    <div class="connection"><span class="connection-dot ${b.configured ? 'ok' : ''}"></span><div><strong>${b.configured ? 'Bunny Stream connected' : 'Bunny Stream not set'}</strong><span>${b.configured ? (b.tokenKeyConfigured ? 'Videos upload and play with signed links.' : 'Videos upload and play. Add the token authentication key to make links private.') : 'In bunny.net: Stream, your video library, then API. Paste the three values below.'}</span></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Video Library ID</strong><span>A number, on the library\u2019s API page.</span></div><div><input id="bunny-library-id" autocomplete="off" inputmode="numeric" value="${escapeHtml(b.libraryId || '')}"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>API Key</strong><span>${b.apiKeyConfigured ? 'Set. Leave blank to keep it.' : 'The library\u2019s API key, on the same page. Not your account key.'}</span></div><div><input id="bunny-api-key" type="password" autocomplete="new-password" placeholder="${b.apiKeyConfigured ? 'unchanged' : ''}"></div></div>
+    <div class="setting-row"><div class="setting-copy"><strong>Token authentication key</strong><span>${b.tokenKeyConfigured ? 'Set. Leave blank to keep it.' : 'Under the library\u2019s Security tab: switch on Embed view token authentication, then paste its key.'}</span></div><div><input id="bunny-token-key" type="password" autocomplete="new-password" placeholder="${b.tokenKeyConfigured ? 'unchanged' : ''}"></div></div>
+    <div style="margin-top:10px"><button class="btn small" id="test-bunny">Test the library</button></div>
+    <p class="muted small" id="bunny-test-result"></p>
+  </div></section>`;
+}
+
 /* The Zoom account: the Server-to-Server app that lists recordings and reads
    attendance. Four values from marketplace.zoom.us; the two secrets are
    encrypted on the server and shown only as set or not set. */
@@ -7095,6 +7257,7 @@ function aiSettingsView() {
       ${speechSettingsCard()}
       ${zoomSettingsCard()}
       ${zoomAccountCard()}
+      ${bunnyCard()}
     </div><aside class="settings-stack"><section class="card"><div class="card-header"><div><h3>Draft lifecycle</h3><p>Clear states on the teacher side.</p></div></div><div class="card-body">
       <div class="connection"><span class="connection-dot ok"></span><div><strong>Submission-triggered only</strong><span>No reply is drafted for missing work.</span></div></div>
       <div class="mini-stats"><span class="mini-stat">AI drafted</span><span class="mini-stat">Teacher edited</span><span class="mini-stat">Returned</span></div>
@@ -8367,6 +8530,13 @@ function bindAISettings() {
           webhookSecret: document.getElementById('zoomapi-webhook-secret').value.trim() || undefined,
         } });
       }
+      if (document.getElementById('bunny-library-id')) {
+        await api('/api/settings/bunny', { method: 'PUT', body: {
+          libraryId: document.getElementById('bunny-library-id').value.trim(),
+          apiKey: document.getElementById('bunny-api-key').value.trim() || undefined,
+          tokenKey: document.getElementById('bunny-token-key').value.trim() || undefined,
+        } });
+      }
       await api('/api/settings/speech', { method: 'PUT', body: {
         azureKey: document.getElementById('azure-key').value.trim() || undefined,
         azureRegion: document.getElementById('azure-region').value.trim() || undefined,
@@ -8407,6 +8577,15 @@ function bindAISettings() {
     try {
       const result = await api('/api/settings/zoom/test', { method: 'POST', body: {} });
       out.innerHTML = `<span class="${result.api.ok ? 'ok' : 'error'}">${escapeHtml(result.api.message)}</span>`;
+    } catch (error) { out.textContent = error.message; }
+    button.disabled = false;
+  });
+  document.getElementById('test-bunny')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; const out = document.getElementById('bunny-test-result');
+    button.disabled = true; out.textContent = 'Asking Bunny';
+    try {
+      const result = await api('/api/settings/bunny/test', { method: 'POST', body: {} });
+      out.innerHTML = `<span class="${result.ok ? 'ok' : 'error'}">${escapeHtml(result.message)}</span>`;
     } catch (error) { out.textContent = error.message; }
     button.disabled = false;
   });

@@ -234,3 +234,38 @@ export async function saveZoomApiConfig({ accountId, clientId, clientSecret, web
   const fresh = await getZoomApiConfig();
   return { accountId: fresh.accountId, clientId: fresh.clientId, secretConfigured: Boolean(fresh.clientSecret), webhookConfigured: Boolean(fresh.webhookSecret), configured: fresh.configured };
 }
+
+/* Bunny Stream: where videos uploaded to the class board live, and where the
+   Zoom import moves recordings to once it is set. Pasted on the Settings screen
+   like the Zoom account, encrypted at rest, the environment the fallback for
+   each value. The two keys never come back to a browser beyond "set" or not.
+   Read once here at load, before anything overwrites config.bunny with what is
+   saved, so the environment stays the fallback rather than the last saved copy. */
+const ENV_BUNNY = { ...config.bunny };
+export async function getBunnyConfig() {
+  let stored = {};
+  try { stored = await getSetting('bunny', {}); } catch (error) { console.error('bunny settings unreadable, using the environment', error?.message); }
+  let apiKey = '', tokenKey = '';
+  try { apiKey = decryptSecret(stored.apiKeyEncrypted || ''); } catch (error) { console.error(error); }
+  try { tokenKey = decryptSecret(stored.tokenKeyEncrypted || ''); } catch (error) { console.error(error); }
+  const value = {
+    libraryId: String(stored.libraryId || ENV_BUNNY.libraryId || '').trim(),
+    apiKey: apiKey || ENV_BUNNY.apiKey || '',
+    tokenKey: tokenKey || ENV_BUNNY.tokenKey || '',
+  };
+  value.configured = Boolean(value.libraryId && value.apiKey);
+  return value;
+}
+
+export async function saveBunnyConfig({ libraryId, apiKey, tokenKey, clearSecrets = false }, userId) {
+  const current = await getSetting('bunny', {});
+  const next = {
+    ...current,
+    libraryId: libraryId !== undefined ? String(libraryId || '').trim() : (current.libraryId || ''),
+    apiKeyEncrypted: clearSecrets ? null : (apiKey ? encryptSecret(apiKey.trim()) : current.apiKeyEncrypted || null),
+    tokenKeyEncrypted: clearSecrets ? null : (tokenKey ? encryptSecret(tokenKey.trim()) : current.tokenKeyEncrypted || null),
+  };
+  await setSetting('bunny', next, userId);
+  const fresh = await getBunnyConfig();
+  return { libraryId: fresh.libraryId, apiKeyConfigured: Boolean(fresh.apiKey), tokenKeyConfigured: Boolean(fresh.tokenKey), configured: fresh.configured };
+}

@@ -22,7 +22,7 @@ import { FILE_TYPE_GROUPS } from '../documents.js';
 import { formatAddress, hasAddress } from '../address.js';
 import { boardAudienceCount } from '../boardnotify.js';
 import { notifyNewPost, notifyNewComment } from '../boardnotify.js';
-import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor } from '../community.js';
+import { listThreads, getThread, createThread, createPost, listCategories, toggleReaction, topContributors, REACTIONS, draftReplyFor, editThread } from '../community.js';
 import { extractVideoLinks } from '../videolinks.js';
 import { listCoursesForAdmin, getCourse, courseProgress, setCourseClasses, coursesForClass, classRecordingProgress } from '../courses.js';
 import { addTopic, coursesWithPlans, getPlan, getTopics, importPlan, packagedPlan, removeTopic,
@@ -36,7 +36,7 @@ import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { zoomConfigured } from '../zoom.js';
 import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, rememberIdentity, rematchSittings } from '../zoomattendance.js';
-import { bunnyConfigured, bunnySigning } from '../bunny.js';
+import { bunnyConfigured, bunnySigning, createVideo, uploadTicket } from '../bunny.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 
 const router = Router();
@@ -2866,12 +2866,12 @@ router.get('/community/thread/:id', asyncRoute(async (req, res) => {
    Requiring a complete URL here rejected every uploaded document and — because
    the whole body then failed to parse — reported it as a missing title. */
 const attachmentUrl = z.string().min(1).max(2000).refine(
-  (value) => value.startsWith('/uploads/') || /^https?:\/\//i.test(value),
+  (value) => value.startsWith('/uploads/') || /^https?:\/\//i.test(value) || /^bunny:[a-f0-9-]{36}$/i.test(value),
   'An attachment must be an uploaded file or a web address.',
 );
 
 const attachmentInput = z.object({
-  kind: z.enum(['file', 'loom', 'gif', 'youtube']),
+  kind: z.enum(['file', 'loom', 'gif', 'youtube', 'bunny']),
   url: attachmentUrl,
   storedName: z.string().max(200).nullable().optional(),
   fileName: z.string().max(200).nullable().optional(),
@@ -3166,6 +3166,66 @@ router.post('/community/attachments', documentUpload.single('file'), asyncRoute(
     sizeBytes: req.file.size,
     label: document.kind.toUpperCase(),
   });
+}));
+
+/* A video for a post.
+   ------------------------------------------------------------------
+   The video itself never passes through here. This reserves a place for it in
+   the Bunny library and hands the browser a signature good for that one video,
+   and the browser sends the file to Bunny itself, in pieces, with a progress
+   bar. A few hundred megabytes from a phone would otherwise sit in the memory
+   of a small instance on a request liable to time out. What the post keeps is
+   the video's id; the player address is made fresh for each reader. */
+router.post('/community/videos', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    fileName: z.string().trim().min(1).max(200),
+    sizeBytes: z.coerce.number().int().min(1),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose a video to upload.') });
+  if (!bunnyConfigured()) {
+    return res.status(503).json({ error: 'Videos need Bunny Stream connected first: Settings, then the Bunny Stream card.' });
+  }
+  const title = parsed.data.fileName.replace(/\.[a-z0-9]{2,5}$/i, '');
+  const videoId = await createVideo(title);
+  await audit({ actorId: req.user.id, action: 'community.video_reserved', entityType: 'video', entityId: videoId, metadata: { fileName: parsed.data.fileName, sizeBytes: parsed.data.sizeBytes }, ip: req.ip });
+  res.status(201).json(uploadTicket(videoId));
+}));
+
+/* Editing a post.
+   ------------------------------------------------------------------
+   The title, the words, the category and the attachments, from the same
+   composer the post was written in. Attachments come back as the list should
+   end up: ones already on the post by id, new ones in full. A video link pasted
+   into the new text becomes a player, as it does when posting. Nobody is emailed
+   again; the post says it was edited. */
+router.patch('/community/thread/:id/content', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    title: z.string().trim().min(2).max(200),
+    body: z.string().trim().min(1).max(20000),
+    categoryId: z.string().uuid().nullable().optional(),
+    attachments: z.array(z.union([z.object({ id: z.string().uuid() }).strict(), attachmentInput])).max(6).optional().default([]),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    const onAttachment = parsed.error.issues[0]?.path?.[0] === 'attachments';
+    return res.status(400).json({ error: onAttachment ? 'One of the attachments could not be kept. Remove it and add it again.' : 'A post needs a title and a message.' });
+  }
+  const current = await one('SELECT id, class_id FROM discussion_threads WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Post not found.' });
+  const category = parsed.data.categoryId
+    ? await one('SELECT id FROM discussion_categories WHERE id=$1 AND class_id=$2', [parsed.data.categoryId, current.class_id])
+    : null;
+  const video = extractVideoLinks(parsed.data.body);
+  const result = await editThread({
+    threadId: current.id, editorId: req.user.id,
+    title: parsed.data.title, body: video.body || parsed.data.body,
+    categoryId: category?.id || null,
+    attachments: [...parsed.data.attachments, ...video.attachments],
+  });
+  await audit({
+    actorId: req.user.id, action: 'community.thread_edited', entityType: 'thread', entityId: current.id,
+    metadata: { kept: result.plan.keep.length, added: result.plan.add.length, removed: result.plan.drop.length }, ip: req.ip,
+  });
+  res.json(result.thread);
 }));
 
 router.patch('/community/thread/:id', asyncRoute(async (req, res) => {

@@ -1,5 +1,6 @@
 import { one, query } from './db.js';
 import { withVoiceNotes } from './voice.js';
+import { bunnyConfigured, embedUrl as bunnyEmbedUrl } from './bunny.js';
 
 /* The class feed.
    ------------------------------------------------------------------
@@ -65,7 +66,7 @@ const HOT_SCORE = `
    takes a viewer id. */
 const THREAD_COLUMNS = `
   t.id, t.class_id, t.title, t.body, t.pinned, t.locked, t.created_at,
-  t.last_activity_at, t.deleted_at, t.category_id, t.published_at,
+  t.last_activity_at, t.deleted_at, t.category_id, t.published_at, t.edited_at,
   t.published_at > now() scheduled,
   t.ai_draft, t.ai_draft_state, t.ai_drafted_at,
   ${AUTHOR} author,
@@ -105,7 +106,26 @@ export async function listThreads({
      ORDER BY t.pinned DESC, ${order}`,
     categoryId ? [classId, viewerId, categoryId] : [classId, viewerId],
   );
-  return result.rows;
+  return result.rows.map(withPlayableVideos);
+}
+
+/**
+ * A video uploaded to the board is stored as `bunny:<id>` and turned into a
+ * player address here, for this viewer and for a few hours, so the link a
+ * student could copy out of the page stops working rather than travelling.
+ * Without Bunny set up there is nothing to play, and the address is left empty
+ * for the screen to skip.
+ */
+export function withPlayableVideos(thread) {
+  if (!thread?.attachments?.some?.((item) => item.kind === 'bunny')) return thread;
+  return {
+    ...thread,
+    attachments: thread.attachments.map((item) => {
+      if (item.kind !== 'bunny') return item;
+      const videoId = String(item.url || '').replace(/^bunny:/, '');
+      return { ...item, url: bunnyConfigured() && /^[a-f0-9-]{36}$/i.test(videoId) ? bunnyEmbedUrl(videoId) : '' };
+    }),
+  };
 }
 
 /**
@@ -146,7 +166,7 @@ export async function getThread({ threadId, viewerId, includeDeleted = false, in
   );
   // The audio path never leaves the server; withVoiceNote turns it into the
   // authenticated URL the player asks for.
-  return { ...thread, comments: withVoiceNotes(comments.rows, 'comment') };
+  return { ...withPlayableVideos(thread), comments: withVoiceNotes(comments.rows, 'comment') };
 }
 
 /** Is this person entitled to see this class board at all. */
@@ -183,8 +203,9 @@ export async function createThread({
 
 /* Attachments are written after the post they hang off, so a failure here costs
    the attachment rather than the writing. */
-export async function addAttachments(threadId, attachments = []) {
-  for (const [index, item] of attachments.entries()) {
+export async function addAttachments(threadId, attachments = [], { position = 0 } = {}) {
+  for (const [offset, item] of attachments.entries()) {
+    const index = position + offset;
     const row = await one(
       `INSERT INTO discussion_attachments(thread_id,kind,url,stored_name,file_name,mime_type,size_bytes,position)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
@@ -199,6 +220,55 @@ export async function addAttachments(threadId, attachments = []) {
         [`/api/media/attachment/post/${row.id}`, row.id]);
     }
   }
+}
+
+/**
+ * What an edit does to a post's attachments.
+ *
+ * The composer sends the list as it should end up: the ones already on the
+ * post by id, in the order they now sit, and new ones without. Anything on the
+ * post that is not in the list was taken off. An id that is not on this post is
+ * ignored rather than trusted, so an edit cannot pull another post's file in.
+ */
+export function planAttachmentEdit(existing = [], incoming = []) {
+  const onPost = new Set(existing.map((row) => row.id));
+  const keep = [];
+  const add = [];
+  for (const item of incoming) {
+    if (item.id) { if (onPost.has(item.id) && !keep.includes(item.id)) keep.push(item.id); }
+    else add.push(item);
+  }
+  const drop = existing.filter((row) => !keep.includes(row.id)).map((row) => row.id);
+  return { keep, add, drop };
+}
+
+/**
+ * Editing a post: the title, the words, where it is filed and what hangs off it.
+ *
+ * Stamped and attributed like a comment edit, and nobody is emailed again: the
+ * class was told about the post when it went up, and a corrected date is not a
+ * second announcement. A removed uploaded file is taken off the post, not off
+ * the disk, the same as removing a post keeps what it held.
+ */
+export async function editThread({ threadId, editorId, title, body, categoryId = null, attachments = [] }) {
+  const thread = await one(
+    `UPDATE discussion_threads SET title=$1, body=$2, category_id=$3, edited_at=now(), edited_by=$4, updated_at=now()
+     WHERE id=$5 RETURNING *`,
+    [title, body, categoryId, editorId, threadId],
+  );
+  if (!thread) return null;
+  const existing = (await query('SELECT id FROM discussion_attachments WHERE thread_id=$1', [threadId])).rows;
+  const plan = planAttachmentEdit(existing, attachments);
+  if (plan.drop.length) await query('DELETE FROM discussion_attachments WHERE thread_id=$1 AND id = ANY($2::uuid[])', [threadId, plan.drop]);
+  for (const [index, id] of plan.keep.entries()) {
+    await query('UPDATE discussion_attachments SET position=$1 WHERE id=$2 AND thread_id=$3', [index, id, threadId]);
+  }
+  // New ones after the kept ones, in the order they were added.
+  const offset = plan.keep.length;
+  for (const [index, item] of plan.add.entries()) {
+    await addAttachments(threadId, [item], { position: offset + index });
+  }
+  return { thread, plan };
 }
 
 export async function createPost({ threadId, authorId, body, parentId = null }) {

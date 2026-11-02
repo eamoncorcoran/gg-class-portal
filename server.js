@@ -27,6 +27,7 @@ import { startReminderScheduler, runReminderCycle } from './src/reminders.js';
 import { startBackupScheduler } from './src/backup.js';
 import { startZoomScheduler } from './src/zoomscheduler.js';
 import { refreshZoomApi } from './src/zoom.js';
+import { refreshBunny } from './src/bunny.js';
 import sraithRoutes from './src/routes/sraith.js';
 import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
@@ -75,12 +76,15 @@ app.use(helmet({
       styleSrcAttr: ["'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       fontSrc: ["'self'", 'data:', 'https://fonts.bunny.net', 'https://*.leadconnectorhq.com'],
+      // Bunny's upload endpoint: videos on the board go there straight from the
+      // browser, signed by this server for one video at a time.
       connectSrc: ["'self'", 'https://*.leadconnectorhq.com', 'wss://*.leadconnectorhq.com',
-        'https://*.msgsndr.com'],
+        'https://*.msgsndr.com', 'https://video.bunnycdn.com'],
       // Video players only. nocookie for YouTube so a class board is not
       // setting advertising cookies on students.
       frameSrc: ["'self'", 'https://www.loom.com', 'https://loom.com',
         'https://www.youtube-nocookie.com', 'https://www.youtube.com',
+        'https://iframe.mediadelivery.net',
         'https://*.leadconnectorhq.com', 'https://challenges.cloudflare.com'],
       mediaSrc: ["'self'", 'blob:', 'https:'],
       objectSrc: ["'none'"],
@@ -265,6 +269,8 @@ async function start() {
   await ensureAllWeeks();
   startReminderScheduler();
   startBackupScheduler();
+  // Before the Zoom sweep starts, since it moves recordings to Bunny when it is set.
+  await refreshBunny();
   await refreshZoomApi();
   startZoomScheduler();
   // Every Sraith sentence spoken once and kept on disk, a minute after boot.

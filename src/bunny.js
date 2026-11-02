@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { config } from './config.js';
+import { getBunnyConfig } from './settings.js';
 
 /**
  * Bunny Stream: where the class recordings live.
@@ -18,6 +19,43 @@ const EMBED = 'https://iframe.mediadelivery.net/embed';
 
 export const bunnyConfigured = () => Boolean(config.bunny.libraryId && config.bunny.apiKey);
 export const bunnySigning = () => Boolean(config.bunny.tokenKey);
+
+/**
+ * What Settings holds, laid over the environment. Called at start-up and after
+ * every save, so the keys pasted on the Settings screen take effect without a
+ * restart, and everything else here keeps reading config.bunny as it always has.
+ */
+export async function refreshBunny() {
+  try {
+    const next = await getBunnyConfig();
+    config.bunny.libraryId = next.libraryId;
+    config.bunny.apiKey = next.apiKey;
+    config.bunny.tokenKey = next.tokenKey;
+  } catch (error) {
+    console.error('bunny settings unreadable, using the environment', error?.message);
+  }
+  return bunnyConfigured();
+}
+
+/* Uploads from the browser go straight to Bunny over TUS rather than through
+   this server: a phone video of a few hundred megabytes would otherwise sit in
+   the memory of a small instance and on a request that times out. The browser
+   gets a signature for one video, good for a day, and never the key. */
+export const TUS_ENDPOINT = 'https://video.bunnycdn.com/tusupload';
+export function uploadTicket(videoId, { hours = 24 } = {}) {
+  const expires = Math.floor(Date.now() / 1000) + hours * 3600;
+  const signature = crypto
+    .createHash('sha256')
+    .update(`${config.bunny.libraryId}${config.bunny.apiKey}${expires}${videoId}`)
+    .digest('hex');
+  return { endpoint: TUS_ENDPOINT, libraryId: config.bunny.libraryId, videoId, expires, signature };
+}
+
+/** Do the saved keys open the library? One video asked for, nothing changed. */
+export async function testLibrary() {
+  const page = await call('/videos?page=1&itemsPerPage=1');
+  return { videos: Number(page.totalItems) || 0 };
+}
 
 async function call(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
   if (!bunnyConfigured()) {
