@@ -46,3 +46,10 @@ test('work that closed before a student joined is not theirs to have missed, and
   assert.match(app, /document\.addEventListener\('visibilitychange'/);
   assert.match(app, /Date\.now\(\) - studentLoadedAt < 60 \* 1000/);
 });
+
+test('a phone reaches the private message screen from the bottom bar', () => {
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const mobile = app.slice(app.indexOf('function mobileNav()'), app.indexOf('const badge = (view) =>'));
+  assert.match(mobile, /\['private', svg\.lock, 'Message'\]/);
+  assert.match(mobile, /state\.studentData\?\.hasCommunity \? \[\['community', svg\.board, 'Board'\]\] : \[\]/);
+});

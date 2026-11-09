@@ -1026,7 +1026,9 @@ function mobileNav() {
         // The room, once the portal has one: on a phone the bottom bar is the
         // navigation, and a tab that only exists in a sidebar is no tab at all.
         ...(state.studentData?.liveClassroom ? [['live', svg.video, 'Live']] : []),
-        ['community', svg.board, 'Board'],
+        ...(state.studentData?.hasCommunity ? [['community', svg.board, 'Board']] : []),
+        // The private line, which on a phone had no way in: the sidebar it sits in is hidden there.
+        ['private', svg.lock, 'Message'],
       ];
   const badge = (view) => {
     if (view === 'community') return state.studentData?.communityUnread || 0;
