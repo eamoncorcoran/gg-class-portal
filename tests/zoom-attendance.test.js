@@ -129,3 +129,10 @@ test('the admin has the Zoom account card, the From Zoom attendance card and a c
   const mine = app.slice(app.indexOf('function zoomAccountCard()'), app.indexOf('function dictationSettingsCard()')) + app.slice(app.indexOf('async function renderZoomAttendance()'), app.indexOf('function bindReminderSettings()'));
   assert.doesNotMatch(mine, /\u2014/, 'no em dashes in the new cards');
 });
+
+test('Test Zoom asks Zoom whether the live classroom keys go together, and failed joins reach the log', () => {
+  assert.match(settingsRoutes, /\? await probeSdkKeys\(sdk\)/);
+  assert.match(settingsRoutes, /https:\/\/zoom\.us\/oauth\/token\?grant_type=client_credentials/);
+  assert.match(settingsRoutes, /students will see "Invalid signature"/);
+  assert.match(read('../src/live/room.js'), /console\.warn\(`live join failed: /);
+});

@@ -217,11 +217,34 @@ router.post('/bunny/test', asyncRoute(async (_req, res) => {
 }));
 
 /* Is the Zoom account reachable, and does the SDK app have what it needs? */
+/* Whether Zoom takes the live classroom's id and secret together, asked of
+   Zoom itself. The signature a student joins with is signed with that secret,
+   so a secret from the wrong app (the two Zoom cards both have a "Client
+   Secret" box) signs every join wrongly and Zoom answers "Invalid signature".
+   Before this the test could only say the boxes were filled in, and a class
+   found out from an empty room. A client-credentials token is free, changes
+   nothing on the account, and is thrown away. */
+async function probeSdkKeys({ clientId, clientSecret }) {
+  try {
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const response = await fetch('https://zoom.us/oauth/token?grant_type=client_credentials', {
+      method: 'POST', headers: { Authorization: `Basic ${basic}` }, signal: AbortSignal.timeout(15000),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok && body.access_token) {
+      return { ok: true, message: 'Live classroom: Zoom accepts this Client ID and Client Secret, so students can join.' };
+    }
+    return { ok: false, message: 'Live classroom: Zoom does not accept this Client ID and Client Secret together, so students will see "Invalid signature". Paste the Client Secret of the Meeting SDK app (Gaeilgeoir Live Classroom) into this card and save.' };
+  } catch {
+    return { ok: false, message: 'Live classroom: Zoom could not be reached to check the keys. Try again in a minute.' };
+  }
+}
+
 router.post('/zoom/test', asyncRoute(async (_req, res) => {
   const sdk = await getZoomConfig();
   const out = {
     sdk: sdk.configured
-      ? { ok: true, message: 'Meeting SDK id and secret are set. Whether Zoom accepts them shows the first time a student joins.' }
+      ? await probeSdkKeys(sdk)
       : { ok: false, message: sdk.clientId ? 'The Meeting SDK client secret is not set.' : 'The Meeting SDK client id and secret are not set.' },
     api: { ok: false, message: 'The Zoom account is not connected: paste its Account ID, Client ID and Client Secret in the Zoom account card.' },
   };
