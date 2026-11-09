@@ -136,3 +136,11 @@ test('Test Zoom asks Zoom whether the live classroom keys go together, and faile
   assert.match(settingsRoutes, /students will see "Invalid signature"/);
   assert.match(read('../src/live/room.js'), /console\.warn\(`live join failed: /);
 });
+
+test('students are given the plain Zoom link, not the room inside the portal', () => {
+  const student = read('../src/routes/student.js');
+  assert.match(student, /const STUDENTS_USE_ZOOM_LINK = true;/);
+  assert.match(student, /liveClassroom: !STUDENTS_USE_ZOOM_LINK && await liveRoomEnabled\(\),/);
+  assert.match(student, /liveReady: !STUDENTS_USE_ZOOM_LINK && await liveRoomOn\(\),/);
+  assert.match(student, /liveNow: !STUDENTS_USE_ZOOM_LINK && /);
+});

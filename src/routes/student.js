@@ -59,6 +59,13 @@ const homeworkUpload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 10 },
 });
 
+/* Students join class in Zoom itself, from the plain class link, whatever
+   the live classroom switch says (10 Nov 2026). The room inside the portal
+   turned students away with "Signature is invalid" two class nights running,
+   so it stays out of their way until it has been made to work. Set to false to
+   offer it again; the switch under Feedback drafting then decides as before. */
+const STUDENTS_USE_ZOOM_LINK = true;
+
 async function studentClass(studentId) {
   return one(
     `SELECT c.*, cs.enrolled_at FROM classes c
@@ -289,12 +296,12 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
        the section is there to find; the banner and the calendar only send a
        student into it once the Zoom keys are in place, and hand out the plain
        class link until then, so nobody loses their door on a class night. */
-    liveClassroom: await liveRoomEnabled(),
+    liveClassroom: !STUDENTS_USE_ZOOM_LINK && await liveRoomEnabled(),
     // The Sraith Pictiúr section, for the Irish for Primary Teaching class.
     sraith: await canSeeSraith(req.user),
-    liveReady: await liveRoomOn(),
+    liveReady: !STUDENTS_USE_ZOOM_LINK && await liveRoomOn(),
     // The teacher has pressed Go live for this student's class.
-    liveNow: (await liveRoomOn()) && await liveFor(req.user.id),
+    liveNow: !STUDENTS_USE_ZOOM_LINK && (await liveRoomOn()) && await liveFor(req.user.id),
     communityUnread: community,
     weeks: weeksResult.rows,
     attendance: attendanceResult.rows,
