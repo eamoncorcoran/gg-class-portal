@@ -5,7 +5,7 @@ import { audit } from '../audit.js';
 import { asyncRoute } from '../middleware.js';
 import { requireAdmin, requireAuth, requireStudent } from '../session.js';
 import {
-  MAX_EXAMINERS, SLOTS_PER_EXAMINER, adminDay, adminOverview, book, cancel, createDay, dayCsv,
+  MAX_EXAMINERS, SLOTS_PER_EXAMINER, adminDay, adminOverview, book, bookedDayIds, cancel, createDay, dayCsv,
   deleteDay, emailDetails, publicBooking, publicView, setExaminer, studentView, updateDay,
 } from '../mockoral.js';
 
@@ -41,7 +41,8 @@ const bookingLimiter = rateLimit({
 router.get('/public', asyncRoute(async (req, res) => {
   // Somebody already signed in to the portal has their own details filled in.
   const me = req.user?.role === 'student' ? { name: req.user.name, email: req.user.email } : null;
-  res.json({ ...(await publicView()), me });
+  // And the days they already hold, so the page opens on one they have not booked.
+  res.json({ ...(await publicView()), me, booked: me ? await bookedDayIds(req.user.id) : [] });
 }));
 
 router.post('/public/book', bookingLimiter, asyncRoute(async (req, res) => {

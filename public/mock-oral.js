@@ -20,6 +20,11 @@ const state = {
   email: '',
   booking: null,
   token: null,
+  /* Each day is its own mock oral, and somebody can book one on every day.
+     These are the days this person already holds: from the portal if they are
+     signed in, and from this visit either way. */
+  booked: new Set(),
+  justBooked: new Set(),
   fresh: false, // the booking on screen was made a moment ago, on this page
   asking: false, // "are you sure" is showing for a cancel
   busy: false,
@@ -64,6 +69,7 @@ async function api(url, { method = 'GET', body } = {}) {
 }
 
 const chosenDay = () => state.days.find((day) => day.id === state.dayId)
+  || state.days.find((day) => !day.full && !state.booked.has(day.id))
   || state.days.find((day) => !day.full) || state.days[0];
 
 /* ------------------------------------------------------------------ pieces */
@@ -102,20 +108,22 @@ function pickView() {
   for (let number = 1; number <= length; number += 1) {
     const found = open.get(`${monthKey}-${String(number).padStart(2, '0')}`);
     cells.push(found
-      ? `<button class="mo-cal-day ${found.id === day.id ? 'on' : ''} ${found.full ? 'full' : ''}" data-day="${found.id}"
-          aria-pressed="${found.id === day.id}" aria-label="${escapeHtml(longDate(found.date))}${found.full ? ', fully booked' : ''}">${number}</button>`
+      ? `<button class="mo-cal-day ${found.id === day.id ? 'on' : ''} ${state.booked.has(found.id) ? 'mine' : found.full ? 'full' : ''}" data-day="${found.id}"
+          aria-pressed="${found.id === day.id}" aria-label="${escapeHtml(longDate(found.date))}${state.booked.has(found.id) ? ', you are booked' : found.full ? ', fully booked' : ''}">${number}</button>`
       : `<span class="mo-cal-day off">${number}</span>`);
   }
   const step = (to, label, arrow) => `<button class="mo-cal-step" ${months[to] ? `data-month="${months[to]}"` : 'disabled'} aria-label="${label}">${arrow}</button>`;
 
-  const list = times.length
+  const list = state.booked.has(day.id)
+    ? '<p class="mo-cal-none">You have a mock oral booked on this day. To change the time, cancel it first with the button in your confirmation email, then pick a new one.</p>'
+    : times.length
     ? times.map((slot) => (slot.slot === state.slot
       ? `<div class="mo-slot chosen"><span>${clock(slot.start)}</span><button class="mo-next" id="mo-next">Next</button></div>`
       : `<button class="mo-slot" data-slot="${slot.slot}">${clock(slot.start)}</button>`)).join('')
     : '<p class="mo-cal-none">Every time on this day is taken. If somebody cancels, their time will show here.</p>';
 
   return `<section class="mo-cal">
-    ${infoPanel({ day, slot: times.find((slot) => slot.slot === state.slot) })}
+    ${infoPanel({ day, slot: state.booked.has(day.id) ? null : times.find((slot) => slot.slot === state.slot) })}
     <div class="mo-cal-dates">
       <h2>Pick a day and a time</h2>
       <div class="mo-cal-month">
@@ -194,6 +202,8 @@ function bookingView() {
     ${booking.note ? `<p class="mo-note">${escapeHtml(booking.note)}</p>` : ''}
     ${state.error ? `<p class="mo-cal-error" role="alert">${escapeHtml(state.error)}</p>` : ''}
     ${foot}
+    ${state.days.some((day) => !state.booked.has(day.id) && day.id !== booking.dayId)
+      ? '<p class="mo-ticket-more">Each day is a separate mock oral. <button id="mo-again">Book another day</button></p>' : ''}
   </section>`;
 }
 
@@ -232,6 +242,7 @@ async function loadDays() {
   const data = await api('/api/mock-oral/public');
   state.days = data.days;
   state.me = data.me;
+  state.booked = new Set([...(data.booked || []), ...state.justBooked]);
   if (state.me) {
     state.name ||= state.me.name;
     state.email ||= state.me.email;
@@ -296,6 +307,8 @@ function bind() {
       state.token = done.token;
       state.fresh = true;
       state.step = 'booking';
+      state.justBooked.add(done.booking.dayId);
+      state.booked.add(done.booking.dayId);
       // So a refresh, or coming back to the tab later, still shows the booking.
       history.replaceState(null, '', `/mock-oral?b=${encodeURIComponent(done.token)}`);
     } catch (error) {
@@ -322,6 +335,9 @@ function bind() {
       const done = await api(`/api/mock-oral/public/booking/${encodeURIComponent(state.token)}/cancel`, { method: 'POST' });
       state.booking = done.booking;
       state.asking = false;
+      // The day is theirs to book again.
+      state.justBooked.delete(done.booking.dayId);
+      state.booked.delete(done.booking.dayId);
     } catch (error) {
       state.error = error.message;
     }
@@ -334,6 +350,7 @@ function bind() {
     state.booking = null;
     state.token = null;
     state.fresh = false;
+    state.dayId = null;
     state.slot = null;
     state.error = '';
     render();
@@ -341,13 +358,16 @@ function bind() {
   });
 }
 
-async function showDays() {
+/* `date` is the day a link asked for: the chip pressed on the portal calendar. */
+async function showDays(date = null) {
   try {
     await loadDays();
   } catch (error) {
     state.days = [];
     state.error = error.message;
   }
+  const asked = date && state.days.find((day) => day.date === date);
+  if (asked) { state.dayId = asked.id; state.slot = null; }
   state.step = 'pick';
   render();
 }
@@ -360,15 +380,19 @@ async function start() {
       state.booking = found.booking;
       state.token = token;
       state.step = 'booking';
-      // Only to know whether to offer the way back to the portal.
-      api('/api/mock-oral/public').then((data) => { state.me = data.me; render(); }).catch(() => {});
+      // The other days, to offer them, and whether to offer the way back to the portal.
+      loadDays().then(() => {
+        // The booking this link is for is held too, whoever is looking at it.
+        if (state.booking?.status === 'booked') { state.justBooked.add(state.booking.dayId); state.booked.add(state.booking.dayId); }
+        if (state.step === 'booking') render();
+      }).catch(() => {});
       return render();
     } catch {
       // A link that no longer leads anywhere: show the times instead.
       history.replaceState(null, '', '/mock-oral');
     }
   }
-  await showDays();
+  await showDays(new URLSearchParams(location.search).get('day'));
 }
 
 start();

@@ -2461,3 +2461,11 @@ button.mo-slot:hover{box-shadow:inset 0 0 0 1px var(--brand-500);background:var(
 }
 a.calendar-event,a.task-bar{text-decoration:none}
 a.task-bar{color:inherit}
+.mo-open-days{display:grid;gap:8px;margin-top:14px}
+.mo-open-day{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);color:var(--text);text-decoration:none;font-size:14.5px;font-weight:620}
+a.mo-open-day:hover{border-color:var(--brand-300);background:var(--brand-25)}
+.mo-open-day.full{background:var(--gray-50);color:var(--text-tertiary)}
+.mo-open-day small{font-size:12.5px;font-weight:560;color:var(--text-tertiary)}
+.mo-ticket-more{margin:14px 0 0;padding-top:14px;border-top:1px solid var(--border);font-size:13.5px;color:var(--text-secondary)}
+.mo-ticket-more button,.mo-ticket-more a{padding:0;border:0;background:none;font:inherit;font-weight:650;color:var(--brand-700);text-decoration:underline;cursor:pointer}
+button.mo-cal-day.mine:not(.on){background:var(--surface);box-shadow:inset 0 0 0 2px var(--brand-300);color:var(--brand-700)}

@@ -136,7 +136,7 @@ test('a reminder is claimed before it is sent and handed back if the send fails'
 test('two students cannot be given the same seat, and one student cannot hold two', () => {
   assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS mock_oral_bookings_seat\s+ON mock_oral_bookings\(day_id, slot, examiner\) WHERE status='booked'/);
   assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS mock_oral_bookings_student\s+ON mock_oral_bookings\(day_id, student_id\) WHERE status='booked'/);
-  const book = moduleSource.slice(moduleSource.indexOf('export async function book'), moduleSource.indexOf('export async function cancel'));
+  const book = moduleSource.slice(moduleSource.indexOf('export async function book('), moduleSource.indexOf('export async function cancel'));
   assert.match(book, /pg_advisory_xact_lock/);
   assert.match(book, /FROM mock_oral_days WHERE id=\$1 FOR UPDATE/);
   assert.match(book, /if \(!day\.booking_open\) fail\(409/, 'a student cannot book a day that is not open');
@@ -194,7 +194,7 @@ test('the screens: a student sees times, not examiners, and a full time cannot b
   assert.match(app, /state\.studentData\?\.mockOral \? studentNavButton\('mockoral'/, 'the tab is only there when there is something to book or booked');
   assert.match(app, /adminNavButton\('mockorals', svg\.mic, 'Mock orals'\)/);
   // The server never tells a student who is with which examiner, only how full a time is.
-  const view = moduleSource.slice(moduleSource.indexOf('function bookableDay'), moduleSource.indexOf('export async function book'));
+  const view = moduleSource.slice(moduleSource.indexOf('function bookableDay'), moduleSource.indexOf('export async function book('));
   assert.match(view, /return \{ slot: slot\.slot, start: slot\.start, end: slot\.end, full, past \}/);
 });
 
@@ -235,9 +235,9 @@ test('a cancelled booking drops out of the feed, and the calendars point at the 
   // The student's month: their own time once booked, the open days until then.
   assert.match(app, /calendar-event is-oral booked" data-student-view="mockoral"/);
   assert.match(app, />Book mock oral</);
-  assert.match(moduleSource, /\{ booked: false, days: open\.rows\.map/);
+  assert.match(moduleSource, /days: open\.rows\.map\(\(row\) => row\.on_date\)/);
   // Cancelling puts the day back on the calendar as bookable.
-  assert.match(app, /mockOral = \{ booked: false, days: \(state\.mockOral\.days \|\| \[\]\)\.map/);
+  assert.match(app, /days: \(state\.mockOral\.days \|\| \[\]\)\.map\(\(day\) => day\.date\),/);
 
   // The teacher's month: one chip a day, which opens that day.
   assert.match(app, /data-mock-oral-day="\$\{day\.id\}"/);
@@ -297,9 +297,54 @@ test('a booking carries its own name and email, so no portal account is needed',
 test('one link for everybody: the page, the old link, the portal and the teacher all point at it', () => {
   assert.match(server, /app\.get\('\/mock-oral', /);
   assert.match(server, /if \(req\.query\.go === 'mockoral'\) return res\.redirect\(302, '\/mock-oral'\);/);
-  assert.match(app, /<a class="calendar-event is-oral" href="\/mock-oral"/);
-  assert.match(app, /<a class="task-bar mo-bar" href="\/mock-oral">/);
+  // The chip on a date opens the booking page on that date, not on whichever day comes first.
+  assert.match(app, /<a class="calendar-event is-oral" href="\/mock-oral\?day=\$\{escapeHtml\(date\)\}"/);
+  assert.match(app, /<a class="task-bar mo-bar" href="\/mock-oral\?day=\$\{escapeHtml\(open\[0\]\)\}">/);
+  assert.match(page, /const asked = date && state\.days\.find\(\(day\) => day\.date === date\);/);
   assert.match(app, /id="mo-link-input" readonly value="\$\{escapeHtml\(`\$\{location\.origin\}\/mock-oral`\)\}"/);
   assert.match(page, /name="name" autocomplete="name"/);
   assert.match(page, /name="email" type="email"/);
+});
+
+/* Four days, four mock orals.
+   ------------------------------------------------------------------
+   Each mock oral day is its own event. A student books a time on every day
+   they are sitting, at whatever time suits them that day, so holding a booking
+   on one day must never stand in the way of booking another. */
+
+test('one booking a day, and a booking on one day never blocks another day', () => {
+  const book = moduleSource.slice(moduleSource.indexOf('export async function book('), moduleSource.indexOf('export async function cancel'));
+  // The check for "already booked" is about this day only.
+  assert.match(book, /WHERE b\.day_id=\$3 AND b\.status='booked'\s+AND \(lower\(b\.email\)=\$1 OR/);
+  assert.match(book, /\[contact\.email, student\?\.id \|\| null, dayId\]/);
+  assert.ok(!/already[\s\S]{0,400}UPCOMING/.test(book.slice(book.indexOf('const already'), book.indexOf('const taken'))),
+    'a booking on another day is not a reason to refuse');
+  assert.match(book, /You already have a mock oral booked on this day\./);
+  // The database agrees: its limits are per day too.
+  assert.match(migration, /ON mock_oral_bookings\(day_id, student_id\) WHERE status='booked'/);
+  assert.match(migration58, /ON mock_oral_bookings\(day_id, lower\(email\)\) WHERE status='booked'/);
+
+  // The portal is told every booking a student holds, and the days still open to them.
+  const first = moduleSource.slice(moduleSource.indexOf('export async function studentMockOral'), moduleSource.indexOf('export async function bookedDayIds'));
+  assert.ok(!/LIMIT 1/.test(first), 'every booking, not only the next one');
+  assert.match(first, /bookings: mine\.rows\.map/);
+  assert.match(first, /AND \$\{ELIGIBLE\} AND \$\{NOT_MINE\}/);
+  const view = moduleSource.slice(moduleSource.indexOf('export async function studentView'), moduleSource.indexOf('export async function book('));
+  assert.ok(!/LIMIT 1/.test(view));
+  assert.match(view, /bookings: mine\.rows\.map/);
+
+  // The teacher can place a student who is booked on another day.
+  assert.match(moduleSource, /WHERE b\.student_id=s\.id AND b\.day_id=\$2 AND b\.status='booked'\)/);
+});
+
+test('the portal shows every booking, each with its own cancel, and each open day', () => {
+  assert.match(app, /\(oral\?\.bookings \|\| \[\]\)\.forEach\(\(booking\) => \{/);
+  assert.match(app, /bookings\.map\(mockOralTicket\)\.join\(''\)/);
+  // One cancel button a ticket, so it cannot be an id.
+  assert.match(app, /data-mo-cancel="\$\{booking\.id\}"/);
+  assert.ok(!/id="mo-cancel"/.test(app));
+  assert.match(app, /<a class="mo-open-day" href="\/mock-oral\?day=\$\{escapeHtml\(day\.date\)\}">/);
+  // The booking page opens on a day not yet booked, and offers the others after a booking.
+  assert.match(page, /state\.days\.find\(\(day\) => !day\.full && !state\.booked\.has\(day\.id\)\)/);
+  assert.match(page, /<button id="mo-again">Book another day<\/button>/);
 });

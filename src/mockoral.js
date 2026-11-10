@@ -196,20 +196,44 @@ const UPCOMING = `b.status='booked' AND b.starts_at > now() - interval '${ORAL_M
 
 /* ------------------------------------------------------------------ student */
 
+/* Each mock oral day is its own event: a student books one time on every day
+   they want to sit, so they can hold several bookings at once, one a day. This
+   is the part of a day's query that leaves out the days they already have. */
+const NOT_MINE = `NOT EXISTS (
+  SELECT 1 FROM mock_oral_bookings m
+  WHERE m.day_id=d.id AND m.student_id=$1 AND m.status='booked')`;
+
 /* What the student's first load needs to know: is there anything to show in
-   the navigation at all, and if they are booked, when. Null is "no mock orals
-   for you", and the tab is simply not there. */
+   the navigation at all, which days they are booked on, and which they can
+   still book. Null is "no mock orals for you", and the tab is simply not
+   there. */
 export async function studentMockOral(studentId) {
-  const mine = await one(
-    `SELECT b.starts_at, b.examiner FROM mock_oral_bookings b
-     WHERE b.student_id=$1 AND ${UPCOMING} ORDER BY b.starts_at LIMIT 1`, [studentId]);
-  if (mine) return { booked: true, startsAt: new Date(mine.starts_at).toISOString(), examiner: mine.examiner };
-  /* The dates as well as the yes or no, so the calendar can mark the day. */
-  const open = await query(
-    `SELECT d.on_date FROM mock_oral_days d
-     WHERE d.booking_open=true AND d.on_date >= $2::date AND ${ELIGIBLE} ORDER BY d.on_date`,
-    [studentId, todayInIreland()]);
-  return open.rows.length ? { booked: false, days: open.rows.map((row) => row.on_date) } : null;
+  const [mine, open] = await Promise.all([
+    query(
+      `SELECT b.starts_at, b.examiner, d.on_date FROM mock_oral_bookings b
+       JOIN mock_oral_days d ON d.id=b.day_id
+       WHERE b.student_id=$1 AND ${UPCOMING} ORDER BY b.starts_at`, [studentId]),
+    /* The dates as well as the yes or no, so the calendar can mark each day. */
+    query(
+      `SELECT d.on_date FROM mock_oral_days d
+       WHERE d.booking_open=true AND d.on_date >= $2::date AND ${ELIGIBLE} AND ${NOT_MINE}
+       ORDER BY d.on_date`,
+      [studentId, todayInIreland()]),
+  ]);
+  if (!mine.rows.length && !open.rows.length) return null;
+  return {
+    bookings: mine.rows.map((row) => ({
+      date: row.on_date, startsAt: new Date(row.starts_at).toISOString(), examiner: row.examiner,
+    })),
+    days: open.rows.map((row) => row.on_date),
+  };
+}
+
+/* The days a signed-in student is already booked on, for the booking page. */
+export async function bookedDayIds(studentId) {
+  const rows = await query(
+    `SELECT b.day_id FROM mock_oral_bookings b WHERE b.student_id=$1 AND ${UPCOMING}`, [studentId]);
+  return rows.rows.map((row) => row.day_id);
 }
 
 /* How full each time on a day is, as one object keyed by the oral's number. */
@@ -261,24 +285,23 @@ export async function publicBooking(token, now = new Date()) {
   };
 }
 
+/* The student's Mock oral page in the portal: every booking they hold, and the
+   days they have not booked yet. */
 export async function studentView(studentId, now = new Date()) {
-  const mine = await one(
-    `${BOOKING_SELECT} WHERE b.student_id=$1 AND ${UPCOMING} ORDER BY b.starts_at LIMIT 1`, [studentId]);
-  if (mine) {
-    return {
-      booking: { ...oralFrom(mine), canCancel: new Date(mine.starts_at) > now },
-      days: [],
-    };
-  }
-
-  const days = await query(
-    `SELECT d.id, d.on_date, d.examiners, d.note, ${TAKEN}
-     FROM mock_oral_days d
-     WHERE d.booking_open=true AND d.on_date >= $2::date AND ${ELIGIBLE}
-     ORDER BY d.on_date`,
-    [studentId, todayInIreland(now)],
-  );
-  return { booking: null, days: days.rows.map((day) => bookableDay(day, now)).filter(stillToCome) };
+  const [mine, days] = await Promise.all([
+    query(`${BOOKING_SELECT} WHERE b.student_id=$1 AND ${UPCOMING} ORDER BY b.starts_at`, [studentId]),
+    query(
+      `SELECT d.id, d.on_date, d.examiners, d.note, ${TAKEN}
+       FROM mock_oral_days d
+       WHERE d.booking_open=true AND d.on_date >= $2::date AND ${ELIGIBLE} AND ${NOT_MINE}
+       ORDER BY d.on_date`,
+      [studentId, todayInIreland(now)],
+    ),
+  ]);
+  return {
+    bookings: mine.rows.map((row) => ({ ...oralFrom(row), canCancel: new Date(row.starts_at) > now })),
+    days: days.rows.map((day) => bookableDay(day, now)).filter(stillToCome),
+  };
 }
 
 /* Book a time.
@@ -337,14 +360,17 @@ export async function book({ dayId, slot, studentId = null, name = '', email = '
       const startsAt = slotStartsAt(day.on_date, slot);
       if (startsAt <= new Date()) fail(409, 'That time has already passed. Pick a later one.');
 
+      /* One booking a day for a person. Each day is its own event, so a
+         booking on another day is no reason to refuse this one. */
       const already = (await client.query(
         `SELECT b.id FROM mock_oral_bookings b
-         WHERE (lower(b.email)=$1 OR ($2::uuid IS NOT NULL AND b.student_id=$2::uuid)) AND ${UPCOMING} LIMIT 1`,
-        [contact.email, student?.id || null])).rows[0];
+         WHERE b.day_id=$3 AND b.status='booked'
+           AND (lower(b.email)=$1 OR ($2::uuid IS NOT NULL AND b.student_id=$2::uuid)) LIMIT 1`,
+        [contact.email, student?.id || null, dayId])).rows[0];
       if (already) {
         fail(409, asTeacher
-          ? 'That student already has a mock oral booked. Remove it first to move them.'
-          : 'You already have a mock oral booked. To change it, cancel it first with the link in your confirmation email.');
+          ? 'That student already has a mock oral booked on this day. Remove it first to move them.'
+          : 'You already have a mock oral booked on this day. To change the time, cancel it first with the button in your confirmation email.');
       }
 
       const taken = (await client.query(
@@ -477,8 +503,9 @@ export async function adminDay(dayId) {
        has no oral booked. */
     query(
       `SELECT s.id, s.name, s.email FROM (${DAY_STUDENTS} AND ($1::uuid[] IS NULL OR cs.class_id = ANY($1::uuid[]))) s
-       WHERE NOT EXISTS (SELECT 1 FROM mock_oral_bookings b WHERE b.student_id=s.id AND ${UPCOMING})
-       ORDER BY s.name`, [day.class_ids]),
+       WHERE NOT EXISTS (SELECT 1 FROM mock_oral_bookings b
+                         WHERE b.student_id=s.id AND b.day_id=$2 AND b.status='booked')
+       ORDER BY s.name`, [day.class_ids, dayId]),
   ]);
   const named = new Map(examiners.rows.map((row) => [row.number, row]));
   const perExaminer = new Map();
