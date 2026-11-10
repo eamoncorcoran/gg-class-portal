@@ -614,7 +614,9 @@ function oralDetailsHtml(oral) {
 
 function oralMessage({ student, oral, subject, preheader, before, after = [], buttonText, type }) {
   const firstName = String(student.name || '').split(' ')[0] || 'there';
-  const url = `${config.appUrl}/?go=mockoral`;
+  /* Each booking has its own private page, which needs no sign-in: the booking,
+     and the button to cancel it. A cancelled one offers another time there. */
+  const url = oral.manageUrl || `${config.appUrl}/mock-oral`;
   const showDetails = oral.showDetails !== false;
   const closing = [...after, ...(oral.note && showDetails ? [oral.note] : [])].filter(Boolean);
 
@@ -651,9 +653,9 @@ export async function sendMockOralConfirmation({ student, oral }) {
     before: ['Your mock oral is booked. Here are the details.'],
     after: [
       oral.link ? '' : 'Your link to join will be sent to you before the day.',
-      'If you cannot make it, cancel in the portal so somebody else can have the place. You can then pick another time if one is free.',
+      'If you cannot make it, cancel with the button below so somebody else can have the place. You can then pick another time if one is free.',
     ],
-    buttonText: 'View my booking',
+    buttonText: 'View or cancel my booking',
   });
   return sendEmail({ ...message, html: layout({ ...page }) });
 }
@@ -667,15 +669,15 @@ export async function sendMockOralCancelled({ student, oral, by = 'student' }) {
       ? [`The mock orals on ${oralDay(oral)} are not going ahead, so your booking at ${oralClock(oral.startsAt)} is cancelled. Sorry about that.`]
       : [`We have had to cancel your mock oral on ${when}. Sorry about that.`];
   const after = by === 'day'
-    ? ['If another date opens for booking, you will find it in the portal.']
-    : ['If you would still like to do one, you can pick another time in the portal.'];
+    ? ['If another date opens for booking, we will let you know.']
+    : ['If you would still like to do one, you can pick another time with the button below.'];
   const { page, ...message } = oralMessage({
     student, oral: { ...oral, showDetails: false },
     type: 'mock_oral_cancelled',
     subject: `Your mock oral on ${oralDay(oral)} is cancelled`,
     preheader: before[0],
     before, after,
-    buttonText: by === 'day' ? 'Open the portal' : 'Book another time',
+    buttonText: by === 'day' ? 'See mock oral times' : 'Book another time',
   });
   return sendEmail({ ...message, html: layout({ ...page }) });
 }
@@ -694,8 +696,8 @@ export async function sendMockOralChanged({ student, oral, was }) {
       : `Your mock oral is now with ${oralExaminer(oral)}`,
     preheader: `${oralDay(oral)}, ${oralTimes(oral)} with ${oralExaminer(oral)}.`,
     before,
-    after: ['If the new details do not suit, you can cancel in the portal and pick another time.'],
-    buttonText: 'View my booking',
+    after: ['If the new details do not suit, you can cancel with the button below and pick another time.'],
+    buttonText: 'View or cancel my booking',
   });
   return sendEmail({ ...message, html: layout({ ...page }) });
 }
@@ -719,9 +721,9 @@ export async function sendMockOralReminder({ student, oral, when, now = new Date
     before,
     after: [
       oral.link ? 'Use the link above to join, and be ready a few minutes early.' : 'Be ready a few minutes early.',
-      when === 'hour' ? '' : 'If you cannot make it, cancel in the portal so somebody else can have the place.',
+      when === 'hour' ? '' : 'If you cannot make it, cancel with the button below so somebody else can have the place.',
     ],
-    buttonText: 'View my booking',
+    buttonText: 'View or cancel my booking',
   });
   return sendEmail({ ...message, html: layout({ ...page }) });
 }
@@ -739,9 +741,9 @@ export async function sendMockOralDetails({ student, oral }) {
       : 'Here are the details for your mock oral.'],
     after: [
       oral.link ? 'Use the link above to join, and be ready a few minutes early.' : '',
-      'If you cannot make it, cancel in the portal so somebody else can have the place.',
+      'If you cannot make it, cancel with the button below so somebody else can have the place.',
     ],
-    buttonText: 'View my booking',
+    buttonText: 'View or cancel my booking',
   });
   return sendEmail({ ...message, html: layout({ ...page }) });
 }

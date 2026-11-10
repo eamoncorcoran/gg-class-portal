@@ -18,6 +18,8 @@ const moduleSource = read('../src/mockoral.js');
 const routes = read('../src/routes/mockoral.js');
 const email = read('../src/email.js');
 const app = read('../public/app.js');
+const page = read('../public/mock-oral.js');
+const migration58 = read('../migrations/058_mock_oral_public_booking.sql');
 const server = read('../server.js');
 const migration = read('../migrations/057_mock_orals.sql');
 
@@ -143,7 +145,9 @@ test('two students cannot be given the same seat, and one student cannot hold tw
 
 test('a student can cancel only their own booking, and only before it starts', () => {
   const cancel = moduleSource.slice(moduleSource.indexOf('export async function cancel'), moduleSource.indexOf('function classLabel'));
-  assert.match(cancel, /!asTeacher && found\.student_id !== actor\.id\)\) fail\(404/);
+  // Theirs by the private link from the emails, or by their portal account. Nothing else.
+  assert.match(cancel, /const theirs = Boolean\(token\) \|\| \(found\?\.student_id && found\.student_id === actor\?\.id\);/);
+  assert.match(cancel, /if \(!found \|\| \(!asTeacher && !theirs\)\) fail\(404/);
   assert.match(cancel, /!asTeacher && new Date\(found\.starts_at\) <= new Date\(\)/);
   assert.match(cancel, /sendMockOralCancelled/);
 });
@@ -167,8 +171,10 @@ test('every mock oral email exists, and a booking or a cancellation is never hel
     assert.match(email, new RegExp(`export async function ${name}\\(`));
   }
   assert.match(email, /priority: type === 'mock_oral_reminder' \? 'deadline' : 'transactional'/);
-  assert.match(email, /\$\{config\.appUrl\}\/\?go=mockoral/);
-  assert.match(app, /if \(go === 'mockoral'\) return showStudentView\('mockoral'\)/, 'and the button in the email lands on the booking');
+  // The button in every email opens that one booking, with no sign-in in the way.
+  assert.match(email, /const url = oral\.manageUrl \|\| `\$\{config\.appUrl\}\/mock-oral`;/);
+  assert.match(moduleSource, /manageUrl: row\.manage_token \? `\$\{config\.appUrl\}\/mock-oral\?b=\$\{row\.manage_token\}` : ''/);
+  assert.ok(!/cancel in the portal/.test(email.slice(email.indexOf('const ORAL_ZONE'))), 'nobody is sent to the portal to cancel');
 });
 
 test('no em dashes in anything a student or the teacher reads', () => {
@@ -181,14 +187,14 @@ test('no em dashes in anything a student or the teacher reads', () => {
 });
 
 test('the screens: a student sees times, not examiners, and a full time cannot be pressed', () => {
-  const picker = app.slice(app.indexOf('function mockOralPicker'), app.indexOf('function bindMockOralStudent'));
-  assert.match(picker, /if \(slot\.full\) return `<button class="mo-time" disabled>/);
-  assert.match(picker, /if \(slot\.past\) return `<button class="mo-time" disabled>/);
+  const picker = page.slice(page.indexOf('function pickView'), page.indexOf('function detailsView'));
+  // A time that is full or gone is not listed at all, so everything shown can be pressed.
+  assert.match(picker, /day\.slots\.filter\(\(slot\) => !slot\.full && !slot\.past\)/);
   assert.ok(!/examiner/i.test(picker), 'which examiner is free is not the student\'s question');
   assert.match(app, /state\.studentData\?\.mockOral \? studentNavButton\('mockoral'/, 'the tab is only there when there is something to book or booked');
   assert.match(app, /adminNavButton\('mockorals', svg\.mic, 'Mock orals'\)/);
   // The server never tells a student who is with which examiner, only how full a time is.
-  const view = moduleSource.slice(moduleSource.indexOf('export async function studentView'), moduleSource.indexOf('export async function book'));
+  const view = moduleSource.slice(moduleSource.indexOf('function bookableDay'), moduleSource.indexOf('export async function book'));
   assert.match(view, /return \{ slot: slot\.slot, start: slot\.start, end: slot\.end, full, past \}/);
 });
 
@@ -237,4 +243,63 @@ test('a cancelled booking drops out of the feed, and the calendars point at the 
   assert.match(app, /data-mock-oral-day="\$\{day\.id\}"/);
   assert.match(app, /state\.mockOralDayId = button\.dataset\.mockOralDay;/);
   assert.match(app, /api\('\/api\/mock-oral\/admin'\)\.catch\(\(\) => null\)/);
+});
+
+/* Booking from a link.
+   ------------------------------------------------------------------
+   Students are sent a link. They pick a time and type their name and email,
+   with no sign-in, the way they would on any booking page. So the page is
+   public, and what it can be asked for has to be nothing about anybody else. */
+
+test('the booking page needs no sign-in, and gives away nothing about other people', () => {
+  const open = routes.slice(routes.indexOf("router.get('/public'"), routes.indexOf('router.use(requireAuth)'));
+  assert.ok(open.length > 500, 'the public routes sit above the sign-in wall');
+  for (const route of ["router.get('/public'", "router.post('/public/book'", "router.get('/public/booking/:token'", "router.post('/public/booking/:token/cancel'"]) {
+    assert.ok(open.includes(route), `${route} is open`);
+  }
+  assert.ok(!/requireAuth|requireStudent|requireAdmin/.test(open));
+  // Booking and cancelling are paced, since each one sends an email.
+  assert.match(open, /router\.post\('\/public\/book', bookingLimiter/);
+  assert.match(open, /router\.post\('\/public\/booking\/:token\/cancel', bookingLimiter/);
+
+  // What the page is told about a day: times and whether each is free. No names, no emails, no counts.
+  const view = moduleSource.slice(moduleSource.indexOf('function bookableDay'), moduleSource.indexOf('export async function publicBooking'));
+  assert.match(view, /return \{ slot: slot\.slot, start: slot\.start, end: slot\.end, full, past \}/);
+  assert.ok(!/student_name|student_email|b\.name|b\.email|u\.email|u\.name/.test(view));
+  // The only booking it will show is the one whose private token was given.
+  const own = moduleSource.slice(moduleSource.indexOf('export async function publicBooking'), moduleSource.indexOf('export async function studentView'));
+  assert.match(own, /WHERE b\.manage_token=\$1/);
+  // And the page itself asks for nothing else.
+  const asked = [...page.matchAll(/api\((?:'|`)(\/api\/[^'`$?]+)/g)].map((match) => match[1]);
+  assert.deepEqual([...new Set(asked)].sort(), ['/api/mock-oral/public', '/api/mock-oral/public/book', '/api/mock-oral/public/booking/']);
+  assert.ok(!page.includes('—'), 'no em dashes on the booking page');
+});
+
+test('a booking carries its own name and email, so no portal account is needed', () => {
+  assert.match(migration58, /ALTER TABLE mock_oral_bookings ALTER COLUMN student_id DROP NOT NULL/);
+  assert.match(migration58, /CREATE UNIQUE INDEX IF NOT EXISTS mock_oral_bookings_email\s+ON mock_oral_bookings\(day_id, lower\(email\)\) WHERE status='booked' AND email IS NOT NULL/);
+  assert.match(migration58, /CREATE UNIQUE INDEX IF NOT EXISTS mock_oral_bookings_token/);
+  const book = moduleSource.slice(moduleSource.indexOf('export async function book('), moduleSource.indexOf('export async function cancel'));
+  // An email the portal knows is tied to that student; one it does not know still books.
+  assert.match(book, /AND lower\(email\)=\$1`, \[typed\]\)\)\.rows\[0\] \|\| null/);
+  assert.match(book, /\[dayId, student\?\.id \|\| null, contact\.name, contact\.email, randomToken\(24\)/);
+  // One upcoming booking for a person, whichever way they are recognised.
+  assert.match(book, /lower\(b\.email\)=\$1 OR \(\$2::uuid IS NOT NULL AND b\.student_id=\$2::uuid\)/);
+  // A day kept to certain classes still is.
+  assert.match(book, /if \(day\.class_ids\) \{/);
+  // The name and email are checked before anything is written.
+  assert.match(routes, /name: z\.string\(\)\.trim\(\)\.min\(2\)\.max\(80\)/);
+  assert.match(routes, /email: z\.string\(\)\.trim\(\)\.toLowerCase\(\)\.email\(\)\.max\(200\)/);
+  // Somebody with no portal account is still reminded.
+  assert.match(moduleSource, /AND \(b\.student_id IS NULL OR \(u\.active=true AND u\.withdrawn_at IS NULL\)\)/);
+});
+
+test('one link for everybody: the page, the old link, the portal and the teacher all point at it', () => {
+  assert.match(server, /app\.get\('\/mock-oral', /);
+  assert.match(server, /if \(req\.query\.go === 'mockoral'\) return res\.redirect\(302, '\/mock-oral'\);/);
+  assert.match(app, /<a class="calendar-event is-oral" href="\/mock-oral"/);
+  assert.match(app, /<a class="task-bar mo-bar" href="\/mock-oral">/);
+  assert.match(app, /id="mo-link-input" readonly value="\$\{escapeHtml\(`\$\{location\.origin\}\/mock-oral`\)\}"/);
+  assert.match(page, /name="name" autocomplete="name"/);
+  assert.match(page, /name="email" type="email"/);
 });

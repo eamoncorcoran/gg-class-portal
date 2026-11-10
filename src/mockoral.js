@@ -1,5 +1,7 @@
 import { DateTime } from 'luxon';
+import { config } from './config.js';
 import { one, query, transaction } from './db.js';
+import { randomToken } from './security.js';
 import {
   sendMockOralCancelled, sendMockOralChanged, sendMockOralConfirmation,
   sendMockOralDetails, sendMockOralReminder,
@@ -130,10 +132,12 @@ const BOOKING_SELECT = `
   SELECT b.id, b.day_id, b.student_id, b.slot, b.examiner, b.starts_at, b.status, b.created_at,
          d.on_date, d.note, d.examiners,
          COALESCE(e.name,'') examiner_name, COALESCE(e.link,'') examiner_link,
-         u.name student_name, u.email student_email
+         b.manage_token,
+         COALESCE(NULLIF(b.name,''), u.name, '') student_name,
+         COALESCE(NULLIF(b.email,''), u.email, '') student_email
   FROM mock_oral_bookings b
   JOIN mock_oral_days d ON d.id=b.day_id
-  JOIN users u ON u.id=b.student_id
+  LEFT JOIN users u ON u.id=b.student_id
   LEFT JOIN mock_oral_examiners e ON e.day_id=b.day_id AND e.number=b.examiner`;
 
 /* A booking as the emails and the student's page want it. */
@@ -152,10 +156,15 @@ function oralFrom(row) {
     examinerName: row.examiner_name || '',
     link: row.examiner_link || '',
     note: row.note || '',
+    /* Where this one booking can be seen and cancelled without signing in. The
+       token in it is the booking's own, and only ever goes to whoever made it. */
+    manageUrl: row.manage_token ? `${config.appUrl}/mock-oral?b=${row.manage_token}` : '',
   };
 }
 
-const studentFrom = (row) => ({ id: row.student_id, name: row.student_name, email: row.student_email });
+/* Whoever the booking is for. `id` is their portal account when the email they
+   booked with is one the portal knows, and null when it is not. */
+const studentFrom = (row) => ({ id: row.student_id || null, name: row.student_name, email: row.student_email });
 
 async function bookingRow(id) {
   return one(`${BOOKING_SELECT} WHERE b.id=$1`, [id]);
@@ -203,6 +212,55 @@ export async function studentMockOral(studentId) {
   return open.rows.length ? { booked: false, days: open.rows.map((row) => row.on_date) } : null;
 }
 
+/* How full each time on a day is, as one object keyed by the oral's number. */
+const TAKEN = `COALESCE((SELECT json_object_agg(t.slot, t.n) FROM (
+    SELECT slot, count(*)::int n FROM mock_oral_bookings
+    WHERE day_id=d.id AND status='booked' GROUP BY slot) t), '{}'::json) taken`;
+
+/* A day as somebody booking sees it: times, and whether each can still be had.
+   Never who is in them, and never how many examiners there are. */
+function bookableDay(day, now) {
+  const slots = SLOTS.map((slot) => {
+    const past = slotStartsAt(day.on_date, slot.slot) <= now;
+    const full = (day.taken[slot.slot] || 0) >= day.examiners;
+    return { slot: slot.slot, start: slot.start, end: slot.end, full, past };
+  });
+  return {
+    id: day.id,
+    date: day.on_date,
+    note: day.note || '',
+    slots,
+    // Nothing left to pick: every time is either taken or gone.
+    full: slots.every((slot) => slot.full || slot.past),
+  };
+}
+const stillToCome = (day) => day.slots.some((slot) => !slot.past);
+
+/* The booking page, which needs no sign-in: every day that is open. */
+export async function publicView(now = new Date()) {
+  const days = await query(
+    `SELECT d.id, d.on_date, d.examiners, d.note, ${TAKEN}
+     FROM mock_oral_days d
+     WHERE d.booking_open=true AND d.on_date >= $1::date
+     ORDER BY d.on_date`,
+    [todayInIreland(now)],
+  );
+  return { days: days.rows.map((day) => bookableDay(day, now)).filter(stillToCome) };
+}
+
+/* One booking, found by the private token in its emails. */
+export async function publicBooking(token, now = new Date()) {
+  const row = await one(`${BOOKING_SELECT} WHERE b.manage_token=$1`, [token]);
+  if (!row) return null;
+  return {
+    ...oralFrom(row),
+    name: row.student_name,
+    email: row.student_email,
+    status: row.status,
+    canCancel: row.status === 'booked' && new Date(row.starts_at) > now,
+  };
+}
+
 export async function studentView(studentId, now = new Date()) {
   const mine = await one(
     `${BOOKING_SELECT} WHERE b.student_id=$1 AND ${UPCOMING} ORDER BY b.starts_at LIMIT 1`, [studentId]);
@@ -214,72 +272,79 @@ export async function studentView(studentId, now = new Date()) {
   }
 
   const days = await query(
-    `SELECT d.id, d.on_date, d.examiners, d.note,
-            COALESCE((SELECT json_object_agg(t.slot, t.n) FROM (
-              SELECT slot, count(*)::int n FROM mock_oral_bookings
-              WHERE day_id=d.id AND status='booked' GROUP BY slot) t), '{}'::json) taken
+    `SELECT d.id, d.on_date, d.examiners, d.note, ${TAKEN}
      FROM mock_oral_days d
      WHERE d.booking_open=true AND d.on_date >= $2::date AND ${ELIGIBLE}
      ORDER BY d.on_date`,
     [studentId, todayInIreland(now)],
   );
-  return {
-    booking: null,
-    days: days.rows.map((day) => {
-      const slots = SLOTS.map((slot) => {
-        const past = slotStartsAt(day.on_date, slot.slot) <= now;
-        const full = (day.taken[slot.slot] || 0) >= day.examiners;
-        return { slot: slot.slot, start: slot.start, end: slot.end, full, past };
-      });
-      return {
-        id: day.id,
-        date: day.on_date,
-        note: day.note || '',
-        slots,
-        // Nothing left to pick: every time is either taken or gone.
-        full: slots.every((slot) => slot.full || slot.past),
-      };
-    }).filter((day) => day.slots.some((slot) => !slot.past)),
-  };
+  return { booking: null, days: days.rows.map((day) => bookableDay(day, now)).filter(stillToCome) };
 }
 
-/* Book a time. `examiner` is only ever given by the teacher, placing a student
-   in a particular cell of the grid; a student is always given the lowest free. */
-export async function book({ dayId, studentId, slot, examiner = null, actor }) {
-  const asTeacher = actor.role === 'admin';
+/* Book a time.
+   ------------------------------------------------------------------
+   Three ways in. Somebody on the booking page types a name and an email and has
+   no account in front of them; a student in the portal is already known; and
+   the teacher places a student in a particular cell of the grid. `examiner` is
+   only ever given by the teacher. Everybody else is given the lowest free. */
+export async function book({ dayId, slot, studentId = null, name = '', email = '', examiner = null, actor = null }) {
+  const asTeacher = actor?.role === 'admin';
+  const typed = String(email || '').trim().toLowerCase();
+  const ACTIVE_STUDENT = `SELECT id, name, email FROM users
+    WHERE role='student' AND active=true AND withdrawn_at IS NULL`;
   let id;
   try {
     id = await transaction(async (client) => {
-      /* One student, one booking at a time: two tabs pressing Book at once wait
+      /* Who this is. An email the portal knows is tied to that student, so the
+         booking shows in their portal as well; a student who is signed in is
+         tied to their own account whichever address they typed. */
+      let student = null;
+      if (studentId) {
+        student = (await client.query(`${ACTIVE_STUDENT} AND id=$1`, [studentId])).rows[0];
+        if (!student) fail(404, 'That student is not active in the portal.');
+      } else {
+        if (typed) student = (await client.query(`${ACTIVE_STUDENT} AND lower(email)=$1`, [typed])).rows[0] || null;
+        if (!student && actor?.role === 'student') {
+          student = (await client.query(`${ACTIVE_STUDENT} AND id=$1`, [actor.id])).rows[0] || null;
+        }
+      }
+      const contact = {
+        name: String(name || '').trim() || student?.name || '',
+        email: typed || String(student?.email || '').toLowerCase(),
+      };
+      if (!contact.name || !contact.email) fail(400, 'Enter your name and your email address.');
+
+      /* One person, one booking at a time: two tabs pressing Book at once wait
          here rather than both getting past the check below. */
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`mock-oral:${studentId}`]);
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`mock-oral:${contact.email}`]);
       /* And one booking into a day at a time, so two students after the last
          place at 10:20 cannot both be given it. */
       const day = (await client.query('SELECT * FROM mock_oral_days WHERE id=$1 FOR UPDATE', [dayId])).rows[0];
       if (!day) fail(404, 'That mock oral day is no longer there.');
       if (!SLOTS[slot - 1]) fail(400, 'Pick one of the times shown.');
 
-      const student = (await client.query(
-        `SELECT id FROM users WHERE id=$1 AND role='student' AND active=true AND withdrawn_at IS NULL`,
-        [studentId])).rows[0];
-      if (!student) fail(404, 'That student is not active in the portal.');
-
       if (!asTeacher) {
         if (!day.booking_open) fail(409, 'Booking is not open for that day.');
-        const allowed = (await client.query(
-          `SELECT 1 FROM mock_oral_days d WHERE d.id=$2 AND ${ELIGIBLE}`, [studentId, dayId])).rows[0];
-        if (!allowed) fail(403, 'That mock oral day is not open to your class.');
+        /* A day kept to certain classes needs to know who is asking, and the
+           only way to know without a sign-in is the email the portal has. */
+        if (day.class_ids) {
+          const allowed = student && (await client.query(
+            `SELECT 1 FROM mock_oral_days d WHERE d.id=$2 AND ${ELIGIBLE}`, [student.id, dayId])).rows[0];
+          if (!allowed) fail(403, 'These mock orals are for certain classes. Book with the email address you use for the class portal.');
+        }
       }
 
       const startsAt = slotStartsAt(day.on_date, slot);
       if (startsAt <= new Date()) fail(409, 'That time has already passed. Pick a later one.');
 
       const already = (await client.query(
-        `SELECT b.id FROM mock_oral_bookings b WHERE b.student_id=$1 AND ${UPCOMING} LIMIT 1`, [studentId])).rows[0];
+        `SELECT b.id FROM mock_oral_bookings b
+         WHERE (lower(b.email)=$1 OR ($2::uuid IS NOT NULL AND b.student_id=$2::uuid)) AND ${UPCOMING} LIMIT 1`,
+        [contact.email, student?.id || null])).rows[0];
       if (already) {
         fail(409, asTeacher
           ? 'That student already has a mock oral booked. Remove it first to move them.'
-          : 'You already have a mock oral booked. Cancel it first if you want a different time.');
+          : 'You already have a mock oral booked. To change it, cancel it first with the link in your confirmation email.');
       }
 
       const taken = (await client.query(
@@ -294,9 +359,9 @@ export async function book({ dayId, studentId, slot, examiner = null, actor }) {
       if (!chosen) fail(409, 'That time has just filled up. Pick another one.');
 
       const inserted = await client.query(
-        `INSERT INTO mock_oral_bookings(day_id,student_id,slot,examiner,starts_at,booked_by)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-        [dayId, studentId, slot, chosen, startsAt, actor.id]);
+        `INSERT INTO mock_oral_bookings(day_id,student_id,name,email,manage_token,slot,examiner,starts_at,booked_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [dayId, student?.id || null, contact.name, contact.email, randomToken(24), slot, chosen, startsAt, actor?.id || null]);
       return inserted.rows[0].id;
     });
   } catch (error) {
@@ -308,29 +373,33 @@ export async function book({ dayId, studentId, slot, examiner = null, actor }) {
   const row = await bookingRow(id);
   const oral = oralFrom(row);
   const emailed = await tell(() => sendMockOralConfirmation({ student: studentFrom(row), oral }), 'confirmation');
-  return { booking: oral, student: studentFrom(row), emailed };
+  return { booking: oral, student: studentFrom(row), emailed, token: row.manage_token };
 }
 
-/* Cancel one booking. A student may cancel their own until it starts; the
-   teacher may remove anybody's. Either way the place is free again at once. */
-export async function cancel({ bookingId, actor }) {
-  const asTeacher = actor.role === 'admin';
+/* Cancel one booking. Whoever made it may cancel it until it starts, in the
+   portal or with the private link from its emails; the teacher may remove
+   anybody's. Either way the place is free again at once. */
+export async function cancel({ bookingId = null, token = null, actor = null }) {
+  const asTeacher = actor?.role === 'admin';
   const row = await transaction(async (client) => {
-    const found = (await client.query(
-      'SELECT * FROM mock_oral_bookings WHERE id=$1 FOR UPDATE', [bookingId])).rows[0];
-    if (!found || (!asTeacher && found.student_id !== actor.id)) fail(404, 'That booking is no longer there.');
+    const found = token
+      ? (await client.query('SELECT * FROM mock_oral_bookings WHERE manage_token=$1 FOR UPDATE', [token])).rows[0]
+      : (await client.query('SELECT * FROM mock_oral_bookings WHERE id=$1 FOR UPDATE', [bookingId])).rows[0];
+    // The token is the proof on the booking page. In the portal it is the account.
+    const theirs = Boolean(token) || (found?.student_id && found.student_id === actor?.id);
+    if (!found || (!asTeacher && !theirs)) fail(404, 'That booking is no longer there.');
     if (found.status === 'cancelled') return null; // Pressed twice: already done, say nothing more.
     if (!asTeacher && new Date(found.starts_at) <= new Date()) {
       fail(409, 'Your mock oral has already started, so it can no longer be cancelled here.');
     }
     await client.query(
       `UPDATE mock_oral_bookings SET status='cancelled', cancelled_at=now(), cancelled_by=$2 WHERE id=$1`,
-      [bookingId, actor.id]);
+      [found.id, actor?.id || null]);
     return found;
   });
   if (!row) return { cancelled: false, emailed: false };
 
-  const full = await bookingRow(bookingId);
+  const full = await bookingRow(row.id);
   const oral = oralFrom(full);
   /* No email about an oral that has already been and gone: the teacher tidying
      the grid afterwards should not write to anybody. */
@@ -434,6 +503,8 @@ export async function adminDay(dayId) {
       startsAt: new Date(row.starts_at).toISOString(),
       bookedAt: new Date(row.created_at).toISOString(),
       student: studentFrom(row),
+      // Booked with an email the portal does not know.
+      guest: !row.student_id,
     })),
     students: students.rows,
   };
@@ -635,8 +706,10 @@ export async function runMockOralReminders(now = new Date()) {
   const due = await query(
     `SELECT b.id, b.starts_at, b.created_at, b.day_reminder_for, b.hour_reminder_for
      FROM mock_oral_bookings b
-     JOIN users u ON u.id=b.student_id AND u.active=true AND u.withdrawn_at IS NULL
-     WHERE b.status='booked' AND b.starts_at > $1 AND b.starts_at <= $1::timestamptz + interval '24 hours'`,
+     LEFT JOIN users u ON u.id=b.student_id
+     WHERE b.status='booked' AND b.starts_at > $1 AND b.starts_at <= $1::timestamptz + interval '24 hours'
+       -- Somebody with no portal account is reminded; a student who has left is not.
+       AND (b.student_id IS NULL OR (u.active=true AND u.withdrawn_at IS NULL))`,
     [now]);
   let sent = 0;
   for (const booking of due.rows) {

@@ -1,27 +1,85 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { audit } from '../audit.js';
 import { asyncRoute } from '../middleware.js';
 import { requireAdmin, requireAuth, requireStudent } from '../session.js';
 import {
   MAX_EXAMINERS, SLOTS_PER_EXAMINER, adminDay, adminOverview, book, cancel, createDay, dayCsv,
-  deleteDay, emailDetails, setExaminer, studentView, updateDay,
+  deleteDay, emailDetails, publicBooking, publicView, setExaminer, studentView, updateDay,
 } from '../mockoral.js';
 
 /* Mock oral booking: the student's page, and the teacher's setup behind it. */
 const router = express.Router();
-router.use(requireAuth);
-
 const uuid = z.string().uuid();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const examiners = z.number().int().min(1).max(MAX_EXAMINERS);
 const slot = z.number().int().min(1).max(SLOTS_PER_EXAMINER);
 const classIds = z.array(uuid).nullable();
 const note = z.string().max(600);
+const token = z.string().regex(/^[A-Za-z0-9_-]{20,80}$/);
 
 function bad(res, message) {
   return res.status(400).json({ error: message });
 }
+
+/* ------------------------------------------------------- the booking page */
+
+/* No sign-in on any of these. A student opens the link they were sent, picks a
+   time and types their name and email. What comes back is only ever times and
+   whether they are still free: never a name, never an email, never how many
+   people are in a slot. The one booking a person can see is their own, and the
+   proof that it is theirs is the private token from their confirmation. */
+
+/* A whole class can book from one school network in a few minutes, so this is
+   set to stop a script, not a classroom. */
+const bookingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 80, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many bookings from this connection. Wait a few minutes and try again.' },
+});
+
+router.get('/public', asyncRoute(async (req, res) => {
+  // Somebody already signed in to the portal has their own details filled in.
+  const me = req.user?.role === 'student' ? { name: req.user.name, email: req.user.email } : null;
+  res.json({ ...(await publicView()), me });
+}));
+
+router.post('/public/book', bookingLimiter, asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    dayId: uuid, slot,
+    name: z.string().trim().min(2).max(80),
+    email: z.string().trim().toLowerCase().email().max(200),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.path?.[0];
+    return bad(res, field === 'name' ? 'Enter your full name.'
+      : field === 'email' ? 'Enter a valid email address.'
+        : 'Pick one of the times shown.');
+  }
+  const result = await book({ ...parsed.data, actor: req.user?.role === 'student' ? req.user : null });
+  await audit({ actorId: req.user?.id || null, action: 'mock_oral.booked', entityType: 'mock_oral_booking', entityId: result.booking.id,
+    metadata: { by: 'booking page', slot: result.booking.slot, examiner: result.booking.examiner, date: result.booking.date }, ip: req.ip });
+  res.status(201).json({ emailed: result.emailed, token: result.token, booking: await publicBooking(result.token) });
+}));
+
+router.get('/public/booking/:token', asyncRoute(async (req, res) => {
+  const booking = token.safeParse(req.params.token).success ? await publicBooking(req.params.token) : null;
+  if (!booking) return res.status(404).json({ error: 'That booking link is not valid any more.' });
+  res.json({ booking });
+}));
+
+router.post('/public/booking/:token/cancel', bookingLimiter, asyncRoute(async (req, res) => {
+  if (!token.safeParse(req.params.token).success) return res.status(404).json({ error: 'That booking link is not valid any more.' });
+  const result = await cancel({ token: req.params.token });
+  if (result.cancelled) {
+    await audit({ actorId: req.user?.id || null, action: 'mock_oral.cancelled', entityType: 'mock_oral_booking',
+      entityId: result.booking.id, metadata: { by: 'booking page' }, ip: req.ip });
+  }
+  res.json({ emailed: result.emailed, booking: await publicBooking(req.params.token) });
+}));
+
+/* Everything below here is for somebody signed in. */
+router.use(requireAuth);
 
 /* ------------------------------------------------------------------ student */
 

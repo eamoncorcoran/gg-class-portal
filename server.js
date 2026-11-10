@@ -252,13 +252,25 @@ app.use(express.static(publicDir, {
   },
 }));
 
-const indexHtml = () => fsSync.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
-  .replace(/(["'])(\/(?:app\.js|styles\.css))\1/g, `$1$2?v=${ASSET_VERSION}$1`);
+const pageHtml = (file) => fsSync.readFileSync(path.join(publicDir, file), 'utf8')
+  .replace(/(["'])(\/(?:mock-oral\.js|app\.js|styles\.css))\1/g, `$1$2?v=${ASSET_VERSION}$1`);
+const indexHtml = () => pageHtml('index.html');
+
+/* The mock oral booking page. It is a page of its own, outside the portal, so
+   a student can book from a link without signing in to anything. */
+let cachedBooking = null;
+app.get('/mock-oral', (_req, res) => {
+  if (!cachedBooking || !config.isProduction) cachedBooking = pageHtml('mock-oral.html');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(cachedBooking);
+});
 
 /* Read once in production, where the file cannot change under a running
    container, and every time in development so an edit shows up on reload. */
 let cachedIndex = null;
-app.get('/{*splat}', (_req, res) => {
+app.get('/{*splat}', (req, res) => {
+  // The link first given out for mock orals went through the portal's sign-in.
+  if (req.query.go === 'mockoral') return res.redirect(302, '/mock-oral');
   if (!cachedIndex || !config.isProduction) cachedIndex = indexHtml();
   res.setHeader('Cache-Control', 'no-cache');
   res.type('html').send(cachedIndex);
