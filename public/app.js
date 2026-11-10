@@ -1302,7 +1302,7 @@ function mockOralsView() {
   const row = (day) => `
     <button class="mo-day" data-mo-open="${day.id}">
       <span class="mo-day-date">
-        <strong>${escapeHtml(moDate(day.date))}</strong>
+        <strong>${escapeHtml(day.label)} · ${escapeHtml(moDate(day.date))}</strong>
         <small>${moPlural(day.examiners, 'examiner')} · ${day.capacity} places</small>
       </span>
       <span class="mo-day-meter">${moMeter(day)}</span>
@@ -1472,7 +1472,7 @@ function mockOralDayView() {
   const closed = !day.bookingOpen && !day.past;
   return `
     <button class="text-link mo-back" id="mo-back">${svg.chevronLeft}All mock oral days</button>
-    ${pageHeader('Mock orals', moDate(day.date),
+    ${pageHeader('Mock orals', `${day.label}: ${moDate(day.date)}`,
       day.past ? 'This day is over.'
         : day.bookingOpen ? 'Booking is open. Students can pick a time now.'
           : day.booked ? 'Booking is closed. Nobody new can book.'
@@ -1752,9 +1752,9 @@ function mockOralBar() {
   if (open.length) {
     const title = bookings.length ? 'Book your next mock oral' : `Book your mock oral${open.length === 1 ? '' : 's'}`;
     const line = bookings.length
-      ? `You have ${bookings.length} booked. ${open.length === 1 ? 'One more day is' : `${open.length} more days are`} open.`
+      ? `You have ${bookings.length} booked. ${open.length === 1 ? 'One more mock is' : `${open.length} more mocks are`} open.`
       : open.length === 1 ? 'Booking is open. Pick the time that suits you.'
-        : `Booking is open for ${open.length} days. Pick a time on each one.`;
+        : `Booking is open for ${open.length} mocks. Pick a time for each one.`;
     return `<a class="task-bar mo-bar" href="/mock-oral?day=${escapeHtml(open[0])}">
       <span class="task-bar-icon">${svg.mic}</span>
       <span class="task-bar-copy"><strong>${title}</strong><small>${line}</small></span>
@@ -1765,7 +1765,7 @@ function mockOralBar() {
   const day = new Date(next.startsAt).toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Dublin' }).replace(/,/g, '');
   return `<button class="task-bar mo-bar booked" data-student-view="mockoral">
     <span class="task-bar-icon">${svg.mic}</span>
-    <span class="task-bar-copy"><strong>Your ${bookings.length > 1 ? 'next ' : ''}mock oral: ${escapeHtml(day)} at ${moTime(next.startsAt)}</strong>
+    <span class="task-bar-copy"><strong>${bookings.length > 1 ? 'Next: ' : ''}Mock ${next.number}, ${escapeHtml(day)} at ${moTime(next.startsAt)}</strong>
       <small>With Examiner ${next.examiner}.${bookings.length > 1 ? ` You have ${bookings.length} booked.` : ''}</small></span>
     <span class="task-bar-go">View</span>
   </button>`;
@@ -1786,10 +1786,10 @@ function mockOralView() {
      here opens that page on that day. */
   const open = data.days.length ? `<section class="mo-ticket">
     <div class="mo-ticket-head"><div><strong>${bookings.length ? 'Days you can still book' : `Book your mock oral${data.days.length === 1 ? '' : 's'}`}</strong>
-      <small>${data.days.length === 1 ? 'Pick the time that suits you.' : 'Each day is a separate mock oral. Pick a time on each one.'}</small></div></div>
+      <small>${data.days.length === 1 ? 'Pick the time that suits you.' : 'Each mock is booked separately. Pick a time for each one.'}</small></div></div>
     <div class="mo-open-days">${data.days.map((day) => (day.full
-      ? `<div class="mo-open-day full"><span>${escapeHtml(moDate(day.date))}</span><small>Fully booked</small></div>`
-      : `<a class="mo-open-day" href="/mock-oral?day=${escapeHtml(day.date)}"><span>${escapeHtml(moDate(day.date))}</span><span class="btn primary">Pick a time</span></a>`)).join('')}</div>
+      ? `<div class="mo-open-day full"><span><strong>${escapeHtml(day.label)}</strong> ${escapeHtml(moDate(day.date))}</span><small>Fully booked</small></div>`
+      : `<a class="mo-open-day" href="/mock-oral?day=${escapeHtml(day.date)}"><span><strong>${escapeHtml(day.label)}</strong> ${escapeHtml(moDate(day.date))}</span><span class="btn primary">Pick a time</span></a>`)).join('')}</div>
   </section>` : '';
   return `${studentHeader()}${bookings.map(mockOralTicket).join('')}${open}`;
 }
@@ -1798,7 +1798,7 @@ function mockOralTicket(booking) {
   return `<section class="mo-ticket">
     <div class="mo-ticket-head">
       <span class="mo-ticket-tick">${svg.check}</span>
-      <div><strong>You are booked</strong><small>${escapeHtml(moDate(booking.date))} at ${moClock(booking.start)}. The details were emailed to you.</small></div>
+      <div><strong>${escapeHtml(booking.label)}: you are booked</strong><small>${escapeHtml(moDate(booking.date))} at ${moClock(booking.start)}. The details were emailed to you.</small></div>
     </div>
     <dl class="mo-facts">
       <div><dt>Date</dt><dd>${escapeHtml(moDate(booking.date))}</dd></div>
@@ -1829,8 +1829,9 @@ function bindMockOralStudent() {
       state.mockOral = await api('/api/mock-oral/cancel', { method: 'POST', body: { bookingId } });
       // What is left comes back with it, so the calendar shows that day as bookable again.
       state.studentData.mockOral = {
-        bookings: (state.mockOral.bookings || []).map((row) => ({ date: row.date, startsAt: row.startsAt, examiner: row.examiner })),
+        bookings: (state.mockOral.bookings || []).map((row) => ({ date: row.date, number: row.number, startsAt: row.startsAt, examiner: row.examiner })),
         days: (state.mockOral.days || []).map((day) => day.date),
+        numbers: Object.fromEntries((state.mockOral.days || []).map((day) => [day.date, day.number])),
       };
       showToast('Your booking is cancelled. Your place is open again for somebody else.');
     } catch (error) { showToast(error.message, 'error'); }
@@ -2572,9 +2573,9 @@ function assignmentCalendarView(assignments) {
       if (onYear !== year || onMonth - 1 !== month) return;
       const status = day.past ? 'Finished' : day.bookingOpen ? 'Booking open' : day.booked ? 'Booking closed' : 'Not open yet';
       add(onDay, `<button class="calendar-event oral ${day.bookingOpen && !day.past ? '' : 'quiet'}" data-mock-oral-day="${day.id}"
-        title="${escapeHtml(`Mock orals: ${day.booked} of ${day.capacity} places booked (${day.percent}%) with ${moPlural(day.examiners, 'examiner')}. ${status}.`)}">
+        title="${escapeHtml(`${day.label}: ${day.booked} of ${day.capacity} places booked (${day.percent}%) with ${moPlural(day.examiners, 'examiner')}. ${status}.`)}">
         <span class="event-time">${day.booked} of ${day.capacity} booked</span>
-        <span class="event-title">Mock orals</span>
+        <span class="event-title">${escapeHtml(day.label)}</span>
       </button>`);
     });
 
@@ -10488,7 +10489,7 @@ function calendarHtml() {
     const when = zonedDateParts(booking.startsAt, 'Europe/Dublin');
     if (when.year !== year || when.month !== month) return;
     events.set(when.day, [`<button class="calendar-event is-oral booked" data-student-view="mockoral"
-      title="${escapeHtml(`Your mock oral: ${moTime(booking.startsAt)} with Examiner ${booking.examiner}. Open it to see the details or cancel.`)}">Mock oral ${moTime(booking.startsAt)}</button>`,
+      title="${escapeHtml(`Mock ${booking.number}: ${moTime(booking.startsAt)} with Examiner ${booking.examiner}. Open it to see the details or cancel.`)}">Mock ${booking.number} ${moTime(booking.startsAt)}</button>`,
       ...(events.get(when.day) || [])]);
   });
   (oral?.days || []).forEach((date) => {
@@ -10496,7 +10497,7 @@ function calendarHtml() {
     if (onYear !== year || onMonth - 1 !== month) return;
     // Straight to that day on the booking page, not to whichever day comes first.
     events.set(onDay, [`<a class="calendar-event is-oral" href="/mock-oral?day=${escapeHtml(date)}"
-      title="Mock oral day. Booking is open, pick the time that suits you.">Book mock oral</a>`,
+      title="Mock oral day. Booking is open, pick the time that suits you.">Book Mock ${oral.numbers?.[date] || 'oral'}</a>`,
       ...(events.get(onDay) || [])]);
   });
   const cells = [];

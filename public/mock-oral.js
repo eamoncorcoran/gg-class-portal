@@ -51,6 +51,10 @@ function clock(value) {
   return `${((hour + 11) % 12) + 1}:${String(minute).padStart(2, '0')}${hour < 12 ? 'am' : 'pm'}`;
 }
 
+const shortDate = (date) => new Date(`${date}T12:00:00`).toLocaleDateString('en-IE', {
+  weekday: 'short', day: 'numeric', month: 'short',
+}).replace(/,/g, '');
+
 function longDate(date, year = true) {
   return new Date(`${date}T12:00:00`).toLocaleDateString('en-IE', {
     weekday: 'long', day: 'numeric', month: 'long', ...(year ? { year: 'numeric' } : {}),
@@ -74,21 +78,26 @@ const chosenDay = () => state.days.find((day) => day.id === state.dayId)
 
 /* ------------------------------------------------------------------ pieces */
 
+/* The left of the card. What is being booked is said plainly and first: which
+   mock, which date, and the time once one is picked. Four near-identical days
+   are easy to mix up, and this is the thing that stops that. */
 function infoPanel({ day = null, slot = null, back = false } = {}) {
-  const when = day && slot
-    ? `<li>${icon.calendar}<span>${clock(slot.start)} to ${clock(slot.end)}, ${escapeHtml(longDate(day.date))}</span></li>`
-    : '';
+  const chosen = day ? `<div class="mo-cal-chosen">
+      <span>You are booking</span>
+      <strong>${escapeHtml(day.label)}</strong>
+      <em>${escapeHtml(longDate(day.date))}</em>
+      ${slot ? `<b>${clock(slot.start)} to ${clock(slot.end)}</b>` : ''}
+    </div>` : '';
   return `<aside class="mo-cal-info">
     ${back ? `<button class="mo-cal-back" id="mo-back" aria-label="Back to the times">${icon.back}</button>` : ''}
     <img class="mo-cal-logo" src="/logo.webp" alt="Gaeilgeoir Guides">
     <h1>Mock oral</h1>
+    ${chosen}
     <ul>
       <li>${icon.clock}<span>20 minutes</span></li>
       <li>${icon.video}<span>Online. Your link to join is emailed to you before the day.</span></li>
-      ${when}
       <li>${icon.globe}<span>All times are Irish time.</span></li>
     </ul>
-    ${day?.note ? `<p class="mo-cal-note">${escapeHtml(day.note)}</p>` : ''}
   </aside>`;
 }
 
@@ -115,7 +124,7 @@ function pickView() {
   const step = (to, label, arrow) => `<button class="mo-cal-step" ${months[to] ? `data-month="${months[to]}"` : 'disabled'} aria-label="${label}">${arrow}</button>`;
 
   const list = state.booked.has(day.id)
-    ? '<p class="mo-cal-none">You have a mock oral booked on this day. To change the time, cancel it first with the button in your confirmation email, then pick a new one.</p>'
+    ? `<p class="mo-cal-none">You are booked for ${escapeHtml(day.label)}. To change the time, cancel it first with the button in your confirmation email, then pick a new one.</p>`
     : times.length
     ? times.map((slot) => (slot.slot === state.slot
       ? `<div class="mo-slot chosen"><span>${clock(slot.start)}</span><button class="mo-next" id="mo-next">Next</button></div>`
@@ -125,7 +134,13 @@ function pickView() {
   return `<section class="mo-cal">
     ${infoPanel({ day, slot: state.booked.has(day.id) ? null : times.find((slot) => slot.slot === state.slot) })}
     <div class="mo-cal-dates">
-      <h2>Pick a day and a time</h2>
+      <h2>${state.days.length > 1 ? 'Pick your mock and a time' : 'Pick a time'}</h2>
+      ${state.days.length > 1 ? `<div class="mo-mocks">${state.days.map((row) => `
+        <button class="mo-mock ${row.id === day.id ? 'on' : ''}" data-day="${row.id}" aria-pressed="${row.id === day.id}">
+          <strong>${escapeHtml(row.label)}</strong>
+          <span>${escapeHtml(shortDate(row.date))}</span>
+          ${state.booked.has(row.id) ? '<small class="mine">Booked</small>' : row.full ? '<small>Full</small>' : ''}
+        </button>`).join('')}</div>` : ''}
       <div class="mo-cal-month">
         <strong>${new Intl.DateTimeFormat('en-IE', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1))}</strong>
         <span>${step(at - 1, 'Earlier month', '‹')}${step(at + 1, 'Later month', '›')}</span>
@@ -136,7 +151,7 @@ function pickView() {
       </div>
     </div>
     <div class="mo-cal-times">
-      <h3>${escapeHtml(longDate(day.date, false))}</h3>
+      <h3><strong>${escapeHtml(day.label)}</strong>${escapeHtml(longDate(day.date, false))}</h3>
       <div class="mo-cal-list">${list}</div>
     </div>
   </section>`;
@@ -155,7 +170,7 @@ function detailsView() {
       <input id="mo-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="200" required value="${escapeHtml(state.email)}">
       <p class="mo-cal-small">Your confirmation, your link to join and your reminders are sent to this address.</p>
       ${state.error ? `<p class="mo-cal-error" role="alert">${escapeHtml(state.error)}</p>` : ''}
-      <button class="mo-book" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Booking' : 'Book mock oral'}</button>
+      <button class="mo-book" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Booking' : `Book ${escapeHtml(day.label)}`}</button>
     </form>
   </section>`;
 }
@@ -163,6 +178,7 @@ function detailsView() {
 function bookingView() {
   const booking = state.booking;
   const rows = `<dl class="mo-facts">
+      <div><dt>Mock oral</dt><dd>${escapeHtml(booking.label)}</dd></div>
       <div><dt>Date</dt><dd>${escapeHtml(longDate(booking.date))}</dd></div>
       <div><dt>Time</dt><dd>${clock(booking.start)} to ${clock(booking.end)}</dd></div>
       <div><dt>Examiner</dt><dd>Examiner ${booking.examiner}${booking.examinerName ? ` (${escapeHtml(booking.examinerName)})` : ''}</dd></div>
@@ -171,7 +187,7 @@ function bookingView() {
   if (booking.status === 'cancelled') {
     return `<section class="mo-ticket mo-ticket-page">
       <div class="mo-ticket-head">
-        <div><strong>This booking is cancelled</strong><small>The place is open again for somebody else.</small></div>
+        <div><strong>${escapeHtml(booking.label)}: this booking is cancelled</strong><small>The place is open again for somebody else.</small></div>
       </div>
       ${rows}
       <div class="mo-ticket-foot"><span>Would you still like to do a mock oral?</span><button class="btn primary" id="mo-again">Pick another time</button></div>
@@ -192,7 +208,7 @@ function bookingView() {
   return `<section class="mo-ticket mo-ticket-page">
     <div class="mo-ticket-head">
       <span class="mo-ticket-tick">${icon.check}</span>
-      <div><strong>${state.fresh ? 'You are booked' : `${escapeHtml(String(booking.name).split(' ')[0] || 'Your')}${booking.name ? ', you are booked' : ' booking'}`}</strong>
+      <div><strong>You are booked for ${escapeHtml(booking.label)}</strong>
         <small>${state.fresh ? 'A confirmation is on its way to' : 'The details were emailed to'} ${escapeHtml(booking.email)}.</small></div>
     </div>
     ${rows}
@@ -203,7 +219,7 @@ function bookingView() {
     ${state.error ? `<p class="mo-cal-error" role="alert">${escapeHtml(state.error)}</p>` : ''}
     ${foot}
     ${state.days.some((day) => !state.booked.has(day.id) && day.id !== booking.dayId)
-      ? '<p class="mo-ticket-more">Each day is a separate mock oral. <button id="mo-again">Book another day</button></p>' : ''}
+      ? '<p class="mo-ticket-more">Each mock is booked separately. <button id="mo-again">Book another mock</button></p>' : ''}
   </section>`;
 }
 

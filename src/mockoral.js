@@ -128,9 +128,17 @@ function fail(status, message) {
   throw error;
 }
 
+/* Which mock oral a day is: Mock 1, Mock 2 and so on, in date order through one
+   school year (August to July), so next year's start again at Mock 1. It is
+   what a student calls them, and it tells four near-identical bookings apart. */
+const DAY_NUMBER = `(SELECT count(*)::int FROM mock_oral_days o
+    WHERE o.on_date <= d.on_date
+      AND date_trunc('year', o.on_date - interval '7 months') = date_trunc('year', d.on_date - interval '7 months'))`;
+export const mockLabel = (number) => `Mock ${number}`;
+
 const BOOKING_SELECT = `
   SELECT b.id, b.day_id, b.student_id, b.slot, b.examiner, b.starts_at, b.status, b.created_at,
-         d.on_date, d.note, d.examiners,
+         d.on_date, d.note, d.examiners, ${DAY_NUMBER} day_number,
          COALESCE(e.name,'') examiner_name, COALESCE(e.link,'') examiner_link,
          b.manage_token,
          COALESCE(NULLIF(b.name,''), u.name, '') student_name,
@@ -147,6 +155,8 @@ function oralFrom(row) {
     id: row.id,
     dayId: row.day_id,
     date: row.on_date,
+    number: row.day_number,
+    label: mockLabel(row.day_number),
     slot: row.slot,
     start: slot.start,
     end: slot.end,
@@ -210,12 +220,12 @@ const NOT_MINE = `NOT EXISTS (
 export async function studentMockOral(studentId) {
   const [mine, open] = await Promise.all([
     query(
-      `SELECT b.starts_at, b.examiner, d.on_date FROM mock_oral_bookings b
+      `SELECT b.starts_at, b.examiner, d.on_date, ${DAY_NUMBER} day_number FROM mock_oral_bookings b
        JOIN mock_oral_days d ON d.id=b.day_id
        WHERE b.student_id=$1 AND ${UPCOMING} ORDER BY b.starts_at`, [studentId]),
     /* The dates as well as the yes or no, so the calendar can mark each day. */
     query(
-      `SELECT d.on_date FROM mock_oral_days d
+      `SELECT d.on_date, ${DAY_NUMBER} day_number FROM mock_oral_days d
        WHERE d.booking_open=true AND d.on_date >= $2::date AND ${ELIGIBLE} AND ${NOT_MINE}
        ORDER BY d.on_date`,
       [studentId, todayInIreland()]),
@@ -223,9 +233,12 @@ export async function studentMockOral(studentId) {
   if (!mine.rows.length && !open.rows.length) return null;
   return {
     bookings: mine.rows.map((row) => ({
-      date: row.on_date, startsAt: new Date(row.starts_at).toISOString(), examiner: row.examiner,
+      date: row.on_date, number: row.day_number,
+      startsAt: new Date(row.starts_at).toISOString(), examiner: row.examiner,
     })),
     days: open.rows.map((row) => row.on_date),
+    // Which mock each of those open days is, by its date.
+    numbers: Object.fromEntries(open.rows.map((row) => [row.on_date, row.day_number])),
   };
 }
 
@@ -252,7 +265,8 @@ function bookableDay(day, now) {
   return {
     id: day.id,
     date: day.on_date,
-    note: day.note || '',
+    number: day.day_number,
+    label: mockLabel(day.day_number),
     slots,
     // Nothing left to pick: every time is either taken or gone.
     full: slots.every((slot) => slot.full || slot.past),
@@ -263,7 +277,7 @@ const stillToCome = (day) => day.slots.some((slot) => !slot.past);
 /* The booking page, which needs no sign-in: every day that is open. */
 export async function publicView(now = new Date()) {
   const days = await query(
-    `SELECT d.id, d.on_date, d.examiners, d.note, ${TAKEN}
+    `SELECT d.id, d.on_date, d.examiners, ${DAY_NUMBER} day_number, ${TAKEN}
      FROM mock_oral_days d
      WHERE d.booking_open=true AND d.on_date >= $1::date
      ORDER BY d.on_date`,
@@ -291,7 +305,7 @@ export async function studentView(studentId, now = new Date()) {
   const [mine, days] = await Promise.all([
     query(`${BOOKING_SELECT} WHERE b.student_id=$1 AND ${UPCOMING} ORDER BY b.starts_at`, [studentId]),
     query(
-      `SELECT d.id, d.on_date, d.examiners, d.note, ${TAKEN}
+      `SELECT d.id, d.on_date, d.examiners, ${DAY_NUMBER} day_number, ${TAKEN}
        FROM mock_oral_days d
        WHERE d.booking_open=true AND d.on_date >= $2::date AND ${ELIGIBLE} AND ${NOT_MINE}
        ORDER BY d.on_date`,
@@ -456,6 +470,8 @@ function daySummary(day) {
   return {
     id: day.id,
     date: day.on_date,
+    number: day.day_number,
+    label: mockLabel(day.day_number),
     examiners: day.examiners,
     bookingOpen: day.booking_open,
     classIds: day.class_ids || null,
@@ -470,7 +486,7 @@ function daySummary(day) {
 }
 
 const DAY_SELECT = `
-  SELECT d.*,
+  SELECT d.*, ${DAY_NUMBER} day_number,
     (SELECT count(*)::int FROM mock_oral_bookings b WHERE b.day_id=d.id AND b.status='booked') booked,
     (SELECT count(*)::int FROM (${DAY_STUDENTS} AND (d.class_ids IS NULL OR cs.class_id = ANY(d.class_ids))) s) students
   FROM mock_oral_days d`;

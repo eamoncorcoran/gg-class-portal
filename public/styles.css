@@ -2422,7 +2422,7 @@ button.mo-cal-day.on{background:var(--brand-600);color:#fff}
 button.mo-cal-day.full:not(.on){background:var(--gray-100);color:var(--text-tertiary);text-decoration:line-through}
 button.mo-cal-day:focus-visible,.mo-slot:focus-visible,.mo-next:focus-visible,.mo-book:focus-visible{outline:3px solid var(--brand-200);outline-offset:2px}
 .mo-cal-times{border-left:1px solid var(--border)}
-.mo-cal-list{display:grid;gap:9px;align-content:start;max-height:388px;overflow-y:auto;margin:-3px -8px -3px -3px;padding:3px 8px 3px 3px}
+.mo-cal-list{display:grid;gap:9px;align-content:start;max-height:446px;overflow-y:auto;margin:-3px -8px -3px -3px;padding:3px 8px 3px 3px}
 .mo-slot{display:block;width:100%;height:48px;padding:0;border:1px solid var(--brand-500);border-radius:var(--radius-sm);background:var(--surface);color:var(--brand-700);font-size:15px;font-weight:700}
 button.mo-slot:hover{box-shadow:inset 0 0 0 1px var(--brand-500);background:var(--brand-25)}
 .mo-slot.chosen{display:grid;grid-template-columns:1fr 1fr;gap:6px;border:0;background:none}
@@ -2469,3 +2469,26 @@ a.mo-open-day:hover{border-color:var(--brand-300);background:var(--brand-25)}
 .mo-ticket-more{margin:14px 0 0;padding-top:14px;border-top:1px solid var(--border);font-size:13.5px;color:var(--text-secondary)}
 .mo-ticket-more button,.mo-ticket-more a{padding:0;border:0;background:none;font:inherit;font-weight:650;color:var(--brand-700);text-decoration:underline;cursor:pointer}
 button.mo-cal-day.mine:not(.on){background:var(--surface);box-shadow:inset 0 0 0 2px var(--brand-300);color:var(--brand-700)}
+
+/* Which mock is being booked, said first and plainly. */
+.mo-cal-chosen{display:grid;gap:2px;margin:0 0 18px;padding:12px 14px;border:1px solid var(--brand-200);border-radius:var(--radius-md);background:var(--brand-50)}
+.mo-cal-chosen span{font-size:11px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--brand-700)}
+.mo-cal-chosen strong{font-size:22px;font-weight:740;line-height:1.15;letter-spacing:-.03em;color:var(--brand-900)}
+.mo-cal-chosen em{font-style:normal;font-size:14px;font-weight:620;line-height:1.35;color:var(--text)}
+.mo-cal-chosen b{margin-top:4px;font-size:14px;font-weight:700;color:var(--brand-800)}
+.mo-mocks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 20px}
+.mo-mock{display:grid;gap:1px;justify-items:start;padding:9px 11px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--surface);color:var(--text);text-align:left}
+.mo-mock:hover{border-color:var(--brand-400);background:var(--brand-25)}
+.mo-mock strong{font-size:14.5px;font-weight:720;letter-spacing:-.01em}
+.mo-mock span{font-size:12px;font-weight:560;color:var(--text-tertiary)}
+.mo-mock small{font-size:10.5px;font-weight:650;color:var(--text-tertiary)}
+.mo-mock small.mine{color:var(--brand-700)}
+.mo-mock.on{border-color:var(--brand-600);background:var(--brand-600);color:#fff}
+.mo-mock.on span,.mo-mock.on small,.mo-mock.on small.mine{color:rgba(255,255,255,.88)}
+.mo-mock:focus-visible{outline:3px solid var(--brand-200);outline-offset:2px}
+.mo-cal h3 strong{display:block;font-size:18px;font-weight:720;letter-spacing:-.025em;color:var(--text)}
+@media (max-width:640px){
+  .mo-mocks{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mo-cal-chosen{margin-bottom:14px}
+}
+.mo-open-day strong{font-weight:720;margin-right:6px}

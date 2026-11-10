@@ -234,7 +234,7 @@ test('a cancelled booking drops out of the feed, and the calendars point at the 
 
   // The student's month: their own time once booked, the open days until then.
   assert.match(app, /calendar-event is-oral booked" data-student-view="mockoral"/);
-  assert.match(app, />Book mock oral</);
+  assert.match(app, />Book Mock \$\{oral\.numbers\?\.\[date\] \|\| 'oral'\}</);
   assert.match(moduleSource, /days: open\.rows\.map\(\(row\) => row\.on_date\)/);
   // Cancelling puts the day back on the calendar as bookable.
   assert.match(app, /days: \(state\.mockOral\.days \|\| \[\]\)\.map\(\(day\) => day\.date\),/);
@@ -346,5 +346,35 @@ test('the portal shows every booking, each with its own cancel, and each open da
   assert.match(app, /<a class="mo-open-day" href="\/mock-oral\?day=\$\{escapeHtml\(day\.date\)\}">/);
   // The booking page opens on a day not yet booked, and offers the others after a booking.
   assert.match(page, /state\.days\.find\(\(day\) => !day\.full && !state\.booked\.has\(day\.id\)\)/);
-  assert.match(page, /<button id="mo-again">Book another day<\/button>/);
+  assert.match(page, /<button id="mo-again">Book another mock<\/button>/);
+});
+
+/* Mock 1, Mock 2, Mock 3, Mock 4.
+   ------------------------------------------------------------------
+   Four Saturdays look alike. Each day has a number, in date order through the
+   school year, and it is said wherever a student is choosing or has chosen. */
+
+test('every mock oral day has a number, and the booking page leads with it', () => {
+  assert.match(moduleSource, /const DAY_NUMBER = `\(SELECT count\(\*\)::int FROM mock_oral_days o\s+WHERE o\.on_date <= d\.on_date/);
+  // August to July, so next year's days start again at Mock 1.
+  assert.match(moduleSource, /date_trunc\('year', o\.on_date - interval '7 months'\) = date_trunc\('year', d\.on_date - interval '7 months'\)/);
+  assert.match(moduleSource, /export const mockLabel = \(number\) => `Mock \$\{number\}`;/);
+
+  // The page says which mock is being booked before anything else, and names the button after it.
+  assert.match(page, /<span>You are booking<\/span>\s+<strong>\$\{escapeHtml\(day\.label\)\}<\/strong>/);
+  assert.match(page, /`Book \$\{escapeHtml\(day\.label\)\}`/);
+  assert.match(page, /<strong>You are booked for \$\{escapeHtml\(booking\.label\)\}<\/strong>/);
+  assert.match(page, /class="mo-mock \$\{row\.id === day\.id \? 'on' : ''\}" data-day="\$\{row\.id\}"/);
+  // And the emails and the portal say it too.
+  assert.match(email, /\.\.\.\(oral\.label \? \[\['Mock oral', oral\.label\]\] : \[\]\),/);
+  assert.match(app, />Mock \$\{booking\.number\} \$\{moTime\(booking\.startsAt\)\}<\/button>/);
+  assert.match(app, /<strong>\$\{escapeHtml\(booking\.label\)\}: you are booked<\/strong>/);
+});
+
+test('the booking page does not show the note about what is in the oral', () => {
+  // The teacher's note goes in the confirmation, not in front of somebody choosing a time.
+  const day = moduleSource.slice(moduleSource.indexOf('function bookableDay'), moduleSource.indexOf('const stillToCome'));
+  assert.ok(!/note/.test(day), 'a bookable day carries no note');
+  const picking = page.slice(page.indexOf('function infoPanel'), page.indexOf('function bookingView'));
+  assert.ok(!/\.note/.test(picking), 'nothing on the way to booking prints one');
 });

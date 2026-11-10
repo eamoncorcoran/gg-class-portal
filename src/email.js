@@ -589,6 +589,8 @@ function oralExaminer(oral) {
 
 function oralRows(oral) {
   return [
+    // Which of the mock orals this is, for somebody who has booked several.
+    ...(oral.label ? [['Mock oral', oral.label]] : []),
     ['Date', oralDay(oral)],
     ['Time', oralTimes(oral)],
     ['Examiner', oralExaminer(oral)],
