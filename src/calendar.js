@@ -17,6 +17,7 @@
 import { DateTime } from 'luxon';
 import { config } from './config.js';
 import { one, query } from './db.js';
+import { ORAL_MINUTES, SLOTS, capacity, slotStartsAt } from './mockoral.js';
 import { randomToken } from './security.js';
 
 /** RFC 5545 wants CRLF, escaped commas and semicolons, and folded long lines. */
@@ -67,7 +68,9 @@ export function buildCalendar({ name, description, events }) {
 
   for (const event of events) {
     const due = new Date(event.due);
-    const start = new Date(due.getTime() - 30 * 60 * 1000);
+    /* A deadline is drawn as the half hour before it closes. Something that
+       really runs from one time to another, a mock oral, gives its own start. */
+    const start = event.start ? new Date(event.start) : new Date(due.getTime() - 30 * 60 * 1000);
     lines.push(
       'BEGIN:VEVENT',
       `UID:${event.uid}`,
@@ -83,7 +86,7 @@ export function buildCalendar({ name, description, events }) {
       'BEGIN:VALARM',
       'ACTION:DISPLAY',
       'TRIGGER:-PT24H',
-      `DESCRIPTION:${escapeText(`${event.title} is due tomorrow`)}`,
+      `DESCRIPTION:${escapeText(event.alarm || `${event.title} is due tomorrow`)}`,
       'END:VALARM',
       'END:VEVENT',
     );
@@ -142,6 +145,48 @@ export async function rotateCalendarToken(userId) {
   return token;
 }
 
+/* A student's own mock oral: the twenty minutes it runs for, with the examiner
+   and their link once the teacher has added one. */
+export function mockOralEvent(booking) {
+  const start = new Date(booking.starts_at);
+  const who = `Examiner ${booking.examiner}${booking.examiner_name ? ` (${booking.examiner_name})` : ''}`;
+  return {
+    uid: `mock-oral-${booking.id}@gaeilgeoirguides`,
+    title: `Mock oral with ${who}`,
+    description: [
+      `Your mock oral is with ${who}.`,
+      booking.examiner_link ? `Join here: ${booking.examiner_link}` : '',
+      `See or cancel your booking: ${config.appUrl}/?go=mockoral`,
+    ].filter(Boolean).join('\n\n'),
+    start,
+    due: new Date(start.getTime() + ORAL_MINUTES * 60 * 1000),
+    updatedAt: booking.created_at,
+    url: `${config.appUrl}/?go=mockoral`,
+    category: 'Mock oral',
+    alarm: 'Your mock oral is tomorrow',
+  };
+}
+
+/* The teacher's side of the same day: first oral to the end of the last. */
+export function mockOralDayEvent(day) {
+  const last = SLOTS[SLOTS.length - 1];
+  const places = capacity(day.examiners);
+  return {
+    uid: `mock-oral-day-${day.id}@gaeilgeoirguides`,
+    title: 'Mock orals',
+    description: [
+      `${day.booked} of ${places} places booked with ${day.examiners} examiner${day.examiners === 1 ? '' : 's'}.`,
+      day.booking_open ? 'Booking is open.' : 'Booking is closed.',
+    ].join('\n\n'),
+    start: slotStartsAt(day.on_date, 1),
+    due: new Date(slotStartsAt(day.on_date, last.slot).getTime() + ORAL_MINUTES * 60 * 1000),
+    updatedAt: day.created_at,
+    url: config.appUrl,
+    category: 'Mock oral',
+    alarm: 'The mock orals are tomorrow',
+  };
+}
+
 function classLabelOf(row) {
   const day = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][Number(row.day_of_week)] || '';
   return `${row.programme_name} | ${day} | ${String(row.start_time).slice(0, 5)}`;
@@ -162,10 +207,18 @@ export async function feedForUser(user) {
        WHERE a.status='published' AND a.deadline_at > now() - interval '90 days'
        ORDER BY a.deadline_at`,
     );
+    const oralDays = await query(
+      `SELECT d.id, d.on_date::text AS on_date, d.examiners, d.booking_open, d.created_at,
+              (SELECT count(*)::int FROM mock_oral_bookings b WHERE b.day_id=d.id AND b.status='booked') booked
+       FROM mock_oral_days d WHERE d.on_date > now() - interval '30 days' ORDER BY d.on_date`,
+    );
     return {
       name: 'Gaeilgeoir Guides deadlines',
-      description: 'Homework deadlines across every class.',
-      events: assignments.rows.map((row) => assignmentEvent(row, { classLabel: classLabelOf(row) })),
+      description: 'Homework deadlines and mock oral days across every class.',
+      events: [
+        ...assignments.rows.map((row) => assignmentEvent(row, { classLabel: classLabelOf(row) })),
+        ...oralDays.rows.map(mockOralDayEvent),
+      ],
     };
   }
 
@@ -176,6 +229,17 @@ export async function feedForUser(user) {
     [user.id],
   );
   if (!klass) return { name: 'Gaeilgeoir Guides deadlines', description: 'No class yet.', events: [] };
+
+  /* A cancelled booking is simply not here, so it leaves the student's own
+     calendar app the next time it refreshes. */
+  const orals = await query(
+    `SELECT b.id, b.starts_at, b.examiner, b.created_at, e.name AS examiner_name, e.link AS examiner_link
+     FROM mock_oral_bookings b
+     LEFT JOIN mock_oral_examiners e ON e.day_id=b.day_id AND e.number=b.examiner
+     WHERE b.student_id=$1 AND b.status='booked' AND b.starts_at > now() - interval '30 days'
+     ORDER BY b.starts_at`,
+    [user.id],
+  );
 
   const label = classLabelOf(klass);
   const [assignments, weeks] = await Promise.all([
@@ -205,6 +269,7 @@ export async function feedForUser(user) {
     events: [
       ...assignments.rows.map((row) => assignmentEvent(row, { classLabel: label })),
       ...weeks.rows.map((row) => checkinEvent(row, { classLabel: label })),
+      ...orals.rows.map(mockOralEvent),
     ],
   };
 }

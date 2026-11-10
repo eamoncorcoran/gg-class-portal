@@ -29,6 +29,7 @@ import { startZoomScheduler } from './src/zoomscheduler.js';
 import { refreshZoomApi } from './src/zoom.js';
 import { refreshBunny } from './src/bunny.js';
 import sraithRoutes from './src/routes/sraith.js';
+import mockOralRoutes from './src/routes/mockoral.js';
 import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
 
@@ -215,6 +216,7 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/live', liveRoutes);
 // The Sraith Pictiúr revision section, for the Irish for Primary Teaching class.
 app.use('/api/sraith', sraithRoutes);
+app.use('/api/mock-oral', mockOralRoutes);
 // Calendar apps subscribe with no cookies, so this one authenticates by URL token.
 app.use('/calendar', calendarRoutes);
 

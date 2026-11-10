@@ -4,6 +4,7 @@ import { query, one } from './db.js';
 import { getSetting } from './settings.js';
 import { sendDeadlineReminder, sendCheckinReminder, sendClassReminder } from './email.js';
 import { classSittings } from './classtime.js';
+import { runMockOralReminders } from './mockoral.js';
 
 /* Two hours before a class, give or take the width of one cycle. */
 const CLASS_REMINDER_MS = 2 * 60 * 60 * 1000;
@@ -398,5 +399,6 @@ export function startReminderScheduler() {
     try { await runReminderCycle(); } catch (error) { console.error('Reminder cycle failed', error); }
     try { await runCheckinReminders(); } catch (error) { console.error('Check-in reminders failed', error); }
     try { await runClassReminders(); } catch (error) { console.error('Class reminders failed', error); }
+    try { await runMockOralReminders(); } catch (error) { console.error('Mock oral reminders failed', error); }
   }, { noOverlap: true });
 }

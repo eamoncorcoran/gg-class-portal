@@ -555,3 +555,193 @@ export async function sendDeadlineReminder({ student, assignment, template }) {
     metadata: { type: 'deadline_reminder', assignmentId: assignment.id, studentId: student.id },
   });
 }
+
+/* Mock orals.
+   ------------------------------------------------------------------
+   Four emails: booked, cancelled, changed, and a reminder. Each one carries the
+   same block of date, time and examiner, because that block is what a student
+   opens the email to find and it should never have to be read out of a sentence.
+
+   `oral` is the booking as src/mockoral.js describes it: date, startsAt,
+   examiner, examinerName, link, note. */
+const ORAL_ZONE = 'Europe/Dublin';
+
+function oralDay(oral) {
+  return new Intl.DateTimeFormat('en-IE', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: ORAL_ZONE,
+  }).format(new Date(oral.startsAt)).replace(',', '');
+}
+
+function oralClock(value) {
+  return new Intl.DateTimeFormat('en-IE', {
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: ORAL_ZONE,
+  }).format(new Date(value)).replace(/\s/g, '').toLowerCase();
+}
+
+function oralTimes(oral) {
+  const end = new Date(new Date(oral.startsAt).getTime() + (oral.minutes || 20) * 60 * 1000);
+  return `${oralClock(oral.startsAt)} to ${oralClock(end)}`;
+}
+
+function oralExaminer(oral) {
+  return oral.examinerName ? `Examiner ${oral.examiner} (${oral.examinerName})` : `Examiner ${oral.examiner}`;
+}
+
+function oralRows(oral) {
+  return [
+    ['Date', oralDay(oral)],
+    ['Time', oralTimes(oral)],
+    ['Examiner', oralExaminer(oral)],
+    ...(oral.link ? [['Link', oral.link]] : []),
+  ];
+}
+
+function oralDetailsText(oral) {
+  return oralRows(oral).map(([label, value]) => `${label}: ${value}`).join('\n');
+}
+
+function oralDetailsHtml(oral) {
+  const rows = oralRows(oral).map(([label, value]) => `<tr>
+      <td style="padding:5px 14px 5px 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#748171;white-space:nowrap;vertical-align:top">${escapeHtml(label)}</td>
+      <td style="padding:5px 0;font-size:15px;font-weight:600;color:#1f2d1c;word-break:break-word">${label === 'Link'
+        ? `<a href="${escapeHtml(value)}" style="color:#3f922c">${escapeHtml(value)}</a>`
+        : escapeHtml(value)}</td>
+    </tr>`).join('');
+  return `<table cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:4px 0 18px;border:1px solid #dfe8da;border-radius:10px;background:#f8fbf6">
+    <tr><td style="padding:12px 18px"><table cellpadding="0" cellspacing="0" role="presentation">${rows}</table></td></tr>
+  </table>`;
+}
+
+function oralMessage({ student, oral, subject, preheader, before, after = [], buttonText, type }) {
+  const firstName = String(student.name || '').split(' ')[0] || 'there';
+  const url = `${config.appUrl}/?go=mockoral`;
+  const showDetails = oral.showDetails !== false;
+  const closing = [...after, ...(oral.note && showDetails ? [oral.note] : [])].filter(Boolean);
+
+  const text = [
+    `Hi ${firstName},`, '',
+    ...before.flatMap((line) => [line, '']),
+    ...(showDetails ? [oralDetailsText(oral), ''] : []),
+    ...closing.flatMap((line) => [line, '']),
+    `${buttonText}: ${url}`,
+  ].join('\n');
+
+  const body = paragraphsFrom(`Hi ${firstName},\n\n${before.join('\n\n')}`)
+    + (showDetails ? oralDetailsHtml(oral) : '')
+    + paragraphsFrom(closing.join('\n\n'));
+
+  return {
+    to: student.email,
+    subject,
+    text,
+    page: { title: subject, preheader, body, buttonText, buttonUrl: url },
+    /* Somebody has just booked or lost a place, or is about to sit an oral. None
+       of it can wait behind the hourly pace. */
+    priority: type === 'mock_oral_reminder' ? 'deadline' : 'transactional',
+    metadata: { type, bookingId: oral.id, studentId: student.id },
+  };
+}
+
+export async function sendMockOralConfirmation({ student, oral }) {
+  const { page, ...message } = oralMessage({
+    student, oral,
+    type: 'mock_oral_confirmation',
+    subject: `Your mock oral is booked: ${oralDay(oral)} at ${oralClock(oral.startsAt)}`,
+    preheader: `${oralTimes(oral)} with ${oralExaminer(oral)}.`,
+    before: ['Your mock oral is booked. Here are the details.'],
+    after: [
+      oral.link ? '' : 'Your link to join will be sent to you before the day.',
+      'If you cannot make it, cancel in the portal so somebody else can have the place. You can then pick another time if one is free.',
+    ],
+    buttonText: 'View my booking',
+  });
+  return sendEmail({ ...message, html: layout({ ...page }) });
+}
+
+/* `by` is who cancelled: the student, the teacher, or the whole day coming off. */
+export async function sendMockOralCancelled({ student, oral, by = 'student' }) {
+  const when = `${oralDay(oral)} at ${oralClock(oral.startsAt)}`;
+  const before = by === 'student'
+    ? [`Your mock oral on ${when} is cancelled, and the place has been freed up for somebody else.`]
+    : by === 'day'
+      ? [`The mock orals on ${oralDay(oral)} are not going ahead, so your booking at ${oralClock(oral.startsAt)} is cancelled. Sorry about that.`]
+      : [`We have had to cancel your mock oral on ${when}. Sorry about that.`];
+  const after = by === 'day'
+    ? ['If another date opens for booking, you will find it in the portal.']
+    : ['If you would still like to do one, you can pick another time in the portal.'];
+  const { page, ...message } = oralMessage({
+    student, oral: { ...oral, showDetails: false },
+    type: 'mock_oral_cancelled',
+    subject: `Your mock oral on ${oralDay(oral)} is cancelled`,
+    preheader: before[0],
+    before, after,
+    buttonText: by === 'day' ? 'Open the portal' : 'Book another time',
+  });
+  return sendEmail({ ...message, html: layout({ ...page }) });
+}
+
+/* The date moved, or the student was moved to another examiner. */
+export async function sendMockOralChanged({ student, oral, was }) {
+  const moved = new Date(was.startsAt).getTime() !== new Date(oral.startsAt).getTime();
+  const before = moved
+    ? [`Your mock oral has moved. It was ${oralDay(was)} at ${oralClock(was.startsAt)}. Here are the new details.`]
+    : [`You are now with ${oralExaminer(oral)} for your mock oral. The date and time are the same.`];
+  const { page, ...message } = oralMessage({
+    student, oral,
+    type: 'mock_oral_changed',
+    subject: moved
+      ? `Your mock oral has moved to ${oralDay(oral)} at ${oralClock(oral.startsAt)}`
+      : `Your mock oral is now with ${oralExaminer(oral)}`,
+    preheader: `${oralDay(oral)}, ${oralTimes(oral)} with ${oralExaminer(oral)}.`,
+    before,
+    after: ['If the new details do not suit, you can cancel in the portal and pick another time.'],
+    buttonText: 'View my booking',
+  });
+  return sendEmail({ ...message, html: layout({ ...page }) });
+}
+
+/* `when` is 'day' (the day before) or 'hour' (about an hour to go). */
+export async function sendMockOralReminder({ student, oral, when, now = new Date() }) {
+  const dateOf = (value) => new Intl.DateTimeFormat('en-CA', { timeZone: ORAL_ZONE }).format(new Date(value));
+  const today = dateOf(now) === dateOf(oral.startsAt);
+  const at = oralClock(oral.startsAt);
+  const subject = when === 'hour'
+    ? `Your mock oral starts at ${at}`
+    : `Your mock oral is ${today ? 'today' : 'tomorrow'} at ${at}`;
+  const before = when === 'hour'
+    ? [`Your mock oral starts at ${at}, about an hour from now.`]
+    : [`A reminder that your mock oral is ${today ? 'today' : 'tomorrow'} at ${at}.`];
+  const { page, ...message } = oralMessage({
+    student, oral,
+    type: 'mock_oral_reminder',
+    subject,
+    preheader: `${oralTimes(oral)} with ${oralExaminer(oral)}.`,
+    before,
+    after: [
+      oral.link ? 'Use the link above to join, and be ready a few minutes early.' : 'Be ready a few minutes early.',
+      when === 'hour' ? '' : 'If you cannot make it, cancel in the portal so somebody else can have the place.',
+    ],
+    buttonText: 'View my booking',
+  });
+  return sendEmail({ ...message, html: layout({ ...page }) });
+}
+
+/* Sent by the teacher from the day's page, once the examiners' links are in:
+   everything a student needs for the day, in one email. */
+export async function sendMockOralDetails({ student, oral }) {
+  const { page, ...message } = oralMessage({
+    student, oral,
+    type: 'mock_oral_details',
+    subject: `Your mock oral details: ${oralDay(oral)} at ${oralClock(oral.startsAt)}`,
+    preheader: `${oralTimes(oral)} with ${oralExaminer(oral)}.`,
+    before: [oral.link
+      ? 'Here are the details for your mock oral, with your link to join.'
+      : 'Here are the details for your mock oral.'],
+    after: [
+      oral.link ? 'Use the link above to join, and be ready a few minutes early.' : '',
+      'If you cannot make it, cancel in the portal so somebody else can have the place.',
+    ],
+    buttonText: 'View my booking',
+  });
+  return sendEmail({ ...message, html: layout({ ...page }) });
+}

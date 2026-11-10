@@ -2252,3 +2252,138 @@ tr.is-found{animation:foundFlash 1.6s ease-out}
   .sr-thumb img,.sr-line.playing .sr-say svg{transition:none;animation:none}
   .sr-line.loading .sr-say::after{animation-duration:1.6s}
 }
+
+/* Mock orals
+   ------------------------------------------------------------------
+   Two screens. The teacher's is a grid of times down and examiners across, so
+   a glance says who is where and what is left. The student's is a short list
+   of times, or the one they have booked, and nothing else. */
+.mo-subhead{margin:28px 0 10px;color:var(--text-tertiary);font-size:12px;font-weight:650}
+.mo-days{display:grid;gap:10px}
+.mo-day{display:grid;grid-template-columns:minmax(200px,1.1fr) minmax(220px,1.4fr) auto;align-items:center;gap:20px;width:100%;
+  padding:16px 18px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-xs)}
+.mo-day:hover{border-color:var(--brand-300);box-shadow:var(--shadow-sm)}
+.mo-day-date{display:grid;gap:3px}
+.mo-day-date strong{font-size:15px;font-weight:660;letter-spacing:-.02em;color:var(--text)}
+.mo-day-date small{font-size:12px;color:var(--text-tertiary)}
+.mo-day-meter{display:grid;gap:6px}
+.mo-meter{display:block;height:8px;border-radius:999px;background:var(--gray-100);overflow:hidden}
+.mo-meter i{display:block;height:100%;border-radius:999px;background:var(--brand-500);transition:width .25s}
+.mo-meter-label{font-size:12px;color:var(--text-tertiary)}
+.mo-meter-label strong{color:var(--text);font-weight:660}
+.mo-empty .btn{margin-top:16px}
+.mo-empty p{font-size:12.5px;line-height:19px}
+
+/* The setup form: the number of examiners, and straight away what it buys. */
+.mo-stepper{display:grid;grid-template-columns:44px 1fr 44px;gap:8px;max-width:230px}
+.mo-stepper .btn{font-size:18px;padding:0}
+.mo-stepper input{text-align:center;font-size:18px;font-weight:660}
+.mo-sum{display:grid;gap:3px;margin-top:4px;padding:12px 14px;border-radius:var(--radius-sm);background:var(--brand-50);border:1px solid var(--brand-100);font-size:12.5px;color:var(--text-secondary)}
+.mo-sum-big{font-size:14px}
+.mo-sum-big strong{font-size:24px;font-weight:680;letter-spacing:-.03em;color:var(--brand-800)}
+.mo-sum-line.ok{color:var(--success-700);font-weight:600}
+.mo-sum-line.short{color:var(--warning-700);font-weight:600}
+.mo-classes{display:grid;gap:6px}
+.mo-class{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--text);cursor:pointer}
+.mo-class input{width:auto;flex:0 0 auto;box-shadow:none}
+.mo-class span{flex:1 1 auto;min-width:0}
+.mo-class small{flex:0 0 auto;font-size:11.5px;color:var(--text-tertiary);font-weight:400}
+.modal-footer .mo-left-button{margin-right:auto}
+
+.mo-back{display:inline-flex;align-items:center;gap:4px;margin-bottom:14px}
+.mo-banner{display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:13px 16px;border:1px solid var(--warning-100);border-radius:var(--radius-md);background:var(--warning-50)}
+.mo-banner div{display:grid;gap:2px;font-size:12.5px;color:var(--text-secondary)}
+.mo-banner strong{font-size:13.5px;color:var(--warning-700)}
+.mo-stats .stat-value{margin-top:10px}
+.mo-stats .mo-meter{margin-top:10px}
+.mo-stat-step{display:flex;align-items:center;gap:12px;margin-top:10px}
+.mo-stat-step .stat-value{margin-top:0;min-width:36px;text-align:center}
+.mo-stat-step .btn{min-width:34px;font-size:16px;padding:0}
+.mo-stats .stat-note{font-size:11px}
+
+.mo-grid{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+.mo-grid th,.mo-grid td{padding:5px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle}
+.mo-grid thead th{position:sticky;top:0;z-index:2;background:var(--gray-25);padding:8px 6px;font-size:11px;font-weight:600;color:var(--text-tertiary)}
+.mo-grid thead th:first-child,.mo-grid tbody th{position:sticky;left:0;z-index:1;background:var(--surface);padding-left:19px;white-space:nowrap;font-weight:640;color:var(--text-secondary);font-size:12.5px;min-width:86px}
+.mo-grid thead th:first-child{z-index:3;background:var(--gray-25);font-size:11px;color:var(--text-tertiary)}
+.mo-grid tbody tr:last-child th,.mo-grid tbody tr:last-child td{border-bottom:0}
+.mo-examiner{display:grid;gap:1px;width:100%;min-width:132px;padding:6px 8px;text-align:left;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent}
+.mo-examiner:hover{background:var(--surface);border-color:var(--border-strong)}
+.mo-examiner strong{font-size:12.5px;font-weight:660;color:var(--text)}
+.mo-examiner small{font-size:11px;font-weight:400;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+.mo-cell{display:block;width:100%;min-width:132px;min-height:34px;padding:6px 10px;text-align:left;border-radius:var(--radius-sm);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.mo-cell.booked{border:1px solid var(--brand-200);background:var(--brand-50);color:var(--brand-900);font-weight:600}
+.mo-cell.booked:hover{border-color:var(--brand-400)}
+.mo-cell.free{border:1px dashed var(--border-strong);background:transparent;color:var(--text-quaternary)}
+.mo-cell.free:hover{border-style:solid;border-color:var(--brand-400);color:var(--brand-700);background:var(--brand-25)}
+.mo-grid .mo-left{padding-right:19px;text-align:right;white-space:nowrap;font-size:12px;color:var(--text-tertiary)}
+.mo-grid td.mo-left.full{color:var(--success-700);font-weight:650}
+.mo-break th,.mo-break td{background:var(--gray-50)!important;color:var(--text-tertiary);font-size:12px}
+.mo-break td{font-style:italic}
+
+.mo-facts{display:grid;gap:0;margin:0}
+.mo-facts div{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.mo-facts div:last-child{border-bottom:0}
+.mo-facts dt{font-size:12.5px;color:var(--text-tertiary)}
+.mo-facts dd{margin:0;font-size:14.5px;font-weight:620;color:var(--text)}
+.mo-picks{display:grid;gap:6px;max-height:320px;overflow:auto;margin-top:12px}
+.mo-pick{display:grid;gap:1px;width:100%;padding:10px 12px;text-align:left;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
+.mo-pick:hover{border-color:var(--brand-400);background:var(--brand-25)}
+.mo-pick strong{font-size:13px;font-weight:620}
+.mo-pick small{font-size:11.5px;color:var(--text-tertiary)}
+.mo-pick-none{padding:14px 2px}
+
+/* The student's side */
+.mo-loading{display:grid;place-items:center;padding:60px 0}
+.mo-bar{border-color:var(--brand-200);background:var(--brand-50)}
+.mo-bar:hover{border-color:var(--brand-400)}
+.mo-bar .task-bar-icon,.mo-bar .task-bar-go{color:var(--brand-700)}
+.mo-picker,.mo-ticket{max-width:680px;padding:22px 24px;margin-bottom:18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-xs)}
+.mo-picker header h2{margin:0;font-size:19px;font-weight:680;letter-spacing:-.03em}
+.mo-picker header p{margin:5px 0 0;font-size:13.5px;color:var(--text-tertiary)}
+.mo-picker h3{margin:22px 0 9px;font-size:12px;font-weight:650;color:var(--text-tertiary)}
+.mo-times{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:9px}
+.mo-time{display:grid;gap:2px;justify-items:center;padding:13px 6px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--surface);color:var(--text)}
+.mo-time strong{font-size:15.5px;font-weight:660;letter-spacing:-.02em}
+.mo-time small{font-size:11.5px;color:var(--text-tertiary)}
+.mo-time.open:hover,.mo-time.open:focus-visible{border-color:var(--brand-500);background:var(--brand-50);box-shadow:0 0 0 3px var(--brand-100);outline:0}
+.mo-time:disabled{background:var(--gray-50);border-color:var(--border);color:var(--text-quaternary);cursor:not-allowed}
+.mo-time:disabled strong{text-decoration:line-through;font-weight:500}
+.mo-time:disabled small{color:var(--text-quaternary)}
+p.mo-note{margin:14px 0 0!important;padding:11px 13px;border-radius:var(--radius-sm);background:var(--gray-50);font-size:13px!important;line-height:1.5;color:var(--text-secondary)!important;white-space:pre-line}
+
+.mo-ticket-head{display:flex;align-items:center;gap:13px;margin-bottom:10px}
+.mo-ticket-tick{display:grid;place-items:center;flex:0 0 auto;width:38px;height:38px;border-radius:50%;background:var(--success-50);color:var(--success-600)}
+.mo-ticket-tick svg{width:20px;height:20px}
+.mo-ticket-head div{display:grid;gap:2px;min-width:0}
+.mo-ticket-head strong{font-size:19px;font-weight:680;letter-spacing:-.03em}
+.mo-ticket-head small{font-size:12.5px;color:var(--text-tertiary);overflow-wrap:anywhere}
+.mo-ticket .mo-facts dd{font-size:16px}
+.mo-join{margin-top:16px;min-height:44px;padding:10px 20px;font-size:14px}
+.mo-soon{margin:14px 0 0;font-size:13px;color:var(--text-tertiary)}
+.mo-ticket-foot{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.mo-ticket-foot span{font-size:12.5px;line-height:1.5;color:var(--text-tertiary)}
+.mo-ticket-foot .btn{flex:0 0 auto}
+
+@media (max-width:760px){
+  .mo-day{grid-template-columns:1fr auto;gap:10px 12px}
+  .mo-day-meter{grid-column:1 / -1;grid-row:2}
+  .mo-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mo-picker,.mo-ticket{padding:18px 16px;border-radius:var(--radius-lg)}
+  .mo-times{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .mo-time{padding:14px 4px}
+  .mo-ticket-foot{flex-direction:column;align-items:stretch}
+  .mo-join{width:100%}
+  .mo-facts div{grid-template-columns:78px 1fr}
+}
+
+/* Mock orals on the calendars. Blue, because green is a class and the warm
+   colours all mean something about homework. */
+.calendar-event.is-oral{background:var(--blue-50);border-color:var(--blue-500);color:var(--blue-700);border-style:dashed}
+.calendar-event.is-oral.booked{background:var(--blue-600);border-color:var(--blue-600);color:#fff;border-style:solid}
+.calendar-event.is-oral:hover{filter:brightness(.96)}
+.calendar-event.oral{background:var(--blue-50);border-color:var(--blue-100);color:var(--blue-700)}
+.calendar-event.oral.quiet{background:var(--white);border-style:dashed;border-color:var(--blue-100)}
+.calendar-event.oral .event-time{display:block;font-size:8px;font-weight:700;opacity:.8;font-variant-numeric:tabular-nums}
+.calendar-event.oral .event-title{display:block;font-size:9px;font-weight:650;line-height:1.25}
+.legend-swatch.oral{background:var(--blue-50);border-color:var(--blue-100)}

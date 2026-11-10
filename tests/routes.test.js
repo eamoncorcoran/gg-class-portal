@@ -18,7 +18,7 @@ const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'
 
 const MOUNTS = {
   'admin.js': '/api/admin', 'student.js': '/api/student', 'auth.js': '/api/auth',
-  'settings.js': '/api/settings', 'media.js': '/api/media', 'zoom.js': '/api/zoom', 'live.js': '/api/live', 'sraith.js': '/api/sraith',
+  'settings.js': '/api/settings', 'media.js': '/api/media', 'zoom.js': '/api/zoom', 'live.js': '/api/live', 'sraith.js': '/api/sraith', 'mockoral.js': '/api/mock-oral',
 };
 
 /** Path segments, with any query string dropped. */

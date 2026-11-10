@@ -1027,6 +1027,8 @@ function mobileNav() {
         // navigation, and a tab that only exists in a sidebar is no tab at all.
         ...(state.studentData?.liveClassroom ? [['live', svg.video, 'Live']] : []),
         ...(state.studentData?.hasCommunity ? [['community', svg.board, 'Board']] : []),
+        // Only while there is a mock oral to book or one booked, so it is not a dead tab the rest of the year.
+        ...(state.studentData?.mockOral ? [['mockoral', svg.mic, 'Mock oral']] : []),
         // The private line, which on a phone had no way in: the sidebar it sits in is hidden there.
         ['private', svg.lock, 'Message'],
       ];
@@ -1061,7 +1063,7 @@ function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
             <button class="user-chip" id="account-menu-top">${boardAvatar(me(), 'sm')}<span class="user-chip-copy"><strong>${escapeHtml(state.user.name)}</strong><span>${escapeHtml(roleLabel)}</span></span></button>
           </div>
         </header>
-        <div class="content">${taskBar()}${content}</div>
+        <div class="content">${taskBar()}${mockOralBar()}${content}</div>
       </main>
       ${mobileNav()}
     </div>`;
@@ -1253,6 +1255,601 @@ async function logout() {
   state.user = null; closeModal(); renderAuth('login');
 }
 
+/* Mock orals
+   ------------------------------------------------------------------
+   The teacher sets a date and a number of examiners. Every examiner works the
+   same seventeen twenty minute orals, so the day's places are examiners x 17.
+   A student sees only the times; the portal hands each booking to the lowest
+   numbered examiner who is free, which is why a time stays open until every
+   examiner has it filled. */
+function moClock(clock) {
+  const [hour, minute] = String(clock).split(':').map(Number);
+  return `${((hour + 11) % 12) + 1}:${String(minute).padStart(2, '0')}${hour < 12 ? 'am' : 'pm'}`;
+}
+
+/* A calendar day, drawn at noon so no timezone can tip it into the day before. */
+function moDate(date, short = false) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString('en-IE', short
+    ? { weekday: 'short', day: 'numeric', month: 'short' }
+    : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/,/g, '');
+}
+
+/* The same wording from a timestamp, always in Irish time: the orals happen in
+   Ireland wherever the student's laptop thinks it is. */
+function moTime(value) {
+  const parts = new Intl.DateTimeFormat('en-IE', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Dublin' }).format(new Date(value));
+  return moClock(parts);
+}
+
+const moPlural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+function moMeter(day) {
+  return `<span class="mo-meter" role="img" aria-label="${day.percent}% of places booked"><i style="width:${Math.min(100, day.percent)}%"></i></span>
+    <span class="mo-meter-label"><strong>${day.percent}%</strong> booked · ${day.booked} of ${day.capacity} places</span>`;
+}
+
+function moStatusPill(day) {
+  if (day.past) return '<span class="pill">Finished</span>';
+  return day.bookingOpen
+    ? '<span class="pill green">Booking open</span>'
+    : `<span class="pill orange">${day.booked ? 'Booking closed' : 'Not open yet'}</span>`;
+}
+
+function mockOralsView() {
+  const data = state.mockOrals;
+  const upcoming = data.days.filter((day) => !day.past);
+  const past = data.days.filter((day) => day.past).reverse();
+  const row = (day) => `
+    <button class="mo-day" data-mo-open="${day.id}">
+      <span class="mo-day-date">
+        <strong>${escapeHtml(moDate(day.date))}</strong>
+        <small>${moPlural(day.examiners, 'examiner')} · ${day.capacity} places</small>
+      </span>
+      <span class="mo-day-meter">${moMeter(day)}</span>
+      ${moStatusPill(day)}
+    </button>`;
+  return `${pageHeader('Manage', 'Mock orals', 'Set the date and the number of examiners. Students pick a time, and each booking is given an examiner.',
+    '<button class="btn primary" id="mo-new">Add a mock oral day</button>')}
+    ${upcoming.length ? `<div class="mo-days">${upcoming.map(row).join('')}</div>` : `
+      <div class="empty-state mo-empty">
+        <h3>No mock oral day set up yet</h3>
+        <p>Add the date and how many examiners are working. You will see how many students you can cater for before anyone can book.</p>
+        <button class="btn primary" id="mo-new-empty">Add a mock oral day</button>
+      </div>`}
+    ${past.length ? `<h2 class="mo-subhead">Finished</h2><div class="mo-days">${past.map(row).join('')}</div>` : ''}`;
+}
+
+/* The one sum the whole setup turns on, worked out as the teacher types. */
+function moSumHtml(examiners, students) {
+  const per = state.mockOrals.slotsPerExaminer;
+  const places = examiners * per;
+  if (!examiners) return '<span class="muted">Enter how many examiners are working.</span>';
+  const need = Math.ceil(students / per);
+  const fit = !students ? ''
+    : places >= students
+      ? `<span class="mo-sum-line ok">Enough for all ${moPlural(students, 'student')} who can book, with ${places - students} to spare.</span>`
+      : `<span class="mo-sum-line short">Not enough for all ${moPlural(students, 'student')} who can book. You would need ${moPlural(need, 'examiner')}.</span>`;
+  return `<span class="mo-sum-big"><strong>${places}</strong> places</span>
+    <span class="mo-sum-line">${moPlural(examiners, 'examiner')} × ${per} orals each</span>${fit}`;
+}
+
+function openMockOralDayForm(day = null) {
+  const data = state.mockOrals;
+  const chosen = new Set(day?.classIds || data.classes.map((klass) => klass.id));
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' });
+  modal({
+    title: day ? 'Edit mock oral day' : 'Add a mock oral day',
+    subtitle: day ? moDate(day.date) : 'Students cannot book until you open it.',
+    body: `
+      <form id="mo-day-form">
+        <div class="form-field">
+          <label for="mo-date">Date of the mock orals</label>
+          <input id="mo-date" type="date" required min="${today}" value="${day?.date || ''}">
+        </div>
+        <div class="form-field">
+          <label for="mo-examiners">Number of examiners</label>
+          <div class="mo-stepper">
+            <button type="button" class="btn" data-mo-step="-1" aria-label="One fewer examiner">−</button>
+            <input id="mo-examiners" type="number" inputmode="numeric" min="1" max="${data.maxExaminers}" required value="${day?.examiners || ''}" placeholder="0">
+            <button type="button" class="btn" data-mo-step="1" aria-label="One more examiner">+</button>
+          </div>
+          <div class="mo-sum" id="mo-sum" aria-live="polite"></div>
+        </div>
+        ${data.classes.length ? `<div class="form-field">
+          <span class="field-label">Who can book</span>
+          <div class="mo-classes">${data.classes.map((klass) => `
+            <label class="mo-class"><input type="checkbox" name="mo-class" value="${klass.id}" data-students="${klass.students}" ${chosen.has(klass.id) ? 'checked' : ''}>
+              <span>${escapeHtml(klass.label)}</span><small>${moPlural(klass.students, 'student')}</small></label>`).join('')}
+          </div>
+        </div>` : ''}
+        <div class="form-field">
+          <label for="mo-note">Note for students <span class="muted">(optional)</span></label>
+          <textarea id="mo-note" rows="2" maxlength="600" placeholder="Anything they should know or have ready on the day.">${escapeHtml(day?.note || '')}</textarea>
+        </div>
+      </form>`,
+    footer: `${day ? '<button class="btn danger mo-left-button" id="mo-delete">Delete day</button>' : ''}
+      <button class="btn" data-close-modal>Cancel</button>
+      <button class="btn primary" id="mo-save">${day ? 'Save changes' : 'Add day'}</button>`,
+    onOpen: (box) => {
+      const input = box.querySelector('#mo-examiners');
+      const boxes = [...box.querySelectorAll('[name="mo-class"]')];
+      const redraw = () => {
+        const students = boxes.filter((item) => item.checked).reduce((sum, item) => sum + Number(item.dataset.students), 0);
+        const count = Math.max(0, Math.min(data.maxExaminers, Math.floor(Number(input.value) || 0)));
+        box.querySelector('#mo-sum').innerHTML = moSumHtml(count, students);
+      };
+      box.querySelectorAll('[data-mo-step]').forEach((button) => button.addEventListener('click', () => {
+        const next = (Math.floor(Number(input.value)) || 0) + Number(button.dataset.moStep);
+        input.value = Math.max(1, Math.min(data.maxExaminers, next));
+        redraw();
+      }));
+      input.addEventListener('input', redraw);
+      boxes.forEach((item) => item.addEventListener('change', redraw));
+      redraw();
+
+      box.querySelector('#mo-day-form').addEventListener('submit', (event) => { event.preventDefault(); box.querySelector('#mo-save').click(); });
+      box.querySelector('#mo-save').addEventListener('click', async () => {
+        const date = box.querySelector('#mo-date').value;
+        const examiners = Math.floor(Number(input.value));
+        const picked = boxes.filter((item) => item.checked).map((item) => item.value);
+        if (!date) return showToast('Pick the date of the mock orals.', 'error');
+        if (!(examiners >= 1 && examiners <= data.maxExaminers)) return showToast(`Enter a number of examiners from 1 to ${data.maxExaminers}.`, 'error');
+        if (boxes.length && !picked.length) return showToast('Tick at least one class that can book.', 'error');
+        const body = {
+          date, examiners,
+          // Every class ticked is "everyone", so a class added later is included too.
+          classIds: !boxes.length || picked.length === boxes.length ? null : picked,
+          note: box.querySelector('#mo-note').value,
+        };
+        if (day && date !== day.date && day.booked) {
+          const sure = await askConfirm({
+            title: 'Move the date?',
+            message: `${moPlural(day.booked, 'student')} ${day.booked === 1 ? 'is' : 'are'} already booked. Each keeps the same time and examiner, and is emailed the new date.`,
+            confirmLabel: 'Move and email them',
+          });
+          if (!sure) return;
+        }
+        const save = box.querySelector('#mo-save');
+        save.disabled = true;
+        try {
+          if (day) {
+            const result = await api(`/api/mock-oral/admin/days/${day.id}`, { method: 'PATCH', body });
+            showToast(result.changed ? `Saved. ${moPlural(result.changed, 'student')} emailed about the change.` : 'Saved.');
+          } else {
+            const created = await api('/api/mock-oral/admin/days', { method: 'POST', body });
+            state.mockOralDayId = created.day.id;
+            showToast('Day added. Open booking when you are ready.');
+          }
+          closeModal();
+          renderAdmin();
+        } catch (error) { save.disabled = false; showToast(error.message, 'error'); }
+      });
+
+      box.querySelector('#mo-delete')?.addEventListener('click', async () => {
+        const sure = await askConfirm({
+          title: 'Delete this day?',
+          message: day.booked
+            ? `${moPlural(day.booked, 'booking')} will be cancelled, and each student is emailed that the day is not going ahead. This cannot be undone.`
+            : 'Nobody has booked yet. This cannot be undone.',
+          confirmLabel: 'Delete day', danger: true,
+        });
+        if (!sure) return;
+        try {
+          await api(`/api/mock-oral/admin/days/${day.id}`, { method: 'DELETE' });
+          state.mockOralDayId = null;
+          closeModal();
+          showToast('Day deleted.');
+          renderAdmin();
+        } catch (error) { showToast(error.message, 'error'); }
+      });
+    },
+  });
+}
+
+function mockOralDayView() {
+  const { day, timetable, examiners, bookings } = state.mockOralDay;
+  const at = new Map(bookings.map((booking) => [`${booking.slot}:${booking.examiner}`, booking]));
+  const now = Date.now();
+
+  const rows = timetable.map((row) => {
+    if (row.kind === 'break') {
+      return `<tr class="mo-break"><th scope="row">${moClock(row.start)}</th>
+        <td colspan="${examiners.length + 1}">${escapeHtml(row.label)} until ${moClock(row.end)}. Nobody can book this.</td></tr>`;
+    }
+    let free = 0;
+    const cells = examiners.map((examiner) => {
+      const booking = at.get(`${row.slot}:${examiner.number}`);
+      if (booking) {
+        return `<td><button class="mo-cell booked" data-mo-booking="${booking.id}" title="${escapeHtml(booking.student.email)}">${escapeHtml(booking.student.name)}</button></td>`;
+      }
+      free += 1;
+      return `<td><button class="mo-cell free" data-mo-free="${row.slot}:${examiner.number}" aria-label="Book a student in at ${moClock(row.start)} with Examiner ${examiner.number}">Free</button></td>`;
+    }).join('');
+    return `<tr><th scope="row">${moClock(row.start)}</th>${cells}
+      <td class="mo-left ${free ? '' : 'full'}">${free ? `${free} free` : 'Full'}</td></tr>`;
+  }).join('');
+
+  const closed = !day.bookingOpen && !day.past;
+  return `
+    <button class="text-link mo-back" id="mo-back">${svg.chevronLeft}All mock oral days</button>
+    ${pageHeader('Mock orals', moDate(day.date),
+      day.past ? 'This day is over.'
+        : day.bookingOpen ? 'Booking is open. Students can pick a time now.'
+          : day.booked ? 'Booking is closed. Nobody new can book.'
+            : 'Booking is closed. Students cannot see this day yet.',
+      `<button class="btn" id="mo-edit">Edit day</button>
+       <a class="btn" href="/api/mock-oral/admin/days/${day.id}/export.csv" download>Download list</a>
+       <button class="btn" id="mo-email" ${day.booked ? '' : 'disabled'}>Email students their details</button>
+       ${day.past ? '' : `<button class="btn ${day.bookingOpen ? '' : 'primary'}" id="mo-toggle">${day.bookingOpen ? 'Close booking' : 'Open booking'}</button>`}`)}
+    ${closed ? `<div class="mo-banner">
+        ${day.booked
+    ? `<div><strong>Booking is closed.</strong><span>The ${moPlural(day.booked, 'student')} already booked ${day.booked === 1 ? 'keeps their time' : 'keep their times'} and can still cancel. Open booking to let more students in.</span></div>`
+    : '<div><strong>Students cannot see this day yet.</strong><span>Check the examiners below, then open booking.</span></div>'}
+      </div>` : ''}
+    <div class="stats mo-stats">
+      <div class="stat accent">
+        <div class="stat-label">Examiners</div>
+        <div class="mo-stat-step">
+          <button class="btn small" data-mo-examiners="-1" aria-label="One fewer examiner" ${day.examiners <= 1 ? 'disabled' : ''}>−</button>
+          <div class="stat-value">${day.examiners}</div>
+          <button class="btn small" data-mo-examiners="1" aria-label="One more examiner" ${day.examiners >= state.mockOrals.maxExaminers ? 'disabled' : ''}>+</button>
+        </div>
+        <div class="stat-note">${state.mockOrals.slotsPerExaminer} orals each${day.examinersNeeded ? ` · bookings so far need ${day.examinersNeeded}` : ''}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Students you can cater for</div>
+        <div class="stat-value">${day.capacity}</div>
+        <div class="stat-note">${day.students ? `${moPlural(day.students, 'student')} can book` : 'places in the day'}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Booked</div>
+        <div class="stat-value">${day.booked}</div>
+        <div class="stat-note">${day.free} places still free</div>
+      </div>
+      <div class="stat ${day.percent >= 90 ? 'warning' : ''}">
+        <div class="stat-label">Slots booked</div>
+        <div class="stat-value">${day.percent}%</div>
+        <div class="mo-meter"><i style="width:${Math.min(100, day.percent)}%"></i></div>
+      </div>
+    </div>
+    <section class="card mo-grid-card">
+      <div class="card-header">
+        <div><h2>Who is with which examiner</h2>
+        <p>Click a name to see or remove a booking. Click Free to book a student in yourself. Click an examiner to add their name and link.</p></div>
+      </div>
+      <div class="table-wrap">
+        <table class="mo-grid">
+          <thead><tr>
+            <th scope="col">Time</th>
+            ${examiners.map((examiner) => `<th scope="col"><button class="mo-examiner" data-mo-examiner="${examiner.number}">
+              <strong>Examiner ${examiner.number}</strong>
+              <small>${examiner.name ? escapeHtml(examiner.name) : 'Add name'} · ${examiner.link ? 'link added' : 'no link yet'}</small>
+              <small>${examiner.booked} of ${state.mockOrals.slotsPerExaminer} booked</small>
+            </button></th>`).join('')}
+            <th scope="col" class="mo-left">Left</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+async function moChangeExaminers(step) {
+  const { day, bookings } = state.mockOralDay;
+  const next = day.examiners + step;
+  if (next < 1 || next > state.mockOrals.maxExaminers) return;
+  if (step < 0) {
+    // Asking "move them?" and then refusing is two steps to a no.
+    if (next < day.examinersNeeded) {
+      showToast(`You need at least ${moPlural(day.examinersNeeded, 'examiner')}: ${day.examinersNeeded} students are booked at the same time. Remove a booking first.`, 'error');
+      return;
+    }
+    const moving = bookings.filter((booking) => booking.examiner > next);
+    if (moving.length) {
+      const sure = await askConfirm({
+        title: `Remove Examiner ${day.examiners}?`,
+        message: `${moPlural(moving.length, 'student')} ${moving.length === 1 ? 'is' : 'are'} booked with Examiner ${day.examiners}. ${moving.length === 1 ? 'They keep' : 'They each keep'} the same time, move to another examiner, and are emailed.`,
+        confirmLabel: 'Remove and move them',
+      });
+      if (!sure) return;
+    }
+  }
+  try {
+    const result = await api(`/api/mock-oral/admin/days/${day.id}`, { method: 'PATCH', body: { examiners: next } });
+    if (result.changed) showToast(`${moPlural(result.changed, 'student')} moved to another examiner and emailed.`);
+    renderAdmin();
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+function moOpenBooking(id) {
+  const { day, bookings, examiners } = state.mockOralDay;
+  const booking = bookings.find((row) => row.id === id);
+  if (!booking) return;
+  const slot = state.mockOralDay.timetable.find((row) => row.slot === booking.slot);
+  const examiner = examiners.find((row) => row.number === booking.examiner);
+  modal({
+    title: booking.student.name,
+    subtitle: booking.student.email,
+    body: `<dl class="mo-facts">
+        <div><dt>Date</dt><dd>${escapeHtml(moDate(day.date))}</dd></div>
+        <div><dt>Time</dt><dd>${moClock(slot.start)} to ${moClock(slot.end)}</dd></div>
+        <div><dt>Examiner</dt><dd>Examiner ${booking.examiner}${examiner?.name ? ` (${escapeHtml(examiner.name)})` : ''}</dd></div>
+      </dl>
+      <p class="muted small">Booked ${escapeHtml(fmtDate(booking.bookedAt, { time: true }))}</p>`,
+    footer: `<button class="btn danger mo-left-button" id="mo-remove">Remove booking</button><button class="btn" data-close-modal>Close</button>`,
+    onOpen: (box) => box.querySelector('#mo-remove').addEventListener('click', async () => {
+      const first = booking.student.name.split(' ')[0];
+      const upcoming = new Date(booking.startsAt).getTime() > Date.now();
+      const sure = await askConfirm({
+        title: `Remove ${first}'s booking?`,
+        message: upcoming
+          ? `The place is freed up, and ${first} is emailed that it is cancelled and can book another time.`
+          : 'This oral is already over, so nobody is emailed.',
+        confirmLabel: 'Remove booking', danger: true,
+      });
+      if (!sure) return;
+      try {
+        await api(`/api/mock-oral/admin/bookings/${booking.id}`, { method: 'DELETE' });
+        closeModal();
+        showToast(upcoming ? `Removed. ${first} has been emailed.` : 'Removed.');
+        renderAdmin();
+      } catch (error) { showToast(error.message, 'error'); }
+    }),
+  });
+}
+
+function moOpenFree(key) {
+  const [slotNumber, examinerNumber] = key.split(':').map(Number);
+  const { day, students, timetable } = state.mockOralDay;
+  const slot = timetable.find((row) => row.slot === slotNumber);
+  const list = (rows) => rows.length
+    ? rows.map((student) => `<button class="mo-pick" data-mo-student="${student.id}"><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.email)}</small></button>`).join('')
+    : '<p class="muted small mo-pick-none">Nobody matches. Every student who can book and is not listed already has a time.</p>';
+  modal({
+    title: 'Book a student in',
+    subtitle: `${moDate(day.date, true)}, ${moClock(slot.start)} with Examiner ${examinerNumber}`,
+    body: `<input id="mo-find" type="search" placeholder="Search by name or email" autocomplete="off">
+      <div class="mo-picks" id="mo-picks">${list(students)}</div>`,
+    footer: '<button class="btn" data-close-modal>Cancel</button>',
+    onOpen: (box) => {
+      const picks = box.querySelector('#mo-picks');
+      const bind = () => picks.querySelectorAll('[data-mo-student]').forEach((button) => button.addEventListener('click', async () => {
+        const student = students.find((row) => row.id === button.dataset.moStudent);
+        button.disabled = true;
+        try {
+          const result = await api(`/api/mock-oral/admin/days/${day.id}/bookings`, {
+            method: 'POST', body: { studentId: student.id, slot: slotNumber, examiner: examinerNumber },
+          });
+          closeModal();
+          showToast(result.emailed ? `Booked. A confirmation has gone to ${student.email}.` : 'Booked. The confirmation email could not be sent.', result.emailed ? undefined : 'error');
+          renderAdmin();
+        } catch (error) { button.disabled = false; showToast(error.message, 'error'); }
+      }));
+      box.querySelector('#mo-find').addEventListener('input', (event) => {
+        const term = event.target.value.trim().toLowerCase();
+        picks.innerHTML = list(students.filter((student) => `${student.name} ${student.email}`.toLowerCase().includes(term)));
+        bind();
+      });
+      bind();
+      box.querySelector('#mo-find').focus();
+    },
+  });
+}
+
+function moOpenExaminer(number) {
+  const { day, examiners } = state.mockOralDay;
+  const examiner = examiners.find((row) => row.number === number);
+  modal({
+    title: `Examiner ${number}`,
+    subtitle: 'The name and link go on each student\'s booking and in their emails.',
+    body: `<form id="mo-examiner-form">
+        <div class="form-field"><label for="mo-examiner-name">Name <span class="muted">(optional)</span></label>
+          <input id="mo-examiner-name" maxlength="80" value="${escapeHtml(examiner.name)}" placeholder="For example: Siobhán"></div>
+        <div class="form-field"><label for="mo-examiner-link">Link for their students to join <span class="muted">(optional)</span></label>
+          <input id="mo-examiner-link" type="url" maxlength="500" value="${escapeHtml(examiner.link)}" placeholder="https://"></div>
+      </form>`,
+    footer: '<button class="btn" data-close-modal>Cancel</button><button class="btn primary" id="mo-examiner-save">Save</button>',
+    onOpen: (box) => {
+      const save = async () => {
+        try {
+          await api(`/api/mock-oral/admin/days/${day.id}/examiners/${number}`, {
+            method: 'PUT',
+            body: { name: box.querySelector('#mo-examiner-name').value, link: box.querySelector('#mo-examiner-link').value },
+          });
+          closeModal();
+          showToast(`Examiner ${number} saved.`);
+          renderAdmin();
+        } catch (error) { showToast(error.message, 'error'); }
+      };
+      box.querySelector('#mo-examiner-form').addEventListener('submit', (event) => { event.preventDefault(); save(); });
+      box.querySelector('#mo-examiner-save').addEventListener('click', save);
+    },
+  });
+}
+
+function bindMockOrals() {
+  document.getElementById('mo-new')?.addEventListener('click', () => openMockOralDayForm());
+  document.getElementById('mo-new-empty')?.addEventListener('click', () => openMockOralDayForm());
+  document.querySelectorAll('[data-mo-open]').forEach((button) => button.addEventListener('click', () => {
+    state.mockOralDayId = button.dataset.moOpen;
+    renderAdmin();
+  }));
+  document.getElementById('mo-back')?.addEventListener('click', () => { state.mockOralDayId = null; renderAdmin(); });
+  if (!state.mockOralDayId || !state.mockOralDay) return;
+
+  const { day, bookings, examiners } = state.mockOralDay;
+  document.getElementById('mo-edit')?.addEventListener('click', () => openMockOralDayForm(day));
+  document.querySelectorAll('[data-mo-examiners]').forEach((button) =>
+    button.addEventListener('click', () => moChangeExaminers(Number(button.dataset.moExaminers))));
+  document.querySelectorAll('[data-mo-booking]').forEach((button) =>
+    button.addEventListener('click', () => moOpenBooking(button.dataset.moBooking)));
+  document.querySelectorAll('[data-mo-free]').forEach((button) =>
+    button.addEventListener('click', () => moOpenFree(button.dataset.moFree)));
+  document.querySelectorAll('[data-mo-examiner]').forEach((button) =>
+    button.addEventListener('click', () => moOpenExaminer(Number(button.dataset.moExaminer))));
+
+  document.getElementById('mo-toggle')?.addEventListener('click', async () => {
+    const opening = !day.bookingOpen;
+    const sure = await askConfirm(opening
+      ? { title: 'Open booking?', message: `Students will see ${moDate(day.date)} in the portal and can book one of ${day.capacity} places straight away.`, confirmLabel: 'Open booking' }
+      : { title: 'Close booking?', message: 'Nobody new can book. Students who are already booked keep their time and can still cancel.', confirmLabel: 'Close booking' });
+    if (!sure) return;
+    try {
+      await api(`/api/mock-oral/admin/days/${day.id}`, { method: 'PATCH', body: { bookingOpen: opening } });
+      showToast(opening ? 'Booking is open.' : 'Booking is closed.');
+      renderAdmin();
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+
+  document.getElementById('mo-email')?.addEventListener('click', async () => {
+    const upcoming = bookings.filter((booking) => new Date(booking.startsAt).getTime() > Date.now());
+    if (!upcoming.length) return showToast('Nobody is booked for an oral still to come.', 'error');
+    const used = new Set(upcoming.map((booking) => booking.examiner));
+    const noLink = examiners.filter((examiner) => used.has(examiner.number) && !examiner.link).length;
+    const sure = await askConfirm({
+      title: 'Email students their details?',
+      message: `${moPlural(upcoming.length, 'student')} will each get their date, time, examiner and link.${noLink ? ` ${moPlural(noLink, 'examiner')} with bookings ${noLink === 1 ? 'has' : 'have'} no link yet, so those students get the details without one.` : ''}`,
+      confirmLabel: `Email ${moPlural(upcoming.length, 'student')}`,
+    });
+    if (!sure) return;
+    try {
+      const result = await api(`/api/mock-oral/admin/days/${day.id}/email-details`, { method: 'POST' });
+      showToast(`Emailed ${result.emailed} of ${moPlural(result.students, 'student')}.`, result.emailed === result.students ? undefined : 'error');
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+}
+
+/* Mock orals, as a student sees them: either the one thing they have booked,
+   or the times they can pick from. Never both, so there is never a question
+   about which is the real one. */
+async function loadMockOral() {
+  if (state.mockOralLoading) return;
+  state.mockOralLoading = true;
+  try { state.mockOral = await api('/api/mock-oral'); }
+  catch (error) { state.mockOral = { booking: null, days: [], failed: true }; showToast(error.message, 'error'); }
+  state.mockOralLoading = false;
+  if (state.view === 'mockoral') renderStudent();
+}
+
+function mockOralBar() {
+  const oral = state.studentData?.mockOral;
+  if (isAdmin() || !oral || state.view !== 'calendar' || !state.studentData?.class) return '';
+  if (oral.booked) {
+    const when = new Date(oral.startsAt);
+    const day = when.toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Dublin' }).replace(/,/g, '');
+    return `<button class="task-bar mo-bar booked" data-student-view="mockoral">
+      <span class="task-bar-icon">${svg.mic}</span>
+      <span class="task-bar-copy"><strong>Your mock oral: ${escapeHtml(day)} at ${moTime(oral.startsAt)}</strong>
+        <small>With Examiner ${oral.examiner}.</small></span>
+      <span class="task-bar-go">View</span>
+    </button>`;
+  }
+  return `<button class="task-bar mo-bar" data-student-view="mockoral">
+    <span class="task-bar-icon">${svg.mic}</span>
+    <span class="task-bar-copy"><strong>Book your mock oral</strong><small>Booking is open. Pick the time that suits you.</small></span>
+    <span class="task-bar-go">Pick a time</span>
+  </button>`;
+}
+
+function mockOralView() {
+  const data = state.mockOral;
+  if (!data) {
+    loadMockOral();
+    return `${studentHeader()}<div class="mo-loading"><div class="spinner"></div></div>`;
+  }
+  if (data.booking) return `${studentHeader()}${mockOralTicket(data.booking)}`;
+  if (!data.days.length) {
+    return `${studentHeader()}<div class="empty-state"><h3>No mock orals to book right now</h3><p>When booking opens, the times will show here.</p></div>`;
+  }
+  return `${studentHeader()}${data.days.map(mockOralPicker).join('')}`;
+}
+
+function mockOralTicket(booking) {
+  return `<section class="mo-ticket">
+    <div class="mo-ticket-head">
+      <span class="mo-ticket-tick">${svg.check}</span>
+      <div><strong>You are booked</strong><small>We have emailed the details to ${escapeHtml(state.user.email)}.</small></div>
+    </div>
+    <dl class="mo-facts">
+      <div><dt>Date</dt><dd>${escapeHtml(moDate(booking.date))}</dd></div>
+      <div><dt>Time</dt><dd>${moClock(booking.start)} to ${moClock(booking.end)}</dd></div>
+      <div><dt>Examiner</dt><dd>Examiner ${booking.examiner}${booking.examinerName ? ` (${escapeHtml(booking.examinerName)})` : ''}</dd></div>
+    </dl>
+    ${booking.link
+      ? `<a class="btn primary mo-join" href="${escapeHtml(booking.link)}" target="_blank" rel="noopener">Join your mock oral</a>`
+      : '<p class="mo-soon">Your link to join will be sent to you before the day, and will show here.</p>'}
+    ${booking.note ? `<p class="mo-note">${escapeHtml(booking.note)}</p>` : ''}
+    ${booking.canCancel ? `<div class="mo-ticket-foot">
+      <span>Cannot make it? Cancel so somebody else can have the place. You can then pick another time.</span>
+      <button class="btn danger" id="mo-cancel" data-booking="${booking.id}">Cancel booking</button>
+    </div>` : ''}
+  </section>`;
+}
+
+function mockOralPicker(day) {
+  const button = (slot) => {
+    if (slot.past) return `<button class="mo-time" disabled><strong>${moClock(slot.start)}</strong><small>Gone</small></button>`;
+    if (slot.full) return `<button class="mo-time" disabled><strong>${moClock(slot.start)}</strong><small>Full</small></button>`;
+    return `<button class="mo-time open" data-mo-book="${day.id}:${slot.slot}"><strong>${moClock(slot.start)}</strong><small>20 minutes</small></button>`;
+  };
+  const morning = day.slots.filter((slot) => slot.start < '12:40');
+  const afternoon = day.slots.filter((slot) => slot.start >= '12:40');
+  return `<section class="mo-picker" data-mo-day="${day.id}">
+    <header>
+      <h2>${escapeHtml(moDate(day.date))}</h2>
+      <p>${day.full ? 'Every time is taken. If somebody cancels, their time will show here.' : 'Pick one time. Each mock oral is 20 minutes.'}</p>
+      ${day.note ? `<p class="mo-note">${escapeHtml(day.note)}</p>` : ''}
+    </header>
+    <h3>Morning</h3>
+    <div class="mo-times">${morning.map(button).join('')}</div>
+    <h3>Afternoon</h3>
+    <div class="mo-times">${afternoon.map(button).join('')}</div>
+  </section>`;
+}
+
+function bindMockOralStudent() {
+  document.querySelectorAll('[data-mo-book]').forEach((button) => button.addEventListener('click', async () => {
+    const [dayId, slotNumber] = button.dataset.moBook.split(':');
+    const day = state.mockOral.days.find((row) => row.id === dayId);
+    const slot = day.slots.find((row) => row.slot === Number(slotNumber));
+    const sure = await askConfirm({
+      title: `Book ${moClock(slot.start)}?`,
+      message: `${moDate(day.date)}, ${moClock(slot.start)} to ${moClock(slot.end)}. We will email you a confirmation.`,
+      confirmLabel: 'Book this time',
+    });
+    if (!sure) return;
+    try {
+      state.mockOral = await api('/api/mock-oral/book', { method: 'POST', body: { dayId, slot: slot.slot } });
+      const booked = state.mockOral.booking;
+      state.studentData.mockOral = { booked: true, startsAt: booked.startsAt, examiner: booked.examiner };
+      showToast(`Booked for ${moClock(slot.start)} with Examiner ${booked.examiner}.`);
+    } catch (error) {
+      showToast(error.message, 'error');
+      // Somebody got there first, or the day changed: show what is really left.
+      try { state.mockOral = await api('/api/mock-oral'); } catch { /* the toast has said it */ }
+    }
+    renderStudent();
+  }));
+
+  document.getElementById('mo-cancel')?.addEventListener('click', async (event) => {
+    // Read before the first await: currentTarget is null once the handler has yielded.
+    const bookingId = event.currentTarget.dataset.booking;
+    const sure = await askConfirm({
+      title: 'Cancel your mock oral?',
+      message: 'Your place goes to somebody else. You can pick another time afterwards if one is free.',
+      confirmLabel: 'Cancel booking', cancelLabel: 'Keep it', danger: true,
+    });
+    if (!sure) return;
+    try {
+      state.mockOral = await api('/api/mock-oral/cancel', { method: 'POST', body: { bookingId } });
+      // The days come back with it, so the calendar goes back to "book a time".
+      state.studentData.mockOral = { booked: false, days: (state.mockOral.days || []).map((day) => day.date) };
+      showToast('Your booking is cancelled. Your place is open again for somebody else.');
+    } catch (error) { showToast(error.message, 'error'); }
+    renderStudent();
+  });
+}
+
 /* Admin */
 function adminNav() {
   const classButtons = state.classes.map((klass) => `
@@ -1266,6 +1863,7 @@ function adminNav() {
       ${adminNavButton('assignments', svg.calendar, 'Calendar')}
       ${adminNavButton('courses', svg.cap, 'Courses')}
       ${adminNavButton('sraith', svg.pictures, 'Sraith Pictiúr')}
+      ${adminNavButton('mockorals', svg.mic, 'Mock orals')}
       ${adminNavButton('live', svg.video, state.liveRoom ? 'Live classroom' : 'Studio')}
       ${adminNavButton('plans', svg.grid, 'Plans')}
       ${adminNavButton('checkins', svg.talk, 'Weekly check-ins')}
@@ -1310,6 +1908,7 @@ function bindShellNavigation() {
        where I am" — so the one being viewed is let go of first. */
     if (button.dataset.adminView === 'courses') { state.course = null; state.lessonId = null; }
     if (button.dataset.adminView === 'sraith') state.sraithSlug = null;
+    if (button.dataset.adminView === 'mockorals') state.mockOralDayId = null;
     state.view = button.dataset.adminView;
     if (button.dataset.classId) state.activeClassId = button.dataset.classId;
     await renderAdmin();
@@ -1327,6 +1926,8 @@ async function showStudentView(view) {
   state.view = view;
   try {
     if (view === 'courses' && !state.course) await loadCourses();
+    // Asked for afresh each visit: which times are left changes as others book.
+    if (view === 'mockoral') state.mockOral = await api('/api/mock-oral');
     if (view === 'community') {
       const params = new URLSearchParams();
       if (state.boardSort === 'top') params.set('sort', 'top');
@@ -1369,11 +1970,14 @@ async function renderAdmin() {
       title = 'Classes & students'; content = peopleView();
     } else if (state.view === 'assignments') {
       const query = state.showArchived ? '?includeArchived=true' : '';
-      [state.assignments, state.teachingWeeks, state.classes, state.classDates] = await Promise.all([
+      /* The mock oral days ride along. They are an extra on this screen, so a
+         failure there leaves the calendar standing without them. */
+      [state.assignments, state.teachingWeeks, state.classes, state.classDates, state.mockOrals] = await Promise.all([
         api(`/api/admin/assignments${query}`),
         api('/api/admin/teaching-weeks'),
         api('/api/admin/classes'),
         api('/api/admin/class-dates'),
+        api('/api/mock-oral/admin').catch(() => null),
       ]);
       title = 'Calendar'; content = assignmentsView();
     } else if (state.view === 'checkins') {
@@ -1407,6 +2011,15 @@ async function renderAdmin() {
       title = 'Live classroom'; content = liveAdminView();
     } else if (state.view === 'sraith') {
       title = 'Sraith Pictiúr'; content = sraithView();
+    } else if (state.view === 'mockorals') {
+      state.mockOrals = await api('/api/mock-oral/admin');
+      state.mockOralDay = null;
+      if (state.mockOralDayId) {
+        // A day deleted in another tab leaves the list rather than an error.
+        state.mockOralDay = await api(`/api/mock-oral/admin/days/${state.mockOralDayId}`).catch(() => null);
+        if (!state.mockOralDay) state.mockOralDayId = null;
+      }
+      title = 'Mock orals'; content = state.mockOralDay ? mockOralDayView() : mockOralsView();
     } else if (state.view === 'admins') {
       /* Guarded on the server as well: the navigation item being hidden is a
          courtesy, not the control. */
@@ -1425,6 +2038,7 @@ async function renderAdmin() {
     if (state.view === 'sraith') bindSraith(); else srStop();
     if (state.view === 'courses') bindCourse();
     if (state.view === 'plans') bindPlans();
+    if (state.view === 'mockorals') bindMockOrals();
   } catch (error) {
     showToast(error.message, 'error');
     if (error.status === 401) renderAuth('login');
@@ -1961,6 +2575,21 @@ function assignmentCalendarView(assignments) {
   const events = new Map();
   const add = (day, html) => events.set(day, [...(events.get(day) || []), html]);
 
+  /* Mock oral days, first on their day because they take the whole of it. A day
+     kept to certain classes drops out when another class is being looked at. */
+  (state.mockOrals?.days || [])
+    .filter((day) => !filter || !day.classIds || day.classIds.includes(filter))
+    .forEach((day) => {
+      const [onYear, onMonth, onDay] = String(day.date).split('-').map(Number);
+      if (onYear !== year || onMonth - 1 !== month) return;
+      const status = day.past ? 'Finished' : day.bookingOpen ? 'Booking open' : day.booked ? 'Booking closed' : 'Not open yet';
+      add(onDay, `<button class="calendar-event oral ${day.bookingOpen && !day.past ? '' : 'quiet'}" data-mock-oral-day="${day.id}"
+        title="${escapeHtml(`Mock orals: ${day.booked} of ${day.capacity} places booked (${day.percent}%) with ${moPlural(day.examiners, 'examiner')}. ${status}.`)}">
+        <span class="event-time">${day.booked} of ${day.capacity} booked</span>
+        <span class="event-title">Mock orals</span>
+      </button>`);
+    });
+
   /* The classes themselves, which is what somebody is usually looking for when
      they open a calendar. Drawn from the worked-out sittings, so a moved class
      sits at its new time and a cancelled one is struck through rather than
@@ -2038,6 +2667,9 @@ function assignmentCalendarView(assignments) {
       <div class="legend-group"><span class="legend-title">Weeks</span>
         <span class="legend-item"><span class="legend-swatch teaching"></span>Teaching week</span>
       </div>
+      ${(state.mockOrals?.days || []).length ? `<div class="legend-group"><span class="legend-title">Mock orals</span>
+        <span class="legend-item"><span class="legend-swatch oral"></span>Mock oral day</span>
+      </div>` : ''}
     </div>
   </section>`;
 }
@@ -7382,6 +8014,13 @@ function bindAdminView() {
     state.view = 'checkins';
     renderAdmin();
   }));
+  /* A mock oral day opens on its own screen: who is booked, with which examiner. */
+  document.querySelectorAll('[data-mock-oral-day]').forEach((button) => button.addEventListener('click', () => {
+    state.mockOralDayId = button.dataset.mockOralDay;
+    state.view = 'mockorals';
+    // The chip can be at the foot of the month; the day starts at its top.
+    renderAdmin().then(() => window.scrollTo(0, 0));
+  }));
   document.querySelectorAll('[data-reopen-assignment]').forEach((button) => button.addEventListener('click', () => openReopenModal(button.dataset.reopenAssignment)));
   bindAssignmentCalendar();
   bindAttendance();
@@ -9293,6 +9932,7 @@ function studentNav() {
     ${studentNavButton('tracker', svg.grid, 'Weekly tracker', notifications)}
     ${studentNavButton('courses', svg.cap, 'Courses')}
     ${state.studentData?.sraith ? studentNavButton('sraith', svg.pictures, 'Sraith Pictiúr') : ''}
+    ${state.studentData?.mockOral ? studentNavButton('mockoral', svg.mic, 'Mock oral') : ''}
     ${state.studentData?.liveClassroom ? `<button class="nav-button ${state.view === 'live' ? 'active' : ''}" data-student-view="live"><span class="nav-icon">${svg.video}</span>Live class${state.studentData?.nextClass?.live || state.studentData?.liveNow ? '<span class="live-dot" title="Your class is on now"></span>' : ''}</button>` : ''}
     ${/* A class set up without a board never shows Community at all. */
       state.studentData?.hasCommunity
@@ -9333,7 +9973,7 @@ function watchForStaleStudent() {
   });
 }
 
-const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message', live: 'Live class', sraith: 'Sraith Pictiúr' };
+const STUDENT_TITLES = { tracker: 'Weekly tracker', community: 'Community', courses: 'Courses', calendar: 'Calendar', private: 'Private message', live: 'Live class', sraith: 'Sraith Pictiúr', mockoral: 'Mock oral' };
 
 /* The one thing we need from a student that the course itself does not produce.
    ------------------------------------------------------------------
@@ -9443,6 +10083,7 @@ function renderStudent() {
   else if (state.view === 'private') content = privateMessageView();
   else if (state.view === 'live') content = liveRoomView();
   else if (state.view === 'sraith' && state.studentData?.sraith) content = sraithView();
+  else if (state.view === 'mockoral') content = mockOralView();
   else if (state.view === 'community') {
     // Reachable by a stale hash after a class loses its board.
     if (state.studentData?.hasCommunity) content = studentCommunityView();
@@ -9454,6 +10095,7 @@ function renderStudent() {
   placeLiveFrame();
   if (state.view === 'courses') bindCourse();
   if (state.view === 'sraith') bindSraith(); else srStop();
+  if (state.view === 'mockoral') bindMockOralStudent();
   if (state.view === 'private') {
     mountChatWidget();
     document.getElementById('private-to-board')?.addEventListener('click', () => {
@@ -9566,6 +10208,7 @@ const STUDENT_PAGE = {
   private: { title: 'Private message', line: 'For anything you would rather not put on the board.' },
   live: { title: 'Live class', line: 'Your class plays here, with each phrase to practise as it comes up.' },
   sraith: { title: 'Sraith Pictiúr', line: '' },
+  mockoral: { title: 'Mock oral', line: 'A 20 minute practice oral with an examiner.' },
 };
 
 /* The live room, inside the portal. The room is its own page (it carries
@@ -9849,6 +10492,26 @@ function calendarHtml() {
       data-open-class="${escapeHtml(sitting.onDate)}" data-class-kind="${escapeHtml(sitting.kind)}"
       data-class-at="${escapeHtml(sitting.at)}">${escapeHtml(label)}</button>`);
   });
+  /* The mock oral, on the day it happens. Booked, it is the student's own time
+     and opens the page where they can see it or cancel it. Not booked yet, it
+     marks each day they can still pick a time on. */
+  const oral = state.studentData.mockOral;
+  if (oral?.booked) {
+    const when = zonedDateParts(oral.startsAt, 'Europe/Dublin');
+    if (when.year === year && when.month === month) {
+      events.set(when.day, [`<button class="calendar-event is-oral booked" data-student-view="mockoral"
+        title="${escapeHtml(`Your mock oral: ${moTime(oral.startsAt)} with Examiner ${oral.examiner}. Open it to see the details or cancel.`)}">Mock oral ${moTime(oral.startsAt)}</button>`,
+        ...(events.get(when.day) || [])]);
+    }
+  } else {
+    (oral?.days || []).forEach((date) => {
+      const [onYear, onMonth, onDay] = String(date).split('-').map(Number);
+      if (onYear !== year || onMonth - 1 !== month) return;
+      events.set(onDay, [`<button class="calendar-event is-oral" data-student-view="mockoral"
+        title="Mock oral day. Booking is open, pick the time that suits you.">Book mock oral</button>`,
+        ...(events.get(onDay) || [])]);
+    });
+  }
   const cells = [];
   for (let i = 0; i < offset; i += 1) cells.push('<div class="calendar-day is-empty"></div>');
   for (let day = 1; day <= days; day += 1) {
@@ -10807,6 +11470,7 @@ async function followLink() {
   try {
     if (go === 'calendar') return showStudentView('calendar');
     if (go === 'tracker') return showStudentView('tracker');
+    if (go === 'mockoral') return showStudentView('mockoral');
     if (go === 'community') {
       if (state.studentData?.hasCommunity) return showStudentView('community');
       return showStudentView('calendar');

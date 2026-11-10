@@ -26,6 +26,7 @@ import { config } from '../config.js';
 import { liveRoomOn, liveRoomEnabled } from '../live/zoom.js';
 import { liveFor } from '../live/room.js';
 import { canSeeSraith } from '../sraith.js';
+import { studentMockOral } from '../mockoral.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 
@@ -299,6 +300,8 @@ router.get('/bootstrap', asyncRoute(async (req, res) => {
     liveClassroom: !STUDENTS_USE_ZOOM_LINK && await liveRoomEnabled(),
     // The Sraith Pictiúr section, for the Irish for Primary Teaching class.
     sraith: await canSeeSraith(req.user),
+    // Mock oral booking: shown while a day is open to this student, or they hold a booking.
+    mockOral: await studentMockOral(req.user.id),
     liveReady: !STUDENTS_USE_ZOOM_LINK && await liveRoomOn(),
     // The teacher has pressed Go live for this student's class.
     liveNow: !STUDENTS_USE_ZOOM_LINK && (await liveRoomOn()) && await liveFor(req.user.id),
