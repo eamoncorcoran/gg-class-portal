@@ -11473,6 +11473,14 @@ async function followLink() {
   }
   if (isAdmin()) return; // These links are written to students.
   if (go.startsWith('view:')) return showStudentView(go.slice(5));
+  // item:homework:<assignment id> / item:checkin:<week id>: the tracker with that item open, as the gg-hub calendar asks
+  if (go.startsWith('item:')) {
+    const [, kind, itemId] = go.split(':');
+    showStudentView('tracker');
+    if (kind === 'homework') openStudentItem({ openStudentItem: 'homework', assignmentId: itemId });
+    else if (kind === 'checkin') openStudentItem({ openStudentItem: 'checkin', weekId: itemId });
+    return;
+  }
   const id = params.get('id');
   try {
     if (go === 'calendar') return showStudentView('calendar');
