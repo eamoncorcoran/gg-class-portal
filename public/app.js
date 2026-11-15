@@ -11495,6 +11495,8 @@ async function boot() {
   try {
     const data = await api('/api/auth/me');
     state.user = data.user;
+    // The teacher console keeps its own section list even when framed; students get the shell's.
+    document.body.classList.toggle('is-admin', state.user.role === 'admin');
     if (state.user.mustChangePassword) renderAuth('change');
     else if (state.user.mustSetAvatar && !state.user.hasAvatar) renderAuth('avatar');
     else await loadApplication();
