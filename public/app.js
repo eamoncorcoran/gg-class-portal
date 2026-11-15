@@ -11462,6 +11462,15 @@ async function followLink() {
     if (classId) state.activeClassId = classId;
     return renderAdmin();
   }
+  if (go.startsWith('view:') && isAdmin()) {
+    // A teacher following a student link lands on the teacher's own version of that screen.
+    const map = { tracker: 'tracker', community: 'community', mockoral: 'mockorals', sraith: 'sraith', courses: 'courses', calendar: 'assignments', live: 'live' };
+    const view = map[go.slice(5)];
+    if (!view) return;
+    if (view === 'tracker' && !state.activeClassId) state.activeClassId = (state.classes || []).find((k) => k.active)?.id || state.classes?.[0]?.id || null;
+    state.view = view;
+    return renderAdmin();
+  }
   if (isAdmin()) return; // These links are written to students.
   if (go.startsWith('view:')) return showStudentView(go.slice(5));
   const id = params.get('id');
