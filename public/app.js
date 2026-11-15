@@ -11453,7 +11453,17 @@ async function followLink() {
   ['go', 'id'].forEach((key) => clean.searchParams.delete(key));
   history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
 
+  /* view:<name> and admin:<name> are how the gg-hub shell opens one of this app's
+     screens inside its own frame; the named links below are the ones emails use. */
+  if (go.startsWith('admin:')) {
+    if (!isAdmin()) return;
+    const [view, classId] = go.slice(6).split('/');
+    state.view = view;
+    if (classId) state.activeClassId = classId;
+    return renderAdmin();
+  }
   if (isAdmin()) return; // These links are written to students.
+  if (go.startsWith('view:')) return showStudentView(go.slice(5));
   const id = params.get('id');
   try {
     if (go === 'calendar') return showStudentView('calendar');
@@ -11480,6 +11490,8 @@ async function followLink() {
 }
 
 async function boot() {
+  // Framed by the gg-hub shell: that shell has the navigation, so this app shows only its screen.
+  if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embedded');
   try {
     const data = await api('/api/auth/me');
     state.user = data.user;

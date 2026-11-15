@@ -2492,3 +2492,8 @@ button.mo-cal-day.mine:not(.on){background:var(--surface);box-shadow:inset 0 0 0
   .mo-cal-chosen{margin-bottom:14px}
 }
 .mo-open-day strong{font-weight:720;margin-right:6px}
+
+/* Embedded in the gg-hub shell (?embed=1): no sidebar, top bar or phone nav of its own. */
+body.embedded .app-shell{grid-template-columns:minmax(0,1fr)}
+body.embedded .sidebar,body.embedded .topbar,body.embedded .mobile-nav{display:none!important}
+body.embedded .content{padding:20px 24px 48px}

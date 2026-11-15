@@ -91,7 +91,9 @@ app.use(helmet({
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
-      frameAncestors: ["'none'"],
+      /* Nobody may frame the portal, except the hosts named in FRAME_ANCESTORS: the
+         gg-hub shell on this machine frames the hub's own screens inside its own. */
+      frameAncestors: process.env.FRAME_ANCESTORS ? process.env.FRAME_ANCESTORS.split(/\s+/).filter(Boolean) : ["'none'"],
     },
   },
   crossOriginEmbedderPolicy: false,
