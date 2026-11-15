@@ -198,6 +198,13 @@ async function recordSend({ to, priority, subject, status, reason }) {
 }
 
 export async function sendEmail({ to, subject, text, html, attachments = [], metadata = {}, priority = 'notice' }) {
+  /* A sandbox copy of the portal (EMAIL_SANDBOX=1, as gg-hub runs it against a copy of the real
+     database) only ever simulates: no provider, stored or configured, is consulted. */
+  if (process.env.EMAIL_SANDBOX === '1') {
+    console.log('\n--- EMAIL SANDBOX (not sent) ---\n', { to, subject, metadata }, '\n------------------------\n');
+    await recordSend({ to, priority, subject, status: 'simulated' });
+    return { provider: 'console', id: `sandbox-${Date.now()}`, simulated: true };
+  }
   const held = await pacingProblem({ to, priority });
   if (held) {
     await recordSend({ to, priority, subject, status: 'suppressed', reason: held });
