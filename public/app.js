@@ -1070,6 +1070,13 @@ function shell({ nav, content, title, roleLabel, notificationCount = 0 }) {
   document.getElementById('account-menu-top')?.addEventListener('click', openAccountModal);
   document.getElementById('address-task')?.addEventListener('click', openAddressModal);
   bindShellNavigation();
+  // Framed by the gg-hub shell: say which screen is up, so the shell knows the frame is alive.
+  if (document.body.classList.contains('embedded')) {
+    try {
+      const at = document.elementFromPoint(200, 200);
+      window.parent.postMessage({ source: 'gg-portal', ready: true, view: state.view, title, height: document.body.scrollHeight, width: document.body.clientWidth, scrollY: window.scrollY, at: at ? `${at.tagName}.${at.className}` : null, visible: document.visibilityState, bodyBg: getComputedStyle(document.body).backgroundColor, opacity: getComputedStyle(document.body).opacity }, '*');
+    } catch {}
+  }
 }
 
 /* Settings open from the name in the top right rather than the sidebar, which
@@ -11508,7 +11515,13 @@ async function followLink() {
 
 async function boot() {
   // Framed by the gg-hub shell: that shell has the navigation, so this app shows only its screen.
-  if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embedded');
+  if (new URLSearchParams(location.search).get('embed') === '1') {
+    document.body.classList.add('embedded');
+    // Tell the shell about anything that goes wrong in here; it has no other way to see it.
+    const tell = (message) => { try { window.parent.postMessage({ source: 'gg-portal', error: String(message).slice(0, 500) }, '*'); } catch {} };
+    window.addEventListener('error', (event) => tell(event.message || event.error));
+    window.addEventListener('unhandledrejection', (event) => tell(event.reason?.message || event.reason));
+  }
   try {
     const data = await api('/api/auth/me');
     state.user = data.user;
