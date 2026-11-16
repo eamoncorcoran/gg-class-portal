@@ -168,6 +168,23 @@
   .kbhint{display:none}
 }
 @media(max-width:899px){.console{grid-template-columns:1fr}}
+/* Teaching from a laptop or desktop: the whole console in one field of view. The left column
+   (lesson, session, quick phrase, checks) scrolls on its own; the right column keeps the preview
+   at the top and gives the questions whatever height is left, so nothing is ever off screen. */
+@media(min-width:900px){
+  body.embed .console,body.teach .console{grid-template-columns:minmax(0,1fr) minmax(400px,44%);gap:14px;align-items:stretch;height:calc(100dvh - 20px)}
+  body.embed .stack,body.teach .stack{min-height:0;max-height:100%;overflow-y:auto;overscroll-behavior:contain;gap:12px;padding-right:2px}
+  body.embed .stack.right,body.teach .stack.right{display:flex;flex-direction:column;overflow-y:auto}
+  body.embed .card.preview,body.teach .card.preview{flex:0 0 auto}
+  body.embed .card.questions,body.teach .card.questions{flex:1 1 auto;display:flex;flex-direction:column;min-height:320px}
+  body.embed .card.questions .qwrap,body.teach .card.questions .qwrap{flex:1;height:auto;min-height:0}
+  body.embed .steplist,body.teach .steplist{max-height:min(38vh,400px)}
+  body.embed .stage,body.teach .stage{min-height:200px}
+  body.embed .card-header,body.teach .card-header{padding:12px 14px}
+  body.embed .card-body,body.teach .card-body{padding:12px 14px}
+}
+body.embed .app-main{padding:0 0 0 !important}
+.stage{min-height:160px}
 .gate .fox{width:56px;height:56px;border-radius:15px;background:var(--brand-600);display:grid;place-items:center;font-size:28px;margin:0 auto 14px}
 /* Inside the portal: its sidebar is around this page. */
 body.embed .sidebar,body.embed .mobile-nav,body.embed .breadcrumb{display:none !important}
@@ -297,10 +314,10 @@ body.embed .app-main{padding:0 0 18px;max-width:none}
       </div>
 
       <!-- RIGHT: live preview (top) + questions (under) -->
-      <div class="stack">
-        <div class="card">
+      <div class="stack right">
+        <div class="card preview">
           <div class="card-header"><div><h2>What students see</h2><p style="margin:0" id="previewNote">Your video and the phrase card, exactly as a student gets them. Joins your meeting as a silent viewer once you are live.</p></div>
-            <span class="pill" id="liveLabel">Off screen</span></div>
+            <span style="display:flex;align-items:center;gap:8px;flex:0 0 auto"><span class="pill" id="liveLabel">Off screen</span><button class="btn small" id="previewReload" title="Reload the preview if it is stuck or black">Reload</button></span></div>
           <div class="card-body">
             <div class="stage" id="stage">
               <iframe id="previewFrame" src="/live/room.html?embed=1&preview=1" title="What students see"
@@ -316,7 +333,7 @@ body.embed .app-main{padding:0 0 18px;max-width:none}
           </div>
         </div>
 
-        <div class="card">
+        <div class="card questions">
           <div class="card-header"><h2>Questions</h2><p style="margin:0">Private · reply goes only to that student</p></div>
           <div class="qwrap">
             <div class="qfeed" id="qfeed"><div class="qempty">No questions yet.<br>Each student's question lands here privately.</div></div>
@@ -524,7 +541,11 @@ window.addEventListener('message', (e) => {
   if (e.data.type === 'ended') { if (e.data.byHost) autoEnd(); return; }
   if (e.data.type !== 'stage') return;
   const st = $('#stage'); if (!st) return;
-  st.style.aspectRatio = 'auto'; st.style.height = Math.max(200, Number(e.data.height) || 0) + 'px';
+  /* Only a real change moves the stage: the seat reports its box after every resize, and the stage
+     sizing the seat which sizes the stage would otherwise chase itself smaller. */
+  const want = Math.max(200, Number(e.data.height) || 0);
+  if (Math.abs(st.getBoundingClientRect().height - want) < 12) return;
+  st.style.aspectRatio = 'auto'; st.style.height = want + 'px';
 });
 /* The preview sits in the webinar as a silent attendee, so it is the first
    to know when the host ends it in Zoom. The session is ended here in the
@@ -542,6 +563,8 @@ async function autoEnd(){
   } catch(e){ flash(e.message, true); }
   autoEnding = false;
 }
+/* A preview that is black or stuck gets a fresh frame; the seat rejoins by itself when the session is live. */
+$('#previewReload')?.addEventListener('click', () => { const f = $('#previewFrame'); const st = $('#stage'); if (st) { st.style.height = ''; st.style.aspectRatio = ''; } f.src = f.src; });
 /* The stage is the student page itself now; this only keeps the pill honest. */
 function preview(p){
   const on = !!(p && p.show && p.irish);

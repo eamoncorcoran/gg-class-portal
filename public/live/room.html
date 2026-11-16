@@ -80,15 +80,19 @@ body.embed .app-shell{display:block}
 body.embed .app-main{padding:0 0 18px;max-width:none}
 body.embed .page-header{margin-bottom:12px;justify-content:flex-end}
 body.preview .page-header,body.preview .qpanel,body.preview .fsbtn,body.preview .qfab{display:none !important}
+/* The console's preview seat fills its frame edge to edge: the video box is the whole frame, the
+   page's own canvas never shows under it, and the console keeps the frame at 16:9. */
+body.preview{background:#0b0f14;min-height:100vh;overflow:hidden}
 body.preview .app-main{padding:0}
 body.preview .live-grid{display:block}
-body.preview .videowrap{border-radius:10px}
+body.preview .videowrap{border-radius:0;border:0;box-shadow:none;aspect-ratio:auto;height:100vh;height:100dvh}
 body.preview .gatecard{padding:18px;width:min(340px,100%)}
-body.preview .gatecard img,body.preview .gatecard p:first-of-type{display:none}
+body.preview .gatecard img,body.preview .gatecard p:first-of-type,body.preview #joinBtn,body.preview #zoomOut{display:none}
+body.preview .gatecard{box-shadow:none;background:#ffffffee}
 /* On a phone a 16:9 stage is 190px tall, most of it Zoom's own header and
    toolbar. Taller, so the teacher's video is a picture and not a strip. */
 @media (max-width:760px){
-  body.embed .videowrap,body.preview .videowrap{aspect-ratio:auto;height:min(64vh,520px);border-radius:8px}
+  body.embed:not(.preview) .videowrap{aspect-ratio:auto;height:min(64vh,520px);border-radius:8px}
   .gatecard{padding:18px 16px;width:min(340px,100%)}
   .gatecard h2{font-size:17px}
 }

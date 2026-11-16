@@ -20,3 +20,6 @@ npm-debug.log*
 .dbup.mjs
 .pgdata/
 backups/
+
+# Session scratch files
+scratchpad/
