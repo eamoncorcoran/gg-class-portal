@@ -32,6 +32,7 @@ import sraithRoutes from './src/routes/sraith.js';
 import mockOralRoutes from './src/routes/mockoral.js';
 import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
+import hubRoutes from './src/routes/hub.js';
 import { pastQuestionsProxy } from './src/pqproxy.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -222,6 +223,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/settings', settingsRoutes);
+// Everything the React hub's Home, Courses, Community and Live screens read, in one JSON.
+app.use('/api/hub', hubRoutes);
 app.use('/api/media', mediaRoutes);
 // The live classroom: the room, the questions, the studio's lessons, the mic.
 app.use('/api/live', liveRoutes);
