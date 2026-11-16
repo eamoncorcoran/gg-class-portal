@@ -57,7 +57,7 @@ export async function testLibrary() {
   return { videos: Number(page.totalItems) || 0 };
 }
 
-async function call(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
+async function call(path, { method = 'GET', body, headers = {}, raw = false, duplex } = {}) {
   if (!bunnyConfigured()) {
     throw Object.assign(new Error('Bunny Stream is not configured.'), { status: 503 });
   }
@@ -65,6 +65,12 @@ async function call(path, { method = 'GET', body, headers = {}, raw = false } = 
     method,
     headers: { AccessKey: config.bunny.apiKey, ...headers },
     body,
+    /* Passed on, not dropped. A recording is sent as a stream, and Node refuses
+       a stream body without this ("duplex option is required when sending a
+       body"). uploadVideo has always asked for it; this function took its
+       options apart by name and left this one behind, so every class recording
+       since Bunny was switched on failed in its first second. */
+    ...(duplex ? { duplex } : {}),
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
@@ -102,6 +108,11 @@ export async function uploadVideo(videoId, stream, contentLength) {
     raw: true,
   });
   return videoId;
+}
+
+/** Takes back a video that was reserved for an upload which then did not happen. */
+export async function deleteVideo(videoId) {
+  await call(`/videos/${videoId}`, { method: 'DELETE' });
 }
 
 export async function videoStatus(videoId) {

@@ -1,5 +1,5 @@
-// An Bhéaltriail: the four parts with their marks, the conversation topics with model answers, and
-// the twenty Sraith Pictiúr with their pictures and sentences.
+// An Bhéaltriail: the four parts with their marks, the conversation explained (its notes are to
+// follow), and the twenty Sraith Pictiúr with their pictures and sentences.
 import { useEffect, useState } from "react";
 import { ArrowRight, Check, Clock } from "@/components/app/ic";
 import { motion } from "motion/react";
@@ -8,7 +8,7 @@ import { DuoButton } from "@/components/app/duo";
 import { DuoBubbles, DuoHeadphones, DuoMegaphone, DuoNews, DuoScroll } from "@/components/app/duo-icons";
 import { Page, PageHeader, reveal } from "@/components/app/page-parts";
 import { Segmented } from "@/components/app/segmented";
-import { type Oral, loadOral } from "@/lib/extra";
+import { type Oral, type OralPart, loadOral } from "@/lib/extra";
 import { hi } from "@/lib/highlight";
 import { cx } from "@/utils/cx";
 import { NotFound } from "./not-found";
@@ -84,13 +84,8 @@ export const OralPage = () => {
     );
 };
 
-/** Fáiltiú and Léamh na Filíochta: what happens, what to do, tips. */
-export const OralPartPage = () => {
-    const { part = "" } = useParams();
-    const d = useOral();
-    if (!d) return <Page><Loading /></Page>;
-    const p = d.parts.find((x) => x.slug === part);
-    if (!p) return <NotFound />;
+/** One part of the oral, explained: what happens, what to do, tips. */
+const PartExplained = ({ p, children }: { p: OralPart; children?: React.ReactNode }) => {
     const Icon = PART_ICON[p.slug] ?? DuoMegaphone;
     return (
         <Page>
@@ -112,101 +107,47 @@ export const OralPartPage = () => {
                         ))}
                     </ol>
                 </section>
+                {children}
             </div>
         </Page>
     );
 };
 
-/* ---------------- comhrá ---------------- */
-
-export const ComhraListPage = () => {
+/** Fáiltiú and Léamh na Filíochta. */
+export const OralPartPage = () => {
+    const { part = "" } = useParams();
     const d = useOral();
-    const p = d?.parts.find((x) => x.slug === "comhra");
-    return (
-        <Page wide>
-            <PageHeader kicker={<Link to="/oral" className="hover:underline">An Bhéaltriail</Link>} title="Comhrá" sub={p ? `${p.marks} marks · about ${p.minutes} minutes. ${p.lead}` : "The conversation."} />
-            {!d ? (
-                <Loading />
-            ) : (
-                <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    {d.comhra.map((t, i) => (
-                        <motion.li key={t.slug} {...reveal(Math.min(i, 6))}>
-                            <Link to={`/oral/comhra/${t.slug}`} className="group flex h-full flex-col rounded-2xl border-2 border-secondary border-b-4 bg-primary p-5 outline-focus-ring transition duration-100 ease-linear hover:border-brand-300 hover:bg-primary_hover focus-visible:outline-2 active:translate-y-0.5 active:border-b-2">
-                                <p className="duo-label text-brand-secondary">{t.en}</p>
-                                <h2 className="mt-0.5 text-lg font-bold text-primary">{t.ga}</h2>
-                                <p className="mt-1.5 flex-1 text-sm text-tertiary">{t.intro}</p>
-                                <p className="mt-3 text-xs font-bold text-quaternary">
-                                    {t.qa.length} questions · {t.phrases.length} phrases
-                                </p>
-                            </Link>
-                        </motion.li>
-                    ))}
-                </ul>
-            )}
-        </Page>
-    );
+    if (!d) return <Page><Loading /></Page>;
+    const p = d.parts.find((x) => x.slug === part);
+    if (!p) return <NotFound />;
+    return <PartExplained p={p} />;
 };
 
+/* ---------------- comhrá ---------------- */
+
+/* The conversation, explained: what it is, what to do, and what comes up. The notes on each topic
+   (the questions, the answers to learn, the phrases) are not shown for now. They will follow, and
+   until they do this page says so rather than showing notes that are not ready. */
 export const ComhraPage = () => {
-    const { slug = "" } = useParams();
     const d = useOral();
-    const [showEn, setShowEn] = useState(true);
     if (!d) return <Page><Loading /></Page>;
-    const t = d.comhra.find((x) => x.slug === slug);
-    if (!t) return <NotFound />;
-    const i = d.comhra.indexOf(t);
-    const next = d.comhra[i + 1];
+    const p = d.parts.find((x) => x.slug === "comhra");
+    if (!p) return <NotFound />;
     return (
-        <Page>
-            <PageHeader
-                kicker={
-                    <>
-                        <Link to="/oral" className="hover:underline">An Bhéaltriail</Link> · <Link to="/oral/comhra" className="hover:underline">Comhrá</Link>
-                    </>
-                }
-                title={t.ga}
-                sub={`${t.en}. ${t.intro}`}
-                actions={<Segmented ghost size="sm" label="English" value={showEn ? "on" : "off"} onChange={(k) => setShowEn(k === "on")} items={[{ id: "on", label: "With English" }, { id: "off", label: "Irish only" }]} itemClassName="px-3 py-2 duo-label tracking-normal" />}
-            />
-            <ol className="flex flex-col gap-4">
-                {t.qa.map((x, n) => (
-                    <motion.li key={x.q} {...reveal(Math.min(n, 5))} className="overflow-hidden rounded-2xl border-2 border-secondary bg-primary">
-                        <div className="flex items-start gap-3 border-b-2 border-secondary bg-secondary_subtle px-5 py-3.5">
-                            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white tabular-nums">{n + 1}</span>
-                            <p lang="ga" className="text-md font-bold text-primary">
-                                {x.q}
-                            </p>
-                        </div>
-                        <div className="px-5 py-4">
-                            <p lang="ga" className="text-lg leading-8 text-primary">
-                                {x.a}
-                            </p>
-                            {showEn && <p className="mt-2 text-md leading-7 text-tertiary">{x.en}</p>}
-                        </div>
-                    </motion.li>
-                ))}
-            </ol>
+        <PartExplained p={p}>
             <section className="mt-12">
-                <Head>Nathanna úsáideacha · useful phrases</Head>
-                <dl className="overflow-hidden rounded-2xl border-2 border-secondary">
-                    {t.phrases.map((p, n) => (
-                        <div key={p.ga} className={cx("grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-x-6 px-5 py-3 text-md", n > 0 && "border-t-2 border-secondary")}>
-                            <dt lang="ga" className="font-bold text-primary">
-                                {p.ga}
-                            </dt>
-                            <dd className="text-tertiary">{p.en}</dd>
-                        </div>
+                <Head>What comes up</Head>
+                <p className="text-lg leading-8 text-secondary">The examiner moves between everyday topics and the issues of the day. These are the ones to be ready for.</p>
+                <ul className="mt-5 flex flex-wrap gap-2">
+                    {d.comhra.map((t) => (
+                        <li key={t.slug} className="rounded-full border-2 border-secondary bg-primary px-3.5 py-1.5 text-sm">
+                            <span lang="ga" className="font-bold text-primary">{t.ga}</span> <span className="text-tertiary">{t.en}</span>
+                        </li>
                     ))}
-                </dl>
+                </ul>
             </section>
-            {next && (
-                <div className="mt-10 flex justify-end">
-                    <DuoButton color="secondary" size="sm" href={`/oral/comhra/${next.slug}`} iconTrailing={ArrowRight}>
-                        Next: {next.ga}
-                    </DuoButton>
-                </div>
-            )}
-        </Page>
+            <p className="mt-12 rounded-2xl border-2 border-dashed border-secondary bg-secondary_subtle px-5 py-4 text-md font-semibold text-tertiary">Notes on each topic will follow.</p>
+        </PartExplained>
     );
 };
 

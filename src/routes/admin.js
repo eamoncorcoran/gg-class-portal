@@ -3838,6 +3838,8 @@ router.post('/zoom/import', asyncRoute(async (req, res) => {
 
   const result = await importRecording({
     recording, moduleId: parsed.data.moduleId, actorId: req.user.id, title: parsed.data.title,
+    // Pressing Import on a recording that failed is asking for it to be tried again.
+    retry: true,
   });
   if (result.alreadyImported) return res.status(409).json({ error: 'That recording has already been brought across.' });
   res.status(201).json(result);

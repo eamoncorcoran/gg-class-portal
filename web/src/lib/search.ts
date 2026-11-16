@@ -27,7 +27,7 @@ export type ExtraHit = { title: string; sub: string; href: string };
 const EXTRA: { words: string; title: string; sub: string; href: string }[] = [
     { words: "béaltriail bealtriail oral speaking interview", title: "An Bhéaltriail", sub: "The oral exam", href: "/oral" },
     { words: "sraith pictiúr pictiur picture sequence", title: "Sraith Pictiúr", sub: "The picture sequences", href: "/oral/sraith" },
-    { words: "comhrá comhra conversation oral", title: "Comhrá", sub: "Oral conversation practice", href: "/oral/comhra" },
+    { words: "comhrá comhra conversation oral", title: "Comhrá", sub: "The oral conversation, explained", href: "/oral/comhra" },
     { words: "gramadach grammar tenses aimsir", title: "Grammar", sub: "The grammar course", href: "/grammar" },
     { words: "past papers paper páipéar scrúdú exam papers", title: "Past papers", sub: "Every paper, by year", href: "/papers" },
     { words: "notes nótaí guides", title: "Notes and guides", sub: "Coming soon", href: "/notes" },

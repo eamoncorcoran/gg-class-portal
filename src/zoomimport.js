@@ -1,6 +1,6 @@
 import { one, query } from './db.js';
 import { listRecordings, downloadRecording, zoomConfigured } from './zoom.js';
-import { createVideo, uploadVideo, videoStatus, bunnyConfigured } from './bunny.js';
+import { createVideo, deleteVideo, uploadVideo, videoStatus, bunnyConfigured } from './bunny.js';
 import { config } from './config.js';
 import { audit } from './audit.js';
 
@@ -23,7 +23,7 @@ export const importConfigured = () => zoomConfigured();
 /** Everything on the account, marked with what has already been taken. */
 export async function availableRecordings({ months = 3 } = {}) {
   const recordings = await listRecordings({ months });
-  const seen = await query('SELECT zoom_uuid, zoom_file_id, status, lesson_id, error FROM zoom_imports');
+  const seen = await query('SELECT zoom_uuid, zoom_file_id, status, lesson_id, error, finished_at FROM zoom_imports');
   const byKey = new Map(seen.rows.map((row) => [`${row.zoom_uuid}:${row.zoom_file_id}`, row]));
   const sources = await query('SELECT zoom_id, label, module_id, auto_import, auto_publish, class_id FROM zoom_sources');
   const byMeeting = new Map(sources.rows.map((row) => [String(row.zoom_id), row]));
@@ -36,6 +36,8 @@ export async function availableRecordings({ months = 3 } = {}) {
       importStatus: record?.status || null,
       lessonId: record?.lesson_id || null,
       error: record?.error || null,
+      // When the last attempt ended, which is what decides whether a failure is tried again.
+      attemptEndedAt: record?.finished_at || null,
       watched: Boolean(source),
       autoImport: Boolean(source?.auto_import),
       autoPublish: Boolean(source?.auto_publish),
@@ -52,7 +54,10 @@ export async function availableRecordings({ months = 3 } = {}) {
  * (uuid, file id) is what stops the webhook and the scheduled sweep both
  * creating a lesson for the same class.
  */
-export async function importRecording({ recording, moduleId, actorId = null, title = null, publish = false }) {
+/* `retry` takes up an import that failed. Without it a failure was final: the
+   row that says "somebody has this one" stayed behind, so neither the hourly
+   sweep nor the Import button could ever try that recording again. */
+export async function importRecording({ recording, moduleId, actorId = null, title = null, publish = false, retry = false }) {
   if (!importConfigured()) {
     throw Object.assign(new Error('The Zoom account needs to be connected first, under Settings.'), { status: 503 });
   }
@@ -71,8 +76,17 @@ export async function importRecording({ recording, moduleId, actorId = null, tit
      RETURNING *`,
     [recording.uuid, recording.fileId, recording.meetingId, recording.topic, recording.fileSize || null],
   );
+  let taken = claim;
+  if (!taken && retry) {
+    // In one statement, so two sweeps cannot both take up the same failure.
+    taken = await one(
+      `UPDATE zoom_imports SET status='uploading', error=NULL, started_at=now(), finished_at=NULL
+       WHERE zoom_uuid=$1 AND zoom_file_id=$2 AND status='failed' RETURNING *`,
+      [recording.uuid, recording.fileId],
+    );
+  }
   // Somebody, or something, got here first.
-  if (!claim) {
+  if (!taken) {
     const existing = await one(
       'SELECT * FROM zoom_imports WHERE zoom_uuid=$1 AND zoom_file_id=$2',
       [recording.uuid, recording.fileId],
@@ -80,9 +94,11 @@ export async function importRecording({ recording, moduleId, actorId = null, tit
     return { alreadyImported: true, record: existing };
   }
 
+  let videoId = null;
+  let lessonMade = false;
   try {
     const lessonTitle = title || recording.topic || 'Class recording';
-    let videoId = null, provider = 'zoom', ref = recording.shareUrl, durationSeconds = recording.durationSeconds || null;
+    let provider = 'zoom', ref = recording.shareUrl, durationSeconds = recording.durationSeconds || null;
     if (moving) {
       videoId = await createVideo(lessonTitle);
       const { stream, size } = await downloadRecording(recording.downloadUrl);
@@ -111,10 +127,11 @@ export async function importRecording({ recording, moduleId, actorId = null, tit
         next.position,
       ],
     );
+    lessonMade = true;
 
     await query(
       `UPDATE zoom_imports SET status='done', lesson_id=$1, finished_at=now() WHERE id=$2`,
-      [lesson.id, claim.id],
+      [lesson.id, taken.id],
     );
     await audit({
       actorId, action: 'zoom.recording_imported', entityType: 'lesson', entityId: lesson.id,
@@ -126,9 +143,12 @@ export async function importRecording({ recording, moduleId, actorId = null, tit
        a named class recording with its date for a title is. */
     return { lesson, videoId, published: Boolean(publish) };
   } catch (error) {
+    /* The video reserved for an upload that did not finish is taken back, so a
+       recording that is tried again does not leave an empty one behind each time. */
+    if (videoId && !lessonMade) await deleteVideo(videoId).catch(() => {});
     await query(
       `UPDATE zoom_imports SET status='failed', error=$1, finished_at=now() WHERE id=$2`,
-      [String(error.message).slice(0, 500), claim.id],
+      [String(error.message).slice(0, 500), taken.id],
     );
     throw error;
   }
@@ -140,6 +160,25 @@ export function recordingTitle(recording, source = {}) {
   const when = recording.startedAt ? new Intl.DateTimeFormat('en-IE', { dateStyle: 'full', timeZone: config.defaultTimezone }).format(new Date(recording.startedAt)) : '';
   const what = source.label ? String(source.label).trim() : 'Class recording';
   return when ? `${what}, ${when}` : what;
+}
+
+export const RETRY_FAILED_FOR_MS = 12 * 60 * 60 * 1000;
+export function retryable(attemptEndedAt, now = Date.now()) {
+  if (!attemptEndedAt) return false;
+  const since = now - new Date(attemptEndedAt).getTime();
+  return since >= 0 && since < RETRY_FAILED_FOR_MS;
+}
+
+/* An upload runs inside this server and cannot outlive it. So anything still
+   marked "uploading" when the server starts was cut off by the restart, and
+   left like that it would be skipped by every sweep from then on. Marked as a
+   failure it is picked up again within the hour. */
+export async function releaseInterruptedImports() {
+  const released = await query(
+    `UPDATE zoom_imports SET status='failed', error='Interrupted when the portal restarted. It will be tried again.', finished_at=now()
+     WHERE status='uploading' RETURNING id`,
+  );
+  return released.rows.length;
 }
 
 /**
@@ -171,8 +210,14 @@ export async function importWatched({ meetingId = null, actorId = null } = {}) {
        there by hand, and are brought over with the Import button if wanted. */
     if (recording.startedAt && source.created_at && new Date(recording.startedAt) < new Date(source.created_at)) { skipped += 1; continue; }
     if (recording.importStatus === 'done' || recording.importStatus === 'uploading') { skipped += 1; continue; }
+    /* A failure is tried again, hourly, for half a day: long enough to get past
+       a restart or a bad evening at Zoom or Bunny. After that it is left for a
+       person, who may by then have put the class in the course by hand, and a
+       second copy arriving a week later would be worse than none. */
+    const failed = recording.importStatus === 'failed';
+    if (failed && !retryable(recording.attemptEndedAt)) { skipped += 1; continue; }
     try {
-      await importRecording({ recording, moduleId: source.module_id, actorId, publish: Boolean(source.auto_publish), title: recordingTitle(recording, source) });
+      await importRecording({ recording, moduleId: source.module_id, actorId, publish: Boolean(source.auto_publish), title: recordingTitle(recording, source), retry: failed });
       imported += 1;
     } catch (error) {
       // One bad recording must not stop the rest of the sweep.

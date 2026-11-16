@@ -27,7 +27,7 @@ import { NotFound } from "@/pages/not-found";
 import { LevelPage, QuestionPage, SavedPage, SearchPage, YearPage, YearsPage } from "@/pages/other-pages";
 import { ExamDetailPage, MyExamsPage, NewExamPage } from "@/pages/exam-pages";
 import { QuizBuilderPage, QuizPlayPage, QuizzesPage } from "@/pages/quiz-pages";
-import { ComhraListPage, ComhraPage, OralPage, OralPartPage, SraithListPage, SraithPage } from "@/pages/oral-pages";
+import { ComhraPage, OralPage, OralPartPage, SraithListPage, SraithPage } from "@/pages/oral-pages";
 import { GrammarLessonPage, GrammarPage } from "@/pages/grammar-pages";
 import { NotesPage } from "@/pages/notes-page";
 import { PapersPage } from "@/pages/papers-page";
@@ -111,8 +111,9 @@ const App = () => (
             <Route path="/oral" element={<OralPage />} />
             <Route path="/oral/sraith" element={<SraithListPage />} />
             <Route path="/oral/sraith/:slug" element={<SraithPage />} />
-            <Route path="/oral/comhra" element={<ComhraListPage />} />
-            <Route path="/oral/comhra/:slug" element={<ComhraPage />} />
+            <Route path="/oral/comhra" element={<ComhraPage />} />
+            {/* The topic notes are off for now; an old link to one lands on the explanation. */}
+            <Route path="/oral/comhra/:slug" element={<Navigate to="/oral/comhra" replace />} />
             <Route path="/oral/:part" element={<OralPartPage />} />
             <Route path="/notes" element={<NotesPage />} />
             <Route path="/grammar" element={<GrammarPage />} />

@@ -27,6 +27,7 @@ import { ensureAllWeeks } from './src/weeks.js';
 import { startReminderScheduler, runReminderCycle } from './src/reminders.js';
 import { startBackupScheduler } from './src/backup.js';
 import { startZoomScheduler } from './src/zoomscheduler.js';
+import { releaseInterruptedImports } from './src/zoomimport.js';
 import { refreshZoomApi } from './src/zoom.js';
 import { refreshBunny } from './src/bunny.js';
 import sraithRoutes from './src/routes/sraith.js';
@@ -373,6 +374,10 @@ async function start() {
   startBackupScheduler();
   // Before the Zoom sweep starts, since it moves recordings to Bunny when it is set.
   await refreshBunny();
+  // Before the sweep starts: an upload the last restart cut off is handed back to it.
+  await releaseInterruptedImports()
+    .then((count) => { if (count) console.log(`Released ${count} recording import(s) cut off by a restart`); })
+    .catch((error) => console.error('Could not release interrupted recording imports', error?.message));
   await refreshZoomApi();
   startZoomScheduler();
   // Every Sraith sentence spoken once and kept on disk, a minute after boot.
