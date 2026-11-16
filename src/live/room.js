@@ -345,6 +345,19 @@ export async function sessionSummary() {
    session pointed at it for the classes chosen, and the clock started. */
 export async function goLive({ mode, classIds, joinUrl, joinNote, topic } = {}) {
   await setSession({ mode, classIds, joinUrl: joinUrl === undefined ? '' : joinUrl, joinNote: joinNote === undefined ? '' : joinNote });
+  /* A blank link means "the class's usual room": the teacher hosts the weekly meeting from Zoom as
+     always, and students join that. Only with no class link either does the portal try to start a
+     meeting itself, which needs the account app's meeting:write scope. */
+  if (!access.joinUrl) {
+    const chosen = access.classIds.length ? access.classIds : [];
+    for (const id of chosen) {
+      const row = (await query('SELECT join_url, join_note FROM classes WHERE id=$1 AND active', [id])).rows[0];
+      if (row?.join_url && parseWebinar(row.join_url).webinarId) {
+        await setSession({ mode, classIds, joinUrl: row.join_url, joinNote: row.join_note || '' });
+        break;
+      }
+    }
+  }
   if (!access.joinUrl) {
     const { zoomConfigured, createInstantMeeting } = await import('../zoom.js');
     if (!zoomConfigured()) {
