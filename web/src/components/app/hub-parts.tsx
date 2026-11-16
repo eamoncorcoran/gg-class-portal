@@ -46,7 +46,7 @@ export const Avatar = ({ who, size = "md", className }: { who: Who; size?: "xs" 
     const name = who.name || "?";
     const tone = TONES[[...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % TONES.length];
     return who.avatar && !broken ? (
-        <img src={who.avatar} alt="" onError={() => setBroken(true)} className={cx("shrink-0 rounded-full object-cover ring-2 ring-primary", px, className)} />
+        <img src={who.avatar} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} className={cx("shrink-0 rounded-full object-cover ring-2 ring-primary", px, className)} />
     ) : (
         <span aria-hidden="true" className={cx("flex shrink-0 items-center justify-center rounded-full font-bold text-white", tone, px, className)}>
             {initials(name)}

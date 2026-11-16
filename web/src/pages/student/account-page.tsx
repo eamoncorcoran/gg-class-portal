@@ -54,10 +54,15 @@ const readPhoto = (file: File, onPreview: (dataUrl: string) => void) => {
     return true;
 };
 
-const sendPhoto = (file: File) => {
+const sendPhoto = async (file: File) => {
     const form = new FormData();
     form.append("avatar", file);
-    return upload<{ ok: boolean }>("/api/auth/avatar", form);
+    const done = await upload<{ ok: boolean }>("/api/auth/avatar", form);
+    /* The browser keeps faces for a day. Asking for this one again, past its cache, puts the new
+       photograph in the old one's place wherever it is drawn, rather than a day from now. */
+    const who = await refreshMe().catch(() => null);
+    if (who?.id) await fetch(`/api/media/avatar/${who.id}`, { cache: "reload", credentials: "same-origin" }).catch(() => undefined);
+    return done;
 };
 
 /* ---- step 1: a first sign-in has to choose its own password (renderAuth 'change') ---------- */

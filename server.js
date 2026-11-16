@@ -15,7 +15,8 @@ import authRoutes from './src/routes/auth.js';
 import adminRoutes from './src/routes/admin.js';
 import studentRoutes from './src/routes/student.js';
 import settingsRoutes from './src/routes/settings.js';
-import mediaRoutes from './src/routes/media.js';
+import mediaRoutes, { resolveStored } from './src/routes/media.js';
+import { warmAvatarThumbs } from './src/avatars.js';
 import liveRoutes from './src/routes/live.js';
 import { loadAccess } from './src/live/room.js';
 import { getSpeechConfig } from './src/settings.js';
@@ -376,6 +377,12 @@ async function start() {
   startZoomScheduler();
   // Every Sraith sentence spoken once and kept on disk, a minute after boot.
   setTimeout(() => { warmSraithAudio().catch((error) => console.error('Sraith audio warm-up failed', error?.message)); }, 60 * 1000).unref?.();
+  // Small copies of the profile pictures already on disk, two minutes after boot.
+  setTimeout(() => {
+    warmAvatarThumbs({ resolve: resolveStored })
+      .then((made) => { if (made) console.log(`Made ${made} small profile picture${made === 1 ? '' : 's'}`); })
+      .catch((error) => console.error('Profile picture warm-up failed', error?.message));
+  }, 2 * 60 * 1000).unref?.();
   // Scheduled board posts become visible by the clock passing rather than by
   // anything running, so without this nothing would notice they had appeared.
   startBoardNotifier();

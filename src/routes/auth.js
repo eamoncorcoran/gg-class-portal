@@ -12,6 +12,7 @@ import { createSession, destroySession, requireAuth } from '../session.js';
 import { generateStrongPassword, hashPassword, hashToken, passwordProblems, randomToken, verifyPassword } from '../security.js';
 import { sendPasswordChanged, sendPasswordReset } from '../email.js';
 import { audit } from '../audit.js';
+import { removeAvatarThumb } from '../avatars.js';
 
 const router = Router();
 /* Both answer in JSON and say how long the wait is. In plain text the client had
@@ -63,6 +64,7 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), asyncRoute(as
   // Replacing a picture should not leave the old one on disk forever.
   if (current?.avatar_path) {
     await fs.unlink(path.join(config.privateUploadDir, path.basename(current.avatar_path))).catch(() => {});
+    await removeAvatarThumb(current.avatar_path);
   }
   await audit({ actorId: req.user.id, action: 'user.avatar_set', entityType: 'user', entityId: req.user.id, ip: req.ip });
   res.status(201).json({ ok: true });

@@ -14,6 +14,7 @@ import { asyncRoute } from '../middleware.js';
 import { requireAuth } from '../session.js';
 import { one } from '../db.js';
 import { studentCanSeeLesson } from '../courses.js';
+import { AVATAR_PX, avatarThumb } from '../avatars.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -22,19 +23,39 @@ router.use(requireAuth);
    is the entire point of putting faces on the feed — but only people signed in,
    which is why these are not in the public uploads path. */
 router.get('/avatar/:userId', asyncRoute(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.userId)) return res.status(404).json({ error: 'No picture.' });
   const owner = await one('SELECT avatar_path, avatar_mime FROM users WHERE id=$1', [req.params.userId]);
   const file = owner?.avatar_path ? resolveStored(owner.avatar_path) : null;
   if (!file) return res.status(404).json({ error: 'No picture.' });
-  res.setHeader('Content-Type', owner.avatar_mime || 'image/jpeg');
-  res.setHeader('Cache-Control', 'private, max-age=300');
+
+  /* A picture is stored under a new random name every time it is replaced, so
+     the name is its version. A browser that already holds this version is told
+     so and sent nothing; one that holds it at all keeps it for a day without
+     asking, and after that shows what it has while it checks. Private, so only
+     the browser of somebody signed in keeps a copy, never a shared cache.
+
+     It was five minutes, with nothing to check against: every face on the
+     board was downloaded again, whole, a dozen times an evening. */
+  const version = `"${path.basename(owner.avatar_path)}-${AVATAR_PX}"`;
+  res.setHeader('ETag', version);
+  res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  fs.createReadStream(file).pipe(res);
+  const held = String(req.headers['if-none-match'] || '').split(',').map((tag) => tag.trim().replace(/^W\//, ''));
+  if (held.includes(version)) return res.status(304).end();
+
+  // The small copy when there is one; the photograph as it was uploaded when there cannot be.
+  const small = await avatarThumb(file, owner.avatar_path);
+  const sending = small || file;
+  res.setHeader('Content-Type', small ? 'image/webp' : (owner.avatar_mime || 'image/jpeg'));
+  const size = await fs.promises.stat(sending).then((stat) => stat.size).catch(() => null);
+  if (size !== null) res.setHeader('Content-Length', size);
+  fs.createReadStream(sending).pipe(res);
 }));
 
 /* Private files live outside the publicly served uploads directory. Anything
    written before that separation existed is still read from the old location, so
    existing recordings keep playing. */
-function resolveStored(storedName) {
+export function resolveStored(storedName) {
   if (!storedName) return null;
   const name = path.basename(storedName);
   /* Listening audio lives in a subdirectory of the private store rather than

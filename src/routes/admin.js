@@ -15,6 +15,7 @@ import { generateStrongPassword, hashPassword } from '../security.js';
 import { sendStudentInvite, sendNudge } from '../email.js';
 import { ensureWeeksForClass, scheduleCheckins, CHECKIN_DEFAULTS, weekForDeadline } from '../weeks.js';
 import { audit } from '../audit.js';
+import { removeAvatarThumb } from '../avatars.js';
 import { draftCheckinFeedback, draftHomeworkFeedback, draftingSwitches } from '../ai.js';
 import { VOICE_MIME_TYPES, audioExtension, audioTypeFor, dictate, originalName, withVoiceNote, withVoiceNotes } from '../voice.js';
 import { buildCalendar, assignmentEvent, ensureCalendarToken, rotateCalendarToken } from '../calendar.js';
@@ -819,6 +820,8 @@ router.delete('/students/:id', asyncRoute(async (req, res) => {
       if (error.code !== 'ENOENT') console.error(`Could not remove ${name} for the deleted student: ${error.message}`);
     }
   }
+  // The small copy of their photograph goes with the photograph.
+  await removeAvatarThumb(student.avatar_path);
 
   await audit({
     actorId: req.user.id, action: 'student.deleted', entityType: 'user', entityId: student.id,
