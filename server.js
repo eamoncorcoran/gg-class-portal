@@ -32,6 +32,7 @@ import sraithRoutes from './src/routes/sraith.js';
 import mockOralRoutes from './src/routes/mockoral.js';
 import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
+import { pastQuestionsProxy } from './src/pqproxy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -161,6 +162,14 @@ app.use('/live', (req, res, next) => {
   }
   next();
 });
+
+/* The past-questions service, passed straight through. Ahead of the rate limit
+   (a page of a paper is dozens of question crops, and a staffroom shares one
+   address), ahead of the body parsers (the request body streams up as it is),
+   and ahead of the hub's own /api routes, since four of its paths are /api/*
+   and would otherwise be answered 404 here. Without PQ_SERVICE_URL every one of
+   those paths is a 503 that says so. */
+app.use(pastQuestionsProxy());
 
 app.use(rateLimit({
   windowMs: 60 * 1000,
