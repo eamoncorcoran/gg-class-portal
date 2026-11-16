@@ -35,8 +35,8 @@ A `pq/.env` beside the code is read for local runs (never committed). The upload
     curl -I http://127.0.0.1:5499/data.json                               # 200
     curl -s -H 'Range: bytes=0-99' http://127.0.0.1:5499/aud/2014_A.mp3 | wc -c   # 206, 100 bytes
 
-Or the container: `docker build -f pq/Dockerfile -t pq .` from the repo root, then
-`docker run -p 10000:10000 -v pq-data:/var/data -e PQ_UPLOAD_TOKEN=... pq`.
+Or the container: `docker build -t pq pq` from the repo root (the build context is `pq/` itself),
+then `docker run -p 10000:10000 -v pq-data:/var/data -e PQ_UPLOAD_TOKEN=... pq`.
 
 ## Putting the data on the service
 
@@ -96,7 +96,8 @@ reachable through the hub (it never was).
 
 ## Render service shape
 
-- runtime `docker`, `dockerfilePath: pq/Dockerfile`, `dockerContext: .` (the portal repo root)
+- runtime `docker`, `rootDir: pq` (the Dockerfile and its build context are this folder; that is what
+  `render.yaml` in the repo root declares under `gg-past-questions`)
 - one instance, with a disk: 3 GB mounted at `/var/data` (data is 651 MB plus the narrator cache)
 - env: `DATA_DIR=/var/data/site`, `STATE_DIR=/var/data/state`, `PORT=10000`, `PQ_UPLOAD_TOKEN`
   (sync: false), `ANTHROPIC_API_KEY`, `ANTHROPIC_WORKSPACE_ID`, `OPENAI_API_KEY`,
@@ -104,15 +105,17 @@ reachable through the hub (it never was).
 - `healthCheckPath: /_health`
 - region frankfurt, like the portal
 
-After the first deploy run `upload.py` (above) once, then point the hub's proxy at the service URL.
-Redeploys keep the disk, so the data stays; only a new disk needs the upload again.
+After the first deploy run `upload.py` (above) once against the public URL, then set the portal's
+`PQ_SERVICE_URL` to the internal address (`http://gg-past-questions:10000`). Redeploys keep the
+disk, so the data stays; only a new disk needs the upload again. `render.yaml` in the repo root
+already carries this service; it still lacks `ANTHROPIC_WORKSPACE_ID` and `OPENAI_API_KEY`, which
+`llm.py` uses when they are set (the workspace header, and the fallback marker).
 
 ```yaml
   - type: web
     name: gg-past-questions
     runtime: docker
-    dockerfilePath: pq/Dockerfile
-    dockerContext: .
+    rootDir: pq
     region: frankfurt
     plan: starter
     numInstances: 1

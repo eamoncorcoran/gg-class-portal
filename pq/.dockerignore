@@ -1,0 +1,6 @@
+.venv
+site
+tts
+dist
+__pycache__
+.env

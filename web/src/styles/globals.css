@@ -1,0 +1,226 @@
+@import "tailwindcss";
+@import "./theme.css";
+@import "./typography.css";
+
+@plugin "@tailwindcss/typography";
+@plugin "tailwindcss-react-aria-components";
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:where(.dark-mode, .dark-mode *));
+@custom-variant label (& [data-label]);
+@custom-variant focus-input-within (&:has(input:focus));
+
+@utility scrollbar-hide {
+    /* For Webkit-based browsers (Chrome, Safari and Opera) */
+    &::-webkit-scrollbar {
+        display: none;
+        -webkit-appearance: none;
+    }
+
+    /* For IE, Edge and Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+}
+
+@utility transition-inherit-all {
+    transition-property: inherit;
+    transition-duration: inherit;
+    transition-timing-function: inherit;
+}
+
+html,
+body {
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-font-variant-ligatures: contextual;
+    font-variant-ligatures: contextual;
+    -webkit-font-kerning: normal;
+    font-kerning: normal;
+}
+
+/* Hide the default expand arrow on Safari.  */
+details summary::-webkit-details-marker {
+    display: none;
+}
+
+/* Hide default arrows from number inputs. */
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+/* Firefox */
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+/* Hide the default clear button (X) from search inputs. */
+input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+}
+
+/* Hide the default outline on chart elements. */
+.recharts-surface,
+.recharts-surface g,
+.recharts-surface path {
+    outline: none;
+}
+
+/* Printing a question, an exam or a sample answer: only #print-root goes to paper */
+#print-root {
+    display: none;
+}
+@media print {
+    body > *:not(#print-root) {
+        display: none !important;
+    }
+    #print-root {
+        display: block;
+    }
+    #print-root .pq {
+        break-after: page;
+    }
+    #print-root .pq:last-child {
+        break-after: auto;
+    }
+    #print-root h2 {
+        margin: 0 0 8pt;
+        font: 600 13pt Inter, sans-serif;
+    }
+    #print-root img {
+        display: block;
+        width: 100%;
+    }
+    #print-root .pms {
+        margin-top: 12pt;
+        padding-top: 8pt;
+        border-top: 1px solid #999;
+    }
+    #print-root .pcover .pk {
+        margin: 0 0 6pt;
+        font: 700 9pt Inter, sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #555;
+    }
+    #print-root .pcover h1 {
+        margin: 0 0 6pt;
+        font: 700 22pt Inter, sans-serif;
+    }
+    #print-root .pcover .pmeta {
+        margin: 0 0 14pt;
+        font: 11pt Inter, sans-serif;
+        color: #444;
+    }
+    #print-root .pcover .pins {
+        margin: 0 0 14pt;
+        padding: 10pt 12pt;
+        border: 1.5px solid #000;
+        border-radius: 8pt;
+        font: 11pt Inter, sans-serif;
+    }
+    #print-root .pcover h3 {
+        margin: 0 0 4pt;
+        font: 700 9pt Inter, sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    #print-root .plines {
+        display: flex;
+        gap: 18pt;
+        margin: 0 0 16pt;
+        font: 11pt Inter, sans-serif;
+    }
+    #print-root .plines p {
+        flex: 1;
+        margin: 0;
+    }
+    #print-root .plines span {
+        display: inline-block;
+        width: 60%;
+        border-bottom: 1px solid #000;
+    }
+    #print-root .plist {
+        margin: 0;
+        padding-left: 16pt;
+        font: 10.5pt Inter, sans-serif;
+        line-height: 1.6;
+    }
+    #print-root .pbox {
+        width: 88%;
+        min-height: 34pt;
+        margin: 3pt 0 10pt 9%;
+        padding: 4pt;
+        border: 1px solid #000;
+        font: 11pt "Times New Roman", serif;
+        white-space: pre-wrap;
+    }
+    @page {
+        margin: 14mm;
+    }
+}
+
+/* Duolingo-style pieces: chunky pressable buttons, 2px-bordered rounded cards, small uppercase labels */
+@utility duo-label {
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+@utility duo-card {
+    border-radius: 1rem;
+    border: 2px solid var(--color-border-secondary);
+    background: var(--color-bg-primary);
+}
+
+/* The hub's calendar: Monday-first grid with hairline cells, tiny bold chips per event. */
+@layer components {
+    .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--color-gray-200); border-left: 1px solid var(--color-gray-200); }
+    .cal-name, .cal-day { border-right: 1px solid var(--color-gray-200); border-bottom: 1px solid var(--color-gray-200); }
+    .cal-name { padding: 7px 3px; background: var(--color-gray-50); color: var(--color-gray-500); text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .cal-day { min-height: 96px; padding: 7px; background: #fff; }
+    .cal-day.is-empty { background: var(--color-gray-25); }
+    .cal-day.is-today { background: var(--color-brand-25); box-shadow: inset 0 2px 0 var(--color-brand-500); }
+    .cal-day.is-today .cal-number { color: var(--color-brand-800); }
+    .cal-number { display: block; color: var(--color-gray-600); font-size: 11px; font-weight: 650; }
+    .cal-ev { display: block; width: 100%; margin-top: 5px; border: 1px solid transparent; border-radius: 6px; padding: 5px 6px; text-align: left; font-size: 10.5px; font-weight: 650; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; transition: filter 0.1s linear; }
+    .cal-ev:disabled { cursor: default; }
+    /* phone calendar: small cells with dots, and the chosen day's items listed under the grid */
+    .cal-day.is-small { min-height: 48px; padding: 5px 3px; text-align: center; cursor: pointer; }
+    .cal-day.is-small .cal-number { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 999px; margin: 0 auto; }
+    .cal-day.is-picked .cal-number { background: var(--color-brand-500); color: #fff; }
+    .cal-dots { display: flex; justify-content: center; gap: 2px; margin-top: 3px; min-height: 6px; }
+    .cal-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--color-gray-300); }
+    .cal-dot.is-class { background: var(--color-brand-600); }
+    .cal-dot.is-skipped, .cal-dot.is-break { background: var(--color-gray-400); }
+    .cal-dot.orange { background: var(--color-warning-500); }
+    .cal-dot.red { background: var(--color-error-500); }
+    .cal-dot.green { background: var(--color-success-500); }
+    .cal-dot.is-oral { background: var(--color-blue-600); }
+    .cal-dot.is-recorded { background: var(--color-blue-600); }
+    .cal-dot.is-moved { background: var(--color-warning-500); }
+    .cal-agenda .cal-ev { margin-top: 0; padding: 10px 12px; font-size: 13px; white-space: normal; }
+    .cal-ev:not(:disabled):hover { filter: brightness(0.96); }
+    .cal-ev.grey { background: var(--color-gray-50); border-color: var(--color-gray-200); color: var(--color-gray-700); }
+    .cal-ev.orange { background: var(--color-warning-100); border-color: var(--color-warning-200); color: var(--color-warning-700); }
+    .cal-ev.green { background: var(--color-success-50); border-color: var(--color-success-100); color: var(--color-success-700); }
+    .cal-ev.red { background: var(--color-error-50); border-color: var(--color-error-100); color: var(--color-error-700); }
+    .cal-ev.is-class { background: var(--color-brand-600); border-color: var(--color-brand-600); color: #fff; font-weight: 640; }
+    .cal-ev.is-class:not(:disabled):hover { background: var(--color-brand-700); filter: none; }
+    .cal-ev.is-recorded { background: var(--color-blue-600); border-color: var(--color-blue-600); }
+    .cal-ev.is-moved { background: var(--color-warning-500); border-color: var(--color-warning-500); }
+    .cal-ev.is-extra { background: var(--color-brand-700); border-color: var(--color-brand-700); }
+    .cal-ev.is-skipped { background: var(--color-gray-100); border-color: var(--color-gray-200); color: var(--color-gray-500); text-decoration: line-through; font-weight: 600; }
+    .cal-ev.is-oral { background: var(--color-blue-50); border-color: var(--color-blue-500); color: var(--color-blue-700); border-style: dashed; }
+    .cal-ev.is-oral.booked { background: var(--color-blue-600); border-color: var(--color-blue-600); color: #fff; border-style: solid; }
+}
+
+/* the student live room gone full screen: the page behind stays put */
+body.live-full { overflow: hidden; }
+
+/* A bare `grid` (no grid-cols-*) sizes its one implicit column by min-content, so a truncated title
+   inside it widens the whole page on a phone. Implicit columns shrink like explicit ones. */
+.grid { grid-auto-columns: minmax(0, 1fr); }
