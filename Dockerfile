@@ -3,6 +3,16 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
+# The React hub, built once here so the runtime image carries only the output.
+# web/ is the front end's own package (Vite + React); its devDependencies are
+# the build, so this is a full `npm ci`, and none of it reaches the final image.
+FROM node:22-bookworm-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production
 WORKDIR /app
@@ -24,6 +34,8 @@ RUN apt-get update \
 RUN groupadd -r app && useradd -r -g app app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# The built front end. server.js serves it from here when NEW_UI is not "0".
+COPY --from=web /web/dist ./web/dist
 RUN mkdir -p /app/uploads /app/uploads-private /app/backups /app/.data && chown -R app:app /app
 USER app
 EXPOSE 3000
