@@ -223,6 +223,11 @@ services:
       # Authorises uploads of the site's files onto the disk.
       - key: PQ_UPLOAD_TOKEN
         sync: false
+      # Optional for the marker: an Anthropic workspace and OpenAI, when llm.py is set to use them.
+      - key: ANTHROPIC_WORKSPACE_ID
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
 
 databases:
   - name: gg-class-portal-db

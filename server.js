@@ -126,6 +126,9 @@ app.use(helmet({
    scoped to /live/, instead of loosening the portal's. The practice player is
    framed by the course page, so it may be framed by this site and nobody else. */
 app.use('/live', (req, res, next) => {
+  /* "/live" itself (and "/live/") is the hub's own Live classroom page, not one of these; it keeps
+     the hub's policy. Only the files in public/live get Zoom's. */
+  if (req.path === '/' || req.path === '') return next();
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://source.zoom.us",
@@ -281,6 +284,8 @@ app.use(express.static(publicDir, {
   maxAge: config.isProduction ? '1h' : 0,
   // The page itself is served below, not from here.
   index: false,
+  // No "/live" -> "/live/" redirect: "/live" is a page of the hub, the folder is only its files.
+  redirect: false,
   setHeaders(res, filePath) {
     // Every page, not only the shell: the live room is a page in its own
     // right, framed by the portal, and a student who loaded it before a fix

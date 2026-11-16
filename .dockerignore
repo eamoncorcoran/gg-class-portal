@@ -10,6 +10,10 @@ uploads-private/*
 .pgdata
 preview.html
 backups
+# The front end is built inside the image (see the `web` stage); its own
+# installed modules and any local build stay out of the context.
+web/node_modules
+web/dist
 
 # pq/: the venv and any local data copy never belong in the image
 pq/.venv
