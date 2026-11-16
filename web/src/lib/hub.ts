@@ -191,7 +191,7 @@ const shape = (r: Raw): Hub => {
     for (const w of weeks) {
         const real = byWeek.get(w.n) ?? [];
         if (real.length) w.lessonId = real[0].id;
-        modules[termOf(w.start)].lessons.push(...real.map((l) => ({ ...l, name: l.title, title: lessonDate(l.recordedOn, l.title, w.classAt), week: w.n, recordedOn: l.recordedOn || dateInTitle(l.title, w.classAt.getFullYear())?.toISOString() || w.classAt.toISOString(), durationSeconds: l.durationSeconds || CLASS_MINUTES * 60, topics: w.topics, homework: w.homework, notes: l.notes || w.notes || "" })));
+        modules[termOf(w.start)].lessons.push(...real.map((l) => ({ ...l, name: l.title, title: lessonDate(l.recordedOn, l.title, w.classAt), week: w.n, recordedOn: l.recordedOn || dateInTitle(l.title, w.classAt.getFullYear())?.toISOString() || w.classAt.toISOString(), durationSeconds: l.durationSeconds || CLASS_MINUTES * 60, topics: w.topics, homework: w.homework, notes: l.notes || "" })));
     }
     // a lesson whose week is beyond the plan still shows, at the end
     for (const [n, list] of byWeek) if (!weeks.some((w) => w.n === n)) modules[2].lessons.push(...list);

@@ -163,9 +163,20 @@ const videosIn = (text: string) => {
     }
     return found;
 };
+/** Bunny's embed code arrives with autoplay on; nothing on the board plays until it is clicked. */
+const noAutoplay = (url: string) => {
+    try {
+        const u = new URL(url);
+        u.searchParams.set("autoplay", "false");
+        u.searchParams.set("preload", "false");
+        return u.toString();
+    } catch {
+        return url;
+    }
+};
 const VideoFrame = ({ v }: { v: { kind: string; src: string } }) => (
     <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
-        <iframe src={v.src} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen loading="lazy" title={v.kind === "loom" ? "Loom video" : "YouTube video"} className="size-full" />
+        <iframe src={v.src} allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen loading="lazy" title={v.kind === "loom" ? "Loom video" : "YouTube video"} className="size-full" />
     </div>
 );
 
@@ -200,7 +211,7 @@ const Attachments = ({ list }: { list: Attachment[] }) =>
                     if (!/^https:\/\/iframe\.mediadelivery\.net\//.test(a.url || "")) return null;
                     return (
                         <div key={i} className="aspect-video w-full overflow-hidden rounded-xl bg-black">
-                            <iframe src={a.url} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture" allowFullScreen loading="lazy" title={a.fileName || "Video"} className="size-full" />
+                            <iframe src={noAutoplay(a.url)} allow="accelerometer; gyroscope; encrypted-media; picture-in-picture" allowFullScreen loading="lazy" title={a.fileName || "Video"} className="size-full" />
                         </div>
                     );
                 }

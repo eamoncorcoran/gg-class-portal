@@ -1,11 +1,11 @@
 // Home: the next class, this week's plan, the calendar, and the quickest ways into recordings,
 // the board and the past questions.
-import { ArrowRight, Play } from "@/components/app/ic";
+import { Play } from "@/components/app/ic";
 import { DuoButton } from "@/components/app/duo";
 import { NextClassBanner, useNow } from "@/components/app/hub-parts";
 import { type Chip, HubCalendar } from "@/components/app/hub-calendar";
 import { Page } from "@/components/app/page-parts";
-import { type Hub, REC_COURSE, fmtShortDate, lastRecorded, lessonForWeek, onDay, thisWeek, useHub } from "@/lib/hub";
+import { type Hub, REC_COURSE, lastRecorded, lessonForWeek, onDay, useHub } from "@/lib/hub";
 import { cx } from "@/utils/cx";
 
 const CAT: Record<string, string> = { Grammar: "bg-blue-100 text-blue-800", Oral: "bg-orange-100 text-orange-800", Course: "bg-secondary text-secondary", Aiste: "bg-purple-100 text-purple-800", Filíocht: "bg-pink-100 text-pink-800", Prós: "bg-teal-100 text-teal-800", "Sraith Pictiúr": "bg-yellow-100 text-yellow-800", "Exam Skills": "bg-brand-100 text-brand-800", Revision: "bg-brand-100 text-brand-800", Dordán: "bg-indigo-100 text-indigo-800" };
@@ -36,7 +36,6 @@ export const HomePage = () => {
     const hub = useHub();
     const now = useNow();
     if (!hub) return <Page>{null}</Page>;
-    const week = thisWeek(hub, now);
     const last = lastRecorded(hub, now);
     const hour = now.getHours();
     const greet = hour < 12 ? "Maidin mhaith" : hour < 18 ? "Tráthnóna maith" : "Oíche mhaith";
@@ -55,42 +54,23 @@ export const HomePage = () => {
 
 
             <div className="mt-8 flex min-w-0 flex-col gap-8">
-                    {/* this week */}
-                    <section aria-labelledby="tw" className="rounded-2xl border-2 border-secondary bg-primary p-5 md:p-6">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                                <p className="duo-label text-brand-secondary">This week · {fmtShortDate(week.start)}</p>
-                                <h2 id="tw" className="mt-1 text-xl font-bold text-primary">
-                                    Week {week.n}
-                                </h2>
+                    {/* last class: the latest recording and the notes written on it */}
+                    {last && (
+                        <section aria-labelledby="lc" className="rounded-2xl border-2 border-secondary bg-primary p-5 md:p-6">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p className="duo-label text-brand-secondary">Last class</p>
+                                    <h2 id="lc" className="mt-1 text-xl font-bold text-primary">
+                                        {last.title}
+                                    </h2>
+                                </div>
+                                <DuoButton size="sm" href={`/courses/${REC_COURSE}/${last.id}`} iconLeading={Play}>
+                                    Watch the class
+                                </DuoButton>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                                {lessonForWeek(hub, week.n) && (
-                                    <DuoButton size="sm" color="secondary" href={`/courses/${REC_COURSE}/${week.lessonId}`} iconTrailing={ArrowRight}>
-                                        This week's lesson
-                                    </DuoButton>
-                                )}
-                                {last && (
-                                    <DuoButton size="sm" href={`/courses/${REC_COURSE}/${last.id}`} iconLeading={Play}>
-                                        Watch last class
-                                    </DuoButton>
-                                )}
-                            </div>
-                        </div>
-                        {week.homework.length > 0 && (
-                            <>
-                                <p className="mt-5 duo-label text-quaternary">Homework</p>
-                                <ul className="mt-2 flex flex-col gap-1.5">
-                                    {week.homework.map((h) => (
-                                        <li key={h} className="flex items-start gap-2 text-md text-secondary">
-                                            <span className="mt-2 size-1.5 shrink-0 rounded-full bg-brand-solid" aria-hidden="true" />
-                                            {h}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </>
-                        )}
-                    </section>
+                            {last.notes && <p className="mt-4 max-w-2xl text-md leading-7 whitespace-pre-line text-secondary">{last.notes}</p>}
+                        </section>
+                    )}
 
                 <HubCalendar hub={hub} now={now} fallback={planChips(hub, now)} />
             </div>
