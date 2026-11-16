@@ -1307,3 +1307,20 @@ Migration `018_courses`. New tests: `tests/courses.test.js` and
 
 Migration `019_zoom_import`. New tests: `tests/zoom.test.js` and
 `tests/bunny.test.js`.
+
+## The new front end (launched 16 Nov 2026)
+
+`web/` is the React app students and teachers use; the Dockerfile builds it and the server serves
+`web/dist` at the root. The old interface stays at `/legacy`, and `NEW_UI=0` in the environment
+puts it back at the root for everyone (one env change, no deploy of code). `/api/hub/export` gives
+the app its class, weeks, lessons and board straight from the database.
+
+Past questions, papers and recordings come from a second Render service, `gg-past-questions`
+(`pq/`, Python), reached through the hub at `PQ_SERVICE_URL` (private network
+`http://gg-past-questions:10000`). Its data lives on that service's disk; to (re)load it run
+`pq/upload.py` from a machine with the `site` folder, with `PQ_SERVICE_URL=https://gg-past-questions.onrender.com`
+and `PQ_UPLOAD_TOKEN` set (see `pq/README.md`).
+
+Students join the live class inside the page when `STUDENTS_USE_ZOOM_LINK=false` (set in
+render.yaml); `true` sends them back to the plain Zoom link. Go live with a blank link uses the
+class's own Zoom link from Class setup.
