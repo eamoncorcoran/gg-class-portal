@@ -63,9 +63,9 @@ const homeworkUpload = multer({
 /* Students join class in Zoom itself, from the plain class link, whatever
    the live classroom switch says (10 Nov 2026). The room inside the portal
    turned students away with "Signature is invalid" two class nights running,
-   so it stays out of their way until it has been made to work. Set to false to
-   offer it again; the switch under Feedback drafting then decides as before. */
-const STUDENTS_USE_ZOOM_LINK = true;
+   so it stays out of their way until it has been made to work. STUDENTS_USE_ZOOM_LINK=false
+   in the environment offers the room again; the switch under Feedback drafting then decides as before. */
+const STUDENTS_USE_ZOOM_LINK = process.env.STUDENTS_USE_ZOOM_LINK !== 'false';
 
 async function studentClass(studentId) {
   return one(
