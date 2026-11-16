@@ -2499,3 +2499,23 @@ body.embedded:not(.is-admin) .sidebar{display:none!important}
 body.embedded .topbar,body.embedded .mobile-nav{display:none!important}
 body.embedded.is-admin .sidebar-brand{display:none}
 body.embedded .content{padding:20px 24px 48px}
+
+/* Corrections for a student: what they wrote with the slips marked, then the sentence put right. */
+.corr-intro{margin:-2px 0 10px}
+.corr-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.corr-list.compact{gap:6px}
+.corr-card{display:flex;gap:12px;padding:14px 16px;border:1px solid var(--gray-200);border-radius:14px;background:#fff}
+.corr-list.compact .corr-card{padding:10px 12px}
+.corr-n{flex:none;width:24px;height:24px;margin-top:2px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--gray-100);color:var(--text-tertiary);font-size:11px;font-weight:700}
+.corr-body{min-width:0;flex:1}
+.corr-label{margin:0 0 2px;color:var(--text-tertiary);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.corr-label.ok{margin-top:10px;color:var(--success-700,#067647)}
+.corr-line{margin:0;font-size:15px;line-height:1.75;color:var(--text-primary)}
+.corr-list.compact .corr-line{font-size:13px;line-height:1.6}
+mark.corr-slip{padding:1px 5px;border-radius:5px;background:var(--error-50,#fef3f2);color:var(--error-700,#b42318);font-weight:700;text-decoration:line-through;text-decoration-thickness:2px}
+mark.corr-fix{padding:1px 5px;border-radius:5px;background:var(--success-50,#ecfdf3);color:var(--success-700,#067647);font-weight:700}
+.corr-note{padding:10px 14px;border-radius:12px;background:var(--gray-50);color:var(--text-secondary);font-size:14px;line-height:1.6;white-space:pre-wrap}
+.corr-preview{margin-top:8px;padding:8px 12px;border:1px solid var(--gray-200);border-radius:12px;background:var(--gray-25,#fcfcfd)}
+.corr-preview summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--text-secondary)}
+.corr-preview #corr-preview-body{margin-top:8px}
+.kbd-hint{display:inline-flex;align-items:center;gap:4px;margin-left:4px;color:var(--text-tertiary);font-size:10px}

@@ -2105,7 +2105,7 @@ function adminTrackerView() {
   const currentWeekId = weeks.findLast((week) => String(week.week_start).slice(0, 10) <= thisMonday)?.id || weeks.at(-1)?.id;
   const toReview = submittedCheckins + submittedHomework;
   return `
-    ${pageHeader('Class workspace', t.class.label, `A separate weekly tracker for this class. Times shown in ${escapeHtml(classTimezone())}.`, `<button class="btn" id="open-attendance">Upload attendance</button><button class="btn primary" id="new-assignment">Assign homework</button>`)}
+    ${pageHeader('Class workspace', t.class.label, `A separate weekly tracker for this class. Times shown in ${escapeHtml(classTimezone())}.`, `<button class="btn" id="open-attendance">Upload attendance</button><button class="btn primary" id="review-all" ${toReview ? '' : 'disabled'} title="Open every unmarked check-in and homework in one queue. Arrow keys move through it, Enter sends.">Review all unmarked (${toReview})</button><button class="btn" id="new-assignment">Assign homework</button>`)}
     <div class="stats">
       <div class="stat"><div class="stat-label">Students</div><div class="stat-value">${t.students.length}</div><div class="stat-note">Active in this class</div></div>
       <div class="stat ${submittedCheckins ? 'warning' : ''}"><div class="stat-label">Check-ins to review</div><div class="stat-value">${submittedCheckins}</div><div class="stat-note">Ready for teacher review</div></div>
@@ -5096,6 +5096,73 @@ function richText(value) {
     .replace(/\n/g, '<br>');
 }
 
+/* Corrections, made plain for a student: each sentence they wrote with the
+   slips marked, then the sentence put right with the changes picked out. The
+   text is the teacher's usual shape: a quoted original line, the corrected line
+   with **the changes** in bold, pairs parted by blank lines. Anything else (a
+   note, "No Irish corrections needed.") is shown as it is. */
+function parseCorrections(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const quoted = (l) => /^\s*["\u201c\u201e]/.test(l);
+  const unquote = (l) => l.trim().replace(/^["\u201c\u201d\u201e]+/, '').replace(/["\u201c\u201d]+$/, '').trim();
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (!lines[i].trim()) { i++; continue; }
+    if (quoted(lines[i]) && i + 1 < lines.length && lines[i + 1].trim()) {
+      out.push({ kind: 'pair', original: unquote(lines[i]), corrected: lines[i + 1].trim() });
+      i += 2; continue;
+    }
+    const buf = [];
+    while (i < lines.length && lines[i].trim() && !quoted(lines[i])) { buf.push(lines[i].trim()); i++; }
+    if (buf.length) out.push({ kind: 'note', text: buf.join('\n') }); else i++;
+  }
+  return out;
+}
+function correctionTokens(corrected) {
+  const toks = []; let bold = false;
+  for (const part of corrected.split(/(\*\*)/)) {
+    if (part === '**') { bold = !bold; continue; }
+    for (const w of part.split(/\s+/).filter(Boolean)) toks.push({ text: w, bold });
+  }
+  return toks;
+}
+/* Which words of the original are not in the corrected line: longest common subsequence. */
+function correctionSlips(original, corrected) {
+  const norm = (w) => w.toLowerCase().replace(/[^\p{L}\p{N}'\u2019-]/gu, '');
+  const a = original.map(norm), b = corrected.map(norm);
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = a[i] && a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const keep = new Set(); let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] && a[i] === b[j]) { keep.add(i); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++;
+  }
+  return original.map((_, k) => !keep.has(k));
+}
+function correctionLine(words, marks, tone) {
+  return `<p class="corr-line">${words.map((w, k) => marks[k] ? `<mark class="corr-${tone}">${escapeHtml(w)}</mark>` : escapeHtml(w)).join(' ')}</p>`;
+}
+function correctionsHtml(text, compact = false) {
+  const items = parseCorrections(text);
+  if (!items.length) return '';
+  let n = 0;
+  return `<ul class="corr-list ${compact ? 'compact' : ''}">${items.map((it) => {
+    if (it.kind === 'note') return `<li class="corr-note">${escapeHtml(it.text.replace(/\*\*/g, ''))}</li>`;
+    const fixed = correctionTokens(it.corrected);
+    const original = it.original.split(/\s+/).filter(Boolean);
+    const slips = correctionSlips(original, fixed.map((t) => t.text));
+    const bold = fixed.map((t) => t.bold);
+    const same = !slips.some(Boolean) && !bold.some(Boolean);
+    n += 1;
+    return `<li class="corr-card"><span class="corr-n">${n}</span><div class="corr-body">
+      <div class="corr-label">You wrote</div>${correctionLine(original, slips, 'slip')}
+      <div class="corr-label ok">${same ? 'Fine as it is' : 'Corrected'}</div>${correctionLine(fixed.map((t) => t.text), bold, 'fix')}
+    </div></li>`;
+  }).join('')}</ul>`;
+}
+
 /* The buttons over a box that takes formatting.
    Nothing clever: they wrap what is selected, or drop the markers in and put the
    cursor between them, which is what somebody expects if they press bold before
@@ -7915,6 +7982,7 @@ function bindAdminView() {
     box?.addEventListener('change', () => { box.closest('.toggle-row').lastChild.textContent = box.checked ? 'On' : 'Off'; });
   }
   document.getElementById('open-attendance')?.addEventListener('click', () => { state.view = 'attendance'; renderAdmin(); });
+  document.getElementById('review-all')?.addEventListener('click', reviewAllUnmarked);
   document.getElementById('new-assignment')?.addEventListener('click', () => openAssignmentModal(null, state.activeClassId));
   document.getElementById('import-assignments')?.addEventListener('click', openAssignmentImport);
   document.getElementById('create-assignment')?.addEventListener('click', () => openAssignmentModal());
@@ -9497,11 +9565,37 @@ function recordForReview(dataset) {
 
 function openReview(dataset) {
   const record = recordForReview(dataset);
+  state.reviewMode = 'single';
   state.activeReview = record;
   if (record.type !== 'attendance') {
     state.reviewQueue = buildReviewQueue(record.type, record.week.id, record.assignment?.id);
     state.reviewIndex = Math.max(0, state.reviewQueue.findIndex((item) => item.student.id === record.student.id));
   }
+  renderReviewDrawer();
+}
+
+/* Everything handed in and not yet returned, oldest week first then by name:
+   one queue to work through with the keyboard. Returned items drop out of this
+   queue as they are sent, so Next is always the next thing still to do. */
+function reviewAllUnmarked() {
+  const t = state.tracker;
+  if (!t) return;
+  const weekStart = new Map(t.weeks.map((w) => [w.id, String(w.week_start)]));
+  const name = new Map(t.students.map((s) => [s.id, String(s.name || '').trim().toLowerCase()]));
+  const keys = [];
+  t.checkins.forEach((c) => { if (c.status === 'submitted') keys.push({ reviewType: 'checkin', studentId: c.student_id, weekId: c.week_id }); });
+  t.homework.forEach((h) => {
+    if (h.status !== 'submitted') return;
+    const a = t.assignments.find((x) => x.id === h.assignment_id);
+    if (a?.week_id) keys.push({ reviewType: 'homework', studentId: h.student_id, weekId: a.week_id, assignmentId: a.id });
+  });
+  keys.sort((x, y) => (weekStart.get(x.weekId) || '').localeCompare(weekStart.get(y.weekId) || '') || (name.get(x.studentId) || '').localeCompare(name.get(y.studentId) || '') || x.reviewType.localeCompare(y.reviewType));
+  const queue = keys.map(recordForReview).filter((r) => r.student && r.week && (r.type === 'checkin' ? r.checkin : r.homework));
+  if (!queue.length) { showToast('Nothing is waiting to be marked.'); return; }
+  state.reviewMode = 'unmarked';
+  state.reviewQueue = queue;
+  state.reviewIndex = 0;
+  state.activeReview = queue[0];
   renderReviewDrawer();
 }
 
@@ -9572,7 +9666,7 @@ async function redraftFeedback() {
 
 function renderReviewDrawer() {
   const record = state.activeReview;
-  const nav = record.type === 'attendance' ? '' : `<div class="review-nav"><button class="btn small" id="review-prev" ${state.reviewIndex <= 0 ? 'disabled' : ''}>← Previous</button><span class="small muted">${state.reviewIndex + 1} of ${state.reviewQueue.length}</span><button class="btn small" id="review-next" ${state.reviewIndex >= state.reviewQueue.length - 1 ? 'disabled' : ''}>Next →</button><span class="kbd">←</span><span class="kbd">→</span><span class="kbd">Enter</span></div>`;
+  const nav = record.type === 'attendance' ? '' : `<div class="review-nav"><button class="btn small" id="review-prev" ${state.reviewIndex <= 0 ? 'disabled' : ''}>← Previous</button><span class="small muted">${state.reviewIndex + 1} of ${state.reviewQueue.length}</span><button class="btn small" id="review-next" ${state.reviewIndex >= state.reviewQueue.length - 1 ? 'disabled' : ''}>Next →</button><span class="kbd-hint" title="Arrow keys move through the queue (hold ⌘ or Ctrl from inside a text box). Enter sends from the text box; ⌘ Enter sends from anywhere."><span class="kbd">←</span><span class="kbd">→</span> move <span class="kbd">⌘</span><span class="kbd">Enter</span> send</span></div>`;
   let body = '', actions = '';
   if (record.type === 'attendance') {
     const current = record.attendance?.status || 'unknown';
@@ -9620,7 +9714,8 @@ function renderReviewDrawer() {
         ${markSummary(record, row)}
         ${submittedFilesBlock(row.files)}
         ${lifecycle(row.feedback_state, 'homework')}
-        <div class="form-field"><div class="input-row"><label for="homework-corrections">1. Irish corrections</label>${formatBar('homework-corrections')}${dictateButton('homework-corrections', 'light')}</div><textarea class="corrections" id="homework-corrections">${escapeHtml(row.teacher_corrections || row.ai_corrections || '')}</textarea><div class="muted small">If there are no genuine errors, this should say “No Irish corrections needed.” Dictation here only adds punctuation, so your Irish is never rewritten.</div></div>
+        <div class="form-field"><div class="input-row"><label for="homework-corrections">1. Irish corrections</label>${formatBar('homework-corrections')}${dictateButton('homework-corrections', 'light')}</div><textarea class="corrections" id="homework-corrections">${escapeHtml(row.teacher_corrections || row.ai_corrections || '')}</textarea><div class="muted small">If there are no genuine errors, this should say “No Irish corrections needed.” Dictation here only adds punctuation, so your Irish is never rewritten.</div>
+        <details class="corr-preview" id="corr-preview"><summary>How the student will see these corrections</summary><div id="corr-preview-body">${correctionsHtml(row.teacher_corrections || row.ai_corrections || '', true)}</div></details></div>
         <div class="form-field"><div class="input-row"><label for="homework-general">2. General feedback</label>${formatBar('homework-general')}${dictateButton('homework-general')}</div><textarea id="homework-general">${escapeHtml(row.teacher_general_feedback || row.ai_general_feedback || '')}</textarea><div class="muted small">Enter submits. Shift + Enter adds a new line.</div></div>
         ${voiceNoteBlock(record)}`;
       actions = `<button class="btn" id="save-homework-draft">Save draft</button><button class="btn primary" id="return-homework">${row.status === 'returned' ? 'Update submitted feedback' : 'Submit feedback'}</button>`;
@@ -9763,6 +9858,9 @@ function bindReviewDrawer() {
   bindDictation(modalRoot);
   bindVoiceNote();
   bindFormatBars(modalRoot);
+  const corrBox = document.getElementById('homework-corrections');
+  const corrPreview = document.getElementById('corr-preview-body');
+  if (corrBox && corrPreview) corrBox.addEventListener('input', () => { corrPreview.innerHTML = correctionsHtml(corrBox.value, true); });
   const inputs = [document.getElementById('checkin-feedback'), document.getElementById('homework-corrections'), document.getElementById('homework-general')].filter(Boolean);
   inputs.forEach((input) => input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submitReview(state.activeReview.type); }
@@ -9775,7 +9873,11 @@ function bindReviewDrawer() {
    the review session. */
 function reviewKeyHandler(event) {
   if (!document.querySelector('.drawer.open') || !state.activeReview || state.activeReview.type === 'attendance') return;
-  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+  const mod = event.metaKey || event.ctrlKey;
+  /* ⌘Enter sends from anywhere, even mid-sentence. */
+  if (mod && event.key === 'Enter') { event.preventDefault(); submitReview(state.activeReview.type); return; }
+  /* Arrows move through the queue; with ⌘ they work from inside a text box too. */
+  if (!mod && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
   if (event.key === 'ArrowLeft') { event.preventDefault(); navigateReview(-1); }
   if (event.key === 'ArrowRight') { event.preventDefault(); navigateReview(1); }
 }
@@ -9908,7 +10010,9 @@ async function submitReview(type) {
         weekId: item.week.id,
         assignmentId: item.assignment?.id,
       }))
-      .filter((item) => (item.type === 'checkin' ? item.checkin : item.homework));
+      .filter((item) => (item.type === 'checkin' ? item.checkin : item.homework))
+      // the unmarked queue is only what is still waiting: a returned item leaves it
+      .filter((item) => state.reviewMode !== 'unmarked' || (item.type === 'checkin' ? item.checkin : item.homework).status === 'submitted');
 
     if (state.reviewQueue.length) {
       state.reviewIndex = Math.min(current, state.reviewQueue.length - 1);
@@ -11365,7 +11469,7 @@ async function showHomeworkFeedback(submission, assignment) {
     wide: true,
     body: `${studentScoreBlock(assignment, submission)}
       ${studentVoiceNote(submission.voice_note)}
-      ${corrections ? `<div class="section-title">Irish corrections</div><div class="answer-box corrections">${richText(corrections)}</div>` : ''}
+      ${corrections ? `<div class="section-title">Corrections</div><p class="muted small corr-intro">What you wrote, with the slips marked, and the sentence put right underneath.</p>${correctionsHtml(corrections)}` : ''}
       ${general ? `<div class="section-title">General feedback</div><div class="feedback-box"><h3>✓ Feedback returned</h3><p>${richText(general)}</p></div>` : ''}
       ${submittedHomeworkBlock(assignment, submission)}`,
     footer: '<button class="btn primary" data-close-modal>Done</button>',

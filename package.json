@@ -1,6 +1,6 @@
 {
   "name": "gaeilgeoir-guides-internal-saas",
-  "version": "38.1.0",
+  "version": "38.1.1",
   "private": true,
   "type": "module",
   "engines": {
