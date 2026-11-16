@@ -10,3 +10,10 @@ uploads-private/*
 .pgdata
 preview.html
 backups
+
+# pq/: the venv and any local data copy never belong in the image
+pq/.venv
+pq/site
+pq/tts
+pq/dist
+pq/__pycache__

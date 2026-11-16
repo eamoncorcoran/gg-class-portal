@@ -1,0 +1,482 @@
+{
+ "2014": {
+  "sections": {
+   "cuid_a": 50.099998474121094,
+   "cuid_b": 407.8999938964844,
+   "cuid_c": 1107.300048828125,
+   "end": 1457.780029296875
+  },
+  "files": {
+   "A": {
+    "src": "audio/2014_A.mp3",
+    "start": 50.099998474121094,
+    "end": 407.8999938964844
+   },
+   "B": {
+    "src": "audio/2014_B.mp3",
+    "start": 407.8999938964844,
+    "end": 1107.300048828125
+   },
+   "C": {
+    "src": "audio/2014_C.mp3",
+    "start": 1107.300048828125,
+    "end": 1457.780029296875
+   }
+  },
+  "heads": {
+   "A": "Cuidh a. Le i nes go cúramach ar da sgrúd fápir, na traoracha agus na ceistanna a ghaon le cuidh a.",
+   "B": "Cuid bí. Le i nis go cúramach ar dy sgrúd fapéir, na traoracha agus na ceistanna a ghaon le cuid bí.",
+   "C": "Cwydsi. Le i nes go cúramach ar da sgrúd fápir, na traoracha agus na ceistanna a ghaon le Cwydsi."
+  }
+ },
+ "2017": {
+  "sections": {
+   "cuid_a": 48.0,
+   "cuid_b": 431.0,
+   "cuid_c": 1103.0,
+   "end": 1425.7900390625
+  },
+  "files": {
+   "A": {
+    "src": "audio/2017_A.mp3",
+    "start": 48.0,
+    "end": 431.0
+   },
+   "B": {
+    "src": "audio/2017_B.mp3",
+    "start": 431.0,
+    "end": 1103.0
+   },
+   "C": {
+    "src": "audio/2017_C.mp3",
+    "start": 1103.0,
+    "end": 1425.7900390625
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar da sgrúd fápir na traoracha agus na ceistanna i ghaon le Cyd-a.",
+   "B": "Cuid bí. Le i nes go cúramach ar da sgrúd fápir, na traoracha agus na ceistanna a ghaon le cuid bí.",
+   "C": "Cydsi. Lle i nes cycúramach ar dy sgrŵd fapur, na traorach agus na cestiynau a ghawn le Cydsi."
+  }
+ },
+ "2019": {
+  "sections": {
+   "cuid_a": 45.099998474121094,
+   "cuid_b": 372.70001220703125,
+   "cuid_c": 1041.699951171875,
+   "end": 1418.02001953125
+  },
+  "files": {
+   "A": {
+    "src": "audio/2019_A.mp3",
+    "start": 45.099998474121094,
+    "end": 372.70001220703125
+   },
+   "B": {
+    "src": "audio/2019_B.mp3",
+    "start": 372.70001220703125,
+    "end": 1041.699951171875
+   },
+   "C": {
+    "src": "audio/2019_C.mp3",
+    "start": 1041.699951171875,
+    "end": 1418.02001953125
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar dy sgrwyd fapur, na traorach agus na cestiynau a ghawn le Cyd-a.",
+   "B": "Cyd-by. Le i nes go cúramach ar dy sgrúd phopur, na traoracha agus na cestiynau a ghawn le Cyd-by.",
+   "C": "Cwtí. Cwtí. Lei unis go cúramach ar da sgrúd fápear na traoracha agus na ceistanna ar ffórmau."
+  }
+ },
+ "2020": {
+  "sections": {
+   "cuid_a": 44.91999816894531,
+   "cuid_b": 349.760009765625,
+   "cuid_c": 1065.760009765625,
+   "end": 1435.4200439453125
+  },
+  "files": {
+   "A": {
+    "src": "audio/2020_A.mp3",
+    "start": 44.91999816894531,
+    "end": 349.760009765625
+   },
+   "B": {
+    "src": "audio/2020_B.mp3",
+    "start": 349.760009765625,
+    "end": 1065.760009765625
+   },
+   "C": {
+    "src": "audio/2020_C.mp3",
+    "start": 1065.760009765625,
+    "end": 1435.4200439453125
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar da sgrúd fápair na traoracha agus na cestanna a ghaon le Cyd-a.",
+   "B": "Cyd-by. Le i nes go cúramach ar dy sgrúd fápeir, na traoracha agus na ceistanna a ghaon le Cyd-by.",
+   "C": "Cydsi. Lle i nes go cúramach ar dy sgrúd fápeir na traoracha agus na ceistanna a ghaon le Cydsi."
+  }
+ },
+ "2021": {
+  "sections": {
+   "cuid_a": 38.0,
+   "cuid_b": 398.0,
+   "cuid_c": 1073.0,
+   "end": 1435.8900146484375
+  },
+  "files": {
+   "A": {
+    "src": "audio/2021_A.mp3",
+    "start": 38.0,
+    "end": 398.0
+   },
+   "B": {
+    "src": "audio/2021_B.mp3",
+    "start": 398.0,
+    "end": 1073.0
+   },
+   "C": {
+    "src": "audio/2021_C.mp3",
+    "start": 1073.0,
+    "end": 1435.8900146484375
+   }
+  },
+  "heads": {
+   "A": "Cyd-ea. Le i nes go cúramach ar da sgrúd fápir na traoracha agus na cestanna a ghaon le Cyd-ea.",
+   "B": "Cwid bí. Le i nes go cúramach ar dy sgrúd fápeir, na traoracha agus na cestanna a ghaon le cwid bí.",
+   "C": "Cuid Sí. Léi anois go cúramach ar da sgrúd fápir na traoracha agus na ceistanna a ghaon le cuid sí."
+  }
+ },
+ "2022": {
+  "sections": {
+   "cuid_a": 43.63999938964844,
+   "cuid_b": 430.32000732421875,
+   "cuid_c": 1116.3199462890625,
+   "end": 1434.510009765625
+  },
+  "files": {
+   "A": {
+    "src": "audio/2022_A.mp3",
+    "start": 43.63999938964844,
+    "end": 430.32000732421875
+   },
+   "B": {
+    "src": "audio/2022_B.mp3",
+    "start": 430.32000732421875,
+    "end": 1116.3199462890625
+   },
+   "C": {
+    "src": "audio/2022_C.mp3",
+    "start": 1116.3199462890625,
+    "end": 1434.510009765625
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar da sgrúd fápir, na traoracha agus na cestanna a ghaon le cyd-a.",
+   "B": "Cuid bí. Léi anois go cúramach ar da sgrúd fápear na traoracha agus na ceistanna a ghaon le cuid bí.",
+   "C": "Cydsi. Lle i nes go cúramach ar da sgrúd fá péir na traoracha agus na ceistanna a ghaon le Cydsi."
+  }
+ },
+ "2022D": {
+  "sections": {
+   "cuid_a": 40.040000915527344,
+   "cuid_b": 389.0799865722656,
+   "cuid_c": 1091.0799560546875,
+   "end": 1451.1700439453125
+  },
+  "files": {
+   "A": {
+    "src": "audio/2022D_A.mp3",
+    "start": 40.040000915527344,
+    "end": 389.0799865722656
+   },
+   "B": {
+    "src": "audio/2022D_B.mp3",
+    "start": 389.0799865722656,
+    "end": 1091.0799560546875
+   },
+   "C": {
+    "src": "audio/2022D_C.mp3",
+    "start": 1091.0799560546875,
+    "end": 1451.1700439453125
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar da sgrúd fápair, na traoracha agus na cestanna a ghaon le cyd-a.",
+   "B": "Cyd-by. Le i nes go cúramach ar ddysgriwydd fapur, na traoracha agus na ceistanna a ghawn le Cyd-by.",
+   "C": "QC. Lle i nes go cúramach ar da sgrúd fápair na traoracha agus na ceistanna a ghaon le QC."
+  }
+ },
+ "2024": {
+  "sections": {
+   "cuid_a": 44.9,
+   "cuid_b": 410.4,
+   "cuid_c": 1086.0,
+   "end": 1357.780029296875
+  },
+  "files": {
+   "A": {
+    "src": "audio/2024_A.mp3",
+    "start": 44.9,
+    "end": 410.4
+   },
+   "B": {
+    "src": "audio/2024_B.mp3",
+    "start": 410.4,
+    "end": 1086.0
+   },
+   "C": {
+    "src": "audio/2024_C.mp3",
+    "start": 1086.0,
+    "end": 1357.780029296875
+   }
+  },
+  "heads": {
+   "A": "Cuidh a. Lei i nesca cúramach ar da sgrúd fápair na traoracha agus na ceistanna a ghaon le cuidh a.",
+   "B": "Cuid bí. Lle i nesca cúramach ar da sgrúd fápear na traoracha agus na ceistanna a ghaon le cuid bí.",
+   "C": "Cuid Sí. Lei i nois go cúramach ar da sgrúd fápair le traoracha agus na ceistionna a ghaon le Cuid Sí."
+  }
+ },
+ "2024D": {
+  "sections": {
+   "cuid_a": 40.560001373291016,
+   "cuid_b": 335.67999267578125,
+   "cuid_c": 1028.0,
+   "end": 1389.469970703125
+  },
+  "files": {
+   "A": {
+    "src": "audio/2024D_A.mp3",
+    "start": 40.560001373291016,
+    "end": 335.67999267578125
+   },
+   "B": {
+    "src": "audio/2024D_B.mp3",
+    "start": 335.67999267578125,
+    "end": 1028.0
+   },
+   "C": {
+    "src": "audio/2024D_C.mp3",
+    "start": 1028.0,
+    "end": 1389.469970703125
+   }
+  },
+  "heads": {
+   "A": "Cuid A. Lei i nesca cúramach ar da sgrúd fápair na traoracha agus na cestanna a ghaon le cuid A.",
+   "B": "Cuid bí. Le i nesca cúramach ar da sgrúd fápear na traoracha agus na cestanna a ghaon le cuid bí.",
+   "C": "Cydsi. Le i nes go cúramoch ar dy sgrúd phopur le traoracha agus na ceistionna a ghaon le Cydsi."
+  }
+ },
+ "2025D": {
+  "sections": {
+   "cuid_a": 40.52000045776367,
+   "cuid_b": 348.6400146484375,
+   "cuid_c": 1041.1600341796875,
+   "end": 1377.010009765625
+  },
+  "files": {
+   "A": {
+    "src": "audio/2025D_A.mp3",
+    "start": 40.52000045776367,
+    "end": 348.6400146484375
+   },
+   "B": {
+    "src": "audio/2025D_B.mp3",
+    "start": 348.6400146484375,
+    "end": 1041.1600341796875
+   },
+   "C": {
+    "src": "audio/2025D_C.mp3",
+    "start": 1041.1600341796875,
+    "end": 1377.010009765625
+   }
+  },
+  "heads": {
+   "A": "Cuidh a. Le i nes go cúramoch ar dy sgrúd fápir, na traoracha agus na cestanna a ghaon le cuidh a.",
+   "B": "Cuid bí. Le i nes go cúramach ar da sgrúd fápeir na traoracha agus na cestanna a ghaon le cuid bí.",
+   "C": "Cydsi. Le i nes go cúramoch ar dy sgrúd phopur le traoracha agus na ceistionna a ghaon le Cydsi."
+  }
+ },
+ "2026": {
+  "sections": {
+   "cuid_a": 44.7599983215332,
+   "cuid_b": 391.1600036621094,
+   "cuid_c": 1061.1600341796875,
+   "end": 1367.18994140625
+  },
+  "files": {
+   "A": {
+    "src": "audio/2026_A.mp3",
+    "start": 44.7599983215332,
+    "end": 391.1600036621094
+   },
+   "B": {
+    "src": "audio/2026_B.mp3",
+    "start": 391.1600036621094,
+    "end": 1061.1600341796875
+   },
+   "C": {
+    "src": "audio/2026_C.mp3",
+    "start": 1061.1600341796875,
+    "end": 1367.18994140625
+   }
+  },
+  "heads": {
+   "A": "Cuidh a. Lei i nes go cúramach ar da sgrúd fápair na traoracha agus na ceistanna a ghaon le cuidh a.",
+   "B": "Cuid bí. Le i nes go cúramach ar da sgrúd fábhpéir na traoracha agus na ceistanna a ghaon le cuid bí.",
+   "C": "Cuid Sí. Le i nes go cúramoch ar dy sgrŵd fapur le traoracha agus na cestiyna a ghaon le cuid sí."
+  }
+ },
+ "2016": {
+  "sections": {
+   "cuid_a": 52.0,
+   "cuid_b": 393.0,
+   "cuid_c": 1044.5,
+   "end": 1418.719970703125
+  },
+  "files": {
+   "A": {
+    "src": "audio/2016_A.mp3",
+    "start": 52.0,
+    "end": 393.0
+   },
+   "B": {
+    "src": "audio/2016_B.mp3",
+    "start": 393.0,
+    "end": 1044.5
+   },
+   "C": {
+    "src": "audio/2016_C.mp3",
+    "start": 1044.5,
+    "end": 1418.719970703125
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar da sgrúd fápeir, na traorach agus na ceistionnau a ghawn le Cyd-a.",
+   "B": "Cuid bí. Lle i nisca cúramach ar da sgrúd fápear, na traoracha agus na ceistanna a ghaon le cuid bí.",
+   "C": "Cwtcí Cwtcí. Le i nesca cúramach ar da sgrúd fápir na traoracha agus na ceistana a ghaidh."
+  }
+ },
+ "2018": {
+  "sections": {
+   "cuid_a": 47.0,
+   "cuid_b": 381.0,
+   "cuid_c": 1102.0,
+   "end": 1414.2900390625
+  },
+  "files": {
+   "A": {
+    "src": "audio/2018_A.mp3",
+    "start": 47.0,
+    "end": 381.0
+   },
+   "B": {
+    "src": "audio/2018_B.mp3",
+    "start": 381.0,
+    "end": 1102.0
+   },
+   "C": {
+    "src": "audio/2018_C.mp3",
+    "start": 1102.0,
+    "end": 1414.2900390625
+   }
+  },
+  "heads": {
+   "A": "Cuid ae. Lei anois go cúramach ar da sgrúd fápir na traoracha agus na ceistanna a ghaon le cuid ae.",
+   "B": "Cyd-by. Le i nes go cúramach ar ddysgrwydd fapur na traoracha agus na cestiynau a ghawn le Cyd-by.",
+   "C": "Cydsi. Le i nes go cúramach ar da sgrúd fápir na traoracha agus na cestiynau a ghawn le Cydsi."
+  }
+ },
+ "2023": {
+  "sections": {
+   "cuid_a": 39.0,
+   "cuid_b": 379.0,
+   "cuid_c": 1042.3,
+   "end": 1399.949951171875
+  },
+  "files": {
+   "A": {
+    "src": "audio/2023_A.mp3",
+    "start": 39.0,
+    "end": 379.0
+   },
+   "B": {
+    "src": "audio/2023_B.mp3",
+    "start": 379.0,
+    "end": 1042.3
+   },
+   "C": {
+    "src": "audio/2023_C.mp3",
+    "start": 1042.3,
+    "end": 1399.949951171875
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar ddisgrúd ffapéir na traoracha agus na cestanna a ghaon le Cyd-a.",
+   "B": "Cyd-by. Le i nes go cúramach ar ddysgriwd fapur, na traoracha agus na cestiynau a ghawn le Cyd-by.",
+   "C": "QC. Lle i nes go cúramach ar da sgrúd fápir na traoracha agus na ceistanna a ghaon le QC."
+  }
+ },
+ "2023D": {
+  "sections": {
+   "cuid_a": 40.0,
+   "cuid_b": 359.0,
+   "cuid_c": 1041.0,
+   "end": 1361.02001953125
+  },
+  "files": {
+   "A": {
+    "src": "audio/2023D_A.mp3",
+    "start": 40.0,
+    "end": 359.0
+   },
+   "B": {
+    "src": "audio/2023D_B.mp3",
+    "start": 359.0,
+    "end": 1041.0
+   },
+   "C": {
+    "src": "audio/2023D_C.mp3",
+    "start": 1041.0,
+    "end": 1361.02001953125
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar dy sgrúd fápir, na traorach agus na cestiynau a ghawn le cyd-a.",
+   "B": "Cyd-by. Le i nes go cúramach ar dy sgrúd fápeir, na traoracha agus na cestanna a ghaon le Cyd-by.",
+   "C": "QC. Lle i nes go cúramach ar dy sgrúd fápir, na traoracha agus na ceistanna a ghaon le QC."
+  }
+ },
+ "2025": {
+  "sections": {
+   "cuid_a": 44.0,
+   "cuid_b": 326.0,
+   "cuid_c": 973.9,
+   "end": 1307.4200439453125
+  },
+  "files": {
+   "A": {
+    "src": "audio/2025_A.mp3",
+    "start": 44.0,
+    "end": 326.0
+   },
+   "B": {
+    "src": "audio/2025_B.mp3",
+    "start": 326.0,
+    "end": 973.9
+   },
+   "C": {
+    "src": "audio/2025_C.mp3",
+    "start": 973.9,
+    "end": 1307.4200439453125
+   }
+  },
+  "heads": {
+   "A": "Cyd-a. Le i nes go cúramach ar da sgrúd fápair na traoracha agus na cestanna a ghaon le cyd-a.",
+   "B": "Cwid bí. Le i nes go cúramach ar dy sgrúd fápeir na traoracha agus na ceistanna a ghaon le cwid bí.",
+   "C": "Cuid Sí. Lle i nes go cúramach ar da sgrúd fápir na traoracha agus na ceistanna a ghaon le cuid sí."
+  }
+ }
+}

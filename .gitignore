@@ -23,3 +23,10 @@ backups/
 
 # Session scratch files
 scratchpad/
+
+# The past-questions service (pq/): its local venv, local data and narrator cache.
+pq/.venv/
+pq/site/
+pq/tts/
+pq/dist/
+pq/__pycache__/
