@@ -44,6 +44,22 @@ services:
       - key: DEFAULT_TIMEZONE
         value: Europe/Dublin
 
+      # The React hub (web/dist, built in the Dockerfile) at the root, with the
+      # old interface kept at /legacy. "0" puts the old interface back at the
+      # root without a rebuild.
+      - key: NEW_UI
+        value: "1"
+      # Students join the live class inside the portal's own room rather than
+      # being sent to the Zoom link.
+      - key: STUDENTS_USE_ZOOM_LINK
+        value: "false"
+      # The past-questions service below, on Render's private network: the
+      # portal proxies the papers, crops, recordings and marking API to it.
+      # Its internal address (http://gg-past-questions:10000) is pasted in the
+      # dashboard once the service exists; unset, those paths answer 503.
+      - key: PQ_SERVICE_URL
+        sync: false
+
       # The first administrator, created at boot only while the portal has none.
       # Neither of these is secret; the password is generated on the server and
       # printed once to the deploy log, so it is never typed into a dashboard or
@@ -172,6 +188,40 @@ services:
       - key: ZOOM_CLIENT_SECRET
         sync: false
       - key: ZOOM_WEBHOOK_SECRET
+        sync: false
+
+  # The past questions and papers: a Python service with the question crops,
+  # audio and marking API, reached through the portal above (PQ_SERVICE_URL).
+  # Its Dockerfile is pq/Dockerfile in this repo; the site's files live on its
+  # own disk.
+  - type: web
+    name: gg-past-questions
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: pq
+    healthCheckPath: /_health
+    numInstances: 1
+    disk:
+      name: pq-data
+      mountPath: /var/data
+      sizeGB: 3
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: DATA_DIR
+        value: /var/data/site
+      - key: STATE_DIR
+        value: /var/data/state
+      # Marking and the tutor (Claude), and the mic (Azure Speech).
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        sync: false
+      # Authorises uploads of the site's files onto the disk.
+      - key: PQ_UPLOAD_TOKEN
         sync: false
 
 databases:
