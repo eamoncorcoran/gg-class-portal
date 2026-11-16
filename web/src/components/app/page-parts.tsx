@@ -139,7 +139,7 @@ export const YearGroups = ({ list, head }: { list: Question[]; head?: ReactNode 
                         </span>
                     </div>
                     {g.qs.map((q) => (
-                        <QuestionCard key={q.id} q={q} />
+                        <QuestionCard key={q.id} q={q} hideYear />
                     ))}
                 </motion.section>
             ))}

@@ -1319,19 +1319,26 @@ router.post('/assignments', asyncRoute(async (req, res) => {
     uploadsRequired: z.boolean().default(false),
     acceptedFileTypes: z.array(z.enum(Object.keys(FILE_TYPE_GROUPS))).default(['image', 'pdf']),
     maxFiles: z.coerce.number().int().min(1).max(10).default(3),
+    /* The past exam questions this homework is made of, when it was set from
+       one. Their ids only: the questions themselves live with the past papers. */
+    pqIds: z.array(z.string().trim().min(1).max(160).regex(/^[\w.:-]+$/)).max(12).default([]),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: assignmentProblem(parsed.error) });
   const a = parsed.data;
+  // One question to a past question, so each has its own answer in the review.
+  if (a.pqIds.length && a.pqIds.length !== a.questions.length) {
+    return res.status(400).json({ error: 'A past question homework needs one question for each past question.' });
+  }
   // Filed under the week its deadline falls in; a weekId sent by an old page is ignored.
   const weekId = await weekForDeadline(a.classId, a.deadlineAt);
   const assignment = await transaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO assignments(class_id,week_id,title,instructions,loom_url,visible_at,deadline_at,hard_deadline,reminders_enabled,created_by,
-         allow_uploads,uploads_required,accepted_file_types,max_files,kind,listening_text,listening_text_shown)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17) RETURNING *`,
+         allow_uploads,uploads_required,accepted_file_types,max_files,kind,listening_text,listening_text_shown,pq_ids)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18) RETURNING *`,
       [a.classId, weekId, a.title, a.instructions, a.loomUrl || null, a.visibleAt || new Date().toISOString(), a.deadlineAt, a.hardDeadline, a.remindersEnabled, req.user.id,
        a.allowUploads, a.allowUploads && a.uploadsRequired, JSON.stringify(a.acceptedFileTypes), a.maxFiles,
-       a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown],
+       a.kind, a.kind === 'listening' ? a.listeningText : null, a.listeningTextShown, [...new Set(a.pqIds)]],
     );
     for (const [position, question] of a.questions.entries()) {
       await client.query(`INSERT INTO assignment_questions(assignment_id,position,prompt,image_url,required,expected_answer,marks) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [inserted.rows[0].id, position, question.prompt, question.imageUrl || null, question.required, question.expectedAnswer || null, question.marks]);
@@ -1343,6 +1350,76 @@ router.post('/assignments', asyncRoute(async (req, res) => {
   });
   await audit({ actorId: req.user.id, action: 'assignment.created', entityType: 'assignment', entityId: assignment.id, metadata: { classId: a.classId }, ip: req.ip });
   res.status(201).json(assignment);
+}));
+
+/* Which past questions have been set as homework, for the teacher browsing them.
+   ------------------------------------------------------------------
+   Scrolling through the past papers, the teacher wants to see at a glance which
+   questions a class has already been given and how many handed them in, so the
+   same comprehension is not set twice and a good one is not forgotten. One row
+   for each time a question was set, keyed by the question. Teachers only, like
+   everything under /api/admin: a student never learns what is coming. */
+router.get('/pq-homework', asyncRoute(async (_req, res) => {
+  const rows = await query(
+    `SELECT a.id, a.title, a.deadline_at, a.reopened_until, a.class_id, c.programme_name, c.day_of_week, c.start_time, pq.pq_id,
+            (SELECT count(*)::int FROM homework_submissions hs
+              WHERE hs.assignment_id=a.id AND hs.status IN ('submitted','returned')) done,
+            (SELECT count(*)::int FROM class_students cs
+              JOIN users u ON u.id=cs.student_id AND u.role='student' AND u.active=true AND u.withdrawn_at IS NULL
+              WHERE cs.class_id=a.class_id AND cs.active=true) students
+     FROM assignments a
+     JOIN classes c ON c.id=a.class_id
+     CROSS JOIN LATERAL unnest(a.pq_ids) AS pq(pq_id)
+     WHERE a.status <> 'archived' AND cardinality(a.pq_ids) > 0
+     ORDER BY a.deadline_at DESC`,
+  );
+  const byQuestion = {};
+  const assignments = new Map();
+  for (const row of rows.rows) {
+    const entry = {
+      assignmentId: row.id,
+      title: row.title,
+      classId: row.class_id,
+      className: row.programme_name,
+      deadlineAt: row.reopened_until || row.deadline_at,
+      done: row.done,
+      students: row.students,
+    };
+    (byQuestion[row.pq_id] ||= []).push(entry);
+    if (!assignments.has(row.id)) assignments.set(row.id, { ...entry, questions: 0 });
+    assignments.get(row.id).questions += 1;
+  }
+  // The homework itself as well, so another question can be added to one already set.
+  res.json({ byQuestion, assignments: [...assignments.values()] });
+}));
+
+/* Another past question onto homework that is already set, so two listening
+   pieces can be one piece of homework rather than two entries on the calendar.
+   Only until somebody hands it in: after that the homework is what they did,
+   and a question appearing in it afterwards would be one they never saw. */
+router.post('/assignments/:id/pq', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    pqId: z.string().trim().min(1).max(160).regex(/^[\w.:-]+$/),
+    prompt: z.string().trim().min(1).max(500),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose a past question to add.') });
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'That homework was not set from past questions.' });
+  const result = await transaction(async (client) => {
+    const assignment = (await client.query('SELECT id, pq_ids, status FROM assignments WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!assignment || !assignment.pq_ids.length) return { status: 404, error: 'That homework was not set from past questions.' };
+    if (assignment.pq_ids.includes(parsed.data.pqId)) return { status: 409, error: 'That question is already in this homework.' };
+    if (assignment.pq_ids.length >= 12) return { status: 409, error: 'A homework can hold twelve past questions at most.' };
+    const handedIn = (await client.query(
+      `SELECT 1 FROM homework_submissions WHERE assignment_id=$1 AND status IN ('submitted','returned') LIMIT 1`, [assignment.id])).rows[0];
+    if (handedIn) return { status: 409, error: 'Somebody has already handed this homework in, so nothing can be added to it. Set the question as a new homework.' };
+    const next = (await client.query('SELECT COALESCE(max(position),-1)+1 position FROM assignment_questions WHERE assignment_id=$1', [assignment.id])).rows[0].position;
+    await client.query('INSERT INTO assignment_questions(assignment_id,position,prompt,required) VALUES ($1,$2,$3,true)', [assignment.id, next, parsed.data.prompt]);
+    await client.query('UPDATE assignments SET pq_ids = array_append(pq_ids, $2), updated_at=now() WHERE id=$1', [assignment.id, parsed.data.pqId]);
+    return { status: 200 };
+  });
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  await audit({ actorId: req.user.id, action: 'assignment.past_question_added', entityType: 'assignment', entityId: req.params.id, metadata: { pqId: parsed.data.pqId }, ip: req.ip });
+  res.json({ ok: true });
 }));
 
 /* A term of homework in one spreadsheet.

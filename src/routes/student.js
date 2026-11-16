@@ -500,6 +500,22 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
     // is refused on the strength of it: a player is not evidence.
     listeningDialect: z.string().max(40).optional(),
     listeningPlays: z.coerce.number().int().min(0).max(999).optional(),
+    /* A past question done on the paper: what was typed into each answer space
+       and how each was marked, by question. The plain answers above carry the
+       same thing as text, which is what the review and the feedback read. */
+    pqResult: z.object({
+      answers: z.record(z.string().max(160), z.record(z.string().max(80), z.string().max(8000))),
+      results: z.record(z.string().max(160), z.array(z.object({
+        key: z.string().max(80),
+        verdict: z.enum(['correct', 'partial', 'wrong', 'blank']),
+        awarded: z.coerce.number().min(0).max(1000),
+        max: z.coerce.number().min(0).max(1000),
+        expected: z.string().max(4000).default(''),
+        feedback: z.string().max(4000).default(''),
+      })).max(200)),
+      got: z.coerce.number().min(0).max(100000),
+      total: z.coerce.number().min(0).max(100000),
+    }).optional(),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid homework submission.') });
   const assignment = await accessibleAssignment(req.user.id, req.params.id);
@@ -552,6 +568,16 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
       'UPDATE homework_submissions SET listening_dialect=$1, listening_plays=$2 WHERE id=$3',
       [parsed.data.listeningDialect || null, parsed.data.listeningPlays || 0, row.id],
     );
+  }
+  /* Only for homework that was set from past questions, and only about the
+     questions it was set from: nothing else a browser sends is kept. */
+  const pastQuestions = Array.isArray(assignment.pq_ids) ? assignment.pq_ids : [];
+  if (pastQuestions.length) {
+    const sent = parsed.data.pqResult || { answers: {}, results: {}, got: 0, total: 0 };
+    const only = (record) => Object.fromEntries(pastQuestions.filter((id) => record[id]).map((id) => [id, record[id]]));
+    const kept = { answers: only(sent.answers), results: only(sent.results), got: sent.got, total: sent.total };
+    await query('UPDATE homework_submissions SET pq_result=$1::jsonb WHERE id=$2', [JSON.stringify(kept), row.id]);
+    row.pq_result = kept;
   }
   let feedbackState = initialState;
   if (draftsHomework) {

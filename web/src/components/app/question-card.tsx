@@ -15,6 +15,7 @@ import { AnswerParts } from "./answer-parts";
 import { AudioPlayer } from "./audio-player";
 import { DuoButton } from "./duo";
 import { Segmented } from "./segmented";
+import { HomeworkTags, SetHomeworkButton } from "./set-homework";
 import { toast } from "./toast";
 
 // Every crop is drawn at one scale (K px per PDF point, Studyclix's text size), never stretched
@@ -472,7 +473,10 @@ export const SampleCard = ({ q, s, kind }: { q: Question; s: ReturnType<typeof s
 };
 
 /* ---------------- the card ---------------- */
-export const QuestionCard = ({ q, exam: inExam }: { q: Question; exam?: { running: boolean } }) => {
+/* `hideYear` is for the lists that put the year in a heading above their questions: the year and
+   "Deferred exam" badges would only say it twice there. Anywhere a question stands by itself
+   (its own page, an exam, homework, saved) the badges are the only place the year is said. */
+export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?: { running: boolean }; hideYear?: boolean }) => {
     const saved = useStore((s) => s.saved.includes(q.id));
     const examed = useStore((s) => s.exam.includes(q.id));
     const check = useStore((s) => s.checks[q.id]);
@@ -483,11 +487,13 @@ export const QuestionCard = ({ q, exam: inExam }: { q: Question; exam?: { runnin
         <article id={`q-${q.id}`} aria-labelledby={`qt-${q.id}`} className="mb-6 scroll-mt-40 overflow-clip rounded-2xl border-2 border-secondary bg-primary">
             <header className="flex flex-col gap-4 px-4 py-5 sm:px-6 md:flex-row md:items-start">
                 <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Badge size="md" type="pill-color" color="brand">
-                            {q.year}
-                        </Badge>
-                        {q.deferred && (
+                    <div className={cx("flex flex-wrap items-center gap-2", hideYear && !q.kinds?.length && "hidden")}>
+                        {!hideYear && (
+                            <Badge size="md" type="pill-color" color="brand">
+                                {q.year}
+                            </Badge>
+                        )}
+                        {!hideYear && q.deferred && (
                             <Badge size="md" type="pill-color" color="warning">
                                 Deferred exam
                             </Badge>
@@ -498,14 +504,16 @@ export const QuestionCard = ({ q, exam: inExam }: { q: Question; exam?: { runnin
                             </Badge>
                         ))}
                     </div>
-                    <h2 id={`qt-${q.id}`} className="mt-3 text-lg font-semibold text-primary">
+                    <h2 id={`qt-${q.id}`} className={cx("text-lg font-semibold text-primary", !(hideYear && !q.kinds?.length) && "mt-3")}>
                         <Link to={`/q/${q.id}`} className="rounded-sm outline-focus-ring hover:underline hover:decoration-border-primary hover:underline-offset-4 focus-visible:outline-2">
                             {label(q)}
                         </Link>
                     </h2>
                     <p className="mt-1 text-sm text-tertiary">{where(q)} · State Examinations Commission</p>
+                    {!inExam && <HomeworkTags q={q} />}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {!inExam && <SetHomeworkButton q={q} />}
                     <DuoButton
                         color="secondary"
                         size="xs"

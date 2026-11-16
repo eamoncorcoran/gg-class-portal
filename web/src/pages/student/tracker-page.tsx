@@ -6,7 +6,7 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Camera, ChatCircle, Note, VideoCamera } from "@phosphor-icons/react";
 import { Button as AriaButton } from "react-aria-components";
-import { useNavigate, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { DuoButton, DuoCard } from "@/components/app/duo";
 import { DuoDialog, FieldLabel } from "@/components/app/duo-dialog";
 import { DuoCheckDoc } from "@/components/app/duo-icons";
@@ -538,6 +538,8 @@ export const TrackerPage = () => {
         const assignment = data.assignments.find((a) => a.id === open.assignmentId);
         const sub: Homework | undefined = assignment ? maps!.homework.get(assignment.id) : undefined;
         if (assignment && sub?.status === "returned") dialog = <HomeworkFeedbackDialog assignment={assignment} submission={sub} onClose={() => setOpen(null)} onRead={() => markRead("homework", sub.id)} />;
+        // Homework set from past questions is done, and looked back at, on the paper itself.
+        else if (assignment?.pq_ids?.length) dialog = <Navigate to={`/hw/${assignment.id}`} />;
         else if (assignment && sub?.status === "submitted") dialog = <SubmittedHomeworkDialog assignment={assignment} submission={sub} onClose={() => setOpen(null)} />;
         else if (assignment) dialog = <HomeworkForm assignment={assignment} tz={tz} onClose={() => setOpen(null)} onSubmitted={() => submitted("Homework in. Go hiontach!", "Corrections and feedback will appear in your weekly tracker once your teacher has been through it.")} />;
     }

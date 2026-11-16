@@ -49,6 +49,7 @@ export function useWhere(): { active: string; crumbs: Crumb[]; topicSlug?: strin
     if (a === "live") return { active: "live", crumbs: [{ label: "Live classroom" }] };
     if (a === "tracker") return { active: "tracker", crumbs: [{ label: "Homework & check-ins" }] };
     if (a === "mock-oral") return { active: "mockoral", crumbs: [{ label: "Mock oral" }] };
+    if (a === "hw") return { active: "tracker", crumbs: [{ label: "Homework & check-ins", href: "/tracker" }, { label: "Past question" }] };
     if (a === "sraith") return { active: "sraith", crumbs: [PQ, { label: "Sraith Pictiúr" }] };
     if (a === "message") return { active: "message", crumbs: [{ label: "Private message" }] };
     if (a === "account") return { active: "account", crumbs: [{ label: "Your account" }] };

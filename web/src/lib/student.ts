@@ -57,6 +57,8 @@ export type Assignment = {
     uploads_required?: boolean;
     listening_text?: string | null;
     listening_text_shown?: boolean;
+    /** The past exam questions this homework was set from; empty for ordinary homework. */
+    pq_ids?: string[];
 };
 /** GET /api/student/assignments/:id adds the open flags and the ready dialects (older payloads sent bare keys). */
 export type AssignmentDetail = Assignment & { open: boolean; hardDeadline: boolean; acceptsLate: boolean; dialects?: (string | Dialect)[] };

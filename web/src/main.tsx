@@ -15,6 +15,7 @@ import { LivePage } from "@/pages/live-page";
 import { ConsolePage } from "@/pages/teach/console-page";
 import { TrackerPage } from "@/pages/student/tracker-page";
 import { MockOralPage } from "@/pages/student/mock-oral-page";
+import { PqHomeworkPage } from "@/pages/student/pq-homework-page";
 import { SraithPage as HubSraithPage } from "@/pages/student/sraith-page";
 import { MessagePage } from "@/pages/student/message-page";
 import { AccountPage } from "@/pages/student/account-page";
@@ -78,6 +79,7 @@ const App = () => (
             <Route path="/live" element={<LivePage />} />
             <Route path="/tracker" element={<TrackerPage />} />
             <Route path="/mock-oral" element={<MockOralPage />} />
+            <Route path="/hw/:id" element={<PqHomeworkPage />} />
             <Route path="/sraith" element={<HubSraithPage basePath="/sraith" />} />
             <Route path="/sraith/:slug" element={<HubSraithPage basePath="/sraith" />} />
             <Route path="/message" element={<MessagePage />} />
