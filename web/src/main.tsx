@@ -21,6 +21,7 @@ import { AccountPage } from "@/pages/student/account-page";
 import { ForgotPage, ResetPage } from "@/pages/student/password-pages";
 import { ConfirmRegion } from "@/components/app/confirm";
 import { LiveRoomFrame } from "@/components/app/live-room";
+import { Welcome } from "@/components/app/welcome";
 import { SignInPage } from "@/pages/signin-page";
 import { NotFound } from "@/pages/not-found";
 import { LevelPage, QuestionPage, SavedPage, SearchPage, YearPage, YearsPage } from "@/pages/other-pages";
@@ -125,6 +126,7 @@ const App = () => (
         <ToastRegion />
         <ConfirmRegion />
         <LiveRoomFrame />
+        <Welcome />
     </AppShell>
 );
 
