@@ -152,3 +152,55 @@ export const useStudentBootstrap = () => {
     }, [me?.role]);
     return me?.role === "student" ? v : undefined;
 };
+
+/* ---- is the teacher live right now? ---- */
+/* Asked of the hub every quarter minute while a page that shows the way into the class is open and
+   the tab is in view. The join button is drawn only from this answer, so nobody can press their way
+   into a dark room before the class starts, and nobody has to reload to get in once it has. */
+let liveNow: boolean | undefined;
+const liveSubs = new Set<() => void>();
+let liveWatchers = 0;
+let livePoll: number | null = null;
+const LIVE_POLL_MS = 15000;
+const checkLive = async () => {
+    if (document.visibilityState === "hidden") return;
+    try {
+        const d = await api<{ liveNow?: boolean }>("/api/live/status");
+        const next = Boolean(d.liveNow);
+        if (next !== liveNow) {
+            liveNow = next;
+            liveSubs.forEach((f) => f());
+        }
+    } catch {
+        /* a blip: the last answer stands until the next ask */
+    }
+};
+const onLiveVisible = () => {
+    if (document.visibilityState === "visible") checkLive();
+};
+/** Whether the live class is on for the signed-in student right now (polled); a teacher always has the way in. */
+export const useLiveNow = () => {
+    const me = useMe();
+    const v = useSyncExternalStore((f) => (liveSubs.add(f), () => liveSubs.delete(f)), () => liveNow);
+    const student = me?.role === "student";
+    useEffect(() => {
+        if (!student) return;
+        liveWatchers += 1;
+        if (liveWatchers === 1) {
+            checkLive();
+            livePoll = window.setInterval(checkLive, LIVE_POLL_MS);
+            document.addEventListener("visibilitychange", onLiveVisible);
+        }
+        return () => {
+            liveWatchers -= 1;
+            if (liveWatchers === 0) {
+                if (livePoll) window.clearInterval(livePoll);
+                livePoll = null;
+                document.removeEventListener("visibilitychange", onLiveVisible);
+            }
+        };
+    }, [student]);
+    if (me?.role === "admin") return true;
+    if (!student) return false;
+    return v ?? Boolean(studentBoot?.liveNow);
+};

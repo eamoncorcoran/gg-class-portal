@@ -852,6 +852,8 @@ async function join({ countdown = false } = {}){
     // does not, and it sits over the whole page; it is closed for the student.
     setTimeout(() => { for (const b of document.querySelectorAll('button[class*="zoom-MuiButton"]')) if (/^ok$/i.test(b.textContent.trim())) b.click(); }, 150);
     btn.disabled = false; btn.textContent = 'Join the class';
+    // The host still in the practice session is not a class to press into: the page tries again by itself.
+    btn.hidden = notStarted && !preview;
     joined = false;
     // Tell the teacher's console, in Zoom's words (once per reason, so a page
     // trying every quarter minute is one line and not fifty), and show the way out.
@@ -1037,7 +1039,8 @@ const boot = async () => {
     $('#gateName').textContent = studentName;
     if (me.session?.classLabel) $('#stageNote').textContent = 'The class video appears here once you join · ' + me.session.classLabel;
     if (me.role === 'student') showNextClass(me.liveNow ? { live: true } : me.nextClass);
-    if (me.joinUrl && !preview) { $('#zoomOutLink').href = me.joinUrl; $('#zoomOut').hidden = false; }
+    // The way out to Zoom is offered once the class is on; before that it only leads to Zoom's own waiting room.
+    if (me.joinUrl && !preview && me.liveNow) { $('#zoomOutLink').href = me.joinUrl; $('#zoomOut').hidden = false; }
     if (me.liveNow) { const el = $('#nextClass'); if (el) el.textContent = preview ? 'Your teacher is live now. Press Join.' : 'Your teacher is live. Joining you now…'; }
     if (!me.allowed) showError(me.reason || 'This session is for a different class.');
     if (!me.live && !preview) {
@@ -1048,7 +1051,16 @@ const boot = async () => {
     connectPhrases();
     if (me.prompt) showPrompt(me.prompt);
     if (!preview && !demo && me.live && me.allowed) {
-      if (me.liveNow) join({ countdown: true }); else watchLive('');
+      if (me.liveNow) join({ countdown: true });
+      else {
+        /* Not on yet: nothing to press. The page listens, and brings the
+           student in by itself the moment the teacher goes live; a button
+           here only ever led to a dark room and a Zoom error. */
+        $('#joinBtn').hidden = true;
+        const title = document.querySelector('.gatecard h2'); if (title) title.textContent = 'Your class has not started yet';
+        const nc = $('#nextClass'); if (nc && !/has ended|is live/.test(nc.textContent)) nc.textContent = (nc.textContent ? nc.textContent + ' ' : '') + 'Keep this page open: you will be brought in by yourself the moment your teacher goes live. No need to refresh.';
+        watchLive('');
+      }
     }
     if (preview) {
       $('#gateName').textContent = 'a silent viewer';

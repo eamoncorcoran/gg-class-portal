@@ -6,7 +6,27 @@ import { Link } from "react-router";
 import { DuoButton } from "@/components/app/duo";
 import { DuoLive } from "@/components/app/duo-icons";
 import { type Hub, type Who, CLASS_MINUTES, dateKey, dayKey, fmtDay, fmtShort, fmtTime, initials, instantOf, nextClass, wall } from "@/lib/hub";
+import { useLiveNow, useMe } from "@/lib/portal";
 import { cx } from "@/utils/cx";
+
+/** The way into the class. Live: the button into the room. Not yet: a quiet note in the button's
+   place, nothing to press, which becomes the button by itself the moment the teacher goes live. */
+export const JoinLive = ({ live, size = "sm", full, note = "Opens when the class starts" }: { live: boolean; size?: "xs" | "sm" | "md"; full?: boolean; note?: string }) => {
+    const me = useMe();
+    if (live)
+        return (
+            <DuoButton size={size} full={full} href="/live" iconTrailing={ArrowRight}>
+                {me?.role === "admin" ? "Live classroom" : "Join live classroom"}
+            </DuoButton>
+        );
+    const h = { xs: "h-9 px-3 text-xs", sm: "h-10.5 px-3.5 text-[13px]", md: "h-[50px] px-4 text-[15px]" }[size];
+    return (
+        <span role="status" aria-live="polite" className={cx("inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-secondary bg-secondary font-bold tracking-[0.8px] text-quaternary uppercase select-none", h, full && "flex w-full")}>
+            <span className="size-2 rounded-full bg-quaternary" aria-hidden="true" />
+            {note}
+        </span>
+    );
+};
 
 /** Ticks once a minute so countdowns and "happening now" stay right. */
 export const useNow = () => {
@@ -45,18 +65,21 @@ export const classWhen = (h: Hub) => {
 /** The banner over Home and Live: the class running now, or the next one and how far away it is. */
 export const NextClassBanner = ({ hub, now, compact }: { hub: Hub; now: Date; compact?: boolean }) => {
     const nx = nextClass(hub, now);
+    /* "Live" is the teacher having pressed Go live, not the clock: the calendar says when the class is
+       due, the room says when it is on. Past the due time without the teacher, it is starting shortly. */
+    const on = useLiveNow();
     if (!nx) return null;
     const mins = nx.minutesAway;
-    const when = nx.live ? "Happening now" : mins < 60 ? `Starts in ${mins} minute${mins === 1 ? "" : "s"}` : mins < 24 * 60 ? `Starts in ${Math.round(mins / 60)} hours` : `Next class ${fmtDay(nx.date)}`;
+    const when = on ? "Happening now" : mins <= 0 ? "Starting shortly" : mins < 60 ? `Starts in ${mins} minute${mins === 1 ? "" : "s"}` : mins < 24 * 60 ? `Starts in ${Math.round(mins / 60)} hours` : `Next class ${fmtDay(nx.date)}`;
     return (
-        <section aria-label="Next class" className={cx("flex flex-col gap-4 rounded-2xl border-2 p-5 md:flex-row md:items-center md:gap-6", nx.live ? "border-brand bg-brand-primary" : "border-secondary bg-primary")}>
-            <span className={cx("flex size-14 shrink-0 items-center justify-center rounded-2xl border-2", nx.live ? "border-brand bg-primary" : "border-secondary bg-primary")}>
+        <section aria-label="Next class" className={cx("flex flex-col gap-4 rounded-2xl border-2 p-5 md:flex-row md:items-center md:gap-6", on ? "border-brand bg-brand-primary" : "border-secondary bg-primary")}>
+            <span className={cx("flex size-14 shrink-0 items-center justify-center rounded-2xl border-2", on ? "border-brand bg-primary" : "border-secondary bg-primary")}>
                 <DuoLive aria-hidden="true" className="size-9" />
             </span>
             <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 duo-label text-brand-secondary">
-                    {nx.live && <span className="size-2 animate-pulse rounded-full bg-error-solid" aria-hidden="true" />}
-                    {nx.live ? "Live now" : nx.soon ? "Today" : "Coming up"}
+                    {on && <span className="size-2 animate-pulse rounded-full bg-error-solid" aria-hidden="true" />}
+                    {on ? "Live now" : nx.soon ? "Today" : "Coming up"}
                     {nx.kind === "extra" && <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] text-quaternary">Extra class</span>}
                 </p>
                 <p className="mt-1 text-lg font-bold text-primary md:text-xl">{when}</p>
@@ -64,12 +87,11 @@ export const NextClassBanner = ({ hub, now, compact }: { hub: Hub; now: Date; co
                     {fmtShort(nx.date)} · {fmtTime(nx.date)} Irish time · {CLASS_MINUTES / 60} hours{nx.week ? ` · Week ${nx.week}` : ""}
                     {hub.klass.joinNote ? ` · Passcode ${hub.klass.joinNote}` : ""}
                 </p>
+                {!on && !compact && <p className="mt-1 text-xs font-semibold text-quaternary">The button appears here by itself when your teacher goes live. No need to refresh.</p>}
             </div>
             {!compact && (
                 <div className="flex shrink-0 flex-wrap gap-2">
-                    <DuoButton size="sm" href="/live" iconTrailing={ArrowRight}>
-                        {nx.live ? "Join live classroom" : "Live classroom"}
-                    </DuoButton>
+                    <JoinLive live={on} />
                 </div>
             )}
         </section>
@@ -171,6 +193,7 @@ export const MonthCalendar = ({ events, now, initial, className }: { events: Cal
 /** The class card on the side: who we are, when we meet, and the way in. */
 export const ClassCard = ({ hub, now, children }: { hub: Hub; now: Date; children?: ReactNode }) => {
     const nx = nextClass(hub, now);
+    const on = useLiveNow();
     return (
         <section aria-label="Your class" className="rounded-2xl border-2 border-secondary bg-primary p-5">
             <div className="flex items-center gap-3">
@@ -182,13 +205,11 @@ export const ClassCard = ({ hub, now, children }: { hub: Hub; now: Date; childre
             </div>
             {nx && (
                 <p className="mt-4 rounded-xl bg-secondary px-3 py-2 text-sm text-secondary">
-                    <span className="font-bold text-primary">{nx.live ? "Happening now" : "Next class"}</span> {nx.live ? "" : `${fmtShort(nx.date)}, ${fmtTime(nx.date)}`}
+                    <span className="font-bold text-primary">{on ? "Happening now" : "Next class"}</span> {on ? "" : `${fmtShort(nx.date)}, ${fmtTime(nx.date)}`}
                 </p>
             )}
             <div className="mt-4 flex flex-col gap-2">
-                <DuoButton size="sm" full href="/live">
-                    {nx?.live ? "Join live classroom" : "Live classroom"}
-                </DuoButton>
+                <JoinLive live={on} full />
                 {children}
             </div>
         </section>

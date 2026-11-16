@@ -15,7 +15,8 @@ import { BookOpen01, Calendar, Play, X } from "@/components/app/ic";
 import { Empty, Page, PageHeader } from "@/components/app/page-parts";
 import { toast } from "@/components/app/toast";
 import { useAvatarGate } from "@/lib/account";
-import { api, useApi, useMe } from "@/lib/portal";
+import { api, useApi, useLiveNow, useMe } from "@/lib/portal";
+import { JoinLive } from "@/components/app/hub-parts";
 import {
     type Assignment,
     type Checkin,
@@ -127,30 +128,31 @@ const WeekNotice = ({ data }: { data: StudentBootstrap }) => {
 };
 
 const ClassBanner = ({ data, tz }: { data: StudentBootstrap; tz: string }) => {
-    const nav = useNavigate();
     const next = data.nextClass;
+    /* In the hub's own room, "live" is the teacher having gone live (polled), not the clock. */
+    const on = useLiveNow() && Boolean(data.liveReady);
     if (!next) return null;
     // The button is there whenever there is a link at all; what the hours change is the urgency of the wording.
-    if (!next.joinUrl && !next.live && !next.soon) return null;
-    const when = next.live ? "Happening now" : next.soon ? `Starts ${hoursOrMinutes(next.minutesAway)}` : `Next class ${fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: "short" }, tz)}`;
+    if (!next.joinUrl && !next.live && !next.soon && !data.liveReady) return null;
+    const live = data.liveReady ? on : next.live;
+    const when = live ? "Happening now" : next.live ? "Starting shortly" : next.soon ? `Starts ${hoursOrMinutes(next.minutesAway)}` : `Next class ${fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: "short" }, tz)}`;
     const line = `${next.live || next.soon ? fmtDate(next.startsAt, { weekday: true, time: true, dateStyle: "short" }, tz) : fmtDate(next.startsAt, { dateStyle: "medium" }, tz)} · ${plainHour(next.startsAt, next.timezone)} Irish${next.note ? ` · Passcode: ${passcodeOnly(next.note)}` : ""}${next.movedFrom ? " · moved from its usual day" : ""}`;
     return (
-        <section aria-label="Next class" className={cx("flex flex-col gap-4 rounded-2xl border-2 p-5 md:flex-row md:items-center md:gap-6", next.live ? "border-brand bg-brand-primary" : "border-secondary bg-primary")}>
-            <span className={cx("grid size-12 shrink-0 place-items-center rounded-2xl border-2", next.live ? "border-brand bg-primary text-brand-secondary" : "border-secondary bg-primary text-tertiary")}>
+        <section aria-label="Next class" className={cx("flex flex-col gap-4 rounded-2xl border-2 p-5 md:flex-row md:items-center md:gap-6", live ? "border-brand bg-brand-primary" : "border-secondary bg-primary")}>
+            <span className={cx("grid size-12 shrink-0 place-items-center rounded-2xl border-2", live ? "border-brand bg-primary text-brand-secondary" : "border-secondary bg-primary text-tertiary")}>
                 <VideoCamera weight="bold" aria-hidden="true" className="size-6" />
             </span>
             <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-lg font-bold text-primary">
-                    {next.live && <span className="size-2 animate-pulse rounded-full bg-error-solid" aria-hidden="true" />}
+                    {live && <span className="size-2 animate-pulse rounded-full bg-error-solid" aria-hidden="true" />}
                     {when}
                 </p>
                 <p className="mt-0.5 text-sm text-tertiary">{line}</p>
+                {data.liveReady && !on && <p className="mt-1 text-xs font-semibold text-quaternary">The button appears here by itself when your teacher goes live. No need to refresh.</p>}
             </div>
             {/* The class plays inside the hub now, so the door is the Live class page rather than a Zoom link that opens somewhere else. */}
             {data.liveReady ? (
-                <DuoButton size="sm" onPress={() => nav("/live")}>
-                    {next.live || data.liveNow ? "Join Now" : "Join Live Classroom"}
-                </DuoButton>
+                <JoinLive live={on} />
             ) : next.joinUrl ? (
                 <a href={next.joinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-10.5 items-center justify-center rounded-2xl border-2 border-transparent border-b-4 border-b-brand-700 bg-brand-500 px-3.5 text-[13px] font-bold tracking-[0.8px] text-white uppercase hover:brightness-105">
                     {next.live ? "Join Now" : "Join Class"}

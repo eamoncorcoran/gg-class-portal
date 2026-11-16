@@ -35,7 +35,7 @@ import {
     voiceSupported,
 } from "@/components/app/tus-upload";
 import { type Who, initials } from "@/lib/hub";
-import { DAY_NAMES, api, upload, useAdminBootstrap, useMe, loadStudentBootstrap } from "@/lib/portal";
+import { DAY_NAMES, api, upload, useAdminBootstrap, useLiveNow, useMe, loadStudentBootstrap } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 
 /* ---------- the hub's shapes ---------- */
@@ -1641,20 +1641,30 @@ const SideCard = ({ title, children }: { title?: string; children: ReactNode }) 
 );
 
 /* The next class, in the column, in the class timezone rather than the reader's. */
-const SideNextClass = ({ next, liveReady, liveNow, onGoLive }: { next: NextClass; liveReady?: boolean; liveNow?: boolean; onGoLive: () => void }) => {
-    const label = next.live ? "Happening now" : next.soon ? `Starts in ${relativeWhen(next.minutesAway)}` : toDate(next.startsAt).toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "short", timeZone: next.timezone || FALLBACK_TZ });
+const SideNextClass = ({ next, liveReady }: { next: NextClass; liveReady?: boolean }) => {
+    /* In the hub's own room, "live" is the teacher having gone live (polled), not the clock. */
+    const on = useLiveNow() && Boolean(liveReady);
+    const live = liveReady ? on : next.live;
+    const label = live ? "Happening now" : next.live ? "Starting shortly" : next.soon ? `Starts in ${relativeWhen(next.minutesAway)}` : toDate(next.startsAt).toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "short", timeZone: next.timezone || FALLBACK_TZ });
     const note = next.note ? (/^pass\s*code/i.test(next.note) || !next.joinUrl ? `Passcode: ${passcodeOnly(next.note)}` : next.note) : null;
     return (
-        <div className={cx("mt-3 flex items-center gap-3 rounded-xl px-3 py-2 text-sm", next.live ? "bg-brand-primary" : "bg-secondary")}>
+        <div className={cx("mt-3 flex items-center gap-3 rounded-xl px-3 py-2 text-sm", live ? "bg-brand-primary" : "bg-secondary")}>
             <div className="min-w-0 flex-1">
                 <p className="duo-label text-quaternary">{next.isExtra ? "Extra session" : "Next class"}</p>
                 <p className="mt-0.5 font-bold text-primary">{label}</p>
                 {note && <p className="text-xs text-tertiary">{note}</p>}
             </div>
-            {liveReady && (next.live || next.soon || liveNow) ? (
-                <DuoButton size="xs" onPress={onGoLive}>
-                    Join
-                </DuoButton>
+            {liveReady ? (
+                on ? (
+                    <DuoButton size="xs" href="/live">
+                        Join
+                    </DuoButton>
+                ) : (
+                    <span role="status" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-2xl border-2 border-dashed border-secondary px-2.5 text-[11px] font-bold tracking-[0.8px] text-quaternary uppercase select-none">
+                        <span className="size-1.5 rounded-full bg-quaternary" aria-hidden="true" />
+                        Not started
+                    </span>
+                )
             ) : next.joinUrl && (next.live || next.soon) ? (
                 <a href={next.joinUrl} target="_blank" rel="noopener" className="inline-flex h-9 shrink-0 items-center rounded-2xl border-2 border-transparent border-b-4 border-b-brand-700 bg-brand-500 px-3 text-xs font-bold tracking-[0.8px] text-white uppercase hover:brightness-105">
                     Join
@@ -1676,7 +1686,6 @@ const PAGE = 30;
 
 export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin: boolean; classId?: string | null; openId: string | null; onOpen: (id: string | null) => void; head?: BoardHead }) => {
     const me = useMe();
-    const nav = useNavigate();
     const adminBoot = useAdminBootstrap();
     const [board, setBoard] = useState<Board | null>(null);
     const [boot, setBoot] = useState<StudentBoot | null>(null);
@@ -1818,7 +1827,7 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
                                 <p className="text-xs text-tertiary">{klass ? `${DAY_NAMES[klass.day_of_week]}s at ${String(klass.start_time).slice(0, 5)}` : ""}</p>
                             </div>
                         </div>
-                        {next && <SideNextClass next={next} liveReady={boot?.liveReady} liveNow={boot?.liveNow} onGoLive={() => nav("/live")} />}
+                        {next && <SideNextClass next={next} liveReady={boot?.liveReady} />}
                     </SideCard>
                     <SideCard title="Most active this month">
                         {contributors.length === 0 ? (

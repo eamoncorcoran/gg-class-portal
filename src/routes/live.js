@@ -66,6 +66,15 @@ router.get('/me', asyncRoute(async (req, res) => {
   });
 }));
 
+/* The one bit every page asks for on a timer: is the class on, for me, right
+   now. Cheap on purpose (the session is in memory, a student's classes are
+   cached a minute), since every open tab asks it every quarter minute. */
+router.get('/status', asyncRoute(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const liveNow = req.user.role === 'admin' ? room.isLive() : await room.liveFor(req.user.id);
+  res.json({ liveNow, startedAt: liveNow && room.access.startedAt ? new Date(room.access.startedAt).toISOString() : null });
+}));
+
 /* The Zoom signature: the real door to the class. Attendee role only. */
 router.post('/signature', asyncRoute(async (req, res) => {
   const gate = await room.studentGate(req.user);
