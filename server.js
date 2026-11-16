@@ -71,14 +71,15 @@ app.use(helmet({
          bunny.net. Allowing inline styles is a genuine loosening — it is the one
          directive this widget costs us — but script injection, which is the
          attack that matters, stays blocked by scriptSrc above. */
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://*.leadconnectorhq.com', 'https://fonts.bunny.net'],
+      // The React hub loads its three faces from Google Fonts.
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://*.leadconnectorhq.com', 'https://fonts.bunny.net', 'https://fonts.googleapis.com'],
       // The interface sets a handful of computed style attributes (progress bar
       // widths, embed sizing). Without this they are silently dropped and the
       // affected controls render collapsed or uncoloured. Stylesheets and
       // <style> blocks stay restricted to same-origin by styleSrc above.
       styleSrcAttr: ["'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      fontSrc: ["'self'", 'data:', 'https://fonts.bunny.net', 'https://*.leadconnectorhq.com'],
+      fontSrc: ["'self'", 'data:', 'https://fonts.bunny.net', 'https://fonts.gstatic.com', 'https://*.leadconnectorhq.com'],
       // Bunny's upload endpoint: videos on the board go there straight from the
       // browser, signed by this server for one video at a time.
       connectSrc: ["'self'", 'https://*.leadconnectorhq.com', 'wss://*.leadconnectorhq.com',
@@ -253,6 +254,29 @@ const publicDir = path.join(__dirname, 'public');
    is the small page that names them. */
 const ASSET_VERSION = process.env.npm_package_version || String(Date.now());
 
+/* The new hub: a React app built into web/dist by the Dockerfile.
+   ------------------------------------------------------------------
+   It is served when the build is there and NEW_UI is not "0". The old
+   interface stays at /legacy either way, so anybody who needs it back is one
+   address away, and NEW_UI=0 puts it back at the root for everybody without a
+   rebuild. The React build names its assets by content hash (/assets/x-HASH.js),
+   so they are cached for a year and only index.html, which names them, must
+   stay fresh. */
+const webDist = path.join(__dirname, 'web', 'dist');
+const NEW_UI = process.env.NEW_UI !== '0' && fsSync.existsSync(path.join(webDist, 'index.html'));
+console.log(NEW_UI ? 'Serving the React hub from web/dist (old interface at /legacy)' : 'Serving the old interface at the root');
+
+if (NEW_UI) {
+  app.use(express.static(webDist, {
+    index: false,
+    maxAge: config.isProduction ? '1h' : 0,
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+      else if (filePath.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
+  }));
+}
+
 app.use(express.static(publicDir, {
   maxAge: config.isProduction ? '1h' : 0,
   // The page itself is served below, not from here.
@@ -269,25 +293,69 @@ app.use(express.static(publicDir, {
 const pageHtml = (file) => fsSync.readFileSync(path.join(publicDir, file), 'utf8')
   .replace(/(["'])(\/(?:mock-oral\.js|app\.js|styles\.css))\1/g, `$1$2?v=${ASSET_VERSION}$1`);
 const indexHtml = () => pageHtml('index.html');
+const reactHtml = () => fsSync.readFileSync(path.join(webDist, 'index.html'), 'utf8');
+
+/* Read once in production, where the file cannot change under a running
+   container, and every time in development so an edit shows up on reload. */
+let cachedIndex = null;
+let cachedReact = null;
+function sendShell(res, react) {
+  let html;
+  if (react) {
+    if (!cachedReact || !config.isProduction) cachedReact = reactHtml();
+    html = cachedReact;
+  } else {
+    if (!cachedIndex || !config.isProduction) cachedIndex = indexHtml();
+    html = cachedIndex;
+  }
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(html);
+}
+
+/* Links in email, which the React app must keep answering.
+   ------------------------------------------------------------------
+   src/email.js is unchanged by the move to the new interface, so the addresses
+   it hands out are the old interface's, all query strings on the root:
+
+     /?go=tracker                  the homework tracker (reminder emails)
+     /?go=calendar                 the class calendar (date-change emails)
+     /?go=assignment&id=<uuid>     one assignment (new-homework emails)
+     /?reset=<token>               the password-reset form (forgot-password email)
+     /?go=mockoral                 redirected below to /mock-oral
+     /mock-oral?b=<token>          a student's own booking, public page (confirmation email)
+
+   The React app reads `go`, `id` and `reset` off the root URL, opens the
+   screen, and takes them out of the address bar. The one-off /mock-oral case is
+   handled by the server, below. */
 
 /* The mock oral booking page. It is a page of its own, outside the portal, so
-   a student can book from a link without signing in to anything. */
+   a student can book from a link without signing in to anything.
+
+   The React hub has a signed-in student page at the same address, so who gets
+   which is decided here: a request carrying ?b= (the manage link from a
+   confirmation email) or arriving with no valid session gets the public booking
+   page; a signed-in person gets the hub, whose own page knows what to do. */
 let cachedBooking = null;
-app.get('/mock-oral', (_req, res) => {
+app.get('/mock-oral', (req, res, next) => {
+  if (NEW_UI && req.user && !('b' in req.query)) return next();
   if (!cachedBooking || !config.isProduction) cachedBooking = pageHtml('mock-oral.html');
   res.setHeader('Cache-Control', 'no-cache');
   res.type('html').send(cachedBooking);
 });
 
-/* Read once in production, where the file cannot change under a running
-   container, and every time in development so an edit shows up on reload. */
-let cachedIndex = null;
+/* The old interface, kept at /legacy for as long as the new one is settling
+   in. Its assets are absolute paths (/app.js, /styles.css, /icons/...), so the
+   same shell works from here unchanged. */
+app.get(['/legacy', '/legacy/{*splat}'], (_req, res) => sendShell(res, false));
+
 app.get('/{*splat}', (req, res) => {
   // The link first given out for mock orals went through the portal's sign-in.
   if (req.query.go === 'mockoral') return res.redirect(302, '/mock-oral');
-  if (!cachedIndex || !config.isProduction) cachedIndex = indexHtml();
-  res.setHeader('Cache-Control', 'no-cache');
-  res.type('html').send(cachedIndex);
+  /* A file that is not there is not a page: /live/x.html, /icons/x.svg or a
+     stale /assets/x-HASH.js that reached this far should say 404, not hand
+     back the shell as if it were the thing asked for. */
+  if (NEW_UI && /\.[a-z0-9]{1,8}$/i.test(req.path)) return res.status(404).json({ error: 'Not found.' });
+  return sendShell(res, NEW_UI);
 });
 
 app.use(errorHandler);

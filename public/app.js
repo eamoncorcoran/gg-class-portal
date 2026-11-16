@@ -903,7 +903,7 @@ function bindAuth(mode) {
     try {
       const data = await api('/api/auth/login', { method: 'POST', body: { email: form.get('email'), password: form.get('password') } });
       state.user = data.user;
-      try { history.replaceState({}, '', '/'); } catch {}
+      try { history.replaceState({}, '', location.pathname); } catch {}
       if (state.user.mustChangePassword) return renderAuth('change');
       if (state.user.mustSetAvatar && !state.user.hasAvatar) return renderAuth('avatar');
       await loadApplication();
@@ -922,7 +922,7 @@ function bindAuth(mode) {
     const form = new FormData(event.currentTarget);
     try {
       await api('/api/auth/reset-password', { method: 'POST', body: { token: event.currentTarget.dataset.token, newPassword: form.get('password') } });
-      try { history.replaceState({}, '', '/'); } catch {}
+      try { history.replaceState({}, '', location.pathname); } catch {}
       renderAuth('login', 'Your password was reset. You can now sign in.');
     } catch (error) { authError(error); }
   });
