@@ -238,7 +238,7 @@ export const CoursePage = () => {
                     <Player key={l.id} l={l} />
                     <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div className="min-w-0">
-                            {l.week && <p className="duo-label text-brand-secondary">Week {l.week}</p>}
+                            {l.week && <p className="text-sm font-semibold text-brand-secondary">Week {l.week}</p>}
                             <h1 className="mt-1 text-display-xs font-bold tracking-tight text-primary">{l.title}</h1>
                             <p className="mt-1.5 text-sm text-tertiary">
                                 {l.name && !/^(Ceacht|Week|Lesson|Seachtain)\s*\d+$/i.test(l.name.trim()) ? `${l.name} · ` : ""}

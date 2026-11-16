@@ -110,8 +110,7 @@ export const QuestionsPage = ({ view = "topics" }: { view?: "topics" | "lessons"
                 <div className="flex items-start gap-5">
                     <DuoQuestion aria-hidden="true" className="hidden size-14 shrink-0 md:block" />
                     <div className="min-w-0 flex-1">
-                        <p className="duo-label text-brand-secondary">Leaving Certificate · Higher Level Irish</p>
-                        <h1 className="mt-2 text-display-sm font-bold tracking-tight text-primary md:text-display-md">Past questions</h1>
+                        <h1 className="text-display-sm font-bold tracking-tight text-primary md:text-display-md">Past questions</h1>
                         <div className="mt-4">
                             <Explainer slug="subject" given={SUBJECT} fallback={`${total} State exam questions from ${years.at(-1)!.slice(0, 4)} to ${latest}, each beside its official marking scheme. Play the real recordings, write on the paper and check your answers.`} />
                         </div>

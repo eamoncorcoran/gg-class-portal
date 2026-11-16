@@ -334,7 +334,8 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
             </AriaModalOverlay>
 
             <div className={cx("transition-[padding] duration-200 ease-out", open && "lg:pl-76")}>
-                <header className="sticky top-0 z-20 border-b-2 border-secondary bg-primary/95 backdrop-blur-md">
+                {/* Pinned everywhere except a topic's list of past questions, where the paper wants the whole screen and this scrolls away with the page. */}
+                <header className={cx("z-20 border-b-2 border-secondary bg-primary/95 backdrop-blur-md", pathname.startsWith("/t/") ? "relative" : "sticky top-0")}>
                     <div className="flex h-16 items-center gap-2 px-3 md:px-6">
                         {/* Only once the menu is folded away (the menu has its own hide button); on a phone it opens the drawer. ⌘/Ctrl+B does the same. */}
                         {!open && (

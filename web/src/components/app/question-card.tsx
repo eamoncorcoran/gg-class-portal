@@ -1,13 +1,14 @@
 // One exam question: header and actions, the paper itself (typed on directly), checking, the official
 // marking scheme and any H1 sample answers.
 import { Fragment, useState } from "react";
-import { AlertCircle, ArrowRight, BookmarkCheck, Check, ChevronDown, FileCheck02, InfoCircle, LayoutRight, Minus, Plus, Printer, X } from "@/components/app/ic";
+import { AlertCircle, ArrowRight, Bookmark, Check, CheckSquare, ChevronDown, FileCheck02, InfoCircle, LayoutRight, Minus, Plus, Printer, Square, X } from "@/components/app/ic";
 import { motion } from "motion/react";
 import { Button as AriaButton } from "react-aria-components";
 import { Link } from "react-router";
 import { Badge } from "@/components/base/badges/badges";
 import { type Img, type Question, D, answerKeys, checkable, isAural, label, samplesOf, where } from "@/lib/data";
 import { type Check as CheckT, type Result, type Verdict, get, set, setAnswer, toggleExam, toggleSaved, useStore } from "@/lib/store";
+import { startPrinting, togglePick, usePick } from "@/lib/pick";
 import { cx } from "@/utils/cx";
 import { openSample, openScheme, printQuestions } from "./overlays";
 import { SOON } from "@/lib/soon";
@@ -480,11 +481,14 @@ export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?
     const saved = useStore((s) => s.saved.includes(q.id));
     const examed = useStore((s) => s.exam.includes(q.id));
     const check = useStore((s) => s.checks[q.id]);
+    const printing = usePick((s) => s.printing);
+    const picked = usePick((s) => s.ids.includes(q.id));
+    const building = usePick((s) => s.building);
     const live = !inExam?.running;
     const samples = samplesOf(q);
 
     return (
-        <article id={`q-${q.id}`} aria-labelledby={`qt-${q.id}`} className="mb-6 scroll-mt-40 overflow-clip rounded-2xl border-2 border-secondary bg-primary">
+        <article id={`q-${q.id}`} aria-labelledby={`qt-${q.id}`} className={cx("mb-6 scroll-mt-40 overflow-clip rounded-2xl border-2 bg-primary", printing && picked && !inExam ? "border-brand" : "border-secondary")}>
             <header className="flex flex-col gap-4 px-4 py-5 sm:px-6 md:flex-row md:items-start">
                 <div className="min-w-0 flex-1">
                     <div className={cx("flex flex-wrap items-center gap-2", hideYear && !q.kinds?.length && "hidden")}>
@@ -512,35 +516,48 @@ export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?
                     <p className="mt-1 text-sm text-tertiary">{where(q)} · State Examinations Commission</p>
                     {!inExam && <HomeworkTags q={q} />}
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    {!inExam && <SetHomeworkButton q={q} />}
-                    <DuoButton
-                        color="secondary"
-                        size="xs"
-                        iconLeading={BookmarkCheck}
-                        className={cx(saved && "border-brand bg-brand-primary")}
-                        onPress={() => {
-                            const on = toggleSaved(q.id);
-                            toast(on ? "Saved for revision" : "Removed from saved", on ? undefined : () => toggleSaved(q.id));
-                        }}
-                    >
-                        {saved ? "Saved" : "Save"}
-                    </DuoButton>
-                    <DuoButton
-                        color="secondary"
-                        size="xs"
-                        iconLeading={examed ? Check : Plus}
-                        className={cx(examed && "border-brand bg-brand-primary")}
-                        onPress={() => {
-                            const at = get().exam.indexOf(q.id);
-                            const on = toggleExam(q.id);
-                            toast(on ? `Added to your exam (${get().exam.length})` : "Removed from your exam", on ? undefined : () => { const e = [...get().exam]; e.splice(at, 0, q.id); set("exam", e); });
-                        }}
-                    >
-                        {examed ? "In exam" : "Add to exam"}
-                    </DuoButton>
-                    <DuoButton color="secondary" size="sm" iconLeading={Printer} ariaLabel="Print" onPress={() => printQuestions([q], false, true)} />
-                </div>
+                {printing && !inExam ? (
+                    /* Choosing what to print: the card's own buttons step aside for one tick box. */
+                    <div className="flex shrink-0 items-center">
+                        <DuoButton color="secondary" size="xs" iconLeading={picked ? CheckSquare : Square} className={cx(picked && "border-brand bg-brand-primary")} onPress={() => togglePick(q.id)}>
+                            {picked ? "Selected" : "Select"}
+                        </DuoButton>
+                    </div>
+                ) : (
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {!inExam && <SetHomeworkButton q={q} />}
+                        {/* Only while an exam is being put together, or once this question is in it. */}
+                        {(building || examed) && (
+                            <DuoButton
+                                color="secondary"
+                                size="xs"
+                                iconLeading={examed ? Check : Plus}
+                                className={cx(examed && "border-brand bg-brand-primary")}
+                                onPress={() => {
+                                    const at = get().exam.indexOf(q.id);
+                                    const on = toggleExam(q.id);
+                                    toast(on ? `Added to your exam (${get().exam.length})` : "Removed from your exam", on ? undefined : () => { const e = [...get().exam]; e.splice(at, 0, q.id); set("exam", e); });
+                                }}
+                            >
+                                {examed ? "In exam" : "Add to exam"}
+                            </DuoButton>
+                        )}
+                        {/* Saving is a small thing: the icon alone, grey until it is on. */}
+                        <DuoButton
+                            color="secondary"
+                            size="sm"
+                            iconLeading={Bookmark}
+                            ariaLabel={saved ? "Saved for revision. Press to remove" : "Save for revision"}
+                            className={cx(saved ? "border-brand bg-brand-primary text-brand-secondary" : "text-quaternary")}
+                            onPress={() => {
+                                const on = toggleSaved(q.id);
+                                toast(on ? "Saved for revision" : "Removed from saved", on ? undefined : () => toggleSaved(q.id));
+                            }}
+                        />
+                        {/* In a list, print asks whether there are more to go with it. Sitting an exam or homework it prints this one, answers and all. */}
+                        <DuoButton color="secondary" size="sm" iconLeading={Printer} ariaLabel="Print" className="text-quaternary" onPress={() => (inExam ? printQuestions([q], false, true) : startPrinting(q.id))} />
+                    </div>
+                )}
             </header>
 
             <div className="border-t-2 border-secondary px-3 py-5 sm:px-6">

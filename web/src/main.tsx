@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { AppShell } from "@/components/app/app-shell";
 import { SampleModal, SchemeWindow } from "@/components/app/overlays";
 import { ExamTray } from "@/components/app/exam-tray";
+import { PrintTray } from "@/components/app/print-tray";
 import { ToastRegion } from "@/components/app/toast";
 import { loadData } from "@/lib/data";
 import { loadHub } from "@/lib/hub";
@@ -124,6 +125,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
         </Routes>
         <ExamTray />
+        <PrintTray />
         <SchemeWindow />
         <SampleModal />
         <ToastRegion />

@@ -77,3 +77,51 @@ test('no em dashes in anything the teacher or a student reads', () => {
     assert.ok(!text.includes('—'), `${name} must not contain an em dash`);
   }
 });
+
+/* The top of a list of past questions.
+   ------------------------------------------------------------------
+   It used to pin three tall tabs and a bar of every year over the paper. It is
+   three small tools now, none of it pinned, and the buttons on each question
+   are the ones somebody is using at that moment. */
+
+test('a list of questions has three small tools, and nothing pinned over the paper', () => {
+  const parts = read('../web/src/components/app/page-parts.tsx');
+  const groups = parts.slice(parts.indexOf('export const YearGroups'));
+  assert.ok(!/sticky/.test(groups), 'the tabs and the tools scroll away with the page');
+  assert.ok(!/<JumpBar/.test(groups), 'the bar of years is gone from the list');
+  assert.match(groups, /<Tool icon=\{Bookmark\} label=\{savedOnly \?/);
+  assert.match(groups, /<Tool icon=\{Printer\} label="Choose questions to print"/);
+  assert.match(groups, /<Tool icon=\{FilterSimple\} label="Filter by year"/);
+  const topic = read('../web/src/pages/topic-page.tsx');
+  assert.ok(!/sticky top-16/.test(topic));
+  assert.ok(!/Print all/.test(topic), 'Print all became Create exam');
+  assert.match(topic, /"Create exam"/);
+  // The page header is pinned everywhere but here.
+  assert.match(read('../web/src/components/app/app-shell.tsx'), /pathname\.startsWith\("\/t\/"\) \? "relative" : "sticky top-0"/);
+});
+
+test('print asks for more before it prints, and Add to exam waits for Create exam', () => {
+  // In a list, a question's print button ticks it and opens the choosing bar rather than printing.
+  assert.match(card, /onPress=\{\(\) => \(inExam \? printQuestions\(\[q\], false, true\) : startPrinting\(q\.id\)\)\}/);
+  assert.match(card, /\{picked \? "Selected" : "Select"\}/);
+  const tray = read('../web/src/components/app/print-tray.tsx');
+  assert.match(tray, /Tick any others you want\./);
+  assert.match(tray, /printQuestions\(list, getPick\(\)\.scheme, false\);/);
+  assert.match(tray, /Select all/);
+  // Add to exam is on no question until an exam is being put together.
+  assert.match(card, /\{\(building \|\| examed\) && \(/);
+  // Saving is the icon alone.
+  assert.match(card, /iconLeading=\{Bookmark\}\s+ariaLabel=\{saved \? "Saved for revision\. Press to remove" : "Save for revision"\}/);
+});
+
+test('no line of capitals sits on top of a main heading', () => {
+  for (const file of ['topic-page.tsx', 'home-page.tsx', 'subject-pages.tsx', 'questions-page.tsx', 'hub-home.tsx', 'courses-pages.tsx']) {
+    const source = read(`../web/src/pages/${file}`);
+    const lines = source.split('\n');
+    lines.forEach((line, index) => {
+      if (!/<h1[ >]/.test(line)) return;
+      const above = lines.slice(Math.max(0, index - 2), index).join('\n');
+      assert.ok(!/duo-label/.test(above), `${file}: a capital label sits above the heading on line ${index + 1}`);
+    });
+  }
+});

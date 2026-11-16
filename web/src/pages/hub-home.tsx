@@ -44,7 +44,7 @@ export const HomePage = () => {
         <Page wide>
             <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
-                    <p className="duo-label text-brand-secondary">{greet}</p>
+                    <p className="text-sm font-semibold text-brand-secondary">{greet}</p>
                     <h1 className="mt-2 text-display-xs font-bold tracking-tight text-primary md:text-display-sm">Welcome back</h1>
                     <p className="mt-2 text-md text-tertiary">{hub.klass.name}</p>
                 </div>

@@ -1,17 +1,19 @@
-// A topic: header with your progress, three big tabs (Questions, Lessons, Samples & Guides), then
-// every State exam question grouped by year with the year bar pinned above them.
+// A topic: its name and what it is, three tabs (Questions, Lessons, Samples & Guides), then every
+// State exam question grouped by year. Nothing on the page is pinned.
 import { useLayoutEffect, useRef, useState } from "react";
-import { BookOpen01, Feather, Grid01, Printer } from "@/components/app/ic";
+import { BookOpen01, Check, Feather, Grid01, Plus } from "@/components/app/ic";
 import { ChevronDown } from "@/components/app/ic";
 import { AnimatePresence, motion } from "motion/react";
 import { Button as AriaButton } from "react-aria-components";
 import { Link, useParams } from "react-router";
 import { DuoButton } from "@/components/app/duo";
 import { DuoBulb, DuoCheckDoc, DuoQuestion } from "@/components/app/duo-icons";
-import { printQuestions } from "@/components/app/overlays";
 import { Empty, Page, YearGroups, reveal } from "@/components/app/page-parts";
 import { SampleCard } from "@/components/app/question-card";
-import { navIrish, navName, paperOf, samplesOf, topic } from "@/lib/data";
+import { navName, samplesOf, topic } from "@/lib/data";
+import { setBuilding, usePick } from "@/lib/pick";
+import { useStore } from "@/lib/store";
+import { toast } from "@/components/app/toast";
 import { explainerOf } from "@/lib/explainers";
 import { hi } from "@/lib/highlight";
 import { cx } from "@/utils/cx";
@@ -19,7 +21,7 @@ import { LessonsTab } from "./lessons-tab";
 import { SOON } from "@/lib/soon";
 import { NotFound } from "./not-found";
 
-/** The three big tabs, Duolingo desktop style: chunky bordered cards, the chosen one tinted with a brand border. */
+/** The three tabs, Duolingo desktop style but kept low: one line each, the chosen one tinted with a brand border. */
 const TopicTabs = ({ slug, tab, className }: { slug: string; tab: string; className?: string }) => {
     const items = [
         { id: "questions", label: "Questions", icon: DuoQuestion, href: `/t/${slug}` },
@@ -36,7 +38,7 @@ const TopicTabs = ({ slug, tab, className }: { slug: string; tab: string; classN
                         to={it.href}
                         aria-current={on ? "page" : undefined}
                         className={cx(
-                            "group flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-2 py-3 duo-label outline-focus-ring transition duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 sm:flex-row sm:gap-2.5 sm:py-3.5",
+                            "group flex items-center justify-center gap-2 rounded-xl border-2 px-2 py-2 text-sm font-bold outline-focus-ring transition duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 max-sm:flex-col max-sm:gap-1 max-sm:py-1.5 max-sm:text-xs",
                             on
                                 ? "border-brand bg-brand-primary text-brand-secondary"
                                 : "border-secondary text-secondary hover:bg-primary_hover hover:text-primary",
@@ -44,10 +46,7 @@ const TopicTabs = ({ slug, tab, className }: { slug: string; tab: string; classN
                     >
                         <it.icon
                             aria-hidden="true"
-                            className={cx(
-                                "size-7 transition duration-150 ease-out",
-                                false,
-                            )}
+                            className="size-5 shrink-0"
                         />
                         <span className="text-center">{it.label}</span>
                     </Link>
@@ -155,14 +154,12 @@ export const Explainer = ({ slug, fallback, course2027, given }: { slug: string;
 const Header = ({
     slug,
     name,
-    irish,
     sub,
     action,
     course2027,
 }: {
     slug: string;
     name: string;
-    irish: string;
     sub: string;
     action?: React.ReactNode;
     course2027?: boolean;
@@ -170,8 +167,7 @@ const Header = ({
     <header className="mb-3 md:mb-4">
         <div className="flex gap-4 md:items-start md:gap-5">
             <div className="min-w-0 flex-1">
-                <p className="duo-label text-brand-secondary">{irish}</p>
-                <h1 className="mt-1 text-xl font-bold text-primary md:mt-1.5 md:text-display-sm">{name.replace(/\s*\(.*\)$/, "")}</h1>
+                <h1 className="text-xl font-bold text-primary md:text-display-sm">{name.replace(/\s*\(.*\)$/, "")}</h1>
                 <Explainer slug={slug} fallback={sub} course2027={course2027} />
             </div>
             {action && <div className="shrink-0">{action}</div>}
@@ -182,13 +178,15 @@ const Header = ({
 export const TopicPage = () => {
     const { slug = "", tab = "questions", item } = useParams();
     const t = topic(slug);
-    // switching tabs while scrolled: stay with the tabs pinned at the top, never jump back to the header
+    const building = usePick((s) => s.building);
+    const inExam = useStore((s) => s.exam.length);
+    // switching tabs while scrolled: come back up to the tabs rather than land halfway down the new one
     const sentinel = useRef<HTMLDivElement>(null);
     useLayoutEffect(() => {
         const el = sentinel.current;
         if (!el) return;
         const was = window.scrollY; // read before layout, so the browser hasn't clamped it yet
-        const top = el.getBoundingClientRect().top + window.scrollY - 64;
+        const top = el.getBoundingClientRect().top + window.scrollY - 12;
         if (was > top + 8) window.scrollTo({ top, behavior: "instant" as ScrollBehavior });
     }, [tab]);
     if (!t) return <NotFound />;
@@ -196,7 +194,7 @@ export const TopicPage = () => {
     if (t.course2027)
         return (
             <Page>
-                <Header slug={slug} name={t.name} irish={t.irish} sub="New on the course for 2027." course2027 />
+                <Header slug={slug} name={t.name} sub="New on the course for 2027." course2027 />
                 <Empty
                     icon={Feather}
                     title="New on the course for 2027"
@@ -218,23 +216,27 @@ export const TopicPage = () => {
           : `${t.questions.length} State exam questions, each with the official marking scheme.`;
 
     const tabs = (cls?: string) => <TopicTabs slug={slug} tab={tab} className={cls} />;
-    const stickyTabs = <div className="sticky top-16 z-20 -mx-4 mb-8 bg-primary px-4 pt-2 pb-4 md:-mx-8 md:px-8">{tabs()}</div>;
+    // Not pinned: the tabs scroll away with the heading and leave the whole screen to the questions.
+    const stickyTabs = <div className="mb-8">{tabs()}</div>;
     return (
         <Page wide>
             <Header
                 slug={slug}
                 name={navName(slug)}
-                irish={[paperOf(slug), navIrish(slug) || t.irish].filter(Boolean).join(" · ")}
                 sub={sub}
                 action={
+                    /* "Add to exam" is on no question until this is pressed. Pressing it puts the button on
+                       every one; the bar at the foot of the screen keeps count and makes the exam. */
                     <DuoButton
-                        color="secondary"
+                        color={building ? "primary" : "secondary"}
                         size="sm"
-                        iconLeading={Printer}
-                        onPress={() => printQuestions(t.questions, false, false)}
-                        className="max-md:hidden"
+                        iconLeading={building ? Check : Plus}
+                        onPress={() => {
+                            setBuilding(!building);
+                            toast(building ? "Finished choosing. Your exam is in the bar below." : "Press Add to exam on each question you want.");
+                        }}
                     >
-                        Print all
+                        {building ? (inExam ? `Done choosing (${inExam})` : "Done choosing") : "Create exam"}
                     </DuoButton>
                 }
             />

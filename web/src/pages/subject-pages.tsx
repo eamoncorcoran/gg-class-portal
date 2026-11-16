@@ -58,8 +58,7 @@ const ComingSoon = ({ subject, level }: { subject: string; level: string }) => {
     return (
         <Page>
             <header className="mb-10 border-b-2 border-secondary pb-8">
-                <p className="duo-label text-brand-secondary">Leaving Certificate · {LEVEL_LABEL[level] ?? level} Level</p>
-                <h1 className="mt-2 text-display-xs font-bold tracking-tight text-primary md:text-display-sm">{info?.name ?? subject}</h1>
+                <h1 className="text-display-xs font-bold tracking-tight text-primary md:text-display-sm">{info?.name ?? subject}</h1>
             </header>
             <Empty icon={BookOpen01} title={`${LEVEL_LABEL[level] ?? level} Level papers are on the way`} note="The State exam questions for this subject are being cut from the official papers and marking schemes.">
                 <div className="flex flex-wrap gap-3">
@@ -136,8 +135,7 @@ export const SubjectHome = () => {
     return (
         <Page>
             <header className="border-b-2 border-secondary pb-12">
-                <p className="duo-label text-brand-secondary">Leaving Certificate · {LEVEL_LABEL[d.level] ?? d.level} Level</p>
-                <h1 className="mt-3 text-display-sm font-bold tracking-tight text-primary md:text-display-md">{info?.name ?? d.subject} past papers</h1>
+                <h1 className="text-display-sm font-bold tracking-tight text-primary md:text-display-md">{info?.name ?? d.subject} past papers</h1>
                 <p className="mt-4 mb-10 max-w-3xl text-md text-tertiary">
                     {total} State exam questions from {first} to {last}, cut from the official papers and set beside their marking schemes.
                     {marked > 0 && ` ${marked} of them can be answered on the page and checked against the scheme.`}

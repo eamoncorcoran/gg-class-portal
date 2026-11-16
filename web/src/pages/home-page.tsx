@@ -85,8 +85,7 @@ export const HomePage = () => {
         <Page>
             <header className="border-b-2 border-secondary pb-12">
                 <div>
-                <p className="duo-label text-brand-secondary">Leaving Certificate · Higher Level</p>
-                <h1 className="mt-3 text-display-sm font-bold tracking-tight text-primary md:text-display-md">Irish past papers</h1>
+                <h1 className="text-display-sm font-bold tracking-tight text-primary md:text-display-md">Irish past papers</h1>
                 <div className="mt-4 mb-10">
                     <Explainer slug="subject" given={SUBJECT} fallback={`${total} State exam questions from ${years.at(-1)!.slice(0, 4)} to ${latest}, each beside its official marking scheme. Play the real recordings, write on the paper and check your answers.`} />
                 </div>
