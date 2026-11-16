@@ -6,7 +6,7 @@ import { Link } from "react-router";
 import { DuoButton } from "@/components/app/duo";
 import { DuoLive } from "@/components/app/duo-icons";
 import { type Hub, type Who, CLASS_MINUTES, dateKey, dayKey, fmtDay, fmtShort, fmtTime, initials, instantOf, nextClass, wall } from "@/lib/hub";
-import { useLiveNow, useMe } from "@/lib/portal";
+import { useCanJoinLive, useLiveNow, useMe } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 
 /** The way into the class. Live: the button into the room. Not yet: a quiet note in the button's
@@ -66,8 +66,10 @@ export const classWhen = (h: Hub) => {
 export const NextClassBanner = ({ hub, now, compact }: { hub: Hub; now: Date; compact?: boolean }) => {
     const nx = nextClass(hub, now);
     /* "Live" is the teacher having pressed Go live, not the clock: the calendar says when the class is
-       due, the room says when it is on. Past the due time without the teacher, it is starting shortly. */
+       due, the room says when it is on. Past the due time without the teacher, it is starting shortly.
+       That goes for the teacher's own view too; what a teacher always has is the button, not the word. */
     const on = useLiveNow();
+    const canJoin = useCanJoinLive();
     if (!nx) return null;
     const mins = nx.minutesAway;
     const when = on ? "Happening now" : mins <= 0 ? "Starting shortly" : mins < 60 ? `Starts in ${mins} minute${mins === 1 ? "" : "s"}` : mins < 24 * 60 ? `Starts in ${Math.round(mins / 60)} hours` : `Next class ${fmtDay(nx.date)}`;
@@ -87,11 +89,11 @@ export const NextClassBanner = ({ hub, now, compact }: { hub: Hub; now: Date; co
                     {fmtShort(nx.date)} · {fmtTime(nx.date)} Irish time · {CLASS_MINUTES / 60} hours{nx.week ? ` · Week ${nx.week}` : ""}
                     {hub.klass.joinNote ? ` · Passcode ${hub.klass.joinNote}` : ""}
                 </p>
-                {!on && !compact && <p className="mt-1 text-xs font-semibold text-quaternary">The button appears here by itself when your teacher goes live. No need to refresh.</p>}
+                {!canJoin && !compact && <p className="mt-1 text-xs font-semibold text-quaternary">The button appears here by itself when your teacher goes live. No need to refresh.</p>}
             </div>
             {!compact && (
                 <div className="flex shrink-0 flex-wrap gap-2">
-                    <JoinLive live={on} />
+                    <JoinLive live={canJoin} />
                 </div>
             )}
         </section>
@@ -194,6 +196,7 @@ export const MonthCalendar = ({ events, now, initial, className }: { events: Cal
 export const ClassCard = ({ hub, now, children }: { hub: Hub; now: Date; children?: ReactNode }) => {
     const nx = nextClass(hub, now);
     const on = useLiveNow();
+    const canJoin = useCanJoinLive();
     return (
         <section aria-label="Your class" className="rounded-2xl border-2 border-secondary bg-primary p-5">
             <div className="flex items-center gap-3">
@@ -209,7 +212,7 @@ export const ClassCard = ({ hub, now, children }: { hub: Hub; now: Date; childre
                 </p>
             )}
             <div className="mt-4 flex flex-col gap-2">
-                <JoinLive live={on} full />
+                <JoinLive live={canJoin} full />
                 {children}
             </div>
         </section>

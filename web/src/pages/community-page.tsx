@@ -35,7 +35,7 @@ import {
     voiceSupported,
 } from "@/components/app/tus-upload";
 import { type Who, initials } from "@/lib/hub";
-import { DAY_NAMES, api, upload, useAdminBootstrap, useLiveNow, useMe, loadStudentBootstrap } from "@/lib/portal";
+import { DAY_NAMES, api, upload, useAdminBootstrap, useCanJoinLive, useLiveNow, useMe, loadStudentBootstrap } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 
 /* ---------- the hub's shapes ---------- */
@@ -1644,6 +1644,8 @@ const SideCard = ({ title, children }: { title?: string; children: ReactNode }) 
 const SideNextClass = ({ next, liveReady }: { next: NextClass; liveReady?: boolean }) => {
     /* In the hub's own room, "live" is the teacher having gone live (polled), not the clock. */
     const on = useLiveNow() && Boolean(liveReady);
+    // The door is the teacher's at any time; the word "now" is not.
+    const canJoin = useCanJoinLive() && Boolean(liveReady);
     const live = liveReady ? on : next.live;
     const label = live ? "Happening now" : next.live ? "Starting shortly" : next.soon ? `Starts in ${relativeWhen(next.minutesAway)}` : toDate(next.startsAt).toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "short", timeZone: next.timezone || FALLBACK_TZ });
     const note = next.note ? (/^pass\s*code/i.test(next.note) || !next.joinUrl ? `Passcode: ${passcodeOnly(next.note)}` : next.note) : null;
@@ -1655,7 +1657,7 @@ const SideNextClass = ({ next, liveReady }: { next: NextClass; liveReady?: boole
                 {note && <p className="text-xs text-tertiary">{note}</p>}
             </div>
             {liveReady ? (
-                on ? (
+                canJoin ? (
                     <DuoButton size="xs" href="/live">
                         Join
                     </DuoButton>

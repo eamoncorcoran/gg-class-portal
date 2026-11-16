@@ -15,7 +15,7 @@ import { BookOpen01, Calendar, Play, X } from "@/components/app/ic";
 import { Empty, Page, PageHeader } from "@/components/app/page-parts";
 import { toast } from "@/components/app/toast";
 import { useAvatarGate } from "@/lib/account";
-import { api, useApi, useLiveNow, useMe } from "@/lib/portal";
+import { api, useApi, useCanJoinLive, useLiveNow, useMe } from "@/lib/portal";
 import { JoinLive } from "@/components/app/hub-parts";
 import {
     type Assignment,
@@ -131,6 +131,7 @@ const ClassBanner = ({ data, tz }: { data: StudentBootstrap; tz: string }) => {
     const next = data.nextClass;
     /* In the hub's own room, "live" is the teacher having gone live (polled), not the clock. */
     const on = useLiveNow() && Boolean(data.liveReady);
+    const canJoin = useCanJoinLive() && Boolean(data.liveReady);
     if (!next) return null;
     // The button is there whenever there is a link at all; what the hours change is the urgency of the wording.
     if (!next.joinUrl && !next.live && !next.soon && !data.liveReady) return null;
@@ -148,11 +149,11 @@ const ClassBanner = ({ data, tz }: { data: StudentBootstrap; tz: string }) => {
                     {when}
                 </p>
                 <p className="mt-0.5 text-sm text-tertiary">{line}</p>
-                {data.liveReady && !on && <p className="mt-1 text-xs font-semibold text-quaternary">The button appears here by itself when your teacher goes live. No need to refresh.</p>}
+                {data.liveReady && !canJoin && <p className="mt-1 text-xs font-semibold text-quaternary">The button appears here by itself when your teacher goes live. No need to refresh.</p>}
             </div>
             {/* The class plays inside the hub now, so the door is the Live class page rather than a Zoom link that opens somewhere else. */}
             {data.liveReady ? (
-                <JoinLive live={on} />
+                <JoinLive live={canJoin} />
             ) : next.joinUrl ? (
                 <a href={next.joinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-10.5 items-center justify-center rounded-2xl border-2 border-transparent border-b-4 border-b-brand-700 bg-brand-500 px-3.5 text-[13px] font-bold tracking-[0.8px] text-white uppercase hover:brightness-105">
                     {next.live ? "Join Now" : "Join Class"}

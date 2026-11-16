@@ -9,9 +9,8 @@ import { Button as AriaButton, Link as AriaLink } from "react-aria-components";
 import { useLocation } from "react-router";
 import { ButtonUtility } from "@/components/base/buttons/button-utility";
 import { NAV, type NavItem, soonTopics, topic } from "@/lib/data";
-import { useHub } from "@/lib/hub";
 import { set } from "@/lib/store";
-import { useMe, useStudentBootstrap } from "@/lib/portal";
+import { useLiveNow, useMe, useStudentBootstrap } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 
 /** The hub is Irish only; these stay for the pages that still ask. */
@@ -210,10 +209,11 @@ const TopicTree = ({ active, pathname }: { active: string; pathname: string }) =
 export const SidebarContent = ({ active, topicSlug = "", onClose }: { active: string; topicSlug?: string; onClose?: () => void }) => {
     const me = useMe();
     const boot = useStudentBootstrap();
-    const hub = useHub();
     const { pathname } = useLocation();
     const inside = inQuestions(active);
-    const liveNow = !!hub && hub.sittings.some((s) => s.kind !== "break" && s.kind !== "skipped" && +s.date <= Date.now() && Date.now() < +s.date + 120 * 60000);
+    /* The red dot means the class is on: the teacher has gone live. It used to go by the timetable,
+       so it lit up for two hours at every scheduled class whether anybody was teaching or not. */
+    const liveNow = useLiveNow();
 
     return (
         <div className="flex h-full flex-col overflow-y-auto">
@@ -258,7 +258,7 @@ export const SidebarContent = ({ active, topicSlug = "", onClose }: { active: st
                     {/* Teachers run the class from the console; a student whose class has no live room never sees the row. */}
                     {(me?.role !== "student" || boot?.liveClassroom !== false) && (
                         <li>
-                            <NavRow href={me?.role === "admin" ? "/teach/live" : "/live"} icon={DuoLive} current={active === "live" || (me?.role === "admin" && pathname.startsWith("/teach/live"))} dot={liveNow || Boolean(boot?.liveNow || boot?.nextClass?.live)}>
+                            <NavRow href={me?.role === "admin" ? "/teach/live" : "/live"} icon={DuoLive} current={active === "live" || (me?.role === "admin" && pathname.startsWith("/teach/live"))} dot={liveNow}>
                                 Live Classroom
                             </NavRow>
                         </li>

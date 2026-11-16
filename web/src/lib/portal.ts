@@ -178,13 +178,17 @@ const checkLive = async () => {
 const onLiveVisible = () => {
     if (document.visibilityState === "visible") checkLive();
 };
-/** Whether the live class is on for the signed-in student right now (polled); a teacher always has the way in. */
+/** Whether the live class is really on right now (polled). For a student that is their own class;
+   for a teacher it is the room itself. This is what the wording goes by ("Live now", the red dot),
+   so it is never true just because of who is looking: a teacher who has not pressed Go live is
+   told the class is not on, the same as everybody else. */
 export const useLiveNow = () => {
     const me = useMe();
     const v = useSyncExternalStore((f) => (liveSubs.add(f), () => liveSubs.delete(f)), () => liveNow);
     const student = me?.role === "student";
+    const watching = student || me?.role === "admin";
     useEffect(() => {
-        if (!student) return;
+        if (!watching) return;
         liveWatchers += 1;
         if (liveWatchers === 1) {
             checkLive();
@@ -199,8 +203,16 @@ export const useLiveNow = () => {
                 document.removeEventListener("visibilitychange", onLiveVisible);
             }
         };
-    }, [student]);
-    if (me?.role === "admin") return true;
-    if (!student) return false;
-    return v ?? Boolean(studentBoot?.liveNow);
+    }, [watching]);
+    if (!watching) return false;
+    return v ?? (student ? Boolean(studentBoot?.liveNow) : false);
+};
+
+/** Whether to draw the way into the room. A student gets it once the class is on. A teacher always
+   has it, because they are the one who starts the class. Kept apart from useLiveNow so that giving
+   the teacher the door never makes a page say the class is live. */
+export const useCanJoinLive = () => {
+    const me = useMe();
+    const live = useLiveNow();
+    return me?.role === "admin" ? true : live;
 };
