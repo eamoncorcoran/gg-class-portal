@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 import { query } from '../db.js';
 import { asyncRoute } from '../middleware.js';
+import { bunnySigning, embedUrl as bunnyEmbedUrl } from '../bunny.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,13 +30,28 @@ const cache = { full: null, public: null };
 
 const rows = async (sql, args = []) => (await query(sql, args)).rows;
 
+/* A class recording on Bunny Stream.
+
+   The library has token authentication switched on, so the plain embed address
+   is refused: the player shows a bare "403" and nothing else. The address has to
+   carry a signature and an expiry, made here at read time exactly as the course
+   pages of the old interface make theirs. Only somebody signed in is given one;
+   a visitor gets the plain address, which Bunny turns away. */
+function bunnyVideo(ref, signedIn) {
+  const [library, video] = String(ref).split('/');
+  if (signedIn && bunnySigning() && library && video) {
+    return { type: 'iframe', src: bunnyEmbedUrl(video, { libraryId: library }) };
+  }
+  return { type: 'iframe', src: `https://iframe.mediadelivery.net/embed/${ref}?autoplay=false&preload=false` };
+}
+
 /* The front end's video description for a lesson, by provider. */
-function videoOf(lesson, liveById) {
+function videoOf(lesson, liveById, { signedIn = false } = {}) {
   const provider = lesson.video_provider;
   const ref = lesson.video_ref || '';
   if (provider === 'youtube') return { type: 'iframe', src: `https://www.youtube-nocookie.com/embed/${ref}` };
   if (provider === 'loom') return { type: 'iframe', src: `https://www.loom.com/embed/${ref}` };
-  if (provider === 'bunny') return { type: 'iframe', src: `https://iframe.mediadelivery.net/embed/${ref}?autoplay=false&preload=false` };
+  if (provider === 'bunny') return bunnyVideo(ref, signedIn);
   if (provider === 'zoom') return { type: 'link', src: ref, passcode: lesson.video_passcode || undefined };
   if (provider === 'mp4') return { type: 'file', src: ref };
   if (provider === 'practice') {
@@ -112,7 +128,7 @@ async function buildExport({ signedIn }) {
               notes: l.notes || '',
               recordedOn: l.recorded_on,
               durationSeconds: l.duration_seconds || 0,
-              video: videoOf(l, liveById),
+              video: videoOf(l, liveById, { signedIn }),
             })),
         }))
         .filter((m) => m.lessons.length),

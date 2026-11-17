@@ -248,6 +248,20 @@ const fetchRaw = async (): Promise<Raw> => {
     return (await fetch("/hub/hub.json")).json();
 };
 export const loadHub = () => (loading ??= fetchRaw().then((raw: Raw) => ((hub = shape(raw)), subs.forEach((f) => f()), hub)));
+/** Asks the hub again and swaps the answer in. A recording's address is signed for a few hours, so a
+    page left open overnight holds a dead one; this fetches a fresh one. A failed fetch keeps what is there. */
+let refreshing: Promise<void> | null = null;
+export const refreshHub = () =>
+    (refreshing ??= fetch("/api/hub/export", { credentials: "include" })
+        .then(async (r) => {
+            if (!r.ok) return;
+            hub = shape((await r.json()) as Raw);
+            subs.forEach((f) => f());
+        })
+        .catch(() => {})
+        .finally(() => {
+            refreshing = null;
+        }));
 /** The hub, or null until it has loaded (then the component re-renders). */
 export const useHub = () => {
     if (!hub && !loading) loadHub();

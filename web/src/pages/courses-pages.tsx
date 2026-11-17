@@ -8,7 +8,7 @@ import { DuoButton, DuoProgress } from "@/components/app/duo";
 import { DuoBooks, DuoBubbles } from "@/components/app/duo-icons";
 import { Page, PageHeader } from "@/components/app/page-parts";
 import { toast } from "@/components/app/toast";
-import { type Course, type Lesson, type Phrase, findLesson, fmtDur, fmtShort, initials, lessonsOf, useHub } from "@/lib/hub";
+import { type Course, type Lesson, type Phrase, findLesson, fmtDur, fmtShort, initials, lessonsOf, refreshHub, useHub } from "@/lib/hub";
 import { say } from "@/lib/sfx";
 import { get, set, useStore } from "@/lib/store";
 import { cx } from "@/utils/cx";
@@ -133,6 +133,12 @@ const PracticePlayer = ({ phrases, videoUrl }: { phrases: Phrase[]; videoUrl?: s
 /** What plays at the top of a lesson: an embed, a Zoom link card, a file, the practice player, or "not yet". */
 const Player = ({ l }: { l: Lesson }) => {
     const v = l.video;
+    /* A recording's address carries an expiry. If this page has been open past it, the player would
+       show a bare "403": ask the hub for a fresh address instead. */
+    const expires = v?.type === "iframe" ? Number(v.src.match(/[?&]expires=(\d+)/)?.[1] || 0) : 0;
+    useEffect(() => {
+        if (expires && expires * 1000 < Date.now() + 60_000) refreshHub();
+    }, [expires, l.id]);
     const past = l.recordedOn && +new Date(l.recordedOn) < Date.now();
     if (!v)
         return (
