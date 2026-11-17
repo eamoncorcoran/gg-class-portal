@@ -21,7 +21,7 @@ import { LessonsTab } from "./lessons-tab";
 import { SOON } from "@/lib/soon";
 import { NotFound } from "./not-found";
 
-/** The three tabs as one bar: equal thirds on a rule, the chosen one tinted with rounded shoulders and a brand line under it. */
+/** The three tabs as one bar: equal thirds on a rule. The chosen one is marked by its colour and a brand line under it, nothing else: no tint, no rounded shoulders. */
 const TopicTabs = ({ slug, tab, className }: { slug: string; tab: string; className?: string }) => {
     const items = [
         { id: "questions", label: "Questions", icon: DuoQuestion, href: `/t/${slug}` },
@@ -38,8 +38,8 @@ const TopicTabs = ({ slug, tab, className }: { slug: string; tab: string; classN
                         to={it.href}
                         aria-current={on ? "page" : undefined}
                         className={cx(
-                            "-mb-0.5 flex h-12 items-center justify-center gap-2.5 rounded-t-2xl border-b-[3px] px-2 text-center text-[13px] leading-tight font-bold outline-focus-ring transition duration-150 ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 sm:h-14 sm:text-md",
-                            on ? "border-brand bg-brand-primary text-brand-secondary" : "border-transparent text-tertiary hover:bg-primary_hover hover:text-primary",
+                            "-mb-0.5 flex h-12 items-center justify-center gap-2.5 border-b-[3px] px-2 text-center text-[13px] leading-tight font-bold outline-focus-ring transition duration-150 ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 sm:h-14 sm:text-md",
+                            on ? "border-brand text-brand-secondary" : "border-transparent text-tertiary hover:border-primary hover:text-primary",
                         )}
                     >
                         <it.icon aria-hidden="true" className={cx("size-6 shrink-0 max-sm:hidden", !on && "opacity-80")} />
