@@ -236,16 +236,13 @@ const shape = (r: Raw): Hub => {
 let hub: Hub | null = null;
 let loading: Promise<Hub> | null = null;
 const subs = new Set<() => void>();
-/* The hub's live export first (the same shape, straight from the database, so dates, lessons and
-   threads are never stale); the baked file is the fallback for a dev session without the hub up. */
+/* The hub's live export, straight from the database, so dates, lessons and threads are never stale.
+   There used to be a baked copy of it shipped with the app as a fallback for development; it held a
+   real class's board and was readable by anybody, so it is gone. Signed out there is no hub to load. */
 const fetchRaw = async (): Promise<Raw> => {
-    try {
-        const r = await fetch("/api/hub/export", { credentials: "include" });
-        if (r.ok) return (await r.json()) as Raw;
-    } catch {
-        /* fall through to the baked copy */
-    }
-    return (await fetch("/hub/hub.json")).json();
+    const r = await fetch("/api/hub/export", { credentials: "include" });
+    if (!r.ok) throw Object.assign(new Error(r.status === 401 ? "Sign in to the hub first." : `The hub could not be loaded (${r.status}).`), { status: r.status });
+    return (await r.json()) as Raw;
 };
 export const loadHub = () => (loading ??= fetchRaw().then((raw: Raw) => ((hub = shape(raw)), subs.forEach((f) => f()), hub)));
 /** Asks the hub again and swaps the answer in. A recording's address is signed for a few hours, so a

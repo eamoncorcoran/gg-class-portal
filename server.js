@@ -35,7 +35,8 @@ import mockOralRoutes from './src/routes/mockoral.js';
 import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
 import hubRoutes from './src/routes/hub.js';
-import { pastQuestionsProxy } from './src/pqproxy.js';
+import { pastQuestionsProxy, pqPass } from './src/pqproxy.js';
+import { wall, noIndex, ROBOTS_TXT } from './src/wall.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,6 +55,9 @@ await fs.mkdir(config.uploadDir, { recursive: true });
 await fs.mkdir(config.privateUploadDir, { recursive: true });
 
 app.disable('x-powered-by');
+/* Not for search engines: said on every response, before anything else can answer. */
+app.use(noIndex);
+app.get('/robots.txt', (_req, res) => res.type('text/plain').send(ROBOTS_TXT));
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -176,6 +180,13 @@ app.use('/live', (req, res, next) => {
    and ahead of the hub's own /api routes, since four of its paths are /api/*
    and would otherwise be answered 404 here. Without PQ_SERVICE_URL every one of
    those paths is a 503 that says so. */
+/* The wall goes up here, ahead of everything that hands out content: the
+   past questions, the uploads, the API and the static files. It needs the
+   cookie and nothing else, so the cookie parser moves up with it; neither of
+   them reads the request body, which the proxy below still gets as a stream. */
+app.use(cookieParser());
+app.use(wall);
+app.get('/api/pq-pass/:pass', pqPass);
 app.use(pastQuestionsProxy());
 
 app.use(rateLimit({
@@ -193,7 +204,6 @@ app.use('/api/zoom/webhook', zoomHookRoutes);
 app.use('/api/live/analyze', express.json({ limit: '6mb' }));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
-app.use(cookieParser());
 app.use(loadSession);
 app.use('/uploads', express.static(config.uploadDir, {
   fallthrough: false,

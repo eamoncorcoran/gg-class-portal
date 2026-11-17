@@ -7,10 +7,10 @@
  * Served from here it is never stale, and the shape is kept exactly so the
  * baked file still works as the front end's fallback.
  *
- * Anybody may ask. Signed out, the answer leaves out the class board and the
- * way into the class (join URL, passcode): the calendar, the course list and
- * the teaching plan are what a visitor sees before signing in, and nothing
- * on them is private.
+ * Only somebody signed in may ask. It used to answer anybody with a shorter
+ * version, and that shorter version still carried the class dates, the course
+ * list and the links to the Zoom recordings. A visitor now gets a sign-in form
+ * and nothing else.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 import { query } from '../db.js';
 import { asyncRoute } from '../middleware.js';
+import { requireAuth } from '../session.js';
 import { bunnySigning, embedUrl as bunnyEmbedUrl } from '../bunny.js';
 
 const router = Router();
@@ -215,9 +216,9 @@ async function buildExport({ signedIn }) {
   };
 }
 
-router.get('/export', asyncRoute(async (req, res) => {
-  const signedIn = Boolean(req.user);
-  const slot = signedIn ? 'full' : 'public';
+router.get('/export', requireAuth, asyncRoute(async (req, res) => {
+  const signedIn = true;
+  const slot = 'full';
   const now = Date.now();
   if (!cache[slot] || now - cache[slot].at > CACHE_MS) {
     cache[slot] = { at: now, body: JSON.stringify(await buildExport({ signedIn })) };

@@ -8,6 +8,7 @@ import { PrintTray } from "@/components/app/print-tray";
 import { ToastRegion } from "@/components/app/toast";
 import { loadData } from "@/lib/data";
 import { loadHub } from "@/lib/hub";
+import { loadMe, useMe } from "@/lib/portal";
 import { HomePage } from "@/pages/hub-home";
 import { QuestionsPage } from "@/pages/questions-page";
 import { CommunityPage } from "@/pages/community-page";
@@ -135,14 +136,68 @@ const App = () => (
     </AppShell>
 );
 
-Promise.all([loadData(), loadHub()]).then(() =>
-    createRoot(document.getElementById("root")!).render(
+/* Signed out, the app is a sign-in form and the two password pages, and nothing else. No class
+   data is asked for: the server gives none of it to a visitor, whatever address they type. Every
+   other address shows the sign-in form in place and returns there once signed in. */
+const SignedOut = () => {
+    const { search } = useLocation();
+    const token = new URLSearchParams(search).get("reset");
+    return (
+        <div className="min-h-dvh bg-primary">
+            <main id="main" tabIndex={-1} className="outline-hidden">
+                <Routes>
+                    <Route path="/forgot" element={<ForgotPage />} />
+                    <Route path="/reset" element={<ResetPage />} />
+                    <Route path="/" element={token ? <Navigate to={`/reset?reset=${encodeURIComponent(token)}`} replace /> : <SignInPage />} />
+                    <Route path="*" element={<SignInPage />} />
+                </Routes>
+            </main>
+            <ToastRegion />
+        </div>
+    );
+};
+
+/* A session that ends while the app is open (signed out, or timed out) starts the app again, which
+   then draws the sign-in form above and drops everything it was holding. */
+const SessionWatch = () => {
+    const me = useMe();
+    useEffect(() => {
+        if (me === null) window.location.reload();
+    }, [me]);
+    return null;
+};
+
+const root = createRoot(document.getElementById("root")!);
+const draw = (app: React.ReactNode) =>
+    root.render(
         <StrictMode>
             <BrowserRouter>
-                <RouteProvider>
-                    <App />
-                </RouteProvider>
+                <RouteProvider>{app}</RouteProvider>
             </BrowserRouter>
         </StrictMode>,
-    ),
-);
+    );
+
+loadMe().then(async (me) => {
+    if (!me) return draw(<SignedOut />);
+    try {
+        await Promise.all([loadData(), loadHub()]);
+    } catch (e) {
+        // The session ended between the two questions: start again and show the sign-in form.
+        if ((e as { status?: number }).status === 401) return window.location.reload();
+        return draw(
+            <div className="mx-auto mt-24 max-w-md px-6 text-center">
+                <p className="text-lg font-bold text-primary">The hub could not be loaded.</p>
+                <p className="mt-2 text-md text-tertiary">Check your connection and try again.</p>
+                <button type="button" onClick={() => window.location.reload()} className="mt-6 rounded-2xl border-2 border-secondary px-5 py-2.5 text-sm font-bold text-brand-secondary">
+                    Try again
+                </button>
+            </div>,
+        );
+    }
+    draw(
+        <>
+            <SessionWatch />
+            <App />
+        </>,
+    );
+});

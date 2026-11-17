@@ -1,3 +1,4 @@
+import { forgetSession } from '../wall.js';
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import multer from 'multer';
@@ -92,6 +93,7 @@ router.post('/login', loginLimiter, asyncRoute(async (req, res) => {
 }));
 
 router.post('/logout', asyncRoute(async (req, res) => {
+  forgetSession(req.cookies?.[config.sessionCookieName]);
   await destroySession(req, res);
   res.status(204).end();
 }));

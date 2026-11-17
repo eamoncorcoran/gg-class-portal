@@ -1,18 +1,22 @@
 // Sign in to the hub with the same email and password as before. The hub sets its session cookie,
 // which every hub-backed screen here then uses.
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import { DuoButton } from "@/components/app/duo";
 import { FieldLabel } from "@/components/app/duo-dialog";
 import { Page } from "@/components/app/page-parts";
 import { Wordmark } from "@/components/app/app-sidebar";
-import { type Me, api, refreshMe, useMe } from "@/lib/portal";
+import { type Me, api, useMe } from "@/lib/portal";
 
 export const SignInPage = () => {
     const me = useMe();
-    const nav = useNavigate();
+    const { pathname, search } = useLocation();
     const [sp] = useSearchParams();
-    const next = sp.get("next") || "/";
+    /* Where to go once signed in. Signed out, every address shows this form in place, so a link from
+       an email ("/?go=tracker", "/hw/<id>") comes back to exactly where it pointed. Only an address
+       on this site is accepted. */
+    const asked = pathname === "/signin" ? sp.get("next") || "/" : pathname + search;
+    const next = /^\/(?![\/\\])/.test(asked) ? asked : "/";
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [busy, setBusy] = useState(false);
@@ -23,8 +27,10 @@ export const SignInPage = () => {
         setErr(null);
         try {
             const r = await api<{ user: Me }>("/api/auth/login", { method: "POST", json: { email: email.trim(), password } });
-            await refreshMe();
-            nav(r.user.mustChangePassword || (r.user.mustSetAvatar && !r.user.hasAvatar) ? `/account?next=${encodeURIComponent(next)}` : next, { replace: true });
+            /* A full load, not a move within the app: signed out, the app holds none of the class's
+               data (the server will not give it), so it starts again now that it may have it. */
+            window.location.replace(r.user.mustChangePassword || (r.user.mustSetAvatar && !r.user.hasAvatar) ? `/account?next=${encodeURIComponent(next)}` : next);
+            return;
         } catch (e) {
             setErr((e as Error).message);
         } finally {

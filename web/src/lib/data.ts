@@ -111,7 +111,11 @@ export async function loadData(): Promise<Data> {
     if (data && data.subject === "irish" && data.level === "higher") return data;
     if (stores["irish/higher"]) return (data = stores["irish/higher"]);
     const [d, keys, res] = await Promise.all([
-        fetch("/data.json").then((r) => r.json()),
+        fetch("/data.json").then((r) => {
+            // 401 = not signed in: the past questions are for the class, and the caller starts the app again at the sign-in form.
+            if (!r.ok) throw Object.assign(new Error(`The past questions could not be loaded (${r.status}).`), { status: r.status });
+            return r.json();
+        }),
         fetch("/keys.json").then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
         fetch("/resources.json").then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
         loadSubjects(),

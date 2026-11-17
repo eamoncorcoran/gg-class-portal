@@ -6,12 +6,14 @@
  * (deployed on its own, on Render's private network). Everything it serves is
  * passed straight through here: the request body streams up, the response
  * streams back, and Range requests for audio come back as the 206 the browser
- * asked for. Nothing is buffered, nothing is re-encoded, and no sign-in is
- * added or removed on the way.
+ * asked for. Nothing is buffered and nothing is re-encoded. Who may ask is
+ * decided before a request gets here, by the wall (src/wall.js): only somebody
+ * signed in.
  *
  * Mounted ahead of the body parsers (the body has to still be a stream) and
  * ahead of the hub's own /api routes (four of its paths live under /api).
  */
+import crypto from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { sameOrigin } from './middleware.js';
@@ -25,6 +27,26 @@ export const PQ_PREFIXES = ['/papers/', '/oral/sp/', '/crops/', '/aud/', '/audio
 
 export function isPastQuestionsPath(pathname) {
   return PQ_EXACT.has(pathname) || PQ_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+/* Proof that a request reached the past-questions service through this portal.
+   ------------------------------------------------------------------
+   That service has an address of its own on the internet, and on it everything
+   it holds was open to anybody who found it: the papers, the notes, and the
+   marking API that spends model credit. Now it answers only requests carrying
+   this pass. The pass is random, made afresh each time the portal starts and
+   never stored; the service checks one it has not seen by asking the portal
+   "is this yours?" at /api/pq-pass/<pass>. Nothing has to be typed into a
+   dashboard on either side, and a pass that leaks dies at the next restart. */
+const PASS = crypto.randomBytes(32).toString('hex');
+export const PASS_HEADER = 'x-hub-pass';
+
+export function pqPass(req, res) {
+  const given = Buffer.from(String(req.params.pass || ''));
+  const ours = Buffer.from(PASS);
+  const ok = given.length === ours.length && crypto.timingSafeEqual(given, ours);
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(ok ? 204 : 404).end();
 }
 
 /* Hop-by-hop headers belong to one connection and must not be copied to the next. */
@@ -60,10 +82,11 @@ export function pastQuestionsProxy() {
 
     const headers = {};
     for (const [name, value] of Object.entries(req.headers)) {
-      if (HOP_BY_HOP.has(name) || name === 'cookie') continue;
+      if (HOP_BY_HOP.has(name) || name === 'cookie' || name === PASS_HEADER) continue;
       headers[name] = value;
     }
     headers.host = target.host;
+    headers[PASS_HEADER] = PASS;
     headers['x-forwarded-for'] = [req.headers['x-forwarded-for'], req.socket.remoteAddress].filter(Boolean).join(', ');
     headers['x-forwarded-proto'] = req.protocol;
     headers['x-forwarded-host'] = req.get('host') || '';
