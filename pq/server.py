@@ -36,6 +36,46 @@ RAW_DIR = os.path.join(DATA_DIR, 'raw') if os.path.isdir(os.path.join(DATA_DIR, 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT') or 5410)
 UPLOAD_TOKEN = os.environ.get('PQ_UPLOAD_TOKEN') or ''
 
+# Who may ask
+# ----------------------------------------------------------------------------------------------
+# This service has its own address on the internet, and everything on it used to be open to anybody
+# who found that address: the papers, the notes, and the marking API, which spends model credit. It
+# now answers only the class portal. The portal puts a random pass on every request it forwards
+# (X-Hub-Pass, made afresh each time the portal starts); a pass not seen before is checked by asking
+# the portal itself, over HTTPS, whether it is the one it is using. Nothing is shared in advance, so
+# there is no secret to set on either service. /_health stays open for the host's health check and
+# the /_ upload endpoints keep their own token. PQ_OPEN=1 turns the check off, for running this on
+# a laptop with no portal in front of it.
+import threading, time, urllib.request
+HUB_URL = (os.environ.get('HUB_URL') or 'https://hub.gaeilgeoirguides.com').rstrip('/')
+PQ_OPEN = os.environ.get('PQ_OPEN') == '1'
+_passes = {}            # pass -> (good, when to ask again)
+_passes_lock = threading.Lock()
+
+def from_the_portal(headers):
+    if PQ_OPEN:
+        return True
+    given = headers.get('X-Hub-Pass') or ''
+    if not re.fullmatch(r'[0-9a-f]{64}', given):
+        return False
+    now = time.time()
+    with _passes_lock:
+        hit = _passes.get(given)
+    if hit and hit[1] > now:
+        return hit[0]
+    try:
+        req = urllib.request.Request(f'{HUB_URL}/api/pq-pass/{given}', headers={'User-Agent': 'gg-past-questions'})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            good = r.status == 204
+    except Exception:
+        good = False
+    with _passes_lock:
+        if len(_passes) > 500:
+            _passes.clear()
+        # a good pass is trusted for ten minutes; a bad one is not asked about again for half a minute
+        _passes[given] = (good, now + (600 if good else 30))
+    return good
+
 class Result(BaseModel):
     key: str                 # the part id or answer-space id it marks
     verdict: Literal['correct', 'partial', 'wrong', 'blank']
@@ -320,6 +360,13 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         return True
 
+    def allowed(self):
+        """Everything but the /_ endpoints: only for a request the class portal forwarded."""
+        if from_the_portal(self.headers):
+            return True
+        self.json_out(401, {'error': 'Sign in to the class portal to see this.'})
+        return False
+
     def service_get(self):
         """The /_ endpoints. Returns True when it answered."""
         clean = self.path.split('?')[0]
@@ -389,6 +436,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/_') and self.service_get():
             return
+        if not self.allowed():
+            return
         if not self.path.startswith('/api/'):
             if not have_data():
                 return self.json_out(503, {'error': 'The question data is not uploaded yet.'})
@@ -410,11 +459,15 @@ class Handler(SimpleHTTPRequestHandler):
     def do_HEAD(self):
         if self.path.startswith('/_') and self.service_get():
             return
+        if not self.allowed():
+            return
         if not self.path.startswith('/api/') and not have_data():
             return self.json_out(503, {'error': 'The question data is not uploaded yet.'})
         return super().do_HEAD()
 
     def do_POST(self):
+        if not self.allowed():
+            return
         try:
             body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))))
             if self.path == '/api/check':
