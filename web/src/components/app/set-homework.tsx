@@ -161,7 +161,7 @@ export const SetHomeworkButton = ({ q }: { q: Question }) => {
     if (me?.role !== "admin") return null;
     return (
         <>
-            <DuoButton color="secondary" size="xs" iconLeading={Calendar} onPress={() => setOpen(true)}>
+            <DuoButton color="secondary" size="sm" iconLeading={Calendar} onPress={() => setOpen(true)}>
                 Set as homework
             </DuoButton>
             {open && <SetHomeworkDialog q={q} onClose={() => setOpen(false)} />}

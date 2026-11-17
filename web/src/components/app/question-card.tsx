@@ -519,7 +519,7 @@ export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?
                 {printing && !inExam ? (
                     /* Choosing what to print: the card's own buttons step aside for one tick box. */
                     <div className="flex shrink-0 items-center">
-                        <DuoButton color="secondary" size="xs" iconLeading={picked ? CheckSquare : Square} className={cx(picked && "border-brand bg-brand-primary")} onPress={() => togglePick(q.id)}>
+                        <DuoButton color="secondary" size="sm" iconLeading={picked ? CheckSquare : Square} className={cx(picked && "border-brand bg-brand-primary")} onPress={() => togglePick(q.id)}>
                             {picked ? "Selected" : "Select"}
                         </DuoButton>
                     </div>
@@ -530,7 +530,7 @@ export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?
                         {(building || examed) && (
                             <DuoButton
                                 color="secondary"
-                                size="xs"
+                                size="sm"
                                 iconLeading={examed ? Check : Plus}
                                 className={cx(examed && "border-brand bg-brand-primary")}
                                 onPress={() => {
@@ -542,20 +542,20 @@ export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?
                                 {examed ? "In exam" : "Add to exam"}
                             </DuoButton>
                         )}
-                        {/* Saving is a small thing: the icon alone, grey until it is on. */}
+                        {/* Saving is a small thing: the icon alone, grey until it is on. Every button in this row is the one height, and the two icon buttons are the same square. */}
                         <DuoButton
                             color="secondary"
                             size="sm"
                             iconLeading={Bookmark}
                             ariaLabel={saved ? "Saved for revision. Press to remove" : "Save for revision"}
-                            className={cx(saved ? "border-brand bg-brand-primary text-brand-secondary" : "text-quaternary")}
+                            className={cx("w-10.5", saved ? "border-brand bg-brand-primary text-brand-secondary" : "text-quaternary")}
                             onPress={() => {
                                 const on = toggleSaved(q.id);
                                 toast(on ? "Saved for revision" : "Removed from saved", on ? undefined : () => toggleSaved(q.id));
                             }}
                         />
                         {/* In a list, print asks whether there are more to go with it. Sitting an exam or homework it prints this one, answers and all. */}
-                        <DuoButton color="secondary" size="sm" iconLeading={Printer} ariaLabel="Print" className="text-quaternary" onPress={() => (inExam ? printQuestions([q], false, true) : startPrinting(q.id))} />
+                        <DuoButton color="secondary" size="sm" iconLeading={Printer} ariaLabel="Print" className="w-10.5 text-quaternary" onPress={() => (inExam ? printQuestions([q], false, true) : startPrinting(q.id))} />
                     </div>
                 )}
             </header>

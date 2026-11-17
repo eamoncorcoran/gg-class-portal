@@ -93,3 +93,12 @@ export const EyeOff = bold(P.EyeSlash);
 export const Container = bold(P.Package);
 export const Bell01 = bold(P.Bell);
 export const Microphone01 = bold(P.Microphone);
+
+// The three tools over a list of questions are drawn in the regular weight: a lighter line that sits
+// beside a line of text without shouting, where the bold cut looked heavy and blobby at this size.
+const regular =
+    (I: P.Icon): Ic =>
+    (p) => <I size={24} weight="regular" {...p} />;
+export const ToolBookmark = regular(P.BookmarkSimple);
+export const ToolPrinter = regular(P.Printer);
+export const ToolFilter = regular(P.FunnelSimple);

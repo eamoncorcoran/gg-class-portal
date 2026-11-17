@@ -1,5 +1,5 @@
 // Pieces every page shares: the page header, empty states, and a list of questions grouped by exam
-// year with three small tools above it (saved only, print, filter by year).
+// year with three small tools pinned above it (saved only, print, filter by year).
 import { type FC, type ReactNode, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Button as AriaButton } from "react-aria-components";
@@ -17,7 +17,7 @@ import { type Question, yearKey, yearName } from "@/lib/data";
 import { setScope, startPrinting, stopPrinting, usePick } from "@/lib/pick";
 import { useStore } from "@/lib/store";
 import { cx } from "@/utils/cx";
-import { Bookmark, FilterSimple, Printer } from "./ic";
+import { ToolBookmark, ToolFilter, ToolPrinter } from "./ic";
 import { QuestionCard } from "./question-card";
 
 export const Page = ({ children, wide }: { children: ReactNode; wide?: boolean }) => {
@@ -105,8 +105,36 @@ export const JumpBar = ({ items, label, className }: { items: { id: string; labe
     );
 };
 
-/* The three small tools above a list of questions: saved only, print, filter by year. They took the
-   place of a bar listing every year, which pinned itself to the top of the page and said very little. */
+/** A block that stays at the top of the screen once the page scrolls past it, edge to edge, with a line and a soft shadow only while it is stuck. */
+export const Pinned = ({ children, className }: { children: ReactNode; className?: string }) => {
+    const mark = useRef<HTMLDivElement>(null);
+    const [stuck, setStuck] = useState(false);
+    useEffect(() => {
+        const el = mark.current;
+        if (!el) return;
+        const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting && e.boundingClientRect.top < 0));
+        io.observe(el);
+        return () => io.disconnect();
+    }, []);
+    return (
+        <>
+            <div ref={mark} aria-hidden="true" className="h-px" />
+            <div
+                data-stuck={stuck || undefined}
+                className={cx(
+                    "sticky top-0 z-10 -mx-4 border-b-2 border-transparent bg-primary px-4 transition-[box-shadow,border-color] duration-150 ease-out md:-mx-10 md:px-10",
+                    stuck && "border-secondary shadow-[0_8px_16px_-12px_rgba(16,24,40,0.25)]",
+                    className,
+                )}
+            >
+                {children}
+            </div>
+        </>
+    );
+};
+
+/* The three small tools above a list of questions: saved only, print, filter by year. Plain line
+   icons in the brand colour, the one in use sitting on a tint. */
 const Tool = ({ icon: Icon, label, on, onPress }: { icon: FC<{ className?: string }>; label: string; on?: boolean; onPress: () => void }) => (
     <AriaButton
         onPress={onPress}
@@ -121,13 +149,14 @@ const Tool = ({ icon: Icon, label, on, onPress }: { icon: FC<{ className?: strin
     </AriaButton>
 );
 
-/** Questions grouped under a heading per exam sitting. `head` sits above them with the list's tools; none of it is pinned. */
+/** Questions grouped under a heading per exam sitting. `head` (the tabs) and the list's tools stay pinned above them. */
 export const YearGroups = ({ list, head }: { list: Question[]; head?: ReactNode }) => {
     const saved = useStore((s) => s.saved);
     const printing = usePick((s) => s.printing);
     const [savedOnly, setSavedOnly] = useState(false);
     const [filtering, setFiltering] = useState(false);
     const [years, setYears] = useState<string[]>([]);
+    const tools = useRef<HTMLDivElement>(null);
 
     const allYears = [...new Set(list.map(yearKey))];
     const shown = list.filter((q) => (!savedOnly || saved.includes(q.id)) && (!years.length || years.includes(yearKey(q))));
@@ -137,6 +166,22 @@ export const YearGroups = ({ list, head }: { list: Question[]; head?: ReactNode 
         setScope(scope ? scope.split(",") : []);
         return () => setScope([]);
     }, [scope]);
+    // The list of years is a small sheet under the tools: a press anywhere else, or Escape, puts it away.
+    useEffect(() => {
+        if (!filtering) return;
+        const away = (e: PointerEvent) => {
+            if (!tools.current?.contains(e.target as Node)) setFiltering(false);
+        };
+        const esc = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setFiltering(false);
+        };
+        document.addEventListener("pointerdown", away);
+        document.addEventListener("keydown", esc);
+        return () => {
+            document.removeEventListener("pointerdown", away);
+            document.removeEventListener("keydown", esc);
+        };
+    }, [filtering]);
 
     const groups: { k: string; year: number; deferred: boolean; qs: Question[] }[] = [];
     for (const q of shown) {
@@ -144,44 +189,49 @@ export const YearGroups = ({ list, head }: { list: Question[]; head?: ReactNode 
         if (!groups.length || groups.at(-1)!.k !== k) groups.push({ k, year: q.year, deferred: q.deferred, qs: [] });
         groups.at(-1)!.qs.push(q);
     }
+    const narrowed = savedOnly || years.length > 0;
+    const chip = (on: boolean) =>
+        cx("rounded-full border-2 px-3 py-1 text-sm font-bold tabular-nums outline-focus-ring focus-visible:outline-2", on ? "border-brand bg-brand-primary text-brand-secondary" : "border-secondary text-secondary hover:bg-primary_hover");
     return (
         <>
-            <div className="mb-8">
+            <Pinned className="mb-6">
                 {head}
-                <div className="mt-3 flex items-center justify-end gap-1">
-                    {(savedOnly || years.length > 0) && (
-                        <p className="mr-auto text-sm font-semibold text-tertiary">
-                            Showing {shown.length} of {list.length}
-                            {savedOnly ? " · saved only" : ""}
-                            {years.length ? ` · ${years.map(yearName).join(", ")}` : ""}
-                        </p>
+                <div ref={tools} className="relative flex h-13 items-center gap-1">
+                    <p className="mr-auto min-w-0 truncate text-md font-semibold text-primary">
+                        {narrowed ? `${shown.length} of ${list.length} questions` : `${list.length} question${list.length === 1 ? "" : "s"}`}
+                        {narrowed && (
+                            <span className="font-medium text-tertiary">
+                                {savedOnly ? " · saved" : ""}
+                                {years.length ? ` · ${years.length === 1 ? yearName(years[0]) : `${years.length} years`}` : ""}
+                            </span>
+                        )}
+                    </p>
+                    <Tool icon={ToolBookmark} label={savedOnly ? "Showing saved questions only. Press to show all" : "Show saved questions only"} on={savedOnly} onPress={() => setSavedOnly(!savedOnly)} />
+                    <Tool icon={ToolPrinter} label="Choose questions to print" on={printing} onPress={() => (printing ? stopPrinting() : startPrinting())} />
+                    <Tool icon={ToolFilter} label="Filter by year" on={filtering || years.length > 0} onPress={() => setFiltering(!filtering)} />
+                    {filtering && (
+                        <div className="absolute top-full right-0 z-20 w-full max-w-md rounded-2xl border-2 border-secondary bg-primary p-3 shadow-lg">
+                            <ul className="flex flex-wrap gap-1.5" aria-label="Years">
+                                <li>
+                                    <AriaButton onPress={() => setYears([])} aria-pressed={!years.length} className={chip(!years.length)}>
+                                        All years
+                                    </AriaButton>
+                                </li>
+                                {allYears.map((k) => {
+                                    const on = years.includes(k);
+                                    return (
+                                        <li key={k}>
+                                            <AriaButton onPress={() => setYears(on ? years.filter((y) => y !== k) : [...years, k])} aria-pressed={on} className={chip(on)}>
+                                                {yearName(k)}
+                                            </AriaButton>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
                     )}
-                    <Tool icon={Bookmark} label={savedOnly ? "Showing saved questions only. Press to show all" : "Show saved questions only"} on={savedOnly} onPress={() => setSavedOnly(!savedOnly)} />
-                    <Tool icon={Printer} label="Choose questions to print" on={printing} onPress={() => (printing ? stopPrinting() : startPrinting())} />
-                    <Tool icon={FilterSimple} label="Filter by year" on={filtering || years.length > 0} onPress={() => setFiltering(!filtering)} />
                 </div>
-                {filtering && (
-                    <div className="mt-2 rounded-2xl border-2 border-secondary bg-primary p-3">
-                        <ul className="flex flex-wrap gap-1.5" aria-label="Years">
-                            <li>
-                                <AriaButton onPress={() => setYears([])} aria-pressed={!years.length} className={cx("rounded-full border-2 px-3 py-1 text-sm font-bold outline-focus-ring focus-visible:outline-2", !years.length ? "border-brand bg-brand-primary text-brand-secondary" : "border-secondary text-secondary hover:bg-primary_hover")}>
-                                    All years
-                                </AriaButton>
-                            </li>
-                            {allYears.map((k) => {
-                                const on = years.includes(k);
-                                return (
-                                    <li key={k}>
-                                        <AriaButton onPress={() => setYears(on ? years.filter((y) => y !== k) : [...years, k])} aria-pressed={on} className={cx("rounded-full border-2 px-3 py-1 text-sm font-bold tabular-nums outline-focus-ring focus-visible:outline-2", on ? "border-brand bg-brand-primary text-brand-secondary" : "border-secondary text-secondary hover:bg-primary_hover")}>
-                                            {yearName(k)}
-                                        </AriaButton>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    </div>
-                )}
-            </div>
+            </Pinned>
             {/* the questions keep the paper's reading width even when the page around them is wider */}
             <div className="mx-auto max-w-[960px]">
             {!groups.length && (

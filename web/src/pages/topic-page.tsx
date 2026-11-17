@@ -1,5 +1,5 @@
 // A topic: its name and what it is, three tabs (Questions, Lessons, Samples & Guides), then every
-// State exam question grouped by year. Nothing on the page is pinned.
+// State exam question grouped by year. The tabs, and the tools over the questions, stay pinned to the top.
 import { useLayoutEffect, useRef, useState } from "react";
 import { BookOpen01, Check, Feather, Grid01, Plus } from "@/components/app/ic";
 import { ChevronDown } from "@/components/app/ic";
@@ -8,7 +8,7 @@ import { Button as AriaButton } from "react-aria-components";
 import { Link, useParams } from "react-router";
 import { DuoButton } from "@/components/app/duo";
 import { DuoBulb, DuoCheckDoc, DuoQuestion } from "@/components/app/duo-icons";
-import { Empty, Page, YearGroups, reveal } from "@/components/app/page-parts";
+import { Empty, Page, Pinned, YearGroups, reveal } from "@/components/app/page-parts";
 import { SampleCard } from "@/components/app/question-card";
 import { navName, samplesOf, topic } from "@/lib/data";
 import { setBuilding, usePick } from "@/lib/pick";
@@ -21,7 +21,7 @@ import { LessonsTab } from "./lessons-tab";
 import { SOON } from "@/lib/soon";
 import { NotFound } from "./not-found";
 
-/** The three tabs, Duolingo desktop style but kept low: one line each, the chosen one tinted with a brand border. */
+/** The three tabs as one bar: equal thirds on a rule, the chosen one tinted with rounded shoulders and a brand line under it. */
 const TopicTabs = ({ slug, tab, className }: { slug: string; tab: string; className?: string }) => {
     const items = [
         { id: "questions", label: "Questions", icon: DuoQuestion, href: `/t/${slug}` },
@@ -29,7 +29,7 @@ const TopicTabs = ({ slug, tab, className }: { slug: string; tab: string; classN
         { id: "samples", label: "Samples & Guides", icon: DuoCheckDoc, href: `/t/${slug}/samples` },
     ];
     return (
-        <nav aria-label="Sections" className={cx("grid grid-cols-3 gap-2 sm:gap-3", className)}>
+        <nav aria-label="Sections" className={cx("grid grid-cols-3 border-b-2 border-secondary", className)}>
             {items.map((it) => {
                 const on = it.id === tab;
                 return (
@@ -38,17 +38,12 @@ const TopicTabs = ({ slug, tab, className }: { slug: string; tab: string; classN
                         to={it.href}
                         aria-current={on ? "page" : undefined}
                         className={cx(
-                            "group flex items-center justify-center gap-2 rounded-xl border-2 px-2 py-2 text-sm font-bold outline-focus-ring transition duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 max-sm:flex-col max-sm:gap-1 max-sm:py-1.5 max-sm:text-xs",
-                            on
-                                ? "border-brand bg-brand-primary text-brand-secondary"
-                                : "border-secondary text-secondary hover:bg-primary_hover hover:text-primary",
+                            "-mb-0.5 flex h-12 items-center justify-center gap-2.5 rounded-t-2xl border-b-[3px] px-2 text-center text-[13px] leading-tight font-bold outline-focus-ring transition duration-150 ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 sm:h-14 sm:text-md",
+                            on ? "border-brand bg-brand-primary text-brand-secondary" : "border-transparent text-tertiary hover:bg-primary_hover hover:text-primary",
                         )}
                     >
-                        <it.icon
-                            aria-hidden="true"
-                            className="size-5 shrink-0"
-                        />
-                        <span className="text-center">{it.label}</span>
+                        <it.icon aria-hidden="true" className={cx("size-6 shrink-0 max-sm:hidden", !on && "opacity-80")} />
+                        {it.label}
                     </Link>
                 );
             })}
@@ -186,7 +181,7 @@ export const TopicPage = () => {
         const el = sentinel.current;
         if (!el) return;
         const was = window.scrollY; // read before layout, so the browser hasn't clamped it yet
-        const top = el.getBoundingClientRect().top + window.scrollY - 12;
+        const top = el.getBoundingClientRect().top + window.scrollY;
         if (was > top + 8) window.scrollTo({ top, behavior: "instant" as ScrollBehavior });
     }, [tab]);
     if (!t) return <NotFound />;
@@ -216,8 +211,8 @@ export const TopicPage = () => {
           : `${t.questions.length} State exam questions, each with the official marking scheme.`;
 
     const tabs = (cls?: string) => <TopicTabs slug={slug} tab={tab} className={cls} />;
-    // Not pinned: the tabs scroll away with the heading and leave the whole screen to the questions.
-    const stickyTabs = <div className="mb-8">{tabs()}</div>;
+    // Pinned: the top bar scrolls away on this page, so the tabs take its place at the top of the screen.
+    const stickyTabs = <Pinned className="mb-8">{tabs()}</Pinned>;
     return (
         <Page wide>
             <Header
@@ -266,7 +261,7 @@ export const TopicPage = () => {
                     </div>
                 </>
             ) : (
-                <YearGroups list={t.questions} head={tabs("pt-1")} />
+                <YearGroups list={t.questions} head={tabs()} />
             )}
         </Page>
     );

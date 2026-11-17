@@ -80,24 +80,33 @@ test('no em dashes in anything the teacher or a student reads', () => {
 
 /* The top of a list of past questions.
    ------------------------------------------------------------------
-   It used to pin three tall tabs and a bar of every year over the paper. It is
-   three small tools now, none of it pinned, and the buttons on each question
-   are the ones somebody is using at that moment. */
+   It used to pin three tall tabs and a bar of every year over the paper. The bar
+   of years is three small tools now. The tabs are one bar, and they and the
+   tools stay at the top of the screen while the page's own top bar scrolls away. */
 
-test('a list of questions has three small tools, and nothing pinned over the paper', () => {
+test('a list of questions keeps its tabs and three small tools pinned, with no bar of years', () => {
   const parts = read('../web/src/components/app/page-parts.tsx');
+  assert.match(parts, /export const Pinned = /);
+  assert.match(parts.slice(parts.indexOf('export const Pinned')), /"sticky top-0 z-10 /);
   const groups = parts.slice(parts.indexOf('export const YearGroups'));
-  assert.ok(!/sticky/.test(groups), 'the tabs and the tools scroll away with the page');
+  assert.match(groups, /<Pinned className="mb-6">\s+\{head\}/, 'the tabs and the tools are pinned together');
   assert.ok(!/<JumpBar/.test(groups), 'the bar of years is gone from the list');
-  assert.match(groups, /<Tool icon=\{Bookmark\} label=\{savedOnly \?/);
-  assert.match(groups, /<Tool icon=\{Printer\} label="Choose questions to print"/);
-  assert.match(groups, /<Tool icon=\{FilterSimple\} label="Filter by year"/);
+  assert.match(groups, /<Tool icon=\{ToolBookmark\} label=\{savedOnly \?/);
+  assert.match(groups, /<Tool icon=\{ToolPrinter\} label="Choose questions to print"/);
+  assert.match(groups, /<Tool icon=\{ToolFilter\} label="Filter by year"/);
   const topic = read('../web/src/pages/topic-page.tsx');
-  assert.ok(!/sticky top-16/.test(topic));
+  assert.match(topic, /const stickyTabs = <Pinned className="mb-8">\{tabs\(\)\}<\/Pinned>;/, 'Lessons and Samples keep the tabs pinned too');
   assert.ok(!/Print all/.test(topic), 'Print all became Create exam');
   assert.match(topic, /"Create exam"/);
-  // The page header is pinned everywhere but here.
+  // The page's top bar is pinned everywhere but here, where the tabs take its place.
   assert.match(read('../web/src/components/app/app-shell.tsx'), /pathname\.startsWith\("\/t\/"\) \? "relative" : "sticky top-0"/);
+});
+
+test('the buttons on a question are one height, and the two icon buttons one square', () => {
+  const header = card.slice(card.indexOf('{printing && !inExam ? ('), card.indexOf('</header>', card.indexOf('{printing && !inExam ? (')));
+  assert.ok(!/size="xs"/.test(header), 'no smaller button sits beside the others');
+  assert.equal((header.match(/"w-10\.5/g) || []).length, 2, 'Save and Print are the same square');
+  assert.match(read('../web/src/components/app/set-homework.tsx'), /<DuoButton color="secondary" size="sm" iconLeading=\{Calendar\}/);
 });
 
 test('print asks for more before it prints, and Add to exam waits for Create exam', () => {
