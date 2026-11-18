@@ -179,6 +179,7 @@ const ZoomList = ({ courses, onClose }: { courses: CourseRow[]; onClose: () => v
 
     return (
         <div className="flex flex-col gap-6">
+            <ZoomMoves />
             {error ? (
                 <p className="text-sm text-quaternary">{error}</p>
             ) : !data ? (
@@ -283,5 +284,100 @@ const ZoomList = ({ courses, onClose }: { courses: CourseRow[]; onClose: () => v
                 </DuoButton>
             </div>
         </div>
+    );
+};
+
+/* ---- Lessons still on a Zoom link ----------------------------------------------------------- */
+
+type MoveRow = {
+    lessonId: string;
+    title: string;
+    course: string;
+    section: string;
+    onZoom: boolean;
+    recording: { uuid: string; fileId: string; startedAt: string; durationSeconds: number; fileSize: number } | null;
+    matchedBy: "import" | "date" | "time" | "link" | "order" | null;
+    reason: string | null;
+    move: { status: "queued" | "copying" | "encoding" | "done" | "failed"; error: string | null; recordedAt: string | null } | null;
+};
+type Moves = { configured: boolean; running: boolean; zoomError: string | null; lessons: MoveRow[] };
+
+const BUSY = ["queued", "copying", "encoding"];
+const MOVE_LABEL: Record<string, string> = { queued: "Waiting its turn", copying: "Copying from Zoom", encoding: "Getting ready to play", done: "In the player", failed: "Did not work" };
+
+/** The early lessons were added by hand as links to Zoom. This copies each recording into the player
+    and switches the lesson over once the copy can be played. The lesson itself is not replaced. */
+const ZoomMoves = () => {
+    const [data, setData] = useState<Moves | null>(null);
+    const [starting, setStarting] = useState(false);
+    const load = useCallback(() => api<Moves>("/api/admin/zoom/moves").then(setData).catch(() => {}), []);
+    useEffect(() => {
+        load();
+    }, [load]);
+    const busy = Boolean(data?.lessons.some((l) => l.move && BUSY.includes(l.move.status)));
+    // While anything is on its way, look again every ten seconds.
+    useEffect(() => {
+        if (!busy) return;
+        const t = setInterval(load, 10_000);
+        return () => clearInterval(t);
+    }, [busy, load]);
+
+    if (!data || !data.configured || !data.lessons.length) return null;
+    const ready = data.lessons.filter((l) => l.onZoom && l.recording && !(l.move && BUSY.includes(l.move.status)));
+    const start = async () => {
+        setStarting(true);
+        try {
+            const d = await api<Moves & { queued: number }>("/api/admin/zoom/moves", { method: "POST", json: {} });
+            setData(d);
+            toast(d.queued ? `Moving ${d.queued} recording${d.queued === 1 ? "" : "s"} into the player. This takes a while; you can close this.` : "Nothing to move.");
+        } catch (err) {
+            toast((err as Error).message);
+        } finally {
+            setStarting(false);
+        }
+    };
+    return (
+        <section className="rounded-2xl border-2 border-secondary p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <div className="min-w-0 flex-1">
+                    <p className="text-md font-bold text-primary">Lessons that open on Zoom</p>
+                    <p className="mt-1 text-sm text-tertiary">These lessons link out to the recording on Zoom. Moving one copies its recording into the player, so it plays inside the lesson. The lesson, its notes and everybody's progress stay as they are, and a lesson only switches once its copy is ready to play.</p>
+                </div>
+                {ready.length > 0 && (
+                    <DuoButton size="sm" isDisabled={starting} onPress={start} className="shrink-0">
+                        {starting ? "Starting…" : `Move ${ready.length} into the player`}
+                    </DuoButton>
+                )}
+            </div>
+            {data.zoomError && <p className="mt-3 text-sm font-semibold text-error-primary">Zoom could not be asked for its recordings: {data.zoomError}</p>}
+            <ul className="mt-3 flex flex-col gap-2">
+                {data.lessons.map((l) => {
+                    const at = l.recording?.startedAt || l.move?.recordedAt;
+                    const state = l.move?.status;
+                    return (
+                        <li key={l.lessonId} className={cx("flex flex-col gap-1 rounded-xl border-2 border-secondary px-3 py-2 sm:flex-row sm:items-center sm:gap-3", state === "done" && "bg-secondary")}>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-bold text-primary">{l.title}</p>
+                                <p className="text-xs text-tertiary">
+                                    {at ? (
+                                        <>
+                                            Class of {fmtDate(at, { dateStyle: "full" })}
+                                            {l.recording ? ` · ${Math.round((l.recording.durationSeconds || 0) / 60)} min` : ""}
+                                            {l.matchedBy === "order" ? " · matched by its place in the section" : ""}
+                                        </>
+                                    ) : (
+                                        l.reason || "No recording on Zoom was matched to this lesson."
+                                    )}
+                                </p>
+                                {state === "failed" && l.move?.error && <p className="text-xs font-semibold text-error-primary">{l.move.error}</p>}
+                            </div>
+                            {state && (
+                                <span className={cx("shrink-0 self-start rounded-full px-2.5 py-1 text-xs font-bold sm:self-center", state === "done" ? "bg-success-primary text-success-primary" : state === "failed" ? "bg-error-primary text-error-primary" : "bg-brand-primary text-brand-secondary")}>{MOVE_LABEL[state]}</span>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
+        </section>
     );
 };

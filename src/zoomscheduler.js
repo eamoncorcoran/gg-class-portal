@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { importWatched, importConfigured } from './zoomimport.js';
 import { syncAttendance } from './zoomattendance.js';
+import { finishMoves } from './lessonmoves.js';
 import { zoomConfigured } from './zoom.js';
 import { config } from './config.js';
 
@@ -33,6 +34,10 @@ export function startZoomScheduler() {
         console.error('Zoom sweep failed', error);
       }
     }
+    /* A lesson being moved off a Zoom link is switched over once Bunny has
+       finished with its copy. The move's own worker does that; this catches
+       any it was not around for, after a restart. */
+    try { await finishMoves(); } catch (error) { console.error('Finishing lesson video moves failed', error); }
     if (zoomConfigured()) {
       try {
         const result = await syncAttendance();

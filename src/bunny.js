@@ -128,6 +128,25 @@ export async function videoStatus(videoId) {
 }
 
 /**
+ * Whether a video can be played yet, for something that is waiting to show it.
+ *
+ * Bunny's states: 0 created, 1 uploaded, 2 processing, 3 transcoding,
+ * 4 finished, 5 error, 6 upload failed, and 7 and 8 for a library that
+ * segments on demand, where the video plays without a full encode.
+ */
+export async function getBunnyVideo(videoId) {
+  const row = await call(`/videos/${videoId}`);
+  const status = Number(row.status);
+  return {
+    id: row.guid,
+    status,
+    playable: status === 4 || status === 7 || status === 8,
+    failed: status === 5 || status === 6,
+    durationSeconds: Math.round(row.length || 0),
+  };
+}
+
+/**
  * A playback URL for one viewer, good for a few hours.
  *
  * Without a token key configured this returns the plain embed, which still

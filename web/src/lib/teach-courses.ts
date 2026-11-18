@@ -231,7 +231,7 @@ export const classLabel = (row: { label?: string; programme_name: string; day_of
     row.label || `${row.programme_name} | ${DAY_NAMES[Number(row.day_of_week)] ?? ""} | ${String(row.start_time).slice(0, 5)}`;
 
 /** Dates in Irish time, as the old fmtDate drew them ("14 Sept 2026", "14/09/2026", with the time when asked). */
-export const fmtDate = (value: string | null | undefined, options: { dateStyle?: "medium" | "short"; time?: boolean } = {}) => {
+export const fmtDate = (value: string | null | undefined, options: { dateStyle?: "full" | "medium" | "short"; time?: boolean } = {}) => {
     if (!value) return "";
     try {
         return new Intl.DateTimeFormat("en-IE", { dateStyle: options.dateStyle || "medium", ...(options.time ? { timeStyle: "short" } : {}), timeZone: "Europe/Dublin" }).format(new Date(value));

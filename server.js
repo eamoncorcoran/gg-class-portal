@@ -28,6 +28,7 @@ import { startReminderScheduler, runReminderCycle } from './src/reminders.js';
 import { startBackupScheduler } from './src/backup.js';
 import { startZoomScheduler } from './src/zoomscheduler.js';
 import { releaseInterruptedImports } from './src/zoomimport.js';
+import { resumeMoves } from './src/lessonmoves.js';
 import { refreshZoomApi } from './src/zoom.js';
 import { refreshBunny } from './src/bunny.js';
 import sraithRoutes from './src/routes/sraith.js';
@@ -390,6 +391,10 @@ async function start() {
     .catch((error) => console.error('Could not release interrupted recording imports', error?.message));
   await refreshZoomApi();
   startZoomScheduler();
+  // Once Zoom and Bunny are both read: lesson recordings being moved off their Zoom links carry on.
+  resumeMoves()
+    .then((state) => { if (state.interrupted || state.pending) console.log(`Lesson video moves: ${state.interrupted} cut off by the restart, ${state.pending} carrying on`); })
+    .catch((error) => console.error('Could not resume lesson video moves', error?.message));
   // Every Sraith sentence spoken once and kept on disk, a minute after boot.
   setTimeout(() => { warmSraithAudio().catch((error) => console.error('Sraith audio warm-up failed', error?.message)); }, 60 * 1000).unref?.();
   // Small copies of the profile pictures already on disk, two minutes after boot.

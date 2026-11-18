@@ -35,6 +35,7 @@ import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashT
   providerName, renderStory, ttsConfigured } from '../tts.js';
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
+import { moveCandidates, startMoves } from '../lessonmoves.js';
 import { zoomConfigured } from '../zoom.js';
 import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, rememberIdentity, rematchSittings } from '../zoomattendance.js';
 import { bunnyConfigured, bunnySigning, createVideo, uploadTicket } from '../bunny.js';
@@ -3966,6 +3967,24 @@ router.put('/zoom/sources', asyncRoute(async (req, res) => {
 router.delete('/zoom/sources/:id', asyncRoute(async (req, res) => {
   await query('DELETE FROM zoom_sources WHERE id=$1', [req.params.id]);
   res.status(204).end();
+}));
+
+/* Lessons that are still a link to Zoom, and moving their recordings into the
+   player. The list says which Zoom recording each lesson was matched to and
+   how; nothing moves until it is asked for, and the lesson itself is switched
+   only when its copy can be played. */
+router.get('/zoom/moves', asyncRoute(async (_req, res) => {
+  res.json(await moveCandidates());
+}));
+
+router.post('/zoom/moves', asyncRoute(async (req, res) => {
+  const parsed = z.object({
+    lessonIds: z.array(z.string().uuid()).max(200).optional(),
+  }).safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Choose the lessons to move.') });
+  const started = await startMoves({ lessonIds: parsed.data.lessonIds || null, actorId: req.user.id });
+  await audit({ actorId: req.user.id, action: 'lesson.video_moves_started', entityType: 'lesson', entityId: null, metadata: { queued: started.queued }, ip: req.ip });
+  res.status(202).json({ ...started, ...(await moveCandidates()) });
 }));
 
 router.get('/zoom/imports', asyncRoute(async (_req, res) => {
