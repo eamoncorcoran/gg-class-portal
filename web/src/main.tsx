@@ -6,6 +6,7 @@ import { SampleModal, SchemeWindow } from "@/components/app/overlays";
 import { ExamTray } from "@/components/app/exam-tray";
 import { PrintTray } from "@/components/app/print-tray";
 import { ToastRegion } from "@/components/app/toast";
+import { pageKey } from "@/components/app/page-parts";
 import { loadData } from "@/lib/data";
 import { loadHub } from "@/lib/hub";
 import { loadMe, useMe } from "@/lib/portal";
@@ -39,14 +40,14 @@ import { RouteProvider } from "@/providers/router-provider";
 import "@/styles/globals.css";
 
 // New page: start at the top and move focus to the content, so screen readers begin there
-const topicOf = (p: string) => (p.startsWith("/t/") ? p.split("/").slice(0, 3).join("/") : null);
 const PageChange = () => {
     const { pathname } = useLocation();
     const prev = useRef(pathname);
     useEffect(() => {
-        const sameTopic = topicOf(prev.current) !== null && topicOf(prev.current) === topicOf(pathname);
+        const samePage = pageKey(prev.current) === pageKey(pathname);
         prev.current = pathname;
-        if (sameTopic) return; // a topic's tabs swap in place; the topic page decides where to scroll
+        // A part of the page already on screen (a topic's tab, a post opened over the board): nothing moves.
+        if (samePage) return;
         scrollTo(0, 0);
         document.getElementById("main")?.focus({ preventScroll: true });
     }, [pathname]);

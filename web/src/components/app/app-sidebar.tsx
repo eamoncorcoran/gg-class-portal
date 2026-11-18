@@ -12,6 +12,7 @@ import { NAV, type NavItem, soonTopics, topic } from "@/lib/data";
 import { set } from "@/lib/store";
 import { useLiveNow, useMe, useStudentBootstrap } from "@/lib/portal";
 import { useUnreadMessages } from "@/lib/messages";
+import { warmBoard } from "@/lib/community-cache";
 import { cx } from "@/utils/cx";
 
 /** The hub is Irish only; these stay for the pages that still ask. */
@@ -63,8 +64,8 @@ export const PanelIcon = ({ className, ...rest }: React.SVGProps<SVGSVGElement>)
     </svg>
 );
 
-const NavRow = ({ href, icon: Icon, current, badge, dot, children }: { href: string; icon: FC<{ className?: string }>; current: boolean; badge?: number; dot?: boolean; children: React.ReactNode }) => (
-    <AriaLink href={href} aria-current={current ? "page" : undefined} className={cx(NAV_ROW, current ? NAV_ON : NAV_OFF)}>
+const NavRow = ({ href, icon: Icon, current, badge, dot, children, onNear }: { href: string; icon: FC<{ className?: string }>; current: boolean; badge?: number; dot?: boolean; children: React.ReactNode; /** hovered or pressed: about to be opened */ onNear?: () => void }) => (
+    <AriaLink href={href} aria-current={current ? "page" : undefined} className={cx(NAV_ROW, current ? NAV_ON : NAV_OFF)} onHoverStart={onNear} onPressStart={onNear}>
         <Icon aria-hidden="true" className="size-8 shrink-0" />
         <span className="flex-1">{children}</span>
         {dot && <span className="size-2.5 rounded-full bg-error-solid ring-4 ring-error-primary" aria-label="Live now" />}
@@ -219,6 +220,13 @@ export const SidebarContent = ({ active, topicSlug = "", onClose }: { active: st
        conversation with the teacher; the teacher's goes to the list of them. The number is what is
        waiting to be read. An administrator who is not the lead teacher has no private line. */
     const unread = useUnreadMessages();
+    /* A student's board is read a moment after the app opens, while they are looking at something
+       else, so Community is already there the first time it is pressed. */
+    useEffect(() => {
+        if (me?.role !== "student" || !boot?.hasCommunity) return;
+        const t = window.setTimeout(() => warmBoard("student"), 1500);
+        return () => window.clearTimeout(t);
+    }, [me?.role, boot?.hasCommunity]);
     const hasLine = Boolean(me) && !(me?.role === "admin" && !me.isSuperAdmin);
     const lineHref = me?.role === "admin" ? "/teach/messages" : "/message";
 
@@ -241,7 +249,7 @@ export const SidebarContent = ({ active, topicSlug = "", onClose }: { active: st
                         </NavRow>
                     </li>
                     <li>
-                        <NavRow href="/community" icon={DuoBubbles} current={active === "community"} badge={boot?.communityUnread || 0}>
+                        <NavRow href="/community" icon={DuoBubbles} current={active === "community"} badge={boot?.communityUnread || 0} onNear={() => me && warmBoard(me.role)}>
                             Community
                         </NavRow>
                     </li>

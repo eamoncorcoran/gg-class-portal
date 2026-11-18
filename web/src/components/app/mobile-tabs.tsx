@@ -6,6 +6,8 @@ import { Link } from "react-router";
 import { inQuestions } from "./app-sidebar";
 import { DuoBooks, DuoBubbles, DuoHome, DuoQuestion } from "./duo-icons";
 import { useUnreadMessages } from "@/lib/messages";
+import { warmBoard } from "@/lib/community-cache";
+import { useMe } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 
 type Tab = { id: string; label: string; href?: string; icon: FC<{ className?: string }>; match: (active: string) => boolean };
@@ -21,6 +23,7 @@ export const MobileTabs = ({ active, onMenu }: { active: string; onMenu: () => v
     const current = tabs.find((t) => t.match(active))?.id;
     // On a phone the private line is inside the menu, so the Menu tab carries the dot when a message is waiting.
     const unread = useUnreadMessages();
+    const me = useMe();
     return (
         <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t-2 border-secondary bg-primary pb-[env(safe-area-inset-bottom)] lg:hidden">
             <ul className="flex h-[66px] items-stretch">
@@ -39,7 +42,7 @@ export const MobileTabs = ({ active, onMenu }: { active: string; onMenu: () => v
                     return (
                         <li key={t.id} className="flex-1">
                             {t.href ? (
-                                <Link to={t.href} aria-current={on ? "page" : undefined} aria-label={t.label} className={cls}>
+                                <Link to={t.href} aria-current={on ? "page" : undefined} aria-label={t.label} className={cls} onTouchStart={t.id === "community" && me ? () => warmBoard(me.role) : undefined}>
                                     {inner}
                                 </Link>
                             ) : (

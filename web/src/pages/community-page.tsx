@@ -6,7 +6,7 @@
 // schedule, remove, comment edit / remove), the scheduled-posts calendar and CSV import, and the
 // categories dialog. The board itself is `CommunityBoard`; `CommunityPage` mounts it at /community and
 // the teacher console's CommunitySection mounts it at /teach/community/:classId.
-import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Dialog as AriaDialog, Modal as AriaModal, ModalOverlay as AriaModalOverlay } from "react-aria-components";
 import { useNavigate, useParams } from "react-router";
 import { askConfirm } from "@/components/app/confirm";
@@ -35,6 +35,7 @@ import {
     voiceSupported,
 } from "@/components/app/tus-upload";
 import { type Who, initials } from "@/lib/hub";
+import { boardCache, setTeacherClassId, teacherClassId } from "@/lib/community-cache";
 import { DAY_NAMES, api, upload, useAdminBootstrap, useCanJoinLive, useLiveNow, useMe, loadStudentBootstrap } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 
@@ -77,6 +78,41 @@ export type Board = {
     emailAudience?: number;
 };
 type StudentBoot = { class: Klass | null; nextClass: NextClass | null; withdrawnAt?: string | null; liveReady?: boolean; liveNow?: boolean };
+
+/* What the board last looked like, kept for as long as the app is open.
+   ------------------------------------------------------------------
+   Coming back to Community, or closing a post, used to start from nothing: a
+   "Loading" line, then the feed. Now the feed that was last on screen is drawn at
+   once and the fresh one replaces it when it arrives, a moment later and without
+   anything moving. The same for a post: it opens showing what the feed already
+   holds of it, and its comments fill in. Hovering a post, or touching it, starts
+   fetching it, so by the time it is pressed the comments are usually there.
+
+   Nothing here is trusted over the server: every use is followed by a fresh read. */
+type FullThread = Thread & { comments: Comment[] };
+const boards = boardCache as Map<string, Board>; // kept in lib/community-cache so the menu can warm it
+const threadCache = new Map<string, FullThread>();
+const threadFetches = new Map<string, Promise<FullThread>>();
+/** Reads one post with its comments, once at a time however many things ask, and keeps the answer. */
+const fetchThread = (base: string, id: string, fresh = false) => {
+    const key = `${base}:${id}`;
+    // After something has been written (a comment, a reaction), an answer already on its way is from before it.
+    let going = fresh ? undefined : threadFetches.get(key);
+    if (!going) {
+        going = api<FullThread>(`${base}/community/thread/${id}`)
+            .then((full) => (threadCache.set(key, full), full))
+            .finally(() => {
+                if (threadFetches.get(key) === mine) threadFetches.delete(key);
+            });
+        const mine = going;
+        threadFetches.set(key, going);
+    }
+    return going;
+};
+/** Started when a post is hovered or touched. A failure is nobody's business until the post is actually opened. */
+const prefetchThread = (base: string, id: string) => {
+    if (!threadCache.has(`${base}:${id}`)) fetchThread(base, id).catch(() => undefined);
+};
 
 const REACTIONS = ["👍", "❤️", "🎉", "😂", "😮", "🙏", "💪", "🤔"];
 const LIKE = "👍";
@@ -302,6 +338,9 @@ const Name = ({ a }: { a?: Author | null }) => (
 /** One post in the feed. */
 const PostCard = ({ t, base, admin, tz, onOpen }: { t: Thread; base: string; admin: boolean; tz: string; onOpen: () => void }) => (
     <article
+        // About to be opened: start reading its comments now, so they are there when it is.
+        onPointerEnter={() => prefetchThread(base, t.id)}
+        onTouchStart={() => prefetchThread(base, t.id)}
         onClick={(e) => {
             // The like row and any attachment link live inside the card, so neither should also open it.
             if ((e.target as HTMLElement).closest("a,button,iframe")) return;
@@ -1056,12 +1095,17 @@ const CommentCard = ({ c, replies, shared }: { c: Comment; replies: Comment[]; s
     );
 };
 
-type ThreadDialogProps = { id: string; base: string; admin: boolean; tz: string; withdrawn: boolean; draftingOn: boolean; version?: number; onClose: () => void; onChanged: () => void; onEdit: (t: Thread) => void };
+type ThreadDialogProps = { id: string; base: string; admin: boolean; tz: string; withdrawn: boolean; draftingOn: boolean; version?: number; /** the post as the feed holds it, shown while its comments are read */ seed?: Thread; onClose: () => void; onChanged: () => void; onEdit: (t: Thread) => void };
 
 /** The post, opened: a panel over the middle of the screen with the comments tree, inline replies and the reply box. */
-const ThreadDialog = ({ id, base, admin, tz, withdrawn, draftingOn, version = 0, onClose, onChanged, onEdit }: ThreadDialogProps) => {
+const ThreadDialog = ({ id, base, admin, tz, withdrawn, draftingOn, version = 0, seed, onClose, onChanged, onEdit }: ThreadDialogProps) => {
     const me = useMe();
-    const [t, setT] = useState<(Thread & { comments: Comment[] }) | null>(null);
+    /* Opens showing what is already in hand: the post as it was last read in full, or failing that
+       the post as the feed holds it, with its comments to follow. `loaded` is false until the
+       comments on screen are ones that were actually read for this post. */
+    const kept = threadCache.get(`${base}:${id}`);
+    const [t, setT] = useState<FullThread | null>(kept ?? (seed ? { ...seed, comments: [] } : null));
+    const [loaded, setLoaded] = useState(Boolean(kept));
     const [err, setErr] = useState<string | null>(null);
     const [reply, setReply] = useState("");
     const [audio, setAudio] = useState<{ blob: Blob; seconds: number } | null>(null);
@@ -1072,7 +1116,20 @@ const ThreadDialog = ({ id, base, admin, tz, withdrawn, draftingOn, version = 0,
     const [scheduleOpen, setScheduleOpen] = useState(false);
     const scrollTo = useRef<string | null>(null);
     const replyBox = useRef<HTMLTextAreaElement>(null);
-    const load = useCallback(() => api<Thread & { comments: Comment[] }>(`${base}/community/thread/${id}`).then(setT).catch((e) => setErr(e.message)), [base, id]);
+    /* The first read may join one that hovering the card already started. Every read after that is
+       asked for afresh, because it follows something being written. */
+    const first = useRef(true);
+    const load = useCallback(
+        () =>
+            fetchThread(base, id, !first.current)
+                .then((full) => {
+                    first.current = false;
+                    setT(full);
+                    setLoaded(true);
+                })
+                .catch((e) => setErr(e.message)),
+        [base, id],
+    );
     // `version` bumps when the composer saves an edit of this post, so the open dialog reads it back.
     useEffect(() => {
         load();
@@ -1227,10 +1284,11 @@ const ThreadDialog = ({ id, base, admin, tz, withdrawn, draftingOn, version = 0,
                                     </div>
                                 </article>
                                 <h4 className="px-5 pt-1 pb-2 text-sm font-bold text-primary md:px-6">
-                                    {comments.length} {comments.length === 1 ? "comment" : "comments"}
+                                    {loaded ? comments.length : t.comment_count || 0} {(loaded ? comments.length : t.comment_count) === 1 ? "comment" : "comments"}
                                 </h4>
                                 <div className="flex flex-col gap-4 px-5 pb-5 md:px-6">
-                                    {comments.length === 0 && <p className="text-sm text-tertiary">No comments yet. Be the first.</p>}
+                                    {!loaded && (t.comment_count || 0) > 0 && <p className="text-sm text-tertiary">{err ?? "Loading the comments…"}</p>}
+                                    {loaded && comments.length === 0 && <p className="text-sm text-tertiary">No comments yet. Be the first.</p>}
                                     {commentTree(comments).map(({ comment, replies }) => (
                                         <CommentCard key={comment.id} c={comment} replies={replies} shared={shared} />
                                     ))}
@@ -1689,7 +1747,7 @@ const PAGE = 30;
 export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin: boolean; classId?: string | null; openId: string | null; onOpen: (id: string | null) => void; head?: BoardHead }) => {
     const me = useMe();
     const adminBoot = useAdminBootstrap();
-    const [board, setBoard] = useState<Board | null>(null);
+    const [board, setBoardState] = useState<Board | null>(null);
     const [boot, setBoot] = useState<StudentBoot | null>(null);
     const [err, setErr] = useState<{ message: string; status?: number } | null>(null);
     const [threadVersion, setThreadVersion] = useState(0);
@@ -1713,16 +1771,32 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
 
     useEffect(() => {
         if (admin || !me) return;
-        api<StudentBoot>("/api/student/bootstrap").then(setBoot).catch(() => undefined);
+        // The copy the menu already loaded, not a second request for the same thing.
+        loadStudentBootstrap().then((b) => setBoot(b as unknown as StudentBoot)).catch(() => undefined);
     }, [admin, me?.id]);
-    const load = useCallback(async () => {
-        if (!me || !listPath) return;
+    /* One address per view of the board (which class, which category, which order). What that view
+       last showed is drawn straight away while the fresh copy is read. */
+    const boardUrl = useMemo(() => {
+        if (!listPath) return null;
         const q = new URLSearchParams();
         if (sort === "hot") q.set("sort", "hot");
         if (cat) q.set("categoryId", cat);
+        return `${listPath}${q.toString() ? `?${q}` : ""}`;
+    }, [listPath, sort, cat]);
+    const wanted = useRef(boardUrl);
+    wanted.current = boardUrl;
+    useLayoutEffect(() => {
+        const seen = boardUrl ? boards.get(boardUrl) : undefined;
+        if (seen) setBoardState(seen);
+    }, [boardUrl]);
+    const load = useCallback(async () => {
+        if (!me || !boardUrl) return;
         try {
-            const b = await api<Board>(`${listPath}${q.toString() ? `?${q}` : ""}`);
-            setBoard(b);
+            const b = await api<Board>(boardUrl);
+            boards.set(boardUrl, b);
+            // A slow answer for a view that has since been left (another category pressed) is kept but not drawn.
+            if (wanted.current !== boardUrl) return;
+            setBoardState(b);
             setErr(null);
             // Opening the board is what clears the badge, not opening each thread.
             if (!admin && b.unread) api("/api/student/community/read", { method: "POST", json: {} }).then(() => loadStudentBootstrap(true)).catch(() => undefined); // the sidebar badge follows
@@ -1730,7 +1804,7 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
             const failure = e as Error & { status?: number };
             setErr({ message: failure.message, status: failure.status });
         }
-    }, [me?.id, listPath, sort, cat, admin]);
+    }, [me?.id, boardUrl, admin]);
     // Filters redraw in place once the new list arrives; the posts on screen stay until then.
     useEffect(() => {
         load();
@@ -1877,6 +1951,7 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
                     withdrawn={Boolean(boot?.withdrawnAt)}
                     draftingOn={draftingOn}
                     version={threadVersion}
+                    seed={all.find((x) => x.id === openId)}
                     onClose={() => onOpen(null)}
                     onChanged={load}
                     onEdit={(t) => setComposer({ open: true, editing: t })}
@@ -1893,16 +1968,18 @@ export const CommunityPage = () => {
     const me = useMe();
     const nav = useNavigate();
     const { id } = useParams();
-    const [classId, setClassId] = useState<string | null>(null);
-    const [classesLoaded, setClassesLoaded] = useState(false);
+    // The class whose board the teacher sees is found once and remembered, so coming back does not ask again.
+    const [classId, setClassId] = useState<string | null>(teacherClassId());
+    const [classesLoaded, setClassesLoaded] = useState(Boolean(teacherClassId()));
     const [err, setErr] = useState<string | null>(null);
     const admin = me?.role === "admin";
 
     useEffect(() => {
-        if (!admin) return;
+        if (!admin || teacherClassId()) return; // already found on an earlier visit
         api<{ id: string; active: boolean; has_community: boolean }[]>("/api/admin/classes")
             .then((list) => {
                 const k = list.find((x) => x.active && x.has_community) ?? list.find((x) => x.has_community) ?? list[0];
+                setTeacherClassId(k?.id ?? null);
                 setClassId(k?.id ?? null);
                 setClassesLoaded(true);
             })

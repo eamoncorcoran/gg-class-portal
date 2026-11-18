@@ -20,14 +20,32 @@ import { cx } from "@/utils/cx";
 import { ToolBookmark, ToolFilter, ToolPrinter } from "./ic";
 import { QuestionCard } from "./question-card";
 
+/* Which page an address belongs to. Most addresses are their own page, and arriving at one starts
+   it afresh: drawn in, scrolled to the top. Some addresses are a part of a page that is already on
+   screen, and for those nothing may be rebuilt or moved:
+
+     /t/<topic>/<tab>           a topic's tabs swap in place
+     /community/<post>          a post opens as a sheet over the board, and closes back onto it
+     /teach/messages/<student>  a conversation opens beside the list of them
+
+   The board was not on this list. Opening a post changed the address, so the whole board was thrown
+   away, fetched again and faded back in, with the page sent to the top, and again on closing it. */
+export const pageKey = (pathname: string) => {
+    if (pathname.startsWith("/t/")) return pathname.split("/").slice(0, 3).join("/");
+    if (pathname === "/community" || pathname.startsWith("/community/")) return "/community";
+    if (pathname === "/teach/messages" || pathname.startsWith("/teach/messages/")) return "/teach/messages";
+    return pathname;
+};
+
 export const Page = ({ children, wide }: { children: ReactNode; wide?: boolean }) => {
     const { pathname } = useLocation();
     return (
         <motion.div
-            key={pathname.startsWith("/t/") ? pathname.split("/").slice(0, 3).join("/") : pathname}  // a topic's tabs swap in place, no page re-entry
-            initial={{ opacity: 0, y: 10 }}
+            key={pageKey(pathname)}
+            // Short: a page that is already in hand should not be made to wait on its own entrance.
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+            transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
             className={cx("mx-auto w-full px-4 pt-6 pb-12 md:px-10 md:pt-10 lg:pb-20", wide ? "max-w-container" : "max-w-5xl")}
         >
             {children}
