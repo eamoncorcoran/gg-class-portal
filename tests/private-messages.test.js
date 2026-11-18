@@ -69,9 +69,23 @@ test('the page is the conversation, and the outside chat widget is gone from it'
   const page = read('../web/src/pages/student/message-page.tsx');
   assert.ok(!/leadconnectorhq|chat-widget|mountChatWidget/.test(page.replace(/\/\/[^\n]*/g, '')));
   assert.match(page, /<Thread/);
-  assert.match(page, /if \(me\.role !== "student"\) return <Navigate to="\/teach\/messages" replace \/>;/);
+  assert.match(page, /if \(me\.role !== "student"\) return <Navigate to=\{me\.isSuperAdmin \? "\/teach\/messages" : "\/teach"\} replace \/>;/);
   const thread = read('../web/src/components/app/message-thread.tsx');
   // A message is drawn as text. Nothing in the thread sets HTML from what somebody wrote.
   assert.ok(!/dangerouslySetInnerHTML/.test(thread));
   assert.match(read('../web/src/pages/teach/console-page.tsx'), /messages: lazy\(/);
+});
+
+
+test('a student writes to the teacher, not the staff: only the lead teacher reads or answers', () => {
+  // Students have no route that names anybody else, so there is nobody else they can write to.
+  const routes = student.slice(student.indexOf("router.get('/messages'"), student.indexOf("router.get('/bootstrap'"));
+  assert.equal((routes.match(/router\.(get|post)\('\/messages/g) || []).length, 3);
+  // Every teacher-side route sits behind the lead-teacher check.
+  assert.ok(admin.indexOf("router.use('/messages', leadTeacherOnly);") > -1);
+  assert.ok(admin.indexOf("router.use('/messages', leadTeacherOnly);") < admin.indexOf("router.get('/messages', asyncRoute"));
+  assert.match(admin, /if \(req\.user\.isSuperAdmin\) return next\(\);/);
+  // The teacher may write first, to any student.
+  assert.match(admin, /router\.post\('\/messages\/:studentId', asyncRoute/);
+  assert.match(read('../web/src/components/app/console.tsx'), /\{ id: "messages", label: "Private messages", icon: Mail01, superOnly: true \},/);
 });

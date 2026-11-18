@@ -3884,6 +3884,19 @@ router.delete('/lesson-attachments/:id', asyncRoute(async (req, res) => {
    ------------------------------------------------------------------
    Each student has one conversation with the teacher. This is the teacher's
    side: who has written, each conversation in full, and the reply. */
+/* A student writes to the teacher, not to the staff. Their page says only they
+   and their teacher see the conversation, so only the lead teacher's account
+   (a super administrator) may read or answer one; another administrator is
+   refused here whatever their screen shows. If no account is marked as the
+   lead, any administrator may, so the line is never left with nobody on it. */
+const leadTeacherOnly = asyncRoute(async (req, res, next) => {
+  if (req.user.isSuperAdmin) return next();
+  const lead = await one(`SELECT 1 ok FROM users WHERE role='admin' AND active=true AND is_super_admin=true LIMIT 1`);
+  if (!lead) return next();
+  return res.status(403).json({ error: 'Private messages are between a student and their teacher.' });
+});
+router.use('/messages', leadTeacherOnly);
+
 router.get('/messages', asyncRoute(async (_req, res) => {
   res.json(await teacherInbox());
 }));

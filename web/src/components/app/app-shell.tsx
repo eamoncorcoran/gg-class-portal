@@ -160,7 +160,7 @@ const ProfileMenu = () => {
                     <Dropdown.Separator />
                     <Dropdown.Section>
                         <Dropdown.Item id="mock" href="/mock-oral" textValue="Mock oral">Mock oral</Dropdown.Item>
-                        <Dropdown.Item id="msg" href={messagesHref} textValue="Private message">{me?.role === "admin" ? "Private messages" : "Private message"}{unread ? <span className="ml-auto rounded-full bg-brand-solid px-2 py-0.5 text-xs font-bold text-white tabular-nums">{unread}</span> : null}</Dropdown.Item>
+                        {!(me?.role === "admin" && !me.isSuperAdmin) && <Dropdown.Item id="msg" href={messagesHref} textValue="Private message">{me?.role === "admin" ? "Private messages" : "Private message"}{unread ? <span className="ml-auto rounded-full bg-brand-solid px-2 py-0.5 text-xs font-bold text-white tabular-nums">{unread}</span> : null}</Dropdown.Item>}
                         <Dropdown.Item id="account" href="/account" textValue="Account">Account</Dropdown.Item>
                         {(!me || me.role === "admin") && <Dropdown.Item id="teach" href="/teach" textValue="Teacher console">Teacher console</Dropdown.Item>}
                     </Dropdown.Section>

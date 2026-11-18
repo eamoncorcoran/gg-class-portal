@@ -11,7 +11,8 @@ import { cx } from "@/utils/cx";
 type Icon = FC<{ className?: string }>;
 export type ConsoleSection = { id: string; label: string; icon: Icon; superOnly?: boolean };
 export const CONSOLE_SECTIONS: ConsoleSection[] = [
-    { id: "messages", label: "Private messages", icon: Mail01 },
+    // Between a student and their teacher: the lead teacher's account only, as the server enforces.
+    { id: "messages", label: "Private messages", icon: Mail01, superOnly: true },
     { id: "people", label: "Classes & students", icon: Users01 },
     { id: "calendar", label: "Calendar", icon: Calendar },
     { id: "courses", label: "Courses", icon: BookOpen01 },

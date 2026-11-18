@@ -40,7 +40,8 @@ export const useUnreadMessages = () => {
     const me = useMe();
     const v = useSyncExternalStore((f) => (subs.add(f), () => subs.delete(f)), () => unread);
     useEffect(() => {
-        if (!me) return;
+        // An administrator who is not the lead teacher has no private messages to count.
+        if (!me || (me.role === "admin" && !me.isSuperAdmin)) return;
         role = me.role;
         watchers += 1;
         if (watchers === 1) {
@@ -56,8 +57,8 @@ export const useUnreadMessages = () => {
                 document.removeEventListener("visibilitychange", checkUnread);
             }
         };
-    }, [me?.id, me?.role]);
-    return me ? v : 0;
+    }, [me?.id, me?.role, me?.isSuperAdmin]);
+    return me && !(me.role === "admin" && !me.isSuperAdmin) ? v : 0;
 };
 
 /* ---- time, the way a conversation shows it ---- */

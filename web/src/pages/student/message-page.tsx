@@ -97,7 +97,7 @@ export const MessagePage = () => {
             </Page>
         );
     if (!me) return <SignInCard next="/message" title="Sign in to send a message" note="The private line is for students of Gaeilgeoir Guides. Sign in first." />;
-    if (me.role !== "student") return <Navigate to="/teach/messages" replace />;
+    if (me.role !== "student") return <Navigate to={me.isSuperAdmin ? "/teach/messages" : "/teach"} replace />;
     return (
         <div className="mx-auto w-full max-w-5xl px-3 pt-4 pb-4 md:px-10 md:pt-8">
             <Conversation />
