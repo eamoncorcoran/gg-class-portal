@@ -29,6 +29,7 @@ import { canSeeSraith } from '../sraith.js';
 import { studentMockOral } from '../mockoral.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
+import { MESSAGE_MAX, studentThread, studentUnread, studentSends } from '../messages.js';
 
 const router = Router();
 router.use(requireStudent);
@@ -170,6 +171,26 @@ async function refuseIfWithdrawn(req, res) {
   }
   return false;
 }
+
+/* ------------------------------------------------------------------
+   Private messages
+   ------------------------------------------------------------------
+   One conversation with the teacher, and it is always this student's own: the
+   id comes from the session and never from the request. */
+router.get('/messages', asyncRoute(async (req, res) => {
+  res.json(await studentThread(req.user.id));
+}));
+
+router.get('/messages/unread', asyncRoute(async (req, res) => {
+  res.json({ unread: await studentUnread(req.user.id) });
+}));
+
+router.post('/messages', asyncRoute(async (req, res) => {
+  const parsed = z.object({ body: z.string().trim().min(1).max(MESSAGE_MAX) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Write a message first.') });
+  const message = await studentSends(req.user, parsed.data.body);
+  res.status(201).json({ message });
+}));
 
 router.get('/bootstrap', asyncRoute(async (req, res) => {
   const me = await one(

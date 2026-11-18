@@ -9,6 +9,7 @@ import { useAdminBootstrap, useMe } from "@/lib/portal";
 
 const sections: Record<string, React.LazyExoticComponent<React.ComponentType>> = {
     tracker: lazy(() => import("./tracker-section").then((m) => ({ default: m.TrackerSection }))),
+    messages: lazy(() => import("./messages-section").then((m) => ({ default: m.MessagesSection }))),
     people: lazy(() => import("./people-section").then((m) => ({ default: m.PeopleSection }))),
     calendar: lazy(() => import("./calendar-section").then((m) => ({ default: m.CalendarSection }))),
     courses: lazy(() => import("./courses-section").then((m) => ({ default: m.CoursesSection }))),

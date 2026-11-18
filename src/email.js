@@ -132,6 +132,11 @@ function paragraphsFrom(text) {
                   else's post. This is the traffic that multiplies, so this is
                   what the hour applies to.
 
+   message        A private message between a student and the teacher. Not
+                  paced by the hour, because it is one person writing to one
+                  person and src/messages.js already folds a run of them into
+                  one email. Still held by a pause or the daily ceiling.
+
    The default is `notice`, which is the cautious end. A message added later and
    never categorised gets paced rather than escaping the pacing. */
 const NEVER_HELD = new Set(['transactional']);
@@ -651,6 +656,61 @@ function oralMessage({ student, oral, subject, preheader, before, after = [], bu
     priority: type === 'mock_oral_reminder' ? 'deadline' : 'transactional',
     metadata: { type, bookingId: oral.id, studentId: student.id },
   };
+}
+
+/* A private message, announced to the person it was written to.
+   ------------------------------------------------------------------
+   Unlike a reply on the board, this email carries the words. They were written
+   to the reader and nobody else, so there is no reason to make them sign in to
+   find out what was said. What it does not offer is a way to answer by email:
+   an answer sent from a mail client would arrive somewhere outside the
+   conversation, and the point of the conversation is that all of it is in one
+   place. So there is one button, back to the thread.
+
+   `messages` is everything written since the last email and still unread, so
+   three in a row arrive as one. */
+export async function sendPrivateMessageNotice({ to, toTeacher, student, fromName, messages }) {
+  const count = messages.length;
+  const first = String(fromName || '').split(' ')[0] || 'Your teacher';
+  const url = toTeacher ? `${config.appUrl}/teach/messages/${student.id}` : `${config.appUrl}/message`;
+  const subject = toTeacher
+    ? `Private message from ${student.name}`
+    : `${first} sent you a private message`;
+  const title = toTeacher
+    ? `${student.name} wrote to you privately`
+    : (count === 1 ? `A message from ${first}` : `${count} messages from ${first}`);
+  const lead = toTeacher
+    ? `${student.name} sent ${count === 1 ? 'a private message' : `${count} private messages`} in the class hub.`
+    : `${first} sent you ${count === 1 ? 'a private message' : `${count} private messages`} in the class hub.`;
+  const note = 'Please answer in the hub rather than by replying to this email, so the whole conversation stays in one place.';
+  const quoted = messages.map((message) => String(message.body).trim());
+
+  const text = [
+    lead, '',
+    ...quoted.flatMap((body) => [body, '']),
+    `${toTeacher ? 'Reply' : 'Read and reply'}: ${url}`, '',
+    note,
+  ].join('\n');
+
+  const bubbles = quoted.map((body) => (
+    `<div style="margin:0 0 10px;padding:12px 14px;background:#f4f6f2;border-radius:10px;white-space:pre-wrap;word-break:break-word">${escapeHtml(body)}</div>`
+  )).join('');
+
+  return sendEmail({
+    to: to.email,
+    subject,
+    text,
+    html: layout({
+      title,
+      preheader: quoted[0].slice(0, 120),
+      body: `<p style="margin:0 0 14px">${escapeHtml(lead)}</p>${bubbles}`,
+      buttonText: toTeacher ? 'Reply in the hub' : 'Read and reply',
+      buttonUrl: url,
+      footnote: escapeHtml(note),
+    }),
+    priority: 'message',
+    metadata: { type: toTeacher ? 'private_message_to_teacher' : 'private_message_to_student', studentId: student.id, count },
+  });
 }
 
 export async function sendMockOralConfirmation({ student, oral }) {

@@ -36,6 +36,7 @@ import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashT
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { moveCandidates, startMoves } from '../lessonmoves.js';
+import { MESSAGE_MAX, teacherInbox, teacherUnread, teacherThread, teacherSends } from '../messages.js';
 import { zoomConfigured } from '../zoom.js';
 import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, rememberIdentity, rematchSittings } from '../zoomattendance.js';
 import { bunnyConfigured, bunnySigning, createVideo, uploadTicket } from '../bunny.js';
@@ -3865,6 +3866,34 @@ router.delete('/lesson-attachments/:id', asyncRoute(async (req, res) => {
   }
   await query('DELETE FROM lesson_attachments WHERE id=$1', [current.id]);
   res.status(204).end();
+}));
+
+/* ------------------------------------------------------------------
+   Private messages
+   ------------------------------------------------------------------
+   Each student has one conversation with the teacher. This is the teacher's
+   side: who has written, each conversation in full, and the reply. */
+router.get('/messages', asyncRoute(async (_req, res) => {
+  res.json(await teacherInbox());
+}));
+
+router.get('/messages/unread', asyncRoute(async (_req, res) => {
+  res.json({ unread: await teacherUnread() });
+}));
+
+router.get('/messages/:studentId', asyncRoute(async (req, res) => {
+  const parsed = z.string().uuid().safeParse(req.params.studentId);
+  if (!parsed.success) return res.status(404).json({ error: 'There is no such student.' });
+  res.json(await teacherThread(parsed.data));
+}));
+
+router.post('/messages/:studentId', asyncRoute(async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.studentId);
+  if (!id.success) return res.status(404).json({ error: 'There is no such student.' });
+  const parsed = z.object({ body: z.string().trim().min(1).max(MESSAGE_MAX) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Write a reply first.') });
+  const message = await teacherSends(req.user, id.data, parsed.data.body);
+  res.status(201).json({ message });
 }));
 
 /* ------------------------------------------------------------------

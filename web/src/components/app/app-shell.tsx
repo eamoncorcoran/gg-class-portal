@@ -15,6 +15,7 @@ import { cx } from "@/utils/cx";
 import { PanelIcon, topicIcon, SidebarContent, Wordmark } from "./app-sidebar";
 import { Avatar } from "./hub-parts";
 import { signOut, useMe } from "@/lib/portal";
+import { useUnreadMessages } from "@/lib/messages";
 import { toast } from "./toast";
 import { User01 } from "@/components/app/ic";
 import { MobileTabs } from "./mobile-tabs";
@@ -54,7 +55,7 @@ export function useWhere(): { active: string; crumbs: Crumb[]; topicSlug?: strin
     if (a === "message") return { active: "message", crumbs: [{ label: "Private message" }] };
     if (a === "account") return { active: "account", crumbs: [{ label: "Your account" }] };
     if (a === "teach") {
-        const names: Record<string, string> = { tracker: "Weekly tracker", people: "Classes & students", calendar: "Calendar", courses: "Courses", sraith: "Sraith Pictiúr", "mock-orals": "Mock orals", live: "Live classroom", plans: "Plans", checkins: "Weekly check-ins", community: "Community", attendance: "Attendance upload", reminders: "Email reminders", drafting: "Feedback drafting", admins: "Administrators" };
+        const names: Record<string, string> = { tracker: "Weekly tracker", messages: "Private messages", people: "Classes & students", calendar: "Calendar", courses: "Courses", sraith: "Sraith Pictiúr", "mock-orals": "Mock orals", live: "Live classroom", plans: "Plans", checkins: "Weekly check-ins", community: "Community", attendance: "Attendance upload", reminders: "Email reminders", drafting: "Feedback drafting", admins: "Administrators" };
         return { active: "teach", crumbs: [{ label: "Teacher console", href: "/teach" }, ...(b && names[b] ? [{ label: names[b], href: c ? `/teach/${b}` : undefined }] : [])] };
     }
     if (a === "signin") return { active: "signin", crumbs: [{ label: "Sign in" }] };
@@ -134,10 +135,16 @@ const ProfileMenu = () => {
     const exams = useStore((s) => s.exams.length + (s.exam.length ? 1 : 0));
     const nav = useNavigate();
     const who = me ? { name: me.name, role: me.role, avatar: me.hasAvatar ? `/api/media/avatar/${me.id}` : undefined } : null;
+    // Private messages waiting to be read: a dot on the face, and the count inside the menu.
+    const unread = useUnreadMessages();
+    const messagesHref = me?.role === "admin" ? "/teach/messages" : "/message";
     return (
         <Dropdown.Root>
             <AriaButton aria-label="Your menu" className="flex h-10 items-center gap-2 rounded-xl px-1.5 outline-focus-ring transition duration-100 ease-linear hover:bg-primary_hover focus-visible:outline-2">
-                {who ? <Avatar who={who} size="sm" /> : <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-fg-quaternary"><User01 aria-hidden="true" className="size-4.5" /></span>}
+                <span className="relative flex">
+                    {who ? <Avatar who={who} size="sm" /> : <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-fg-quaternary"><User01 aria-hidden="true" className="size-4.5" /></span>}
+                    {unread > 0 && <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-error-solid ring-2 ring-primary" aria-label={`${unread} unread private message${unread === 1 ? "" : "s"}`} />}
+                </span>
                 <span className="hidden max-w-32 truncate text-sm font-bold text-secondary md:block">{who ? who.name.split(" ")[0] : "Sign in"}</span>
                 <ChevronDown aria-hidden="true" className="hidden size-3.5 stroke-2 text-fg-quaternary md:block" />
             </AriaButton>
@@ -153,7 +160,7 @@ const ProfileMenu = () => {
                     <Dropdown.Separator />
                     <Dropdown.Section>
                         <Dropdown.Item id="mock" href="/mock-oral" textValue="Mock oral">Mock oral</Dropdown.Item>
-                        <Dropdown.Item id="msg" href="/message" textValue="Private message">Private message</Dropdown.Item>
+                        <Dropdown.Item id="msg" href={messagesHref} textValue="Private message">{me?.role === "admin" ? "Private messages" : "Private message"}{unread ? <span className="ml-auto rounded-full bg-brand-solid px-2 py-0.5 text-xs font-bold text-white tabular-nums">{unread}</span> : null}</Dropdown.Item>
                         <Dropdown.Item id="account" href="/account" textValue="Account">Account</Dropdown.Item>
                         {(!me || me.role === "admin") && <Dropdown.Item id="teach" href="/teach" textValue="Teacher console">Teacher console</Dropdown.Item>}
                     </Dropdown.Section>

@@ -35,6 +35,7 @@ import sraithRoutes from './src/routes/sraith.js';
 import mockOralRoutes from './src/routes/mockoral.js';
 import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
+import { startMessageNotifier } from './src/messages.js';
 import hubRoutes from './src/routes/hub.js';
 import { pastQuestionsProxy, pqPass } from './src/pqproxy.js';
 import { wall, noIndex, ROBOTS_TXT } from './src/wall.js';
@@ -406,6 +407,8 @@ async function start() {
   // Scheduled board posts become visible by the clock passing rather than by
   // anything running, so without this nothing would notice they had appeared.
   startBoardNotifier();
+  // Private messages: whoever was written to is emailed, a minute or two later, unless they have read it by then.
+  startMessageNotifier();
   await loadAccess();
   await getSpeechConfig();
   const server = app.listen(config.port, () => {

@@ -3,13 +3,15 @@
 import { type FC, type ReactNode } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { Page } from "@/components/app/page-parts";
-import { Users01, Calendar, BookOpen01, Grid01, Headphones01, PlayCircle, LayersTwo01, Smile, FileCheck02, UploadCloud02, Bell01, Stars02, Settings01 } from "@/components/app/ic";
+import { Users01, Calendar, BookOpen01, Grid01, Headphones01, PlayCircle, LayersTwo01, Smile, FileCheck02, UploadCloud02, Bell01, Mail01, Stars02, Settings01 } from "@/components/app/ic";
+import { useUnreadMessages } from "@/lib/messages";
 import { type AdminClass, classSlot, useAdminBootstrap, useMe } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 
 type Icon = FC<{ className?: string }>;
 export type ConsoleSection = { id: string; label: string; icon: Icon; superOnly?: boolean };
 export const CONSOLE_SECTIONS: ConsoleSection[] = [
+    { id: "messages", label: "Private messages", icon: Mail01 },
     { id: "people", label: "Classes & students", icon: Users01 },
     { id: "calendar", label: "Calendar", icon: Calendar },
     { id: "courses", label: "Courses", icon: BookOpen01 },
@@ -25,7 +27,7 @@ export const CONSOLE_SECTIONS: ConsoleSection[] = [
     { id: "admins", label: "Administrators", icon: Settings01, superOnly: true },
 ];
 
-const Row = ({ to, icon: I, label, sub, active }: { to: string; icon: Icon; label: ReactNode; sub?: ReactNode; active?: boolean }) => (
+const Row = ({ to, icon: I, label, sub, active, badge }: { to: string; icon: Icon; label: ReactNode; sub?: ReactNode; active?: boolean; badge?: number }) => (
     <NavLink
         to={to}
         className={({ isActive }) =>
@@ -40,6 +42,7 @@ const Row = ({ to, icon: I, label, sub, active }: { to: string; icon: Icon; labe
             <span className="block truncate">{label}</span>
             {sub && <span className="block truncate text-xs font-semibold text-quaternary">{sub}</span>}
         </span>
+        {badge ? <span className="ml-auto shrink-0 rounded-full bg-brand-solid px-2 py-0.5 text-xs text-white tabular-nums">{badge}</span> : null}
     </NavLink>
 );
 
@@ -51,6 +54,7 @@ export const Console = ({ children }: { children: ReactNode }) => {
     const nav = useNavigate();
     const classes: AdminClass[] = boot?.classes ?? [];
     const sections = CONSOLE_SECTIONS.filter((s) => !s.superOnly || me?.isSuperAdmin);
+    const unread = useUnreadMessages();
     return (
         <Page wide>
             <div className="flex min-w-0 flex-col gap-6 xl:flex-row xl:gap-10">
@@ -74,6 +78,7 @@ export const Console = ({ children }: { children: ReactNode }) => {
                             {sections.map((s) => (
                                 <option key={s.id} value={s.id}>
                                     {s.label}
+                                    {s.id === "messages" && unread ? ` (${unread} new)` : ""}
                                 </option>
                             ))}
                         </select>
@@ -85,7 +90,7 @@ export const Console = ({ children }: { children: ReactNode }) => {
                         ))}
                         <p className="hidden duo-label text-quaternary xl:block xl:px-3 xl:pt-5 xl:pb-2">Manage</p>
                         {sections.map((s) => (
-                            <Row key={s.id} to={`/teach/${s.id}`} icon={s.icon} label={s.label} active={section === s.id} />
+                            <Row key={s.id} to={`/teach/${s.id}`} icon={s.icon} label={s.label} active={section === s.id} badge={s.id === "messages" ? unread : 0} />
                         ))}
                     </nav>
                 </aside>

@@ -92,6 +92,7 @@ export const Eye = bold(P.Eye);
 export const EyeOff = bold(P.EyeSlash);
 export const Container = bold(P.Package);
 export const Bell01 = bold(P.Bell);
+export const Mail01 = bold(P.EnvelopeSimple);
 export const Microphone01 = bold(P.Microphone);
 
 // The three tools over a list of questions are drawn in the regular weight: a lighter line that sits
