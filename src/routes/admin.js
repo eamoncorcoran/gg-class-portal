@@ -1410,6 +1410,26 @@ router.get('/pq-homework', asyncRoute(async (_req, res) => {
    pieces can be one piece of homework rather than two entries on the calendar.
    Only until somebody hands it in: after that the homework is what they did,
    and a question appearing in it afterwards would be one they never saw. */
+/* Who has done a past question homework and how each one did: for the teacher
+   scrolling the past papers who wants to know more than the count. */
+router.get('/pq-homework/:assignmentId', asyncRoute(async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.assignmentId);
+  if (!id.success) return res.status(404).json({ error: 'That homework was not found.' });
+  const rows = await query(
+    `SELECT u.name, hs.status, hs.submitted_at, hs.feedback_returned_at, hs.teacher_score, hs.teacher_max,
+            (hs.pq_result->>'got')::int got, (hs.pq_result->>'total')::int total,
+            (SELECT count(*)::int FROM jsonb_each(COALESCE(hs.pq_result->'answers','{}'::jsonb)) q, jsonb_each_text(q.value) a WHERE btrim(a.value) <> '') spaces_answered
+     FROM homework_submissions hs JOIN users u ON u.id=hs.student_id
+     WHERE hs.assignment_id=$1 AND hs.status IN ('submitted','returned')
+     ORDER BY hs.submitted_at`,
+    [id.data],
+  );
+  res.json({ submissions: rows.rows.map((row) => ({
+    name: row.name, status: row.status, submittedAt: row.submitted_at, returnedAt: row.feedback_returned_at,
+    score: row.teacher_score, outOf: row.teacher_max, got: row.got, total: row.total, spacesAnswered: row.spaces_answered,
+  })) });
+}));
+
 router.post('/assignments/:id/pq', asyncRoute(async (req, res) => {
   const parsed = z.object({
     pqId: z.string().trim().min(1).max(160).regex(/^[\w.:-]+$/),
