@@ -30,6 +30,7 @@ import { studentMockOral } from '../mockoral.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 import { MESSAGE_MAX, studentThread, studentUnread, studentSends } from '../messages.js';
+import { allMarkable, markPastQuestions, returnMarked } from '../pqhomework.js';
 
 const router = Router();
 router.use(requireStudent);
@@ -568,9 +569,15 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
      unless its switch on the Feedback drafting screen is on. With both off the
      row lands as "No draft" rather than "Generating", because nothing is. */
   const drafting = await draftingSwitches();
-  const draftsHomework = drafting.corrections || drafting.generalFeedback;
+  /* Homework made only of past questions the scheme can mark (a listening, a
+     reading comprehension) is marked against that scheme and handed straight
+     back, further down. No Irish corrections are drafted for it: the scheme
+     gives the mark for meaning, and a draft that corrected every slip in every
+     short answer was marking it by a different rule. */
+  const markedByScheme = allMarkable(assignment.pq_ids);
+  const draftsHomework = (drafting.corrections || drafting.generalFeedback) && !markedByScheme;
   const initialState = draftsHomework ? 'generating' : 'none';
-  const row = await one(
+  let row = await one(
     `INSERT INTO homework_submissions(
        assignment_id,student_id,status,answers,current_question,submitted_at,submitted_late,feedback_state,updated_at
      ) VALUES ($1,$2,'submitted',$3::jsonb,$4,now(),$5,$6,now())
@@ -593,14 +600,34 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
   /* Only for homework that was set from past questions, and only about the
      questions it was set from: nothing else a browser sends is kept. */
   const pastQuestions = Array.isArray(assignment.pq_ids) ? assignment.pq_ids : [];
+  let feedbackState = initialState;
   if (pastQuestions.length) {
     const sent = parsed.data.pqResult || { answers: {}, results: {}, got: 0, total: 0 };
     const only = (record) => Object.fromEntries(pastQuestions.filter((id) => record[id]).map((id) => [id, record[id]]));
-    const kept = { answers: only(sent.answers), results: only(sent.results), got: sent.got, total: sent.total };
+    const typed = only(sent.answers);
+    /* What was typed is kept first, so it is safe whatever happens next. The
+       marks the browser sent are not kept: the marking is done here. */
+    let kept = { answers: typed, results: {}, got: 0, total: 0 };
     await query('UPDATE homework_submissions SET pq_result=$1::jsonb WHERE id=$2', [JSON.stringify(kept), row.id]);
     row.pq_result = kept;
+    try {
+      const marks = await markPastQuestions(pastQuestions, typed);
+      kept = { answers: typed, ...marks };
+      if (markedByScheme && marks.total > 0) {
+        /* Marked and returned in one go. The student is looking at it, so it
+           does not also arrive as unread feedback. */
+        row = await returnMarked({ submissionId: row.id, answers: typed, marks, seen: true, actorId: req.user.id });
+        feedbackState = 'returned';
+      } else {
+        await query('UPDATE homework_submissions SET pq_result=$1::jsonb WHERE id=$2', [JSON.stringify(kept), row.id]);
+        row.pq_result = kept;
+      }
+    } catch (error) {
+      /* The marker not answering is not a failed hand-in. The work is saved,
+         and the sweep in src/pqhomework.js marks and returns it when it can. */
+      console.error('Past question marking failed at hand-in', row.id, error.message);
+    }
   }
-  let feedbackState = initialState;
   if (draftsHomework) {
     try {
       const feedback = await draftHomeworkFeedback({

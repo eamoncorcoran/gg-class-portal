@@ -61,9 +61,10 @@ test('a question can join homework already set, but not once somebody has handed
 });
 
 test('the student does it on the paper, and it is handed in as their homework', () => {
-  // Through the same submit as any homework, so late marking, drafting and the review all apply.
-  assert.match(page, /api\(`\/api\/student\/assignments\/\$\{id\}\/submit`, \{/);
-  assert.match(page, /json: \{ answers: qs\.map\(\(q\) => transcript\(q, mine\[q\.id\] \|\| \{\}, checks\[q\.id\]\?\.by \|\| \{\}\)\), pqResult \}/);
+  // Through the same submit as any homework. Only what was typed is sent; the hub does the marking
+  // (tests/pq-homework-marking.test.js).
+  assert.match(page, /\(`\/api\/student\/assignments\/\$\{id\}\/submit`, \{/);
+  assert.match(page, /json: \{ answers: qs\.map\(\(q\) => transcript\(q, mine\[q\.id\] \|\| \{\}\)\), pqResult \}/);
   // Nothing is marked or shown until it is finished.
   assert.match(page, /<QuestionCard q=\{q\} exam=\{\{ running: !handedIn \}\} \/>/);
   // The server keeps only what belongs to the questions the homework was set from.

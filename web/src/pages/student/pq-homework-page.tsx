@@ -1,12 +1,15 @@
 // Homework that was set from past exam questions. It is an assignment like any other (on the
-// calendar, in the reminders, in the teacher's review), but it is done here, on the paper itself:
-// the answers are typed into the paper's own spaces, marked when it is finished, and handed in to
-// the portal as the student's homework.
+// calendar, in the reminders, in the tracker), but it is done here, on the paper itself: the answers
+// are typed into the paper's own spaces and handed in to the portal.
+//
+// A listening or a reading comprehension is marked by the hub against the marking scheme the moment
+// it is handed in, and comes straight back: each answer shows its marks, the expected answer and a
+// line of feedback, as it does in the past papers. The marking is the hub's, not this page's.
 import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router";
 import { DuoButton } from "@/components/app/duo";
 import { Page } from "@/components/app/page-parts";
-import { QuestionCard, checkQuestion } from "@/components/app/question-card";
+import { QuestionCard } from "@/components/app/question-card";
 import { toast } from "@/components/app/toast";
 import { type Question, D, answerKeys, checkable, label } from "@/lib/data";
 import { api } from "@/lib/portal";
@@ -25,20 +28,16 @@ const WRITTEN = "written";
 const answered = (q: Question, mine: Record<string, string>) => (checkable(q) ? Object.entries(mine).some(([k, v]) => k !== WRITTEN && v.trim()) : Boolean((mine[WRITTEN] || "").trim()));
 
 /** What was typed, space by space, as text: this is what the teacher reads in the review and what feedback is written on. */
-const transcript = (q: Question, mine: Record<string, string>, by: Record<string, Result>) => {
+const transcript = (q: Question, mine: Record<string, string>) => {
     if (!checkable(q)) return (mine[WRITTEN] || "").trim();
     const lines: string[] = [];
     let section = "";
     for (const [key, number, question, part] of answerKeys(q)) {
         if (part && part !== section) lines.push("", part);
         section = part;
-        const r = by[key];
-        const mark = r ? ` [${r.awarded}/${r.max}]` : "";
-        lines.push(`${number}${question ? ` ${question}` : ""}`.trim(), `  ${(mine[key] || "").trim() || "(no answer)"}${mark}`);
+        lines.push(`${number}${question ? ` ${question}` : ""}`.trim(), `  ${(mine[key] || "").trim() || "(no answer)"}`);
     }
-    const all = Object.values(by);
-    const got = all.reduce((n, r) => n + (r.awarded || 0), 0), total = all.reduce((n, r) => n + (r.max || 0), 0);
-    return [`Marked on the paper: ${got} of ${total}`, ...lines].join("\n").trim().slice(0, 19000);
+    return lines.join("\n").trim().slice(0, 19000);
 };
 
 export const PqHomeworkPage = () => {
@@ -86,29 +85,19 @@ export const PqHomeworkPage = () => {
             return toast(`Answer "${label(missing)}" before you hand in.`);
         }
         setBusy(true);
-        const failed = (await Promise.all(qs.filter(checkable).map((q) => checkQuestion(q.id)))).find(Boolean);
-        if (failed) {
-            setBusy(false);
-            return toast(`Not handed in yet. ${failed}`);
-        }
-        const mine = get().answers, checks = get().checks;
-        const clean = (r: Result): Result => ({ key: String(r.key), verdict: r.verdict, awarded: Number(r.awarded) || 0, max: Number(r.max) || 0, expected: String(r.expected ?? "").slice(0, 4000), feedback: String(r.feedback ?? "").slice(0, 4000) });
-        const results = Object.fromEntries(qs.map((q) => [q.id, checkable(q) ? Object.values(checks[q.id]?.by || {}).map(clean) : []]));
-        const all = Object.values(results).flat();
-        const pqResult: PqResult = {
-            answers: Object.fromEntries(qs.map((q) => [q.id, mine[q.id] || {}])),
-            results,
-            got: all.reduce((n, r) => n + r.awarded, 0),
-            total: all.reduce((n, r) => n + r.max, 0),
-        };
+        /* Only what was typed is sent. The hub marks it against the scheme and, when every question
+           is one the scheme can mark, hands it back there and then. */
+        const mine = get().answers;
+        const pqResult: PqResult = { answers: Object.fromEntries(qs.map((q) => [q.id, mine[q.id] || {}])), results: {}, got: 0, total: 0 };
         try {
-            await api(`/api/student/assignments/${id}/submit`, {
+            const done = await api<Homework & { pq_result?: PqResult | null }>(`/api/student/assignments/${id}/submit`, {
                 method: "POST",
-                json: { answers: qs.map((q) => transcript(q, mine[q.id] || {}, checks[q.id]?.by || {})), pqResult },
+                json: { answers: qs.map((q) => transcript(q, mine[q.id] || {})), pqResult },
             });
             await load();
             window.scrollTo({ top: 0, behavior: "smooth" });
-            toast("Handed in. Maith thú!");
+            const r = done.pq_result;
+            toast(done.status === "returned" && r?.total ? `Marked: ${r.got} of ${r.total}. Maith thú!` : "Handed in. Maith thú!");
         } catch (e) {
             toast(`Not handed in. ${(e as Error).message}`);
         }
@@ -142,10 +131,18 @@ export const PqHomeworkPage = () => {
         <Page>
             <div className={cx("sticky top-20 z-10 mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border-2 px-5 py-3 shadow-lg", handedIn ? "border-brand bg-brand-primary" : "border-secondary bg-primary")}>
                 <div className="min-w-0 flex-1">
-                    <p className="duo-label text-brand-secondary">{handedIn ? (sub?.status === "returned" ? "Homework · feedback returned" : "Homework · handed in") : "Homework"}</p>
+                    <p className="duo-label text-brand-secondary">{handedIn ? (sub?.status === "returned" ? (total ? "Homework · marked" : "Homework · feedback returned") : "Homework · handed in") : "Homework"}</p>
                     <p className="truncate text-md font-bold text-primary">{a.title}</p>
                     <p className="text-sm text-tertiary">
-                        {handedIn ? (total ? `${got} of ${total} marks on the paper. Your teacher will look at it too.` : "Your teacher will look at it.") : closed ? `This closed ${due}.` : `Due ${due} Irish time · ${qs.length} question${qs.length === 1 ? "" : "s"}`}
+                        {handedIn
+                            ? sub?.status === "returned" && total
+                                ? `${got} of ${total} marks, marked against the official marking scheme. Each answer below shows its marks.`
+                                : total
+                                  ? `${got} of ${total} marks so far. Your teacher will look at the rest.`
+                                  : "Handed in. Your marks will show here shortly."
+                            : closed
+                              ? `This closed ${due}.`
+                              : `Due ${due} Irish time · ${qs.length} question${qs.length === 1 ? "" : "s"}`}
                     </p>
                 </div>
                 {handedIn || closed ? (
@@ -169,7 +166,7 @@ export const PqHomeworkPage = () => {
             {!closed &&
                 qs.map((q) => (
                     <div key={q.id}>
-                        {/* Marked only at the end: while it is being done the paper shows no marks and no scheme. */}
+                        {/* Marked by the hub at hand-in: while it is being done the paper shows no marks and no scheme. */}
                         <QuestionCard q={q} exam={{ running: !handedIn }} />
                         {!checkable(q) && (
                             <div className="-mt-2 mb-6 rounded-2xl border-2 border-secondary bg-primary p-4 sm:p-6">

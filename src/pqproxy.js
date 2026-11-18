@@ -49,6 +49,25 @@ export function pqPass(req, res) {
   return res.status(ok ? 204 : 404).end();
 }
 
+/**
+ * The portal itself asking the past-questions service something, rather than
+ * passing a browser's request through: marking a homework from the answers
+ * the server holds. Carries the same pass.
+ */
+export async function askPastQuestions(path, body, { timeoutMs = 150000 } = {}) {
+  const base = String(process.env.PQ_SERVICE_URL || '').trim().replace(/\/$/, '');
+  if (!base) throw Object.assign(new Error('The past questions service is not configured (PQ_SERVICE_URL).'), { status: 503 });
+  const response = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', [PASS_HEADER]: PASS },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(data.error || `The marker answered ${response.status}.`), { status: 502 });
+  return data;
+}
+
 /* Hop-by-hop headers belong to one connection and must not be copied to the next. */
 const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
   'te', 'trailer', 'transfer-encoding', 'upgrade', 'host']);

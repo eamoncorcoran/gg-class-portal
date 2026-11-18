@@ -115,7 +115,8 @@ mark splits and never exceed a maximum.
 slips are underlined by the examiner but never cost marks: if the intended word or point can be made out, \
 it gets full credit. A phonetic or half-right spelling of a word heard on the recording counts when it is \
 recognisable. Answers need not be full sentences, and a single word or name is enough where that is what \
-the scheme gives.
+the scheme gives. When it is a close call whether a misspelt, half-heard or loosely worded answer is the \
+scheme's point, the candidate gets the benefit of the doubt and the mark.
 - Reading comprehension: answers may be in the candidate's own words or lifted from the passage unless the \
 question says otherwise; Question 6(b) alone must be in the candidate's own words. Where two points are \
 asked for, the first correct point earns the larger share (for example 2 + 1). Extra material does not \

@@ -36,6 +36,7 @@ import mockOralRoutes from './src/routes/mockoral.js';
 import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
 import { startMessageNotifier } from './src/messages.js';
+import { returnWaitingHomework } from './src/pqhomework.js';
 import hubRoutes from './src/routes/hub.js';
 import { pastQuestionsProxy, pqPass } from './src/pqproxy.js';
 import { wall, noIndex, ROBOTS_TXT } from './src/wall.js';
@@ -409,6 +410,15 @@ async function start() {
   startBoardNotifier();
   // Private messages: whoever was written to is emailed, a minute or two later, unless they have read it by then.
   startMessageNotifier();
+  /* Past question homework that was handed in and is still waiting (from before
+     it was marked on the spot, or because the marker could not be reached at
+     the time) is marked against the scheme and returned: a minute after
+     start-up, then every quarter of an hour. */
+  const sweepHomework = () => returnWaitingHomework()
+    .then((done) => { if (done.returned) console.log(`Marked and returned ${done.returned} past question homework`); })
+    .catch((error) => console.error('Past question homework sweep failed', error?.message));
+  setTimeout(sweepHomework, 60 * 1000).unref?.();
+  setInterval(sweepHomework, 15 * 60 * 1000).unref?.();
   await loadAccess();
   await getSpeechConfig();
   const server = app.listen(config.port, () => {
