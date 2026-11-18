@@ -33,11 +33,12 @@ export const HomeworkTags = ({ q }: { q: Question }) => {
                     <li key={s.assignmentId}>
                         <a
                             href="/teach/tracker"
-                            title={`${s.title}. Set for ${s.className}, due ${dueLabel(s.deadlineAt)}. ${s.done} of ${s.students} handed in.`}
+                            title={`${s.title}. Set for ${s.className}, due ${dueLabel(s.deadlineAt)}. ${s.done} of ${s.students} handed in${s.marked ? `, ${s.marked} marked against the scheme and returned` : ""}.`}
                             className={cx("inline-flex items-center gap-1.5 rounded-full border-2 px-2.5 py-1 text-xs font-bold outline-focus-ring focus-visible:outline-2", past ? "border-secondary bg-secondary text-tertiary" : "border-purple-200 bg-purple-50 text-purple-800")}
                         >
                             <FileCheck02 aria-hidden="true" className="size-3.5 shrink-0" />
                             Homework · {s.className} · {past ? "was due" : "due"} {dueLabel(s.deadlineAt)} · {s.done} of {s.students} done
+                            {s.marked && s.outOf ? ` · average ${s.average} of ${s.outOf}` : ""}
                         </a>
                     </li>
                 );

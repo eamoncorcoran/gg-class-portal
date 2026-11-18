@@ -1366,6 +1366,14 @@ router.get('/pq-homework', asyncRoute(async (_req, res) => {
     `SELECT a.id, a.title, a.deadline_at, a.reopened_until, a.class_id, c.programme_name, c.day_of_week, c.start_time, pq.pq_id,
             (SELECT count(*)::int FROM homework_submissions hs
               WHERE hs.assignment_id=a.id AND hs.status IN ('submitted','returned')) done,
+            /* Marked against the scheme and handed back, and how the class did:
+               the average over those, as marks out of the total. */
+            (SELECT count(*)::int FROM homework_submissions hs
+              WHERE hs.assignment_id=a.id AND hs.status='returned' AND hs.teacher_max > 0) marked,
+            (SELECT round(avg(hs.teacher_score))::int FROM homework_submissions hs
+              WHERE hs.assignment_id=a.id AND hs.status='returned' AND hs.teacher_max > 0) average,
+            (SELECT max(hs.teacher_max)::int FROM homework_submissions hs
+              WHERE hs.assignment_id=a.id AND hs.status='returned' AND hs.teacher_max > 0) out_of,
             (SELECT count(*)::int FROM class_students cs
               JOIN users u ON u.id=cs.student_id AND u.role='student' AND u.active=true AND u.withdrawn_at IS NULL
               WHERE cs.class_id=a.class_id AND cs.active=true) students
@@ -1386,6 +1394,9 @@ router.get('/pq-homework', asyncRoute(async (_req, res) => {
       deadlineAt: row.reopened_until || row.deadline_at,
       done: row.done,
       students: row.students,
+      marked: row.marked,
+      average: row.average,
+      outOf: row.out_of,
     };
     (byQuestion[row.pq_id] ||= []).push(entry);
     if (!assignments.has(row.id)) assignments.set(row.id, { ...entry, questions: 0 });

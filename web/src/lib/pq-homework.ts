@@ -5,7 +5,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { api, useMe } from "@/lib/portal";
 
 /** One time a past question was set: the homework it is in, the class, the deadline, who has done it. */
-export type PqSet = { assignmentId: string; title: string; classId: string; className: string; deadlineAt: string; done: number; students: number };
+export type PqSet = { assignmentId: string; title: string; classId: string; className: string; deadlineAt: string; done: number; students: number; marked?: number; average?: number | null; outOf?: number | null };
 export type PqAssignment = PqSet & { questions: number };
 type State = { byQuestion: Record<string, PqSet[]>; assignments: PqAssignment[] };
 
