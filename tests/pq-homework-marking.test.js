@@ -70,3 +70,10 @@ test('the marker gives the mark for meaning, and the benefit of the doubt', () =
   assert.match(summary({ got: 14, total: 18 }), /^Marked against the official marking scheme: 14 of 18 marks\./);
   assert.ok(!summary({ got: 1, total: 2 }).includes('—'));
 });
+
+test('a past paper homework cannot be handed in as loose text through the old form', () => {
+  const submit = student.slice(student.indexOf("router.post('/assignments/:id/submit'"), student.indexOf("router.post('/homework/:id/read-feedback'"));
+  const guard = submit.indexOf('if (allMarkable(assignment.pq_ids)) {');
+  assert.ok(guard > -1 && guard < submit.indexOf('INSERT INTO homework_submissions('), 'turned away before anything is saved');
+  assert.match(submit, /This homework is done on the past paper itself\. Open it at \$\{config\.appUrl\}\/hw\/\$\{assignment\.id\}/);
+});

@@ -545,6 +545,17 @@ router.post('/assignments/:id/submit', asyncRoute(async (req, res) => {
   if (!assignmentOpen(assignment)) return res.status(409).json({ error: 'This assignment is closed.' });
   const already = await one('SELECT status FROM homework_submissions WHERE assignment_id=$1 AND student_id=$2', [assignment.id, req.user.id]);
   if (already?.status === 'returned') return res.status(409).json({ error: 'Your teacher has already returned this homework. Open it from your calendar to read the feedback.' });
+  /* A listening or comprehension from the past papers is answered on the paper,
+     in its own answer spaces, because that is what the scheme marks. Two
+     students handed one in through the old plain form instead, as loose text,
+     and it could not be marked. So a hand-in of this kind with nothing typed
+     into the paper is turned away with the way to the paper. */
+  if (allMarkable(assignment.pq_ids)) {
+    const spaces = Object.values(parsed.data.pqResult?.answers || {}).flatMap((typed) => Object.values(typed || {}));
+    if (!spaces.some((text) => String(text).trim())) {
+      return res.status(400).json({ error: `This homework is done on the past paper itself. Open it at ${config.appUrl}/hw/${assignment.id} and type your answers into the paper.` });
+    }
+  }
   const questions = Array.isArray(assignment.questions) ? assignment.questions : [];
   const missingRequired = questions.some((question, index) => question.required && !String(parsed.data.answers[index] || '').trim());
   if (missingRequired) return res.status(400).json({ error: 'Complete every required homework question.' });
