@@ -4,9 +4,8 @@ import { Fragment, useState } from "react";
 import { AlertCircle, ArrowRight, Bookmark, Check, CheckSquare, ChevronDown, FileCheck02, InfoCircle, LayoutRight, Minus, Plus, Printer, Square, X } from "@/components/app/ic";
 import { motion } from "motion/react";
 import { Button as AriaButton } from "react-aria-components";
-import { Link } from "react-router";
 import { Badge } from "@/components/base/badges/badges";
-import { type Img, type Question, D, answerKeys, checkable, isAural, label, samplesOf, where } from "@/lib/data";
+import { type Img, type Question, D, answerKeys, checkable, isAural, label, samplesOf } from "@/lib/data";
 import { type Check as CheckT, type Result, type Verdict, get, set, setAnswer, toggleExam, toggleSaved, useStore } from "@/lib/store";
 import { startPrinting, togglePick, usePick } from "@/lib/pick";
 import { cx } from "@/utils/cx";
@@ -509,11 +508,9 @@ export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?
                         ))}
                     </div>
                     <h2 id={`qt-${q.id}`} className={cx("text-lg font-semibold text-primary", !(hideYear && !q.kinds?.length) && "mt-3")}>
-                        <Link to={`/q/${q.id}`} className="rounded-sm outline-focus-ring hover:underline hover:decoration-border-primary hover:underline-offset-4 focus-visible:outline-2">
-                            {label(q)}
-                        </Link>
+                        {/* A title, not a link: the question is already open on the page it sits on. */}
+                        {label(q)}
                     </h2>
-                    <p className="mt-1 text-sm text-tertiary">{where(q)} · State Examinations Commission</p>
                     {!inExam && <HomeworkTags q={q} />}
                 </div>
                 {printing && !inExam ? (

@@ -135,3 +135,11 @@ test('no line of capitals sits on top of a main heading', () => {
     });
   }
 });
+
+test('a question\'s title is a title, and nothing sits under it', () => {
+  // It was a link that opened the same question on a page of its own, over a line saying which page of the paper it came from.
+  const header = card.slice(card.indexOf('<h2 id={`qt-${q.id}`}'), card.indexOf('{!inExam && <HomeworkTags q={q} />}'));
+  assert.ok(!/<Link|href=/.test(header), 'the title does not link anywhere');
+  assert.ok(!/State Examinations Commission|where\(q\)/.test(header));
+  assert.match(header, /\{label\(q\)\}/);
+});
