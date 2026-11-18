@@ -21,7 +21,7 @@ test('a student can only ever reach their own conversation', () => {
   assert.ok(!/req\.params|req\.query|studentId/.test(routes));
   assert.match(routes, /studentThread\(req\.user\.id\)/);
   assert.match(routes, /studentUnread\(req\.user\.id\)/);
-  assert.match(routes, /studentSends\(req\.user, parsed\.data\.body\)/);
+  assert.match(routes, /studentSends\(req\.user, parsed\.data\.body, files\)/);
   // They sit behind the student gate, not above it.
   assert.ok(student.indexOf('router.use(requireStudent);') < student.indexOf("router.get('/messages'"));
 });
@@ -86,6 +86,6 @@ test('a student writes to the teacher, not the staff: only the lead teacher read
   assert.ok(admin.indexOf("router.use('/messages', leadTeacherOnly);") < admin.indexOf("router.get('/messages', asyncRoute"));
   assert.match(admin, /if \(req\.user\.isSuperAdmin\) return next\(\);/);
   // The teacher may write first, to any student.
-  assert.match(admin, /router\.post\('\/messages\/:studentId', asyncRoute/);
+  assert.match(admin, /router\.post\('\/messages\/:studentId', receiveMessageFiles, asyncRoute/);
   assert.match(read('../web/src/components/app/console.tsx'), /\{ id: "messages", label: "Private messages", icon: Mail01, superOnly: true \},/);
 });

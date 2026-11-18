@@ -3,7 +3,7 @@
 // and Past Papers. Your own things (saved questions, exams, account) live in the header menu.
 import { type FC, useEffect, useState } from "react";
 import { ChevronDown, X } from "@/components/app/ic";
-import { DuoBook, DuoBooks, DuoBubbles, DuoCheckDoc, DuoFeather, DuoFolder, DuoHome, DuoLive, DuoMegaphone, DuoNews, DuoPencil, DuoQuestion, DuoScroll } from "@/components/app/duo-icons";
+import { DuoBook, DuoBooks, DuoBubbles, DuoCheckDoc, DuoFeather, DuoFolder, DuoHome, DuoLive, DuoMail, DuoMegaphone, DuoNews, DuoPencil, DuoQuestion, DuoScroll } from "@/components/app/duo-icons";
 import { AnimatePresence, motion } from "motion/react";
 import { Button as AriaButton, Link as AriaLink } from "react-aria-components";
 import { useLocation } from "react-router";
@@ -11,6 +11,7 @@ import { ButtonUtility } from "@/components/base/buttons/button-utility";
 import { NAV, type NavItem, soonTopics, topic } from "@/lib/data";
 import { set } from "@/lib/store";
 import { useLiveNow, useMe, useStudentBootstrap } from "@/lib/portal";
+import { useUnreadMessages } from "@/lib/messages";
 import { cx } from "@/utils/cx";
 
 /** The hub is Irish only; these stay for the pages that still ask. */
@@ -214,6 +215,12 @@ export const SidebarContent = ({ active, topicSlug = "", onClose }: { active: st
     /* The red dot means the class is on: the teacher has gone live. It used to go by the timetable,
        so it lit up for two hours at every scheduled class whether anybody was teaching or not. */
     const liveNow = useLiveNow();
+    /* The private line, at the foot of the menu on every page. A student's goes to their one
+       conversation with the teacher; the teacher's goes to the list of them. The number is what is
+       waiting to be read. An administrator who is not the lead teacher has no private line. */
+    const unread = useUnreadMessages();
+    const hasLine = Boolean(me) && !(me?.role === "admin" && !me.isSuperAdmin);
+    const lineHref = me?.role === "admin" ? "/teach/messages" : "/message";
 
     return (
         <div className="flex h-full flex-col overflow-y-auto">
@@ -275,6 +282,13 @@ export const SidebarContent = ({ active, topicSlug = "", onClose }: { active: st
                     </li>
                 </ul>
             </nav>
+            {hasLine && (
+                <div className="shrink-0 border-t-2 border-secondary px-4 py-3">
+                    <NavRow href={lineHref} icon={DuoMail} current={active === "message"} badge={unread}>
+                        {me?.role === "admin" ? "Private messages" : "Private message"}
+                    </NavRow>
+                </div>
+            )}
         </div>
     );
 };

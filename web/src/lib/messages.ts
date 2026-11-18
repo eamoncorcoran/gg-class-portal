@@ -1,9 +1,12 @@
 // Private messages: one long conversation between each student and the teacher. The hub keeps it;
 // this file is the types, and the count of unread messages that the header and the console show.
 import { useEffect, useSyncExternalStore } from "react";
-import { api, useMe } from "./portal";
+import { api, upload, useMe } from "./portal";
 
-export type Message = { id: string; fromTeacher: boolean; senderName: string; body: string; createdAt: string; readAt: string | null };
+export type MessageFile = { id: string; kind: "file" | "voice"; name: string; mime: string; size: number; seconds: number; url: string };
+export type Message = { id: string; fromTeacher: boolean; senderName: string; body: string; createdAt: string; readAt: string | null; files: MessageFile[] };
+/** What is being sent: words, files picked from the device, and (the teacher only) a voice note just recorded. */
+export type Outgoing = { body: string; files: File[]; voice: { blob: Blob; seconds: number; fileName: string } | null };
 export type Teacher = { name: string; firstName: string; avatar?: string };
 export type StudentThread = { teacher: Teacher; messages: Message[] };
 export type TeacherThread = { student: { id: string; name: string; email: string; avatar?: string; className: string | null; active: boolean }; messages: Message[] };
@@ -11,6 +14,25 @@ export type Conversation = { studentId: string; name: string; email: string; ava
 export type Inbox = { unread: number; conversations: Conversation[]; students: { id: string; name: string; className: string | null }[] };
 
 export const MESSAGE_MAX = 5000;
+export const MAX_FILES = 5;
+export const MAX_FILE_MB = 10;
+/* What each side may attach. The hub decides again when the file arrives, by what the file is. */
+export const STUDENT_ACCEPT = ".pdf,.doc,.docx";
+export const TEACHER_ACCEPT = ".pdf,.doc,.docx,.pptx,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.m4a,.txt";
+export const fileSize = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`);
+
+/** Sends a message to `path`: plain JSON when it is only words, a form when anything is attached. */
+export const sendMessage = async (path: string, out: Outgoing): Promise<Message> => {
+    if (!out.files.length && !out.voice) return (await api<{ message: Message }>(path, { method: "POST", json: { body: out.body } })).message;
+    const form = new FormData();
+    form.append("body", out.body);
+    for (const f of out.files) form.append("files", f, f.name);
+    if (out.voice) {
+        form.append("voice", out.voice.blob, out.voice.fileName);
+        form.append("voiceSeconds", String(Math.round(out.voice.seconds)));
+    }
+    return (await upload<{ message: Message }>(path, form)).message;
+};
 
 /* ---- how many are waiting to be read ---- */
 let unread = 0;

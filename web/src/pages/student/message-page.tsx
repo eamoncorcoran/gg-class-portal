@@ -9,7 +9,7 @@ import { Navigate } from "react-router";
 import { Avatar } from "@/components/app/hub-parts";
 import { Thread } from "@/components/app/message-thread";
 import { Page } from "@/components/app/page-parts";
-import { type Message, type StudentThread, setUnread } from "@/lib/messages";
+import { type Outgoing, STUDENT_ACCEPT, type StudentThread, sendMessage, setUnread } from "@/lib/messages";
 import { api, useMe, useStudentBootstrap } from "@/lib/portal";
 import { SignInCard } from "./password-pages";
 
@@ -41,8 +41,8 @@ const Conversation = () => {
         };
     }, [load]);
 
-    const send = async (body: string) => {
-        const { message } = await api<{ message: Message }>("/api/student/messages", { method: "POST", json: { body } });
+    const send = async (out: Outgoing) => {
+        const message = await sendMessage("/api/student/messages", out);
         setData((d) => (d ? { ...d, messages: [...d.messages, message] } : d));
     };
 
@@ -67,6 +67,8 @@ const Conversation = () => {
                     mine={(m) => !m.fromTeacher}
                     onSend={send}
                     placeholder={`Write to ${data.teacher.firstName}`}
+                    accept={STUDENT_ACCEPT}
+                    attachHint="You can attach a PDF or a Word document."
                     empty={
                         <div className="mx-auto max-w-md text-center">
                             <p className="text-lg font-bold text-primary">Write to {data.teacher.firstName}</p>

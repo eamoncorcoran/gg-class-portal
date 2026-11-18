@@ -10,7 +10,7 @@ import { DuoDialog, DuoInput } from "@/components/app/duo-dialog";
 import { Avatar } from "@/components/app/hub-parts";
 import { ArrowLeft, Plus } from "@/components/app/ic";
 import { Thread } from "@/components/app/message-thread";
-import { type Inbox, type Message, type TeacherThread, setUnread, whenLabel } from "@/lib/messages";
+import { type Inbox, type Outgoing, TEACHER_ACCEPT, type TeacherThread, sendMessage, setUnread, whenLabel } from "@/lib/messages";
 import { api } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 
@@ -35,8 +35,8 @@ const Open = ({ studentId, onChanged }: { studentId: string; onChanged: () => vo
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [load]);
 
-    const send = async (body: string) => {
-        const { message } = await api<{ message: Message }>(`/api/admin/messages/${studentId}`, { method: "POST", json: { body } });
+    const send = async (out: Outgoing) => {
+        const message = await sendMessage(`/api/admin/messages/${studentId}`, out);
         setData((d) => (d ? { ...d, messages: [...d.messages, message] } : d));
         onChanged();
     };
@@ -63,6 +63,9 @@ const Open = ({ studentId, onChanged }: { studentId: string; onChanged: () => vo
                 mine={(m) => m.fromTeacher}
                 onSend={send}
                 placeholder={`Reply to ${s.name.split(" ")[0]}`}
+                accept={TEACHER_ACCEPT}
+                attachHint="Send a PDF, a Word, PowerPoint or Excel file, a picture, an MP3 or a text file."
+                canVoice
                 disabled={s.active ? null : "This student's account is switched off, so they would not see a reply."}
                 empty={<p className="max-w-sm text-center text-md text-tertiary">Nothing yet. Whatever you write here starts the conversation, and {s.name.split(" ")[0]} gets an email to say it is there.</p>}
             />

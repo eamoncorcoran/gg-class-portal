@@ -20,6 +20,25 @@ const glass = (name: string, label: string) => {
     return Icon;
 };
 
+/** An envelope: private messages. Drawn here, in the set's rounded glassy manner, because the set has no letter. */
+export const DuoMail = ({ className, ...p }: P) => (
+    <Svg className={cx("inline-block size-6 shrink-0", className)} {...p}>
+        <defs>
+            <linearGradient id="duo-mail-body" x1="16" y1="6" x2="16" y2="27" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#6CC7FF" />
+                <stop offset="1" stopColor="#2F8BEA" />
+            </linearGradient>
+            <linearGradient id="duo-mail-flap" x1="16" y1="6" x2="16" y2="19" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#B9E6FF" />
+                <stop offset="1" stopColor="#7FCBFF" />
+            </linearGradient>
+        </defs>
+        <rect x="3" y="6.5" width="26" height="20" rx="5.5" fill="url(#duo-mail-body)" />
+        <path d="M4.6 9.2C4.6 7.7 5.9 6.5 7.5 6.5h17c1.6 0 2.9 1.2 2.9 2.7 0 .9-.5 1.8-1.3 2.3l-8.4 5.4a3.1 3.1 0 0 1-3.4 0L5.9 11.5a2.7 2.7 0 0 1-1.3-2.3Z" fill="url(#duo-mail-flap)" />
+        <path d="M6.2 9.6l8.6 5.6a2.2 2.2 0 0 0 2.4 0l8.6-5.6" stroke={C.white} strokeOpacity=".9" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+);
+
 /** Loudspeaker: Aural, Fógra (announcement). */
 export const DuoMegaphone = glass("loudspeaker", "DuoMegaphone");
 /** Chat: Community, Comhrá. */

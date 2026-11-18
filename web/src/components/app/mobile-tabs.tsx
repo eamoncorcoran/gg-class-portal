@@ -5,6 +5,7 @@ import { Menu02 } from "@/components/app/ic";
 import { Link } from "react-router";
 import { inQuestions } from "./app-sidebar";
 import { DuoBooks, DuoBubbles, DuoHome, DuoQuestion } from "./duo-icons";
+import { useUnreadMessages } from "@/lib/messages";
 import { cx } from "@/utils/cx";
 
 type Tab = { id: string; label: string; href?: string; icon: FC<{ className?: string }>; match: (active: string) => boolean };
@@ -18,6 +19,8 @@ export const MobileTabs = ({ active, onMenu }: { active: string; onMenu: () => v
         { id: "menu", label: "Menu", icon: Menu02 as FC<{ className?: string }>, match: () => false },
     ];
     const current = tabs.find((t) => t.match(active))?.id;
+    // On a phone the private line is inside the menu, so the Menu tab carries the dot when a message is waiting.
+    const unread = useUnreadMessages();
     return (
         <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t-2 border-secondary bg-primary pb-[env(safe-area-inset-bottom)] lg:hidden">
             <ul className="flex h-[66px] items-stretch">
@@ -25,7 +28,8 @@ export const MobileTabs = ({ active, onMenu }: { active: string; onMenu: () => v
                     const on = t.id === current;
                     const inner = (
                         <>
-                            <span className={cx("flex h-9 w-14 items-center justify-center rounded-xl border-2 transition duration-150 ease-out", on ? "border-brand bg-brand-primary" : "border-transparent")}>
+                            <span className={cx("relative flex h-9 w-14 items-center justify-center rounded-xl border-2 transition duration-150 ease-out", on ? "border-brand bg-brand-primary" : "border-transparent")}>
+                                {t.id === "menu" && unread > 0 && <span className="absolute top-0.5 right-2.5 size-2.5 rounded-full bg-error-solid ring-2 ring-primary" aria-label={`${unread} unread private message${unread === 1 ? "" : "s"}`} />}
                                 <t.icon aria-hidden="true" className={cx("size-6 transition duration-150", t.id === "menu" ? "size-5.5 stroke-[2.5px] text-fg-quaternary" : !on && "opacity-60 saturate-50")} />
                             </span>
                             <span className={cx("mt-0.5 text-[11px] leading-none font-bold tracking-wide uppercase", on ? "text-brand-secondary" : "text-quaternary")}>{t.label}</span>

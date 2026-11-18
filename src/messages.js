@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { one, query } from './db.js';
 import { sendPrivateMessageNotice } from './email.js';
+import { storeMessageFile, removeStoredMessageFile } from './messagefiles.js';
 
 /**
  * Private messages: one long conversation between each student and the teacher.
@@ -20,6 +21,18 @@ export const MESSAGE_MAX = 5000;
 /* More than this from one person inside ten minutes is not a conversation. */
 const BURST_LIMIT = 30;
 
+/* A file on a message, as the page needs it: what it is called, how big, and
+   the address that plays or opens it (which checks again who is asking). */
+const shapeFile = (file) => ({
+  id: file.id,
+  kind: file.kind,
+  name: file.file_name,
+  mime: file.mime_type,
+  size: Number(file.size_bytes) || 0,
+  seconds: file.seconds || 0,
+  url: `/api/media/message-file/${file.id}`,
+});
+
 const shape = (row) => ({
   id: row.id,
   fromTeacher: row.from_teacher,
@@ -27,10 +40,57 @@ const shape = (row) => ({
   body: row.body,
   createdAt: row.created_at,
   readAt: row.read_at,
+  files: (row.files || []).map(shapeFile),
 });
 
-const THREAD_SQL = `SELECT m.*, u.name sender_name FROM private_messages m
+const FILES_SQL = `COALESCE((SELECT json_agg(f ORDER BY f.created_at, f.id) FROM private_message_files f WHERE f.message_id=m.id), '[]'::json) files`;
+const THREAD_SQL = `SELECT m.*, u.name sender_name, ${FILES_SQL} FROM private_messages m
   LEFT JOIN users u ON u.id=m.sender_id WHERE m.student_id=$1 ORDER BY m.created_at, m.id`;
+
+/* A message is words, or files, or both, but not neither. */
+const needSomething = (body, files) => {
+  if (!String(body || '').trim() && !files.length) throw Object.assign(new Error('Write a message or attach something first.'), { status: 400 });
+};
+
+/* The files are written to the private store, then recorded against the
+   message. If recording one fails, what was written is taken away again and
+   the message with it, so nothing is left half sent. */
+async function attach(messageId, files) {
+  const stored = [];
+  try {
+    const rows = [];
+    for (const file of files) {
+      const storedName = await storeMessageFile(file);
+      stored.push(storedName);
+      rows.push(await one(
+        `INSERT INTO private_message_files(message_id,kind,stored_name,file_name,mime_type,size_bytes,seconds)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [messageId, file.kind, storedName, file.fileName, file.mimeType, file.size, file.seconds],
+      ));
+    }
+    return rows;
+  } catch (error) {
+    await Promise.all(stored.map(removeStoredMessageFile));
+    await query('DELETE FROM private_messages WHERE id=$1', [messageId]);
+    throw error;
+  }
+}
+
+/** May this person read the teacher's side? The lead teacher, or any administrator when nobody is marked as lead. */
+export async function mayReadAsTeacher(user) {
+  if (user?.role !== 'admin') return false;
+  if (user.isSuperAdmin) return true;
+  const lead = await one(`SELECT 1 ok FROM users WHERE role='admin' AND active=true AND is_super_admin=true LIMIT 1`);
+  return !lead;
+}
+
+/** One attached file with whose conversation it belongs to, for the route that serves it. */
+export async function messageFile(fileId) {
+  return one(
+    `SELECT f.*, m.student_id FROM private_message_files f JOIN private_messages m ON m.id=f.message_id WHERE f.id=$1`,
+    [fileId],
+  );
+}
 
 /** The teacher a student is writing to: the lead administrator, by name and face. */
 export async function leadTeacher() {
@@ -67,13 +127,14 @@ export async function studentUnread(studentId) {
   return row?.n || 0;
 }
 
-export async function studentSends(student, body) {
+export async function studentSends(student, body, files = []) {
+  needSomething(body, files);
   await guardBurst(student.id);
   const row = await one(
     `INSERT INTO private_messages(student_id,sender_id,from_teacher,body) VALUES ($1,$1,false,$2) RETURNING *`,
-    [student.id, body],
+    [student.id, String(body || '').trim()],
   );
-  return shape({ ...row, sender_name: student.name });
+  return shape({ ...row, sender_name: student.name, files: await attach(row.id, files) });
 }
 
 /* ---- the teacher's side ------------------------------------------------ */
@@ -87,7 +148,10 @@ export async function teacherInbox() {
             (SELECT c.programme_name FROM classes c JOIN class_students cs ON cs.class_id=c.id
               WHERE cs.student_id=u.id AND cs.active=true ORDER BY cs.enrolled_at DESC LIMIT 1) class_name
      FROM users u
-     JOIN LATERAL (SELECT body, created_at, from_teacher FROM private_messages m WHERE m.student_id=u.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1) last ON true
+     JOIN LATERAL (SELECT COALESCE(NULLIF(m.body,''),
+                            (SELECT string_agg(CASE WHEN f.kind='voice' THEN 'Voice note' ELSE f.file_name END, ', ') FROM private_message_files f WHERE f.message_id=m.id),
+                            '') body, m.created_at, m.from_teacher
+                   FROM private_messages m WHERE m.student_id=u.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1) last ON true
      ORDER BY last.created_at DESC`,
   );
   const students = await query(
@@ -132,18 +196,20 @@ export async function teacherThread(studentId, { markRead = true } = {}) {
   };
 }
 
-export async function teacherSends(teacher, studentId, body) {
+export async function teacherSends(teacher, studentId, body, files = []) {
+  needSomething(body, files);
   const student = await one(`SELECT id, role, active FROM users WHERE id=$1`, [studentId]);
   if (!student || student.role !== 'student') throw Object.assign(new Error('There is no such student.'), { status: 404 });
   if (!student.active) throw Object.assign(new Error('This student’s account is switched off, so they would not see a reply.'), { status: 409 });
   await guardBurst(teacher.id);
   const row = await one(
     `INSERT INTO private_messages(student_id,sender_id,from_teacher,body) VALUES ($1,$2,true,$3) RETURNING *`,
-    [studentId, teacher.id, body],
+    [studentId, teacher.id, String(body || '').trim()],
   );
+  const attached = await attach(row.id, files);
   /* Answering is reading: whatever the student wrote before this is seen. */
   await query(`UPDATE private_messages SET read_at=now() WHERE student_id=$1 AND from_teacher=false AND read_at IS NULL`, [studentId]);
-  return shape({ ...row, sender_name: teacher.name });
+  return shape({ ...row, sender_name: teacher.name, files: attached });
 }
 
 /* ---- telling the other side, by email ---------------------------------- */
@@ -166,7 +232,7 @@ export const QUIET_SECONDS = 90;
  */
 export async function announceMessages({ now = new Date() } = {}) {
   const due = await query(
-    `SELECT m.*, s.name sender_name FROM private_messages m LEFT JOIN users s ON s.id=m.sender_id
+    `SELECT m.*, s.name sender_name, ${FILES_SQL} FROM private_messages m LEFT JOIN users s ON s.id=m.sender_id
      WHERE m.emailed_at IS NULL AND m.read_at IS NULL AND m.created_at < $1::timestamptz - make_interval(secs => $2)
      ORDER BY m.created_at, m.id`,
     [now, QUIET_SECONDS],

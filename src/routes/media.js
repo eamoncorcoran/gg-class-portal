@@ -15,6 +15,7 @@ import { requireAuth } from '../session.js';
 import { one } from '../db.js';
 import { studentCanSeeLesson } from '../courses.js';
 import { AVATAR_PX, avatarThumb } from '../avatars.js';
+import { messageFile, mayReadAsTeacher } from '../messages.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -300,6 +301,47 @@ router.get('/homework-file/:id', asyncRoute(async (req, res) => {
   res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${String(file.file_name).replace(/[^\w. -]/g, '_')}"`);
   res.setHeader('Cache-Control', 'private, max-age=3600');
   res.setHeader('Content-Length', fs.statSync(filePath).size);
+  return fs.createReadStream(filePath).pipe(res);
+}));
+
+/* A file or a voice note on a private message. It belongs to one conversation:
+   the student whose conversation it is may open it, and the teacher. Nobody
+   else, whatever id they have. */
+router.get('/message-file/:id', asyncRoute(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'File not found.' });
+  const file = await messageFile(req.params.id);
+  if (!file) return res.status(404).json({ error: 'File not found.' });
+  const mine = req.user.role === 'student' && file.student_id === req.user.id;
+  if (!mine && !(await mayReadAsTeacher(req.user))) return res.status(403).json({ error: 'That file belongs to somebody else\u2019s conversation.' });
+
+  const filePath = resolveStored(file.stored_name);
+  if (!filePath) return res.status(404).json({ error: 'That file is no longer available.' });
+
+  const voice = file.kind === 'voice';
+  res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // A voice note plays in place, a picture or a PDF opens in place, anything else downloads.
+  const inline = voice || /^image\/|^audio\/|^application\/pdf$/.test(file.mime_type || '');
+  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${String(file.file_name).replace(/[^\w. -]/g, '_')}"`);
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  // Ranges, so a voice note can be scrubbed without fetching all of it.
+  const { size } = fs.statSync(filePath);
+  const match = req.headers.range && /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
+  if (match) {
+    const start = match[1] ? Number(match[1]) : 0;
+    const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+    if (start >= size || end < start) {
+      res.setHeader('Content-Range', `bytes */${size}`);
+      return res.status(416).end();
+    }
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+    res.setHeader('Content-Length', end - start + 1);
+    return fs.createReadStream(filePath, { start, end }).pipe(res);
+  }
+  res.setHeader('Content-Length', size);
   return fs.createReadStream(filePath).pipe(res);
 }));
 

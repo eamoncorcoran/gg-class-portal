@@ -36,7 +36,8 @@ import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashT
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { moveCandidates, startMoves } from '../lessonmoves.js';
-import { MESSAGE_MAX, teacherInbox, teacherUnread, teacherThread, teacherSends } from '../messages.js';
+import { MESSAGE_MAX, teacherInbox, teacherUnread, teacherThread, teacherSends, mayReadAsTeacher } from '../messages.js';
+import { receiveMessageFiles, checkMessageFiles } from '../messagefiles.js';
 import { zoomConfigured } from '../zoom.js';
 import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, rememberIdentity, rematchSittings } from '../zoomattendance.js';
 import { bunnyConfigured, bunnySigning, createVideo, uploadTicket } from '../bunny.js';
@@ -3911,8 +3912,7 @@ router.delete('/lesson-attachments/:id', asyncRoute(async (req, res) => {
    lead, any administrator may, so the line is never left with nobody on it. */
 const leadTeacherOnly = asyncRoute(async (req, res, next) => {
   if (req.user.isSuperAdmin) return next();
-  const lead = await one(`SELECT 1 ok FROM users WHERE role='admin' AND active=true AND is_super_admin=true LIMIT 1`);
-  if (!lead) return next();
+  if (await mayReadAsTeacher(req.user)) return next();
   return res.status(403).json({ error: 'Private messages are between a student and their teacher.' });
 });
 router.use('/messages', leadTeacherOnly);
@@ -3931,12 +3931,15 @@ router.get('/messages/:studentId', asyncRoute(async (req, res) => {
   res.json(await teacherThread(parsed.data));
 }));
 
-router.post('/messages/:studentId', asyncRoute(async (req, res) => {
+/* The teacher may send words, files of more kinds than a student may, and a
+   voice note recorded there and then. */
+router.post('/messages/:studentId', receiveMessageFiles, asyncRoute(async (req, res) => {
   const id = z.string().uuid().safeParse(req.params.studentId);
   if (!id.success) return res.status(404).json({ error: 'There is no such student.' });
-  const parsed = z.object({ body: z.string().trim().min(1).max(MESSAGE_MAX) }).safeParse(req.body);
+  const parsed = z.object({ body: z.string().trim().max(MESSAGE_MAX).default('') }).safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Write a reply first.') });
-  const message = await teacherSends(req.user, id.data, parsed.data.body);
+  const files = checkMessageFiles(req, { role: 'admin' });
+  const message = await teacherSends(req.user, id.data, parsed.data.body, files);
   res.status(201).json({ message });
 }));
 

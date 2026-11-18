@@ -683,7 +683,15 @@ export async function sendPrivateMessageNotice({ to, toTeacher, student, fromNam
     ? `${student.name} sent ${count === 1 ? 'a private message' : `${count} private messages`} in the class hub.`
     : `${first} sent you ${count === 1 ? 'a private message' : `${count} private messages`} in the class hub.`;
   const note = 'Please answer in the hub rather than by replying to this email, so the whole conversation stays in one place.';
-  const quoted = messages.map((message) => String(message.body).trim());
+  /* What was attached is named, not sent: the file stays in the hub, where only
+     the two people in the conversation can open it. */
+  const minutes = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
+  const attached = (message) => (message.files || []).map((file) => (
+    file.kind === 'voice'
+      ? `[Voice note${file.seconds ? `, ${minutes(file.seconds)}` : ''}: listen in the hub]`
+      : `[Attached: ${file.file_name}]`
+  ));
+  const quoted = messages.map((message) => [String(message.body || '').trim(), ...attached(message)].filter(Boolean).join('\n'));
 
   const text = [
     lead, '',

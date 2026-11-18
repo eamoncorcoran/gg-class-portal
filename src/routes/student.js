@@ -30,6 +30,7 @@ import { studentMockOral } from '../mockoral.js';
 import { sendEmail } from '../email.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 import { MESSAGE_MAX, studentThread, studentUnread, studentSends } from '../messages.js';
+import { receiveMessageFiles, checkMessageFiles } from '../messagefiles.js';
 import { allMarkable, markPastQuestions, returnMarked } from '../pqhomework.js';
 
 const router = Router();
@@ -186,10 +187,14 @@ router.get('/messages/unread', asyncRoute(async (req, res) => {
   res.json({ unread: await studentUnread(req.user.id) });
 }));
 
-router.post('/messages', asyncRoute(async (req, res) => {
-  const parsed = z.object({ body: z.string().trim().min(1).max(MESSAGE_MAX) }).safeParse(req.body);
+/* Words, or a PDF or Word document, or both. Nothing else may be attached by a
+   student and a voice note is refused: src/messagefiles.js decides by what the
+   file is, not by what it is called. */
+router.post('/messages', receiveMessageFiles, asyncRoute(async (req, res) => {
+  const parsed = z.object({ body: z.string().trim().max(MESSAGE_MAX).default('') }).safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Write a message first.') });
-  const message = await studentSends(req.user, parsed.data.body);
+  const files = checkMessageFiles(req, { role: 'student' });
+  const message = await studentSends(req.user, parsed.data.body, files);
   res.status(201).json({ message });
 }));
 

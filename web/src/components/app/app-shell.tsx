@@ -56,7 +56,8 @@ export function useWhere(): { active: string; crumbs: Crumb[]; topicSlug?: strin
     if (a === "account") return { active: "account", crumbs: [{ label: "Your account" }] };
     if (a === "teach") {
         const names: Record<string, string> = { tracker: "Weekly tracker", messages: "Private messages", people: "Classes & students", calendar: "Calendar", courses: "Courses", sraith: "Sraith Pictiúr", "mock-orals": "Mock orals", live: "Live classroom", plans: "Plans", checkins: "Weekly check-ins", community: "Community", attendance: "Attendance upload", reminders: "Email reminders", drafting: "Feedback drafting", admins: "Administrators" };
-        return { active: "teach", crumbs: [{ label: "Teacher console", href: "/teach" }, ...(b && names[b] ? [{ label: names[b], href: c ? `/teach/${b}` : undefined }] : [])] };
+        // Private messages has its own row at the foot of the menu, so that row is the one lit, not Teacher console.
+        return { active: b === "messages" ? "message" : "teach", crumbs: [{ label: "Teacher console", href: "/teach" }, ...(b && names[b] ? [{ label: names[b], href: c ? `/teach/${b}` : undefined }] : [])] };
     }
     if (a === "signin") return { active: "signin", crumbs: [{ label: "Sign in" }] };
     if (a === "forgot") return { active: "signin", crumbs: [{ label: "Sign in", href: "/signin" }, { label: "Forgot password" }] };
