@@ -41,6 +41,7 @@ export const Trash01 = bold(P.Trash);
 export const Play = bold(P.Play);
 export const PlayCircle = bold(P.PlayCircle);
 export const PauseCircle = bold(P.PauseCircle);
+export const Pause = bold(P.Pause);
 export const Clock = bold(P.Clock);
 export const Printer = bold(P.Printer);
 export const Moon01 = bold(P.Moon);

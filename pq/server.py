@@ -324,6 +324,74 @@ def speak(text, lang):
     open(f, 'wb').write(r.content)
     return 200, f
 
+# ---------------- the Sraith Pictiúr, spoken ----------------
+# Every Irish sentence of every Sraith can be listened to. A sentence is asked for by where it is
+# (/oral/sp/audio/<sraith>/<picture>-<n>.mp3, or end-<n> for the ending), so only sentences that are
+# in the Sraith can ever be spoken: this is not a way to have anything said. The voice is Azure's
+# Irish one and nothing else; if Azure cannot be reached the answer is "no audio", never another
+# voice. Each sentence is made once and kept on disk for good, so playing it again, by anybody, is a
+# file read. All of them are made in the background a little after start-up, so the first student
+# to press a sentence does not wait for it either.
+SRAITH_CLIP = re.compile(r'^/oral/sp/audio/([a-z0-9-]{1,80})/(\d{1,2}|end)-(\d{1,2})\.mp3$')
+
+def sraith_sentence(slug, box, index):
+    """The Irish of one Sraith sentence, or None when there is no such sentence."""
+    for sr in load('oral.json').get('sraith', []):
+        if sr.get('slug') != slug:
+            continue
+        if box == 'end':
+            lines = sr.get('ending') or []
+        else:
+            lines = next((b.get('sentences') or [] for b in sr.get('boxes') or [] if str(b.get('n')) == str(int(box))), [])
+        i = int(index)
+        return (lines[i].get('ga') or '').strip() or None if 0 <= i < len(lines) else None
+    return None
+
+def sraith_sentences():
+    out = []
+    for sr in load('oral.json').get('sraith', []):
+        for b in sr.get('boxes') or []:
+            out += [(x.get('ga') or '').strip() for x in b.get('sentences') or []]
+        out += [(x.get('ga') or '').strip() for x in sr.get('ending') or []]
+    return [t for t in dict.fromkeys(out) if t]
+
+# How far the make-ahead pass has got, for /_health: nothing in it is private, and it is the one way
+# to see from outside that the clips are there without playing one.
+SRAITH_AUDIO = {'ready': 0, 'of': 0, 'failed': 0, 'done': False}
+
+def warm_sraith_audio():
+    """Speaks every Sraith sentence that is not on disk yet, one after another. A refusal from Azure
+    (too many at once, a blip) is waited out and that sentence tried again, a few times."""
+    time.sleep(25)
+    key, _ = speech_keys()
+    if not key or not have_data():
+        print('sraith audio: nothing made (no Azure key, or no data yet)', flush=True)
+        return
+    todo = sraith_sentences()
+    made = had = failed = 0
+    SRAITH_AUDIO.update(of=len(todo))
+    for text in todo:
+        SRAITH_AUDIO.update(ready=had + made, failed=failed)
+        clean = _re.sub(r'[«»*_]', '', text).strip()[:600]
+        if os.path.exists(os.path.join(TTS_DIR, hashlib.sha1(f"{VOICES['ga']}|{clean}".encode()).hexdigest() + '.mp3')):
+            had += 1
+            continue
+        for attempt in range(4):
+            try:
+                status, _f = speak(text, 'ga')
+            except Exception as ex:
+                status = 502
+                print('sraith audio error:', repr(ex)[:160], flush=True)
+            if status == 200:
+                made += 1
+                break
+            time.sleep(15 * (attempt + 1))
+        else:
+            failed += 1
+        time.sleep(0.25)
+    SRAITH_AUDIO.update(ready=had + made, failed=failed, done=True)
+    print(f'sraith audio ready: {had + made} of {len(todo)} sentences on disk ({made} made now, {failed} failed)', flush=True)
+
 DIST = os.environ.get('DIST_DIR') or os.path.join(HERE, 'dist')   # the old React app; the hub is the front end now, so usually absent
 
 def safe_rel(path):
@@ -372,7 +440,7 @@ class Handler(SimpleHTTPRequestHandler):
         """The /_ endpoints. Returns True when it answered."""
         clean = self.path.split('?')[0]
         if clean == '/_health':
-            self.json_out(200, {'ok': True, 'data': have_data()})
+            self.json_out(200, {'ok': True, 'data': have_data(), 'sraithAudio': SRAITH_AUDIO})
         elif clean == '/_manifest':
             if self.authorised():
                 self.json_out(200, manifest())
@@ -439,6 +507,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if not self.allowed():
             return
+        clip = SRAITH_CLIP.match(self.path.split('?')[0])
+        if clip:
+            return self.sraith_clip(*clip.groups())
         if not self.path.startswith('/api/'):
             if not have_data():
                 return self.json_out(503, {'error': 'The question data is not uploaded yet.'})
@@ -501,6 +572,44 @@ class Handler(SimpleHTTPRequestHandler):
             print('marking error:', repr(ex)[:300], flush=True)
         self.json_out(status, out)
 
+    def sraith_clip(self, slug, box, index):
+        """One Sraith sentence as audio. Ranges are honoured: Safari on an iPhone asks for the first two
+        bytes before it will play anything, and plays nothing from a server that sends the whole file."""
+        text = sraith_sentence(slug, box, index)
+        if not text:
+            return self.json_out(404, {'error': 'No such sentence.'})
+        try:
+            status, f = speak(text, 'ga')
+        except Exception as ex:
+            print('sraith clip error:', repr(ex)[:160], flush=True)
+            status, f = 502, None
+        if status != 200 or not f:
+            return self.json_out(503, {'error': 'The audio for that sentence is not ready. Try it again in a moment.'})
+        size = os.path.getsize(f)
+        m = re.match(r'^bytes=(\d*)-(\d*)$', self.headers.get('Range', ''))
+        start, end = 0, size - 1
+        if m and (m.group(1) or m.group(2)):
+            start = int(m.group(1)) if m.group(1) else max(0, size - int(m.group(2) or 0))
+            end = min(int(m.group(2)), size - 1) if m.group(2) and m.group(1) else size - 1
+            if start > end or start >= size:
+                self.send_response(416)
+                self.send_header('Content-Range', f'bytes */{size}')
+                self.end_headers()
+                return
+            self.send_response(206)
+            self.send_header('Content-Range', f'bytes {start}-{end}/{size}')
+        else:
+            self.send_response(200)
+        self.send_header('Content-Type', 'audio/mpeg')
+        self.send_header('Content-Length', str(end - start + 1))
+        # (end_headers adds Accept-Ranges for an .mp3 address)
+        # The address carries a mark of the sentence's own words, so a clip can be kept for good.
+        self.send_header('Cache-Control', 'private, max-age=31536000, immutable')
+        self.end_headers()
+        with open(f, 'rb') as fh:
+            fh.seek(start)
+            self.wfile.write(fh.read(end - start + 1))
+
     def serve_range(self):
         """A browser can only move the playhead of a recording when the server honours byte
         ranges; without this every seek snapped back to the start. Returns False to fall through
@@ -545,4 +654,5 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     print(f'serving {SITE} on http://0.0.0.0:{PORT}' + ('' if have_data() else ' (no data.json yet: static requests answer 503 until upload.py runs)'),
           flush=True)
+    threading.Thread(target=warm_sraith_audio, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', PORT), Handler).serve_forever()

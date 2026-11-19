@@ -49,7 +49,13 @@ const useCached = <T,>(key: string, path: string) => {
    Pressing a new line stops the last one, and Play all walks through the picture's sentences with a
    short pause between them and the sentence being spoken picked out. */
 type Playing = { key: string | null; loading: boolean; all: string | null };
-const usePlayer = (slow: boolean) => {
+/* `audio` on a line is either a clip id of the course-book Sraith (served by /api/sraith/audio) or a
+   whole address beginning with "/", which is how the past papers' Sraith names its sentences. */
+const clipSrc = (audio: string, retry = 0) => {
+    const src = audio.startsWith("/") ? audio : `/api/sraith/audio/${encodeURIComponent(audio)}.mp3`;
+    return retry ? `${src}${src.includes("?") ? "&" : "?"}r=${retry}` : src;
+};
+export const usePlayer = (slow: boolean) => {
     const audio = useRef<HTMLAudioElement | null>(null);
     const run = useRef(0);
     const slowRef = useRef(slow);
@@ -102,7 +108,7 @@ const usePlayer = (slow: boolean) => {
                         tries += 1;
                         setTimeout(() => {
                             if (mine !== run.current) return;
-                            a.src = `/api/sraith/audio/${encodeURIComponent(li.audio)}.mp3?r=${tries}`;
+                            a.src = clipSrc(li.audio, tries);
                             rate();
                             a.play().catch(() => {
                                 /* onerror decides */
@@ -113,7 +119,7 @@ const usePlayer = (slow: boolean) => {
                     stop();
                     toast("That sentence did not play. Tap it again.");
                 };
-                a.src = `/api/sraith/audio/${encodeURIComponent(li.audio)}.mp3`;
+                a.src = clipSrc(li.audio);
                 rate(); // a new source resets the rate to the default, so both are set
                 a.play().catch((error: { name?: string }) => {
                     if (mine !== run.current || error?.name === "AbortError") return;

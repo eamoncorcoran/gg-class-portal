@@ -1,8 +1,9 @@
 // An Bhéaltriail: the four parts with their marks, the conversation explained (its notes are to
 // follow), and the twenty Sraith Pictiúr with their pictures and sentences.
 import { useEffect, useState } from "react";
-import { ArrowRight, Check, Clock } from "@/components/app/ic";
+import { ArrowRight, Clock, Pause, Play } from "@/components/app/ic";
 import { motion } from "motion/react";
+import { Button as AriaButton } from "react-aria-components";
 import { Link, useParams } from "react-router";
 import { DuoButton } from "@/components/app/duo";
 import { DuoBubbles, DuoHeadphones, DuoMegaphone, DuoNews, DuoScroll } from "@/components/app/duo-icons";
@@ -12,6 +13,7 @@ import { type Oral, type OralPart, loadOral } from "@/lib/extra";
 import { hi } from "@/lib/highlight";
 import { cx } from "@/utils/cx";
 import { NotFound } from "./not-found";
+import { usePlayer } from "./student/sraith-page";
 
 const useOral = () => {
     const [d, setD] = useState<Oral | null>(null);
@@ -204,10 +206,39 @@ export const SraithListPage = () => {
     );
 };
 
+/* Where a Sraith sentence's audio lives. It is named by where the sentence is, and carries a short
+   mark of the words themselves, so the browser can keep a clip for good and still fetch a new one if
+   the sentence is ever reworded. The voice is Azure's Irish one; each clip is made once and kept. */
+const mark = (text: string) => {
+    let h = 5381;
+    for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+    return h.toString(36);
+};
+const clipOf = (slug: string, box: number | "end", i: number, ga: string) => `/oral/sp/audio/${encodeURIComponent(slug)}/${box}-${i}.mp3?v=${mark(ga)}`;
+
+/** The round listen button beside a sentence: a spinner while its clip loads, lit while it plays. */
+const Listen = ({ on, loading, onPress, label }: { on: boolean; loading: boolean; onPress: () => void; label: string }) => (
+    <AriaButton
+        onPress={onPress}
+        aria-label={label}
+        aria-pressed={on}
+        className={cx(
+            "flex size-8 shrink-0 items-center justify-center rounded-full border-2 outline-focus-ring transition duration-100 ease-linear focus-visible:outline-2",
+            on || loading ? "border-brand bg-brand-primary text-brand-secondary" : "border-secondary bg-primary text-brand-secondary hover:border-brand",
+        )}
+    >
+        {loading ? <span className="size-3.5 animate-spin rounded-full border-2 border-brand border-r-transparent" /> : on ? <Pause aria-hidden="true" className="size-3.5" /> : <Play aria-hidden="true" className="size-3.5 translate-x-px" />}
+    </AriaButton>
+);
+
 export const SraithPage = () => {
     const { slug = "" } = useParams();
     const d = useOral();
     const [showEn, setShowEn] = useState(true);
+    const [slow, setSlow] = useState(false);
+    const player = usePlayer(slow);
+    // A different Sraith: whatever was playing stops.
+    useEffect(() => player.stop, [slug, player.stop]);
     if (!d) return <Page><Loading /></Page>;
     const s = d.sraith.find((x) => x.slug === slug);
     if (!s || !s.ready) return <NotFound />;
@@ -223,7 +254,12 @@ export const SraithPage = () => {
                 }
                 title={s.title}
                 sub="Tell the story picture by picture, then be ready for three questions on it. Keep to one tense."
-                actions={<Segmented ghost size="sm" label="English" value={showEn ? "on" : "off"} onChange={(k) => setShowEn(k === "on")} items={[{ id: "on", label: "With English" }, { id: "off", label: "Irish only" }]} itemClassName="px-3 py-2 duo-label tracking-normal" />}
+                actions={
+                    <>
+                        <Segmented ghost size="sm" label="English" value={showEn ? "on" : "off"} onChange={(k) => setShowEn(k === "on")} items={[{ id: "on", label: "With English" }, { id: "off", label: "Irish only" }]} itemClassName="px-3 py-2 duo-label tracking-normal" />
+                        <Segmented ghost size="sm" label="Speed" value={slow ? "slow" : "normal"} onChange={(k) => setSlow(k === "slow")} items={[{ id: "normal", label: "Normal speed" }, { id: "slow", label: "Slower" }]} itemClassName="px-3 py-2 duo-label tracking-normal" />
+                    </>
+                }
             />
             <ol className="grid gap-5 lg:grid-cols-2">
                 {s.boxes.map((b, n) => (
@@ -234,18 +270,37 @@ export const SraithPage = () => {
                                 <span className="absolute top-3 left-3 flex size-8 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white tabular-nums">{b.n}</span>
                             </div>
                         )}
-                        <ul className="flex flex-col gap-3 px-5 py-4">
-                            {b.sentences.map((x) => (
-                                <li key={x.ga} className="flex gap-3">
-                                    <Check aria-hidden="true" className="mt-1.5 size-4 shrink-0 stroke-[3px] text-fg-brand-primary" />
-                                    <div>
-                                        <p lang="ga" className="text-md leading-7 font-semibold text-primary">
-                                            {x.ga}
-                                        </p>
-                                        {showEn && x.en && <p className="text-sm text-tertiary">{x.en}</p>}
-                                    </div>
-                                </li>
-                            ))}
+                        {/* Every sentence can be listened to, and the whole picture played through in order. */}
+                        <div className="flex items-center justify-between gap-3 px-5 pt-4">
+                            <p className="text-sm font-bold text-tertiary">Pictiúr {b.n}</p>
+                            <AriaButton
+                                onPress={() => (player.state.all === `b${b.n}` ? player.stop() : player.play(b.sentences.map((x, i) => ({ key: `b${b.n}-${i}`, audio: clipOf(s.slug, b.n, i, x.ga) })), `b${b.n}`))}
+                                className={cx(
+                                    "flex h-8 items-center gap-1.5 rounded-full border-2 px-3 text-xs font-bold outline-focus-ring transition duration-100 ease-linear focus-visible:outline-2",
+                                    player.state.all === `b${b.n}` ? "border-brand bg-brand-primary text-brand-secondary" : "border-secondary text-brand-secondary hover:border-brand",
+                                )}
+                            >
+                                {player.state.all === `b${b.n}` ? <Pause aria-hidden="true" className="size-3.5" /> : <Play aria-hidden="true" className="size-3.5" />}
+                                {player.state.all === `b${b.n}` ? "Stop" : "Play all"}
+                            </AriaButton>
+                        </div>
+                        <ul className="flex flex-col gap-3 px-5 pt-3 pb-4">
+                            {b.sentences.map((x, i) => {
+                                const key = `b${b.n}-${i}`;
+                                const here = player.state.key === key;
+                                const press = () => (here && (player.state.loading || !player.state.all) ? player.stop() : player.play([{ key, audio: clipOf(s.slug, b.n, i, x.ga) }]));
+                                return (
+                                    <li key={x.ga} className="flex gap-3">
+                                        <Listen on={here && !player.state.loading} loading={here && player.state.loading} onPress={press} label={`Listen: ${x.ga}`} />
+                                        <div className="min-w-0">
+                                            <p lang="ga" onClick={press} className={cx("cursor-pointer text-md leading-7 font-semibold transition-colors duration-200", here ? "text-brand-secondary" : "text-primary")}>
+                                                {x.ga}
+                                            </p>
+                                            {showEn && x.en && <p className="text-sm text-tertiary">{x.en}</p>}
+                                        </div>
+                                    </li>
+                                );
+                            })}
                         </ul>
                     </motion.li>
                 ))}
@@ -254,14 +309,22 @@ export const SraithPage = () => {
                 <section className="mt-10 max-w-2xl">
                     <Head>Críoch · ending</Head>
                     <ul className="flex flex-col gap-3">
-                        {s.ending.map((x) => (
-                            <li key={x.ga}>
-                                <p lang="ga" className="text-md leading-7 font-semibold text-primary">
-                                    {x.ga}
-                                </p>
-                                {showEn && x.en && <p className="text-sm text-tertiary">{x.en}</p>}
-                            </li>
-                        ))}
+                        {s.ending.map((x, i) => {
+                            const key = `end-${i}`;
+                            const here = player.state.key === key;
+                            const press = () => (here ? player.stop() : player.play([{ key, audio: clipOf(s.slug, "end", i, x.ga) }]));
+                            return (
+                                <li key={x.ga} className="flex gap-3">
+                                    <Listen on={here && !player.state.loading} loading={here && player.state.loading} onPress={press} label={`Listen: ${x.ga}`} />
+                                    <div className="min-w-0">
+                                        <p lang="ga" onClick={press} className={cx("cursor-pointer text-md leading-7 font-semibold transition-colors duration-200", here ? "text-brand-secondary" : "text-primary")}>
+                                            {x.ga}
+                                        </p>
+                                        {showEn && x.en && <p className="text-sm text-tertiary">{x.en}</p>}
+                                    </div>
+                                </li>
+                            );
+                        })}
                     </ul>
                 </section>
             )}
