@@ -60,6 +60,17 @@ const Mark = ({ qid, k, r, style, className }: { qid: string; k: string; r: Resu
     );
 };
 
+/* An answer space is drawn the size of the box printed on the paper, one line. An answer longer than
+   that used to scroll inside it, so while it was being written only the last line could be seen and
+   the rest was out of sight: a box that read "go leor fodair" held three lines nobody could see. While
+   a space has the cursor it now grows to show everything in it, over the paper, and goes back to the
+   printed box when the cursor leaves. */
+const fit = (el: HTMLTextAreaElement | null, open: boolean) => {
+    if (!el) return;
+    el.style.height = "";
+    if (open && el.scrollHeight > el.clientHeight + 1) el.style.height = `${el.scrollHeight + 2}px`;
+};
+
 const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx: number | "rc"; maxpt: number; check?: CheckT }) => {
     const answers = useStore((s) => s.answers[q.id]);
     return (
@@ -74,7 +85,12 @@ const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx:
                             rows={1}
                             aria-label={`Answer space ${j + 1}`}
                             value={answers?.[key] || ""}
-                            onChange={(e) => setAnswer(q.id, key, e.target.value)}
+                            onChange={(e) => {
+                                setAnswer(q.id, key, e.target.value);
+                                fit(e.currentTarget, true);
+                            }}
+                            onFocus={(e) => fit(e.currentTarget, true)}
+                            onBlur={(e) => fit(e.currentTarget, false)}
                             onKeyDown={(e) => {
                                 // Enter moves on to the next space, like filling in the paper
                                 if (e.key === "Enter" && !e.shiftKey) {
@@ -85,7 +101,7 @@ const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx:
                             }}
                             placeholder="Type your answer"
                             className={cx(
-                                "absolute resize-none overflow-hidden rounded-[3px] border-0 px-1.5 pt-1 leading-tight text-primary outline-hidden transition duration-150 ease-out placeholder:text-placeholder/70 placeholder:italic focus:bg-primary focus:ring-2 focus:ring-brand focus:placeholder:text-transparent",
+                                "absolute resize-none overflow-hidden rounded-[3px] border-0 px-1.5 pt-1 leading-tight text-primary outline-hidden transition duration-150 ease-out placeholder:text-placeholder/70 placeholder:italic focus:z-10 focus:bg-primary focus:shadow-md focus:ring-2 focus:ring-brand focus:placeholder:text-transparent",
                                 r ? VERD[r.verdict].fill : "bg-secondary/80 ring-1 ring-secondary hover:bg-tertiary/70 hover:ring-primary",
                             )}
                             style={{
@@ -368,20 +384,22 @@ const CheckBar = ({ q, check }: { q: Question; check?: CheckT }) => {
                             </p>
                             <div className="col-span-3 grid gap-3 sm:col-span-2 sm:col-start-2 sm:grid-cols-2">
                                 <div>
-                                    <p className="text-xs font-medium text-quaternary">{r.verdict === "correct" ? "Your answer" : "You wrote"}</p>
+                                    <p className="text-xs font-medium text-quaternary">You wrote</p>
                                     <p lang="ga" className={cx("mt-0.5 text-md", mine ? "text-primary" : "text-placeholder italic")}>
                                         {mine || "Nothing written"}
                                     </p>
                                 </div>
-                                {r.verdict !== "correct" && r.expected && (
-                                    <div className="rounded-lg bg-success-primary px-3 py-2">
-                                        <p className="text-xs font-medium text-success-primary">Marking scheme</p>
+                                {/* The scheme's own answer, under every answer: a right one too, so what a full-mark answer
+                                    looks like is always there to compare with. */}
+                                {r.expected && (
+                                    <div className={cx("rounded-lg px-3 py-2", r.verdict === "correct" ? "bg-secondary_subtle" : "bg-success-primary")}>
+                                        <p className={cx("text-xs font-medium", r.verdict === "correct" ? "text-quaternary" : "text-success-primary")}>Marking scheme</p>
                                         <p lang="ga" className="mt-0.5 text-md font-medium text-primary">
                                             {r.expected}
                                         </p>
                                     </div>
                                 )}
-                                {r.feedback && r.verdict !== "correct" && <p className="text-sm text-tertiary sm:col-span-2">{r.feedback}</p>}
+                                {r.feedback && (r.verdict !== "correct" || /spelling|standard/i.test(r.feedback)) && <p className="text-sm text-tertiary sm:col-span-2">{r.feedback}</p>}
                             </div>
                         </li>
                         </Fragment>
@@ -487,9 +505,16 @@ export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?
     const building = usePick((s) => s.building);
     const live = !inExam?.running;
     const samples = samplesOf(q);
+    const toggleInExam = () => {
+        const at = get().exam.indexOf(q.id);
+        const on = toggleExam(q.id);
+        toast(on ? `Added to your exam (${get().exam.length})` : "Removed from your exam", on ? undefined : () => { const e = [...get().exam]; e.splice(at, 0, q.id); set("exam", e); });
+    };
+    // the card's edge turns green while it is ticked for printing, or in the exam being put together
+    const chosen = !inExam && ((printing && picked) || (building && examed));
 
     return (
-        <article id={`q-${q.id}`} aria-labelledby={`qt-${q.id}`} className={cx("mb-6 scroll-mt-40 overflow-clip rounded-2xl border-2 bg-primary", printing && picked && !inExam ? "border-brand" : "border-secondary")}>
+        <article id={`q-${q.id}`} aria-labelledby={`qt-${q.id}`} className={cx("mb-6 scroll-mt-40 overflow-clip rounded-2xl border-2 bg-primary", chosen ? "border-brand" : "border-secondary")}>
             <header className="flex flex-col gap-4 px-4 py-5 sm:px-6 md:flex-row md:items-start">
                 <div className="min-w-0 flex-1">
                     <div className={cx("flex flex-wrap items-center gap-2", hideYear && !q.kinds?.length && "hidden")}>
@@ -522,21 +547,31 @@ export const QuestionCard = ({ q, exam: inExam, hideYear }: { q: Question; exam?
                             {picked ? "Selected" : "Select"}
                         </DuoButton>
                     </div>
+                ) : building && !inExam ? (
+                    /* Putting an exam together: the other buttons step aside for one green "Add to exam",
+                       which turns to a tick once the question is in. The bar at the foot of the screen goes on. */
+                    <div className="flex shrink-0 items-center">
+                        <DuoButton
+                            color={examed ? "secondary" : "primary"}
+                            size="sm"
+                            iconLeading={examed ? Check : Plus}
+                            className={cx(examed && "border-brand bg-brand-primary text-brand-secondary")}
+                            onPress={toggleInExam}
+                        >
+                            {examed ? "Added" : "Add to exam"}
+                        </DuoButton>
+                    </div>
                 ) : (
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                         {!inExam && <SetHomeworkButton q={q} />}
-                        {/* Only while an exam is being put together, or once this question is in it. */}
+                        {/* Once this question is in an exam that hasn't been made yet. */}
                         {(building || examed) && (
                             <DuoButton
                                 color="secondary"
                                 size="sm"
                                 iconLeading={examed ? Check : Plus}
                                 className={cx(examed && "border-brand bg-brand-primary")}
-                                onPress={() => {
-                                    const at = get().exam.indexOf(q.id);
-                                    const on = toggleExam(q.id);
-                                    toast(on ? `Added to your exam (${get().exam.length})` : "Removed from your exam", on ? undefined : () => { const e = [...get().exam]; e.splice(at, 0, q.id); set("exam", e); });
-                                }}
+                                onPress={toggleInExam}
                             >
                                 {examed ? "In exam" : "Add to exam"}
                             </DuoButton>

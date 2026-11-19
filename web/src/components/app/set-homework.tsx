@@ -19,7 +19,7 @@ const TZ = "Europe/Dublin";
 export const homeworkTitle = (q: Question) => `${q.year}${q.deferred ? " Deferred" : ""} · ${label(q)}`;
 
 /* A week from now at five to midnight, Irish time: the usual shape of a deadline, and one to change. */
-const defaultDeadline = () => `${toZonedInput(new Date(Date.now() + 7 * 86400000), TZ).slice(0, 10)}T23:55`;
+export const defaultDeadline = () => `${toZonedInput(new Date(Date.now() + 7 * 86400000), TZ).slice(0, 10)}T23:55`;
 
 /** The tags under a question's title: each class it has been set for, when it is due and how many have handed it in. */
 export const HomeworkTags = ({ q }: { q: Question }) => {

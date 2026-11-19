@@ -221,14 +221,15 @@ export const TopicPage = () => {
                 sub={sub}
                 action={
                     /* "Add to exam" is on no question until this is pressed. Pressing it puts the button on
-                       every one; the bar at the foot of the screen keeps count and makes the exam. */
+                       every one (and nothing else); the bar at the foot of the screen keeps count, and its
+                       Next names the exam, then prints it, saves it or shares it with a class. */
                     <DuoButton
                         color={building ? "primary" : "secondary"}
                         size="sm"
                         iconLeading={building ? Check : Plus}
                         onPress={() => {
                             setBuilding(!building);
-                            toast(building ? "Finished choosing. Your exam is in the bar below." : "Press Add to exam on each question you want.");
+                            toast(building ? "Finished choosing. Press Next in the bar below to name your exam." : "Press Add to exam on each question you want, then Next at the bottom.");
                         }}
                     >
                         {building ? (inExam ? `Done choosing (${inExam})` : "Done choosing") : "Create exam"}

@@ -145,6 +145,8 @@ input[type="search"]::-webkit-search-cancel-button {
     #print-root .plist {
         margin: 0;
         padding-left: 16pt;
+        /* numbered like the questions that follow (Tailwind's reset takes list numbers away) */
+        list-style: decimal;
         font: 10.5pt Inter, sans-serif;
         line-height: 1.6;
     }

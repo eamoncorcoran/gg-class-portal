@@ -37,7 +37,7 @@ export const minutesOf = (q: Question) => {
     const t = D().topicOf[q.id] || "";
     return t.startsWith("aural") ? 8 : t === "write" ? 75 : t === "reading-comprehension" ? 25 : 20;
 };
-const roundMins = (m: number) => (m <= 0 ? 0 : Math.max(5, Math.round(m / 5) * 5));
+export const roundMins = (m: number) => (m <= 0 ? 0 : Math.max(5, Math.round(m / 5) * 5));
 
 const Chips = <K extends string>(p: { label: string; value: K; onChange: (k: K) => void; items: { id: K; label: string }[] }) => (
     <Segmented ghost size="sm" itemClassName="px-3 py-2 duo-label tracking-normal" {...p} />

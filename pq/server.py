@@ -123,11 +123,27 @@ asked for, the first correct point earns the larger share (for example 2 + 1). E
 cancel a correct point unless it contradicts it.
 - Listening: where a question has two answer spaces, mark each on its own. If the candidate gives more \
 than one answer to a space and the extra answer invalidates the correct one, that space gets no mark.
+- Mark against the scheme's lines, not against the recording. First find, in the scheme, the lines for \
+the part being marked (they follow its question, each ending "= N mharc"), then give the candidate's \
+answer the mark of the line it matches. The splits are exact. Where the scheme lists a shorter answer at \
+a lower mark (for example "Bhí sé fliuch = 1 mharc" under "Bhí sé an-fhliuch = 2 mharc", or "Nach mbeidh \
+fodar acu = 1 mharc" under "Nach mbeidh go leor (dóthain) fodair acu = 2 mharc"), an answer with that much \
+information gets that lower mark and the verdict partial, however it is spelt. An answer with less \
+information than the shortest full-mark line never gets full marks: it gets the lower mark where the \
+scheme shows one, otherwise none. An answer that gives the scheme's key content (the fodder, the video) but \
+drops the rest of the sentence gets the lower-mark line where the scheme has one ("go leor fodair" on its \
+own: 1 mark, like "Nach mbeidh fodar acu"), not nothing. The benefit of the doubt covers spelling and \
+hearing, never information that is missing. A short answer the scheme itself lists at full marks \
+("An aimsir = 2 mharc") gets full marks.
 - An answer in English earns nothing. An empty answer is "blank".
 - verdict: correct = full marks, partial = some marks, wrong = none, blank = nothing written.
-- expected: the right answer in Irish, short, taken from the scheme where it gives one.
-- feedback: one short plain-English sentence. When you let a spelling or grammar slip through, say so and \
-give the standard spelling. Never use em dashes."""
+- expected: one of the scheme's full-mark lines for that part, copied exactly as the scheme prints it \
+(brackets and all, without the "= 2 mharc"), never reworded or made up: the line nearest the candidate's \
+answer, or the part's first full-mark line when nothing was written. Where a question has two spaces, \
+each space gets a different line. Only when the scheme has no line at all for that part, give the answer \
+as the recording or passage gives it, short, in Irish.
+- feedback: one short plain-English sentence. For a partial answer say what was missing for full marks. \
+When you let a spelling or grammar slip through, say so and give the standard spelling. Never use em dashes."""
 
 def load(name):
     path = os.path.join(SITE, name)
@@ -167,12 +183,26 @@ def check_rc(qid, answers):
            for r in out.results if r.key in mx]
     return 200, {'results': res, 'provider': provider}
 
+# The marking scheme for each listening question, whole, straight from the SEC PDF.
+# The text kept with the question is clipped to a region of the page, and on some papers the clip
+# stops short (the 2019 Fógra lost every answer line for 1(b) and 3, so anything plausible got full
+# marks). This file is built by studyclix-clone/tools/scheme_text.py and travels with the code.
+try:
+    SCHEME_TEXT = json.load(open(os.path.join(HERE, 'raw', 'scheme_text.json')))
+except Exception as ex:
+    print('scheme_text.json not read:', repr(ex)[:120], flush=True)
+    SCHEME_TEXT = {}
+
+def scheme_for(q):
+    full = SCHEME_TEXT.get(q.get('id') or '')
+    return full if full and len(full) >= len(q.get('markingSchemeText') or '') else (q.get('markingSchemeText') or '')
+
 def check_aural(q, slug, answers):
     paper = '\n'.join(i.get('boxText', '') for i in q['question'])
     keys = [f'box{i}-{j}' for i, img in enumerate(q['question']) for j in range(len(img.get('boxes', [])))]
     cuid = {'aural-fogra-announcement': 'A', 'aural-comhra-conversation': 'B', 'aural-piosa-nuachta-news-pieces': 'C'}[slug]
     body = (f"<question_paper>\n{paper}\n</question_paper>\n"
-            f"<marking_scheme>\n{q['markingSchemeText'] or '(none published)'}\n</marking_scheme>\n"
+            f"<marking_scheme>\n{scheme_for(q) or '(none published)'}\n</marking_scheme>\n"
             f"<recording_transcript note=\"rough machine transcript, Irish misheard\">\n{transcript(q, cuid)[:12000]}\n</recording_transcript>\n"
             "<student_answers>\n" + '\n'.join(f"[[BOX {k[3:]}]] {answers.get(k, '').strip()}" for k in keys) + "\n</student_answers>")
     system = (RULES + "\nThis is a listening comprehension. The question paper marks each answer space as [[BOX n-m]]. "

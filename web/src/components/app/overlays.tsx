@@ -245,12 +245,12 @@ export function printHTML(html: string) {
     Promise.all(imgs.map((i) => (i.complete ? 0 : new Promise((r) => (i.onload = i.onerror = r))))).then(() => window.print());
 }
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const questionsHTML = (list: Question[], withScheme: boolean, withAnswers: boolean) => {
+const questionsHTML = (list: Question[], withScheme: boolean, withAnswers: boolean, numbered = false) => {
     const answers = get().answers;
     return (
         list
             .map(
-                (q) => `<div class="pq"><h2>${esc(q.title)}</h2>${(q.strips?.length
+                (q, n) => `<div class="pq"><h2>${numbered ? `${n + 1}. ` : ""}${esc(q.title)}</h2>${(q.strips?.length
                     ? q.strips.flatMap((s) => [
                           ...s.images.map((i) => `<img src="${i.src}">`),
                           ...(withAnswers ? (s.parts || []).filter((p) => shortParts(q.id).some((x) => x.id === p)).map((p) => `<div class="pbox">${esc(answers[q.id]?.[p] || "")}</div>`) : []),
@@ -273,6 +273,7 @@ export function printExam(e: { name: string; mins: number; topics: string[]; ins
             (e.instructions ? `<div class="pins"><h3>Instructions</h3><p>${esc(e.instructions).replace(/\n/g, "<br>")}</p></div>` : "") +
             `<div class="plines"><p>Ainm: <span></span></p><p>Rang: <span></span></p><p>Dáta: <span></span></p></div>` +
             `<ol class="plist">${qs.map((q) => `<li>${esc(q.title)}</li>`).join("")}</ol></div>` +
-            questionsHTML(qs, false, false),
+            // numbered to match the list on the cover
+            questionsHTML(qs, false, false, true),
     );
 }
