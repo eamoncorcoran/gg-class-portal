@@ -154,12 +154,30 @@ export async function getBunnyVideo(videoId) {
  * Bunny checks and an expiry it enforces, so a link that leaves the class is
  * dead rather than merely unlisted.
  */
+/* A recording waits to be played.
+   ------------------------------------------------------------------
+   Left to itself Bunny's player starts the video the moment the page opens.
+   A browser that allows that plays a class out loud at somebody who only opened
+   the lesson. A browser that does not (every phone, Safari, and Chrome for a
+   site it does not know) leaves the player believing it is playing: the preview
+   picture is gone, the controls are hidden and nothing moves, so what the
+   student sees is a black rectangle.
+
+   The plain address always carried these two settings. The signed one was
+   written without them, so when the course began handing out signed addresses
+   (17 November 2026) every recording went black for whoever could not autoplay.
+   They are part of every address made here now, so no caller can leave them off.
+   `preload=false` also means nothing is downloaded until play is pressed, and
+   the preview shown is the video's own thumbnail rather than its first frame,
+   which on a Zoom recording is often black. */
+const WAIT_TO_BE_PLAYED = 'autoplay=false&preload=false';
+
 export function embedUrl(videoId, { libraryId = config.bunny.libraryId } = {}) {
-  if (!bunnySigning()) return `${EMBED}/${libraryId}/${videoId}`;
+  if (!bunnySigning()) return `${EMBED}/${libraryId}/${videoId}?${WAIT_TO_BE_PLAYED}`;
   const expires = Math.floor(Date.now() / 1000) + config.bunny.tokenHours * 3600;
   const token = crypto
     .createHash('sha256')
     .update(`${config.bunny.tokenKey}${videoId}${expires}`)
     .digest('hex');
-  return `${EMBED}/${libraryId}/${videoId}?token=${token}&expires=${expires}`;
+  return `${EMBED}/${libraryId}/${videoId}?token=${token}&expires=${expires}&${WAIT_TO_BE_PLAYED}`;
 }

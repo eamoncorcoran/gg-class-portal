@@ -130,6 +130,19 @@ const PracticePlayer = ({ phrases, videoUrl }: { phrases: Phrase[]; videoUrl?: s
     );
 };
 
+/** A Bunny player address with autoplay and preload switched off, whatever it arrived with. Other players are left alone. */
+const waitToBePlayed = (src: string) => {
+    try {
+        const u = new URL(src);
+        if (u.hostname !== "iframe.mediadelivery.net") return src;
+        u.searchParams.set("autoplay", "false");
+        u.searchParams.set("preload", "false");
+        return u.toString();
+    } catch {
+        return src;
+    }
+};
+
 /** What plays at the top of a lesson: an embed, a Zoom link card, a file, the practice player, or "not yet". */
 const Player = ({ l }: { l: Lesson }) => {
     const v = l.video;
@@ -148,7 +161,10 @@ const Player = ({ l }: { l: Lesson }) => {
                 <p className="max-w-sm text-sm text-white/80">{past ? "This week's recording has not been added to the hub yet. The topics and homework are below." : `This class is on ${l.recordedOn ? fmtShort(new Date(l.recordedOn)) : "the way"}. The recording lands here afterwards.`}</p>
             </div>
         );
-    if (v.type === "iframe") return <iframe title={l.title} src={v.src} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="aspect-video w-full rounded-2xl border-2 border-secondary bg-black" />;
+    /* A recording waits to be played. The hub's addresses already say so; this says it again here, so
+       an address from anywhere else can never start a class playing (or, where the browser refuses
+       that, leave the player black) the moment a lesson opens. */
+    if (v.type === "iframe") return <iframe title={l.title} src={waitToBePlayed(v.src)} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="aspect-video w-full rounded-2xl border-2 border-secondary bg-black" />;
     if (v.type === "file") return <video src={v.src} controls playsInline className="aspect-video w-full rounded-2xl border-2 border-secondary bg-black" />;
     if (v.type === "practice") return <PracticePlayer phrases={v.phrases} videoUrl={v.videoUrl} />;
     return (

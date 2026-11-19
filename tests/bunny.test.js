@@ -48,3 +48,29 @@ test('a library id can be overridden per lesson', () => {
   // still resolves.
   assert.match(embedUrl('vid', { libraryId: '999' }), /\/embed\/999\/vid\?/);
 });
+
+/* 19 November 2026: students opened a class recording to a black rectangle.
+   The signed address had been written without the two settings the plain one
+   always carried, so the player tried to start itself, was refused by the
+   browser, and sat with its preview gone and nothing playing. */
+test('a recording waits to be played, signed or not', async () => {
+  const signed = new URL(embedUrl('video-guid-1'));
+  assert.equal(signed.searchParams.get('autoplay'), 'false');
+  assert.equal(signed.searchParams.get('preload'), 'false');
+  assert.ok(signed.searchParams.get('token'), 'still signed');
+  // The token signs the video and the expiry only, so the extra settings do not disturb it.
+  const expected = crypto.createHash('sha256').update(`token-key${'video-guid-1'}${signed.searchParams.get('expires')}`).digest('hex');
+  assert.equal(signed.searchParams.get('token'), expected);
+
+  // Every address the course hands out comes from embedUrl or carries the settings itself.
+  const fs = await import('node:fs');
+  const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
+  const source = read('../src/bunny.js');
+  assert.match(source, /if \(!bunnySigning\(\)\) return `\$\{EMBED\}\/\$\{libraryId\}\/\$\{videoId\}\?\$\{WAIT_TO_BE_PLAYED\}`;/);
+  for (const file of ['../src/routes/hub.js', '../src/lessonvideo.js']) {
+    const text = read(file);
+    for (const line of text.split('\n').filter((l) => l.includes('iframe.mediadelivery.net/embed/') && l.includes('`'))) {
+      assert.match(line, /autoplay=false&preload=false/, `${file} builds a player address that would start itself: ${line.trim()}`);
+    }
+  }
+});
