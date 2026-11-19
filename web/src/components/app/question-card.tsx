@@ -219,13 +219,15 @@ const CheckControls = ({ q }: { q: Question }) => {
                     Clear
                 </DuoButton>
             )}
-            <DuoButton color={written ? "primary" : "muted"} size="sm" onPress={run} isDisabled={!written} isLoading={busy}>
-                {busy ? "Checking your answers" : "Check answers"}
+            {/* While it marks, the button stays where it is and the size it was: the longer label and a
+                line of explanation underneath used to push the pair down onto a row of their own. */}
+            <DuoButton color={written ? "primary" : "muted"} size="sm" onPress={run} isDisabled={!written} isLoading={busy} className="min-w-[9.75rem]">
+                {busy ? "Checking" : "Check answers"}
             </DuoButton>
             {busy && (
-                <p role="status" aria-live="polite" className="w-full text-sm text-tertiary">
+                <span role="status" aria-live="polite" className="sr-only">
                     Marking against the scheme. This takes a few seconds.
-                </p>
+                </span>
             )}
             {err && (
                 <p role="alert" className="flex w-full items-start gap-2 rounded-lg bg-error-primary px-3 py-2.5 text-sm font-medium text-error-primary ring-1 ring-error_subtle ring-inset">

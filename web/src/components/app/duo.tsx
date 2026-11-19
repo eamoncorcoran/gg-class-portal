@@ -56,13 +56,16 @@ export const DuoButton = ({ color = "primary", size = "md", href, className, chi
             {!isLoading && T && <T aria-hidden="true" className={cx(iconSize[size], "shrink-0")} />}
         </>
     );
-    isDisabled = isDisabled || isLoading;
+    /* Waiting is not the same as switched off. A button that is working keeps its colour, with the
+       dots beside its label, and simply does nothing if it is pressed again; it used to be handed
+       the disabled look, which turned a green button grey and its label nearly invisible at the
+       very moment somebody was watching it. */
     return href ? (
-        <AriaLink href={href} className={cls} aria-label={ariaLabel} isDisabled={isDisabled} aria-busy={isLoading || undefined}>
+        <AriaLink href={href} className={cls} aria-label={ariaLabel} isDisabled={isDisabled || isLoading} aria-busy={isLoading || undefined}>
             {inner}
         </AriaLink>
     ) : (
-        <AriaButton type={type} onPress={onPress} className={cls} aria-label={ariaLabel} isDisabled={isDisabled} aria-busy={isLoading || undefined}>
+        <AriaButton type={isLoading ? "button" : type} onPress={isLoading ? undefined : onPress} className={cls} aria-label={ariaLabel} isDisabled={isDisabled} aria-busy={isLoading || undefined}>
             {inner}
         </AriaButton>
     );
