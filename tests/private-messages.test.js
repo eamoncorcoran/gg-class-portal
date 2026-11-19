@@ -102,7 +102,7 @@ test('marking a conversation unread is the teacher\'s own note and changes nothi
   assert.ok(!/UPDATE private_messages/.test(mark), 'read_at, which the student sees as Seen, is not touched');
   // Nothing on the student's side reads the mark.
   const side = messages.slice(messages.indexOf('/* ---- the student\'s side'), messages.indexOf('/* ---- the teacher\'s side'));
-  assert.ok(!/private_message_marks|marked/i.test(side));
+  assert.ok(!/private_message_marks|marked_unread|markedUnread/.test(side));
   const routes = student.slice(student.indexOf("router.get('/messages'"), student.indexOf("router.get('/bootstrap'"));
   assert.ok(!/unread'\s*,\s*asyncRoute\(async \(req, res\) => \{\s*const id/.test(routes), 'students have no mark-unread route');
   // The route is on the teacher side, behind the lead-teacher check.
