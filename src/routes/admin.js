@@ -36,7 +36,7 @@ import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashT
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { moveCandidates, startMoves } from '../lessonmoves.js';
-import { MESSAGE_MAX, teacherInbox, teacherUnread, teacherThread, teacherSends, mayReadAsTeacher } from '../messages.js';
+import { MESSAGE_MAX, teacherInbox, teacherUnread, teacherThread, teacherSends, mayReadAsTeacher, markConversationUnread } from '../messages.js';
 import { receiveMessageFiles, checkMessageFiles } from '../messagefiles.js';
 import { zoomConfigured } from '../zoom.js';
 import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, rememberIdentity, rematchSittings } from '../zoomattendance.js';
@@ -3929,6 +3929,14 @@ router.get('/messages/:studentId', asyncRoute(async (req, res) => {
   const parsed = z.string().uuid().safeParse(req.params.studentId);
   if (!parsed.success) return res.status(404).json({ error: 'There is no such student.' });
   res.json(await teacherThread(parsed.data));
+}));
+
+/* "Mark as unread": the teacher's own reminder to come back to a conversation.
+   It changes nothing a student can see. */
+router.post('/messages/:studentId/unread', asyncRoute(async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.studentId);
+  if (!id.success) return res.status(404).json({ error: 'There is no such student.' });
+  res.json(await markConversationUnread(id.data, req.user.id));
 }));
 
 /* The teacher may send words, files of more kinds than a student may, and a

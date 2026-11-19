@@ -8,7 +8,9 @@ import { SectionHead } from "@/components/app/console";
 import { DuoButton } from "@/components/app/duo";
 import { DuoDialog, DuoInput } from "@/components/app/duo-dialog";
 import { Avatar } from "@/components/app/hub-parts";
-import { ArrowLeft, Plus } from "@/components/app/ic";
+import { ArrowLeft, Mail01, Plus } from "@/components/app/ic";
+import { Segmented } from "@/components/app/segmented";
+import { toast } from "@/components/app/toast";
 import { Thread } from "@/components/app/message-thread";
 import { type Inbox, type Outgoing, TEACHER_ACCEPT, type TeacherThread, sendMessage, setUnread, whenLabel } from "@/lib/messages";
 import { api } from "@/lib/portal";
@@ -17,6 +19,8 @@ import { cx } from "@/utils/cx";
 const POLL_MS = 10_000;
 
 const Open = ({ studentId, onChanged }: { studentId: string; onChanged: () => void }) => {
+    const nav = useNavigate();
+    const [marking, setMarking] = useState(false);
     const [data, setData] = useState<TeacherThread | null>(null);
     const [error, setError] = useState<string | null>(null);
     const load = useCallback(async () => {
@@ -40,6 +44,21 @@ const Open = ({ studentId, onChanged }: { studentId: string; onChanged: () => vo
         setData((d) => (d ? { ...d, messages: [...d.messages, message] } : d));
         onChanged();
     };
+    /* Your own "come back to this". The conversation closes, because having it open is reading it,
+       and it sits in the list as unread until it is opened or answered. Nothing changes for the
+       student: what they wrote still says Seen. */
+    const markUnread = async () => {
+        setMarking(true);
+        try {
+            await api(`/api/admin/messages/${studentId}/unread`, { method: "POST", json: {} });
+            nav("/teach/messages");
+            onChanged();
+            toast("Marked as unread");
+        } catch (e) {
+            toast((e as Error).message);
+            setMarking(false);
+        }
+    };
     if (error && !data) return <p className="p-6 text-md text-tertiary">{error}</p>;
     if (!data) return <p className="p-6 text-sm text-quaternary">Loading…</p>;
     const s = data.student;
@@ -50,12 +69,17 @@ const Open = ({ studentId, onChanged }: { studentId: string; onChanged: () => vo
                     <ArrowLeft aria-hidden="true" className="size-5" />
                 </Link>
                 <Avatar who={{ name: s.name, role: "student", avatar: s.avatar }} size="md" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                     <h2 className="truncate text-lg font-bold text-primary">{s.name}</h2>
                     <p className="truncate text-sm text-tertiary">
                         {s.className || "No class"} · {s.email}
                     </p>
                 </div>
+                {data.messages.length > 0 && (
+                    <DuoButton size="xs" color="secondary" iconLeading={Mail01} isDisabled={marking} onPress={markUnread} className="shrink-0">
+                        Mark as unread
+                    </DuoButton>
+                )}
             </header>
             <Thread
                 className="flex-1"
@@ -125,7 +149,12 @@ export const MessagesSection = () => {
         return () => window.clearInterval(t);
     }, [load]);
 
-    const list = inbox?.conversations || [];
+    /* All, or only what is waiting (a new message, or one you marked unread), or only what is dealt with. */
+    const [show, setShow] = useState<"all" | "unread" | "read">("all");
+    const waiting = (c: Inbox["conversations"][number]) => c.unread > 0 || Boolean(c.markedUnread);
+    const everything = inbox?.conversations || [];
+    const list = show === "all" ? everything : everything.filter((c) => (show === "unread" ? waiting(c) : !waiting(c)));
+    const waitingCount = everything.filter(waiting).length;
     return (
         <>
             <SectionHead
@@ -142,10 +171,28 @@ export const MessagesSection = () => {
             <div className="@container">
             <div className="flex h-[calc(100dvh-19rem)] min-h-[28rem] overflow-hidden rounded-3xl border-2 border-secondary bg-primary">
                 <aside className={cx("w-full shrink-0 flex-col overflow-y-auto @3xl:flex @3xl:w-80 @3xl:border-r-2 @3xl:border-secondary", id ? "hidden" : "flex")} aria-label="Conversations">
+                    {inbox && everything.length > 0 && (
+                        <div className="shrink-0 border-b-2 border-secondary p-3">
+                            <Segmented
+                                size="sm"
+                                label="Show"
+                                value={show}
+                                onChange={setShow}
+                                fullWidth
+                                items={[
+                                    { id: "all", label: "All" },
+                                    { id: "unread", label: waitingCount ? `Unread (${waitingCount})` : "Unread" },
+                                    { id: "read", label: "Read" },
+                                ]}
+                            />
+                        </div>
+                    )}
                     {!inbox ? (
                         <p className="p-5 text-sm text-quaternary">Loading…</p>
-                    ) : list.length === 0 ? (
+                    ) : everything.length === 0 ? (
                         <p className="p-5 text-md text-tertiary">No private messages yet. When a student writes, the conversation appears here.</p>
+                    ) : list.length === 0 ? (
+                        <p className="p-5 text-md text-tertiary">{show === "unread" ? "Nothing unread. You are up to date." : "Nothing here yet."}</p>
                     ) : (
                         <ul>
                             {list.map((c) => (
@@ -158,15 +205,19 @@ export const MessagesSection = () => {
                                         <Avatar who={{ name: c.name, role: "student", avatar: c.avatar }} size="md" />
                                         <span className="min-w-0 flex-1">
                                             <span className="flex items-baseline justify-between gap-2">
-                                                <span className={cx("truncate text-sm text-primary", c.unread ? "font-black" : "font-bold")}>{c.name}</span>
+                                                <span className={cx("truncate text-sm text-primary", waiting(c) ? "font-black" : "font-bold")}>{c.name}</span>
                                                 <span className="shrink-0 text-xs font-semibold text-quaternary">{whenLabel(c.lastAt)}</span>
                                             </span>
                                             <span className="flex items-center gap-2">
-                                                <span className={cx("min-w-0 flex-1 truncate text-sm", c.unread ? "font-semibold text-primary" : "text-tertiary")}>
+                                                <span className={cx("min-w-0 flex-1 truncate text-sm", waiting(c) ? "font-semibold text-primary" : "text-tertiary")}>
                                                     {c.lastFromTeacher ? "You: " : ""}
                                                     {c.lastBody}
                                                 </span>
-                                                {c.unread > 0 && <span className="shrink-0 rounded-full bg-brand-solid px-2 py-0.5 text-xs font-bold text-white tabular-nums">{c.unread}</span>}
+                                                {c.unread > 0 ? (
+                                                    <span className="shrink-0 rounded-full bg-brand-solid px-2 py-0.5 text-xs font-bold text-white tabular-nums">{c.unread}</span>
+                                                ) : c.markedUnread ? (
+                                                    <span className="size-2.5 shrink-0 rounded-full bg-brand-solid" aria-label="Marked as unread" />
+                                                ) : null}
                                             </span>
                                         </span>
                                     </Link>

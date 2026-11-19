@@ -89,3 +89,43 @@ test('a student writes to the teacher, not the staff: only the lead teacher read
   assert.match(admin, /router\.post\('\/messages\/:studentId', receiveMessageFiles, asyncRoute/);
   assert.match(read('../web/src/components/app/console.tsx'), /\{ id: "messages", label: "Private messages", icon: Mail01, superOnly: true \},/);
 });
+
+/* Read and unread in the teacher's inbox, and "Mark as unread".
+   ------------------------------------------------------------------
+   Reading a message and dealing with it are different things, so the teacher
+   can put a conversation back to unread. That is the teacher's own note: it is
+   kept away from the messages, because a message's read_at is what a student
+   sees as "Seen". */
+test('marking a conversation unread is the teacher\'s own note and changes nothing a student sees', () => {
+  const mark = messages.slice(messages.indexOf('export async function markConversationUnread'), messages.indexOf('const clearMark'));
+  assert.match(mark, /INSERT INTO private_message_marks\(student_id,marked_by\)/);
+  assert.ok(!/UPDATE private_messages/.test(mark), 'read_at, which the student sees as Seen, is not touched');
+  // Nothing on the student's side reads the mark.
+  const side = messages.slice(messages.indexOf('/* ---- the student\'s side'), messages.indexOf('/* ---- the teacher\'s side'));
+  assert.ok(!/private_message_marks|marked/i.test(side));
+  const routes = student.slice(student.indexOf("router.get('/messages'"), student.indexOf("router.get('/bootstrap'"));
+  assert.ok(!/unread'\s*,\s*asyncRoute\(async \(req, res\) => \{\s*const id/.test(routes), 'students have no mark-unread route');
+  // The route is on the teacher side, behind the lead-teacher check.
+  assert.ok(admin.indexOf("router.use('/messages', leadTeacherOnly);") < admin.indexOf("router.post('/messages/:studentId/unread'"));
+});
+
+test('a marked conversation counts as waiting until it is opened or answered', () => {
+  assert.match(messages, /unread: conversations\.rows\.reduce\(\(sum, row\) => sum \+ \(row\.unread \|\| \(row\.marked_unread \? 1 : 0\)\), 0\),/);
+  const thread = messages.slice(messages.indexOf('export async function teacherThread'), messages.indexOf('export async function teacherSends'));
+  assert.match(thread, /await clearMark\(studentId\);/);
+  const sends = messages.slice(messages.indexOf('export async function teacherSends'));
+  assert.match(sends, /await clearMark\(studentId, \{ settled: true \}\);/);
+  // The open page asks every few seconds; a request already on its way must not undo a mark just made.
+  assert.match(messages, /AND marked_unread_at < now\(\) - interval '3 seconds'/);
+});
+
+test('the inbox can be shown as all, unread or read, and a conversation can be marked unread from it', () => {
+  const page = read('../web/src/pages/teach/messages-section.tsx');
+  assert.match(page, /const waiting = \(c: Inbox\["conversations"\]\[number\]\) => c\.unread > 0 \|\| Boolean\(c\.markedUnread\);/);
+  assert.match(page, /\{ id: "all", label: "All" \},/);
+  assert.match(page, /\{ id: "read", label: "Read" \},/);
+  assert.match(page, /Mark as unread/);
+  // Marking unread closes the conversation, since having it open is reading it.
+  const fn = page.slice(page.indexOf('const markUnread = async'), page.indexOf('if (error && !data)'));
+  assert.ok(fn.indexOf('/unread`') < fn.indexOf('nav("/teach/messages");'));
+});

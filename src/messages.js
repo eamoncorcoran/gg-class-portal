@@ -145,6 +145,7 @@ export async function teacherInbox() {
     `SELECT u.id, u.name, u.email, u.avatar_path, u.active,
             last.body last_body, last.created_at last_at, last.from_teacher last_from_teacher,
             (SELECT count(*)::int FROM private_messages x WHERE x.student_id=u.id AND x.from_teacher=false AND x.read_at IS NULL) unread,
+            EXISTS (SELECT 1 FROM private_message_marks k WHERE k.student_id=u.id) marked_unread,
             (SELECT c.programme_name FROM classes c JOIN class_students cs ON cs.class_id=c.id
               WHERE cs.student_id=u.id AND cs.active=true ORDER BY cs.enrolled_at DESC LIMIT 1) class_name
      FROM users u
@@ -162,19 +163,56 @@ export async function teacherInbox() {
   );
   const face = (row) => (row.avatar_path ? `/api/media/avatar/${row.id}` : undefined);
   return {
-    unread: conversations.rows.reduce((sum, row) => sum + row.unread, 0),
+    // What is waiting: every unread message, and one for a conversation marked unread that has none.
+    unread: conversations.rows.reduce((sum, row) => sum + (row.unread || (row.marked_unread ? 1 : 0)), 0),
     conversations: conversations.rows.map((row) => ({
       studentId: row.id, name: row.name, email: row.email, avatar: face(row), className: row.class_name || null, active: row.active,
       lastBody: String(row.last_body).slice(0, 200), lastAt: row.last_at, lastFromTeacher: row.last_from_teacher, unread: row.unread,
+      // The teacher's own "come back to this". Never sent to a student, and no part of what a student sees.
+      markedUnread: row.marked_unread,
     })),
     students: students.rows.map((row) => ({ id: row.id, name: row.name, className: row.class_name || null })),
   };
 }
 
 export async function teacherUnread() {
-  const row = await one(`SELECT count(*)::int n FROM private_messages WHERE from_teacher=false AND read_at IS NULL`);
-  return row?.n || 0;
+  const row = await one(
+    `SELECT (SELECT count(*) FROM private_messages WHERE from_teacher=false AND read_at IS NULL)
+          + (SELECT count(*) FROM private_message_marks k
+              WHERE NOT EXISTS (SELECT 1 FROM private_messages m WHERE m.student_id=k.student_id AND m.from_teacher=false AND m.read_at IS NULL)) n`,
+  );
+  return Number(row?.n) || 0;
 }
+
+/**
+ * Marks a conversation as unread, for the teacher only.
+ *
+ * Nothing about the messages changes: a student who saw "Seen" under what they
+ * wrote still sees it. The conversation goes back to looking unread in the
+ * teacher's inbox and counts as waiting until it is opened or answered.
+ */
+export async function markConversationUnread(studentId, teacherId) {
+  const student = await one(`SELECT id, role FROM users WHERE id=$1`, [studentId]);
+  if (!student || student.role !== 'student') throw Object.assign(new Error('There is no such student.'), { status: 404 });
+  const any = await one(`SELECT 1 ok FROM private_messages WHERE student_id=$1 LIMIT 1`, [studentId]);
+  if (!any) throw Object.assign(new Error('There is no conversation with this student yet.'), { status: 409 });
+  await query(
+    `INSERT INTO private_message_marks(student_id,marked_by) VALUES ($1,$2)
+     ON CONFLICT (student_id) DO UPDATE SET marked_unread_at=now(), marked_by=EXCLUDED.marked_by`,
+    [studentId, teacherId],
+  );
+  return { markedUnread: true };
+}
+
+/* Opening or answering a conversation is dealing with it, so the mark comes off. */
+const clearMark = (studentId, { settled = false } = {}) => query(
+  /* When it is only being opened, a mark made in the last moments is left
+     alone: the page that is open asks for the conversation every few seconds,
+     and one of those requests already on its way must not undo a mark the
+     teacher has just made. */
+  `DELETE FROM private_message_marks WHERE student_id=$1 ${settled ? '' : "AND marked_unread_at < now() - interval '3 seconds'"}`,
+  [studentId],
+);
 
 /** One student's conversation, from the teacher's side. Opening it marks the student's messages read. */
 export async function teacherThread(studentId, { markRead = true } = {}) {
@@ -188,6 +226,7 @@ export async function teacherThread(studentId, { markRead = true } = {}) {
   if (!student || student.role !== 'student') throw Object.assign(new Error('There is no such student.'), { status: 404 });
   if (markRead) {
     await query(`UPDATE private_messages SET read_at=now() WHERE student_id=$1 AND from_teacher=false AND read_at IS NULL`, [studentId]);
+    await clearMark(studentId);
   }
   const rows = await query(THREAD_SQL, [studentId]);
   return {
@@ -209,6 +248,7 @@ export async function teacherSends(teacher, studentId, body, files = []) {
   const attached = await attach(row.id, files);
   /* Answering is reading: whatever the student wrote before this is seen. */
   await query(`UPDATE private_messages SET read_at=now() WHERE student_id=$1 AND from_teacher=false AND read_at IS NULL`, [studentId]);
+  await clearMark(studentId, { settled: true });
   return shape({ ...row, sender_name: teacher.name, files: attached });
 }
 
