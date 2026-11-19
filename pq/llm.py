@@ -16,10 +16,18 @@ if os.path.exists(os.path.join(ROOT, '.env')):
 
 OPENAI_MODEL = 'gpt-5.5'
 _claude, _claude_ok = None, None
+# When Claude refused a call outright (no credit left on the account, overloaded), OpenAI marks
+# instead for this long before Claude is tried again. 19 November 2026: every mark on the live
+# site failed for an afternoon because the Anthropic balance had run out and nothing stepped in.
+CLAUDE_REST_SECONDS = 600
+_claude_resting_until = 0.0
 
 def claude():
-    """The Anthropic client, or None while the key is rejected (checked once per process)."""
+    """The Anthropic client, or None while the key is rejected (checked once per process) or Claude is resting."""
     global _claude, _claude_ok
+    import time
+    if time.time() < _claude_resting_until:
+        return None
     if _claude_ok is None:
         _claude = anthropic.Anthropic(default_headers={'anthropic-workspace-id': os.environ['ANTHROPIC_WORKSPACE_ID']}
                                       if os.environ.get('ANTHROPIC_WORKSPACE_ID') else None)
@@ -50,13 +58,23 @@ def structured(system: str, user: str, model_cls: type[BaseModel], cache_prefix:
         sys_blocks = [{'type': 'text', 'text': system}]
         if cache_prefix:
             sys_blocks.append({'type': 'text', 'text': cache_prefix, 'cache_control': {'type': 'ephemeral'}})
-        resp = c.beta.messages.parse(
-            model='claude-opus-5-5', max_tokens=16000, output_config={'effort': 'medium'},
-            betas=['server-side-fallback-2026-07-01'], fallbacks='default',
-            system=sys_blocks, messages=[{'role': 'user', 'content': user}], output_format=model_cls)
-        if resp.stop_reason == 'refusal' or resp.parsed_output is None:
-            raise RuntimeError(f'marker declined ({resp.stop_reason})')
-        return resp.parsed_output, 'claude'
+        try:
+            resp = c.beta.messages.parse(
+                model='claude-opus-5-5', max_tokens=16000, output_config={'effort': 'medium'},
+                betas=['server-side-fallback-2026-07-01'], fallbacks='default',
+                system=sys_blocks, messages=[{'role': 'user', 'content': user}], output_format=model_cls)
+        except (anthropic.BadRequestError, anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APIConnectionError) as ex:
+            # Not this request's fault (no credit, overloaded, unreachable): let OpenAI mark, and rest Claude.
+            global _claude_resting_until
+            import time
+            _claude_resting_until = time.time() + CLAUDE_REST_SECONDS
+            print(f'claude unavailable, marking with openai for {CLAUDE_REST_SECONDS}s: {str(ex)[:160]}', flush=True)
+            if not os.environ.get('OPENAI_API_KEY'):
+                raise
+        else:
+            if resp.stop_reason == 'refusal' or resp.parsed_output is None:
+                raise RuntimeError(f'marker declined ({resp.stop_reason})')
+            return resp.parsed_output, 'claude'
     schema = _strict(model_cls.model_json_schema())
     for d in schema.get('$defs', {}).values():
         _strict(d)

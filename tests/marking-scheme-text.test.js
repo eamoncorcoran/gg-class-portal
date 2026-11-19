@@ -52,3 +52,12 @@ test('the results show the scheme\'s answer under every answer, and the box show
   assert.match(card, /onBlur=\{\(e\) => fit\(e\.currentTarget, false\)\}/);
   assert.match(card, /focus:z-10 focus:bg-primary focus:shadow-md/);
 });
+
+test('when Claude refuses a call (no credit, overloaded), OpenAI marks instead and Claude is rested', () => {
+  const llm = read('../pq/llm.py');
+  assert.match(llm, /except \(anthropic\.BadRequestError, anthropic\.RateLimitError, anthropic\.InternalServerError, anthropic\.APIConnectionError\) as ex:/);
+  assert.match(llm, /_claude_resting_until = time\.time\(\) \+ CLAUDE_REST_SECONDS/);
+  assert.match(llm, /if time\.time\(\) < _claude_resting_until:\s+return None/);
+  // With no OpenAI key there is nothing to fall back to, so the real error is raised, not hidden.
+  assert.match(llm, /if not os\.environ\.get\('OPENAI_API_KEY'\):\s+raise/);
+});
