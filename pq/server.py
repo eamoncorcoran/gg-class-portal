@@ -194,8 +194,39 @@ except Exception as ex:
     SCHEME_TEXT = {}
 
 def scheme_for(q):
-    full = SCHEME_TEXT.get(q.get('id') or '')
-    return full if full and len(full) >= len(q.get('markingSchemeText') or '') else (q.get('markingSchemeText') or '')
+    """The whole scheme when there is one (the clipped text is longer only because of its blank space)."""
+    return SCHEME_TEXT.get(q.get('id') or '') or (q.get('markingSchemeText') or '')
+
+import difflib
+
+def scheme_lines(text):
+    """Every answer line of a scheme, as (answer, marks): "Nach mbeidh fodar acu = 1 mharc" and the like."""
+    out = []
+    for m in re.finditer(r'(?m)^(.{2,140}?)\s*=\s*(\d)\s*m?harc\b', text or ''):
+        ans = m.group(1).strip(' \t.:;')
+        if ans and not re.match(r'^\d+\.?$', ans):
+            out.append((ans, int(m.group(2))))
+    return out
+
+def _plain(t):
+    t = unicodedata.normalize('NFKD', t or '').lower()
+    t = ''.join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r'[^a-z0-9 ]+', ' ', t.replace('(', ' ').replace(')', ' ')).split()
+
+def snap_expected(expected, lines):
+    """The scheme's own line nearest to what the model quoted, so a student sees the scheme's words
+    exactly, not a paraphrase of them. Left alone when nothing in the scheme is close."""
+    want = _plain(expected)
+    if not want or not lines:
+        return expected
+    best, score = expected, 0.0
+    for ans, marks in lines:
+        r = difflib.SequenceMatcher(None, want, _plain(ans)).ratio()
+        if marks >= 2:
+            r += 0.05   # a full-mark line, when it is a toss-up
+        if r > score:
+            best, score = ans, r
+    return best if score >= 0.72 else expected
 
 def check_aural(q, slug, answers):
     paper = '\n'.join(i.get('boxText', '') for i in q['question'])
@@ -212,12 +243,13 @@ def check_aural(q, slug, answers):
               "Only if the scheme is missing, judge from the transcript.")
     out, provider = llm.structured(system, body, Results)
     want = set(keys)
+    lines = scheme_lines(scheme_for(q))
     res = []
     for r in out.results:
         k = r.key.replace(' ', '').replace('-', '-')
         k = k if k.startswith('box') else 'box' + k
         if k in want:
-            res.append({**r.model_dump(), 'key': k})
+            res.append({**r.model_dump(), 'key': k, 'expected': snap_expected(r.expected, lines)})
     return 200, {'results': res, 'provider': provider}
 
 SUBJECT_ID = re.compile(r'^([a-z][a-z0-9-]*)\.(h|o|f|c)\.')

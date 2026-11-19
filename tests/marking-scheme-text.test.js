@@ -29,7 +29,9 @@ test('every listening question with a PDF has its whole scheme beside the marker
 
 test('the marker is given the whole scheme, and falls back to the clipped one', () => {
   assert.match(service, /SCHEME_TEXT = json\.load\(open\(os\.path\.join\(HERE, 'raw', 'scheme_text\.json'\)\)\)/);
-  assert.match(service, /return full if full and len\(full\) >= len\(q\.get\('markingSchemeText'\) or ''\) else \(q\.get\('markingSchemeText'\) or ''\)/);
+  assert.match(service, /return SCHEME_TEXT\.get\(q\.get\('id'\) or ''\) or \(q\.get\('markingSchemeText'\) or ''\)/);
+  // The answer quoted to the student is snapped to the scheme's own nearest line, never a paraphrase.
+  assert.match(service, /'expected': snap_expected\(r\.expected, lines\)/);
   assert.match(service, /<marking_scheme>\\n\{scheme_for\(q\) or '\(none published\)'\}/);
 });
 
