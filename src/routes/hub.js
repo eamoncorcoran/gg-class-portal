@@ -104,7 +104,7 @@ async function buildExport({ signedIn }) {
     rows('SELECT id, title, description, cover_url, position FROM courses WHERE published ORDER BY position, id'),
     rows('SELECT id, course_id, title, position FROM course_modules ORDER BY course_id, position, id'),
     rows(`SELECT id, module_id, title, notes, video_provider, video_ref, video_passcode, duration_seconds,
-                 recorded_on::text AS recorded_on, position
+                 zoom_link, zoom_link_passcode, recorded_on::text AS recorded_on, position
           FROM course_lessons WHERE published ORDER BY module_id, position, id`),
     rows('SELECT id, title, course, course_id, video_id, phrases FROM live_lessons ORDER BY title'),
   ]);
@@ -130,6 +130,8 @@ async function buildExport({ signedIn }) {
               recordedOn: l.recorded_on,
               durationSeconds: l.duration_seconds || 0,
               video: videoOf(l, liveById, { signedIn }),
+              // The recording's page on Zoom, under the player, for when the player will not play.
+              zoomLink: signedIn && l.zoom_link ? { url: l.zoom_link, passcode: l.zoom_link_passcode || undefined } : undefined,
             })),
         }))
         .filter((m) => m.lessons.length),

@@ -116,8 +116,8 @@ export async function importRecording({ recording, moduleId, actorId = null, tit
       [moduleId],
     );
     const lesson = await one(
-      `INSERT INTO course_lessons(module_id,title,notes,video_provider,video_ref,video_passcode,duration_seconds,recorded_on,published,position)
-       VALUES ($1,$2,'',$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO course_lessons(module_id,title,notes,video_provider,video_ref,video_passcode,duration_seconds,recorded_on,published,position,zoom_link,zoom_link_passcode)
+       VALUES ($1,$2,'',$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         moduleId, lessonTitle, provider, ref,
         provider === 'zoom' ? (recording.passcode || null) : null,
@@ -125,6 +125,9 @@ export async function importRecording({ recording, moduleId, actorId = null, tit
         recording.startedAt ? String(recording.startedAt).slice(0, 10) : null,
         Boolean(publish),
         next.position,
+        // The recording's own page on Zoom stays under the lesson, for when the player will not play.
+        recording.shareUrl || null,
+        recording.passcode || null,
       ],
     );
     lessonMade = true;

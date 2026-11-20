@@ -19,6 +19,8 @@ export type Lesson = {
     recordedOn?: string | null;
     durationSeconds: number;
     video: Video | null;
+    /** the recording on Zoom's own page, for when the player will not play */
+    zoomLink?: { url: string; passcode?: string };
     /** from the teaching plan: what the week covered and what was set */
     topics?: Topic[];
     homework?: string[];

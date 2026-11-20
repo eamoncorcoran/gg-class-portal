@@ -35,6 +35,7 @@ import sraithRoutes from './src/routes/sraith.js';
 import mockOralRoutes from './src/routes/mockoral.js';
 import { warmSraithAudio } from './src/sraith.js';
 import { startBoardNotifier } from './src/boardsweep.js';
+import { fillZoomLinks } from './src/zoomlinks.js';
 import { startMessageNotifier } from './src/messages.js';
 import { returnWaitingHomework } from './src/pqhomework.js';
 import hubRoutes from './src/routes/hub.js';
@@ -397,6 +398,12 @@ async function start() {
   resumeMoves()
     .then((state) => { if (state.interrupted || state.pending) console.log(`Lesson video moves: ${state.interrupted} cut off by the restart, ${state.pending} carrying on`); })
     .catch((error) => console.error('Could not resume lesson video moves', error?.message));
+  // Lessons copied to Bunny before their Zoom link was kept are given it, two minutes after boot and then daily.
+  const sweepZoomLinks = () => fillZoomLinks()
+    .then((r) => { if (r.filled) console.log(`Zoom links filled in on ${r.filled} lesson(s)`); })
+    .catch((error) => console.error('Zoom link sweep failed', error?.message));
+  setTimeout(sweepZoomLinks, 2 * 60 * 1000).unref?.();
+  setInterval(sweepZoomLinks, 24 * 60 * 60 * 1000).unref?.();
   // Every Sraith sentence spoken once and kept on disk, a minute after boot.
   setTimeout(() => { warmSraithAudio().catch((error) => console.error('Sraith audio warm-up failed', error?.message)); }, 60 * 1000).unref?.();
   // Small copies of the profile pictures already on disk, two minutes after boot.

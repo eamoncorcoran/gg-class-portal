@@ -21,12 +21,20 @@ import { toast } from "./toast";
 // Every crop is drawn at one scale (K px per PDF point, Studyclix's text size), never stretched
 const K = 1.6;
 
+/* `fill` is the answer space once it has been marked: its border and its background take the
+   verdict's colour, so the paper reads at a glance. */
 const VERD: Record<Verdict, { icon: typeof Check; word: string; dot: string; soft: string; fill: string }> = {
-    correct: { icon: Check, word: "Right", dot: "bg-success-solid", soft: "bg-success-secondary text-fg-success-primary", fill: "bg-utility-success-50/70" },
-    partial: { icon: HalfIcon, word: "Partly right", dot: "bg-warning-solid", soft: "bg-warning-secondary text-fg-warning-primary", fill: "bg-utility-warning-50/80" },
-    wrong: { icon: X, word: "Wrong", dot: "bg-error-solid", soft: "bg-error-secondary text-fg-error-primary", fill: "bg-utility-error-50/70" },
-    blank: { icon: Minus, word: "Not answered", dot: "bg-fg-quaternary", soft: "bg-tertiary text-fg-quaternary", fill: "" },
+    correct: { icon: Check, word: "Right", dot: "bg-success-solid", soft: "bg-success-secondary text-fg-success-primary", fill: "border-success bg-utility-success-50/70" },
+    partial: { icon: HalfIcon, word: "Partly right", dot: "bg-warning-solid", soft: "bg-warning-secondary text-fg-warning-primary", fill: "border-warning bg-utility-warning-50/80" },
+    wrong: { icon: X, word: "Wrong", dot: "bg-error-solid", soft: "bg-error-secondary text-fg-error-primary", fill: "border-error bg-utility-error-50/70" },
+    blank: { icon: Minus, word: "Not answered", dot: "bg-fg-quaternary", soft: "bg-tertiary text-fg-quaternary", fill: "border-tertiary bg-secondary" },
 };
+
+/* How an answer space looks before it is marked: a white box with a soft green edge over the printed
+   one, a darker edge under the mouse, and with the cursor a green edge with a pale halo. The same
+   on the listening paper and under a reading comprehension, so a student learns it once. */
+const SPACE =
+    "border-2 border-brand-200 bg-white caret-brand-600 placeholder:text-quaternary/80 hover:border-brand-300 hover:bg-brand-25 focus:border-brand-500 focus:ring-4 focus:ring-brand-100";
 function HalfIcon({ className }: { className?: string }) {
     return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} aria-hidden="true">
@@ -37,9 +45,10 @@ function HalfIcon({ className }: { className?: string }) {
 }
 const rvId = (qid: string, key: string) => `rv-${qid}-${key.replace(/[^\w-]/g, "_")}`;
 
-/** The status mark at the end of an answer space; it jumps to that answer's feedback. */
+/** The status mark at the end of an answer space, with the marks it got; it jumps to that answer's feedback. */
 const Mark = ({ qid, k, r, style, className }: { qid: string; k: string; r: Result; style?: React.CSSProperties; className?: string }) => {
     const v = VERD[r.verdict];
+    const marks = r.max ? `${r.awarded}/${r.max}` : "";
     return (
         <AriaButton
             style={style}
@@ -50,12 +59,15 @@ const Mark = ({ qid, k, r, style, className }: { qid: string; k: string; r: Resu
                 el?.animate([{ backgroundColor: "var(--color-bg-brand-primary)" }, { backgroundColor: "transparent" }], { duration: 1400 });
             }}
             className={cx(
-                "absolute z-1 flex size-5 items-center justify-center rounded-full text-white shadow-sm ring-2 ring-white outline-focus-ring transition duration-100 ease-linear hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2",
+                // sized from the paper's width, so on a phone the pill shrinks with the print rather than cover it
+                "absolute z-1 flex h-[1.8em] items-center justify-center gap-[0.35em] rounded-full text-[clamp(8px,1.25cqw,11px)] text-white shadow-sm ring-2 ring-white outline-focus-ring transition duration-100 ease-linear hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2",
+                marks ? "px-[0.55em]" : "w-[1.8em]",
                 v.dot,
                 className,
             )}
         >
-            <v.icon className="size-3 stroke-[3px]" />
+            <v.icon className="size-[1.1em] stroke-[3px]" />
+            {marks && <span className="leading-none font-bold tabular-nums">{marks}</span>}
         </AriaButton>
     );
 };
@@ -67,9 +79,26 @@ const Mark = ({ qid, k, r, style, className }: { qid: string; k: string; r: Resu
    printed box when the cursor leaves. */
 const fit = (el: HTMLTextAreaElement | null, open: boolean) => {
     if (!el) return;
-    el.style.height = "";
-    if (open && el.scrollHeight > el.clientHeight + 1) el.style.height = `${el.scrollHeight + 2}px`;
+    // back to the printed box's own height (kept on the element: React does not set it again)
+    el.style.height = el.dataset.h || "";
+    el.style.lineHeight = "";
+    if (el.scrollHeight <= el.clientHeight + 1) return;
+    if (open) {
+        el.style.height = `${el.scrollHeight + 4}px`;
+        return;
+    }
+    /* At rest an answer longer than the box shows whole lines only, never a line cut through the
+       middle: the lines are spaced so that a whole number of them fills the box exactly, and the
+       next one starts below its edge. (Padding would not do: what overflows paints over padding.) */
+    const cs = getComputedStyle(el);
+    const line = parseFloat(cs.lineHeight);
+    const inner = el.clientHeight - parseFloat(cs.paddingTop);
+    if (line > 0 && inner > line) el.style.lineHeight = `${inner / Math.floor(inner / line)}px`;
 };
+
+/* The space sits a little outside the box printed on the paper, so its edge covers the printed line
+   rather than drawing a second one inside it. */
+const OUT = 2;
 
 const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx: number | "rc"; maxpt: number; check?: CheckT }) => {
     const answers = useStore((s) => s.answers[q.id]);
@@ -79,10 +108,14 @@ const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx:
             {(img.boxes || []).map((b, j) => {
                 const key = `box${idx}-${j}`;
                 const r = check?.by[key];
+                // a box of more than one printed line carries its mark in the top corner, not mid-air
+                const tall = (b[3] - b[1]) * img.h * ((img.pt || maxpt) / img.w) > 26;
                 return (
                     <div key={key}>
                         <textarea
                             rows={1}
+                            // an answer kept from before is trimmed to whole lines as soon as it is drawn
+                            ref={(el) => { if (el && document.activeElement !== el) fit(el, false); }}
                             aria-label={`Answer space ${j + 1}`}
                             value={answers?.[key] || ""}
                             onChange={(e) => {
@@ -100,20 +133,29 @@ const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx:
                                 }
                             }}
                             placeholder="Type your answer"
+                            data-h={`calc(${(b[3] - b[1]) * 100}% + ${2 * OUT}px)`}
                             className={cx(
-                                "absolute resize-none overflow-hidden rounded-[3px] border-0 px-1.5 pt-1 leading-tight text-primary outline-hidden transition duration-150 ease-out placeholder:text-placeholder/70 placeholder:italic focus:z-10 focus:bg-primary focus:shadow-md focus:ring-2 focus:ring-brand focus:placeholder:text-transparent",
-                                r ? VERD[r.verdict].fill : "bg-secondary/80 ring-1 ring-secondary hover:bg-tertiary/70 hover:ring-primary",
+                                "absolute resize-none overflow-hidden rounded-md px-2 pt-[3px] leading-tight text-primary outline-hidden transition duration-150 ease-out focus:z-10 focus:bg-primary focus:shadow-md focus:placeholder:text-transparent",
+                                r ? cx("border-2 pr-[clamp(2.4rem,7cqw,4rem)]", VERD[r.verdict].fill) : SPACE,
                             )}
                             style={{
-                                left: `${b[0] * 100}%`,
-                                top: `${b[1] * 100}%`,
-                                width: `${(b[2] - b[0]) * 100}%`,
-                                height: `${(b[3] - b[1]) * 100}%`,
+                                left: `calc(${b[0] * 100}% - ${OUT}px)`,
+                                top: `calc(${b[1] * 100}% - ${OUT}px)`,
+                                width: `calc(${(b[2] - b[0]) * 100}% + ${2 * OUT}px)`,
+                                height: `calc(${(b[3] - b[1]) * 100}% + ${2 * OUT}px)`,
                                 fontFamily: "Calibri, Carlito, 'Segoe UI', sans-serif",
                                 fontSize: `min(${K * 10.5}px, ${(1050 / maxpt).toFixed(3)}cqw)`,
                             }}
                         />
-                        {r && <Mark qid={q.id} k={key} r={r} className="-translate-x-[calc(100%+4px)] -translate-y-1/2" style={{ left: `${b[2] * 100}%`, top: `${(b[1] + b[3]) * 50}%` }} />}
+                        {r && (
+                            <Mark
+                                qid={q.id}
+                                k={key}
+                                r={r}
+                                className={cx("-translate-x-[calc(100%+6px)]", tall ? "translate-y-1.5" : "-translate-y-1/2")}
+                                style={{ left: `${b[2] * 100}%`, top: tall ? `${b[1] * 100}%` : `${(b[1] + b[3]) * 50}%` }}
+                            />
+                        )}
                     </div>
                 );
             })}
@@ -155,15 +197,15 @@ const Paper = ({ q, check }: { q: Question; check?: CheckT }) => {
                                           value={answers?.[pid] || ""}
                                           onChange={(e) => setAnswer(q.id, pid, e.target.value)}
                                           className={cx(
-                                              "block min-h-[2.2em] w-full resize-y rounded-none border border-black bg-white py-1 pr-8 pl-2 leading-snug text-black outline-hidden placeholder:text-placeholder focus:ring-2 focus:ring-brand focus:ring-offset-1",
-                                              r && VERD[r.verdict].fill,
+                                              "block min-h-[2.2em] w-full resize-y rounded-md py-1.5 pr-10 pl-2.5 leading-snug text-black outline-hidden transition duration-150 ease-out focus:shadow-md",
+                                              r ? cx("border-2 pr-[clamp(2.4rem,8cqw,5rem)]", VERD[r.verdict].fill) : SPACE,
                                           )}
                                           style={{
                                               fontFamily: f?.family || "Times New Roman, serif",
                                               fontSize: f ? `max(16px, min(${(f.size * K).toFixed(1)}px, ${((100 * f.size) / maxpt).toFixed(3)}cqw))` : 16,
                                           }}
                                       />
-                                      {r && <Mark qid={q.id} k={pid} r={r} className="top-2 right-2" />}
+                                      {r && <Mark qid={q.id} k={pid} r={r} className="top-2.5 right-2.5" />}
                                   </div>
                               );
                           })}

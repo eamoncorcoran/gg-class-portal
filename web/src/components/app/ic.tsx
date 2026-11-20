@@ -26,6 +26,7 @@ export const ArrowRight = bold(P.ArrowRight);
 export const ArrowLeft = bold(P.ArrowLeft);
 export const ArrowUp = bold(P.ArrowUp);
 export const ArrowDown = bold(P.ArrowDown);
+export const ArrowSquareOut = bold(P.ArrowSquareOut);
 export const ArrowNarrowRight = bold(P.ArrowRight);
 export const ArrowNarrowLeft = bold(P.ArrowLeft);
 export const User01 = bold(P.User);

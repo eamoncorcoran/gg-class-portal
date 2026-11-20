@@ -1,7 +1,7 @@
 // Courses: the class recordings in the order we taught them (one lesson per week of the plan), and
 // the on-demand phrase practice. A course page is the player with the contents down the side.
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, Play, PlayCircle } from "@/components/app/ic";
+import { ArrowLeft, ArrowRight, ArrowSquareOut, Check, ChevronDown, Play, PlayCircle } from "@/components/app/ic";
 import { Button as AriaButton } from "react-aria-components";
 import { Link, useParams } from "react-router";
 import { DuoButton, DuoProgress } from "@/components/app/duo";
@@ -182,6 +182,24 @@ const Player = ({ l }: { l: Lesson }) => {
     );
 };
 
+/* The recording on Zoom's own page, under the player of every lesson that came from a Zoom class:
+   the way in when the player will not play, whatever the reason. A lesson still on its Zoom link
+   is that link already, so this is not shown twice. */
+const ZoomLinkRow = ({ link }: { link: NonNullable<Lesson["zoomLink"]> }) => (
+    <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <a href={link.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md font-bold text-brand-secondary outline-focus-ring hover:underline focus-visible:outline-2 focus-visible:outline-offset-2">
+            <ArrowSquareOut aria-hidden="true" className="size-4" />
+            Open Class via Zoom Link
+        </a>
+        {link.passcode && (
+            <span className="text-tertiary">
+                Passcode <span className="font-mono font-bold text-primary select-all">{link.passcode}</span>
+            </span>
+        )}
+        <span className="text-quaternary">If the video above will not play.</span>
+    </p>
+);
+
 /** The contents down the side: each term folds, lessons numbered, ticked when done. */
 const Contents = ({ c, current }: { c: Course; current: string }) => {
     const p = useProgress();
@@ -258,6 +276,7 @@ export const CoursePage = () => {
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
                 <div className="min-w-0">
                     <Player key={l.id} l={l} />
+                    {l.zoomLink && l.video?.type !== "link" && <ZoomLinkRow link={l.zoomLink} />}
                     <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div className="min-w-0">
                             {l.week && <p className="text-sm font-semibold text-brand-secondary">Week {l.week}</p>}

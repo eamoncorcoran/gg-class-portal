@@ -323,9 +323,11 @@ export async function finishMoves() {
        somebody has changed the lesson's video since, theirs stands. */
     const switched = await one(
       `UPDATE course_lessons SET video_provider='bunny', video_ref=$2, video_passcode=NULL,
+              zoom_link=COALESCE(zoom_link, $6), zoom_link_passcode=COALESCE(zoom_link_passcode, $7),
               duration_seconds=COALESCE(NULLIF($3::int,0), duration_seconds), updated_at=now()
        WHERE id=$1 AND video_provider=$4 AND video_ref=$5 RETURNING id`,
-      [row.lesson_id, row.bunny_ref, video.durationSeconds || 0, row.previous_provider, row.previous_ref],
+      [row.lesson_id, row.bunny_ref, video.durationSeconds || 0, row.previous_provider, row.previous_ref,
+       row.previous_provider === 'zoom' ? row.previous_ref : null, row.previous_passcode || null],
     );
     if (!switched) {
       await fail(row.lesson_id, new Error('The lesson’s video was changed while the copy was being made, so the lesson was left as it is.'));
