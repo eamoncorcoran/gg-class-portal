@@ -21,20 +21,19 @@ import { toast } from "./toast";
 // Every crop is drawn at one scale (K px per PDF point, Studyclix's text size), never stretched
 const K = 1.6;
 
-/* `fill` is the answer space once it has been marked: its border and its background take the
-   verdict's colour, so the paper reads at a glance. */
+/* `fill` is the answer space once it has been marked: its background takes the verdict's colour, so
+   the paper reads at a glance; its edge stays the paper's own line. */
 const VERD: Record<Verdict, { icon: typeof Check; word: string; dot: string; soft: string; fill: string }> = {
-    correct: { icon: Check, word: "Right", dot: "bg-success-solid", soft: "bg-success-secondary text-fg-success-primary", fill: "border-success bg-utility-success-50/70" },
-    partial: { icon: HalfIcon, word: "Partly right", dot: "bg-warning-solid", soft: "bg-warning-secondary text-fg-warning-primary", fill: "border-warning bg-utility-warning-50/80" },
-    wrong: { icon: X, word: "Wrong", dot: "bg-error-solid", soft: "bg-error-secondary text-fg-error-primary", fill: "border-error bg-utility-error-50/70" },
-    blank: { icon: Minus, word: "Not answered", dot: "bg-fg-quaternary", soft: "bg-tertiary text-fg-quaternary", fill: "border-tertiary bg-secondary" },
+    correct: { icon: Check, word: "Right", dot: "bg-success-solid", soft: "bg-success-secondary text-fg-success-primary", fill: "bg-utility-success-50/70" },
+    partial: { icon: HalfIcon, word: "Partly right", dot: "bg-warning-solid", soft: "bg-warning-secondary text-fg-warning-primary", fill: "bg-utility-warning-50/80" },
+    wrong: { icon: X, word: "Wrong", dot: "bg-error-solid", soft: "bg-error-secondary text-fg-error-primary", fill: "bg-utility-error-50/70" },
+    blank: { icon: Minus, word: "Not answered", dot: "bg-fg-quaternary", soft: "bg-tertiary text-fg-quaternary", fill: "bg-secondary" },
 };
 
-/* How an answer space looks before it is marked: a white box with a soft green edge over the printed
-   one, a darker edge under the mouse, and with the cursor a green edge with a pale halo. The same
-   on the listening paper and under a reading comprehension, so a student learns it once. */
-const SPACE =
-    "border-2 border-brand-200 bg-white caret-brand-600 placeholder:text-quaternary/80 hover:border-brand-300 hover:bg-brand-25 focus:border-brand-500 focus:ring-4 focus:ring-brand-100";
+/* An answer space looks exactly like the box printed on the paper, only typed in: the same thin
+   black line, square corners, white inside, "Type your answer" in grey until something is written.
+   No colour of its own, on the listening paper and under a reading comprehension alike. */
+const SPACE = "bg-white";
 function HalfIcon({ className }: { className?: string }) {
     return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} aria-hidden="true">
@@ -98,7 +97,7 @@ const fit = (el: HTMLTextAreaElement | null, open: boolean) => {
 
 /* The space sits a little outside the box printed on the paper, so its edge covers the printed line
    rather than drawing a second one inside it. */
-const OUT = 2;
+const OUT = 1;
 
 const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx: number | "rc"; maxpt: number; check?: CheckT }) => {
     const answers = useStore((s) => s.answers[q.id]);
@@ -135,8 +134,8 @@ const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx:
                             placeholder="Type your answer"
                             data-h={`calc(${(b[3] - b[1]) * 100}% + ${2 * OUT}px)`}
                             className={cx(
-                                "absolute resize-none overflow-hidden rounded-md px-2 pt-[3px] leading-tight text-primary outline-hidden transition duration-150 ease-out focus:z-10 focus:bg-primary focus:shadow-md focus:placeholder:text-transparent",
-                                r ? cx("border-2 pr-[clamp(2.4rem,7cqw,4rem)]", VERD[r.verdict].fill) : SPACE,
+                                "absolute resize-none overflow-hidden rounded-none border border-black px-1.5 pt-[3px] leading-tight text-primary caret-black outline-hidden transition duration-150 ease-out placeholder:text-quaternary/80 focus:z-10 focus:bg-primary focus:shadow-md focus:placeholder:text-transparent",
+                                r ? cx("pr-[clamp(2.4rem,7cqw,4rem)]", VERD[r.verdict].fill) : SPACE,
                             )}
                             style={{
                                 left: `calc(${b[0] * 100}% - ${OUT}px)`,
@@ -197,8 +196,8 @@ const Paper = ({ q, check }: { q: Question; check?: CheckT }) => {
                                           value={answers?.[pid] || ""}
                                           onChange={(e) => setAnswer(q.id, pid, e.target.value)}
                                           className={cx(
-                                              "block min-h-[2.2em] w-full resize-y rounded-md py-1.5 pr-10 pl-2.5 leading-snug text-black outline-hidden transition duration-150 ease-out focus:shadow-md",
-                                              r ? cx("border-2 pr-[clamp(2.4rem,8cqw,5rem)]", VERD[r.verdict].fill) : SPACE,
+                                              "block min-h-[2.2em] w-full resize-y rounded-none border border-black py-1 pr-8 pl-2 leading-snug text-black caret-black outline-hidden placeholder:text-quaternary/80 focus:shadow-md",
+                                              r ? cx("pr-[clamp(2.4rem,8cqw,5rem)]", VERD[r.verdict].fill) : SPACE,
                                           )}
                                           style={{
                                               fontFamily: f?.family || "Times New Roman, serif",

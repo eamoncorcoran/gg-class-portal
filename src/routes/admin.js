@@ -36,7 +36,7 @@ import { AUDIO_UPLOAD_MB, DIALECTS, DIALECT_KEYS, SYNTHESISABLE, audioDir, hashT
 import { parseVideoSource, detectVideoProvider, PROVIDER_LABELS, VIDEO_PROVIDERS } from '../lessonvideo.js';
 import { availableRecordings, importRecording, importWatched, importConfigured } from '../zoomimport.js';
 import { moveCandidates, startMoves } from '../lessonmoves.js';
-import { MESSAGE_MAX, teacherInbox, teacherUnread, teacherThread, teacherSends, mayReadAsTeacher, markConversationUnread } from '../messages.js';
+import { MESSAGE_MAX, teacherInbox, teacherUnread, teacherThread, teacherSends, mayReadAsTeacher, markConversationUnread, scheduleClassMessage, scheduledMessages, cancelScheduled } from '../messages.js';
 import { receiveMessageFiles, checkMessageFiles } from '../messagefiles.js';
 import { zoomConfigured } from '../zoom.js';
 import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, rememberIdentity, rematchSittings } from '../zoomattendance.js';
@@ -3925,10 +3925,38 @@ router.get('/messages/unread', asyncRoute(async (_req, res) => {
   res.json({ unread: await teacherUnread() });
 }));
 
+/* What is written and waiting to go, before the thread route, which would read "scheduled" as a student. */
+router.get('/messages/scheduled', asyncRoute(async (req, res) => {
+  if (!(await mayReadAsTeacher(req.user))) return res.status(403).json({ error: 'Only the lead teacher can message students.' });
+  res.json({ scheduled: await scheduledMessages() });
+}));
+
 router.get('/messages/:studentId', asyncRoute(async (req, res) => {
   const parsed = z.string().uuid().safeParse(req.params.studentId);
   if (!parsed.success) return res.status(404).json({ error: 'There is no such student.' });
   res.json(await teacherThread(parsed.data));
+}));
+
+/* A message to a whole class, each copy with the student's first name in it,
+   sent at a chosen moment by the minute sweep. dryRun shows who would get it. */
+router.post('/messages/schedule', asyncRoute(async (req, res) => {
+  if (!(await mayReadAsTeacher(req.user))) return res.status(403).json({ error: 'Only the lead teacher can message students.' });
+  const parsed = z.object({
+    classId: z.string().uuid(),
+    body: z.string().trim().min(1).max(MESSAGE_MAX),
+    sendAt: z.string().min(1),
+    exclude: z.array(z.string().trim().min(1)).max(200).default([]),
+    dryRun: z.boolean().default(false),
+  }).safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Say which class, what to send and when.') });
+  res.status(parsed.data.dryRun ? 200 : 201).json(await scheduleClassMessage(req.user, parsed.data));
+}));
+router.delete('/messages/scheduled/:id', asyncRoute(async (req, res) => {
+  if (!(await mayReadAsTeacher(req.user))) return res.status(403).json({ error: 'Only the lead teacher can message students.' });
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(404).json({ error: 'There is no such scheduled message.' });
+  const batch = req.query.batch === '1';
+  res.json(await cancelScheduled(batch ? { batchId: id.data } : { id: id.data }));
 }));
 
 /* "Mark as unread": the teacher's own reminder to come back to a conversation.

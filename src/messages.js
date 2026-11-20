@@ -235,12 +235,13 @@ export async function teacherThread(studentId, { markRead = true } = {}) {
   };
 }
 
-export async function teacherSends(teacher, studentId, body, files = []) {
+export async function teacherSends(teacher, studentId, body, files = [], { burst = true } = {}) {
   needSomething(body, files);
   const student = await one(`SELECT id, role, active FROM users WHERE id=$1`, [studentId]);
   if (!student || student.role !== 'student') throw Object.assign(new Error('There is no such student.'), { status: 404 });
   if (!student.active) throw Object.assign(new Error('This student’s account is switched off, so they would not see a reply.'), { status: 409 });
-  await guardBurst(teacher.id);
+  // a scheduled batch is many messages at one moment by design, not a burst
+  if (burst) await guardBurst(teacher.id);
   const row = await one(
     `INSERT INTO private_messages(student_id,sender_id,from_teacher,body) VALUES ($1,$2,true,$3) RETURNING *`,
     [studentId, teacher.id, String(body || '').trim()],
@@ -250,6 +251,103 @@ export async function teacherSends(teacher, studentId, body, files = []) {
   await query(`UPDATE private_messages SET read_at=now() WHERE student_id=$1 AND from_teacher=false AND read_at IS NULL`, [studentId]);
   await clearMark(studentId, { settled: true });
   return shape({ ...row, sender_name: teacher.name, files: attached });
+}
+
+/* ---- a message to a class, sent later ---------------------------------- */
+
+/** "[First name]" in a message becomes the student's own. */
+export const personalise = (body, name) => String(body || '').replace(/\[first name\]/gi, String(name || '').trim().split(/\s+/)[0] || 'there');
+
+/**
+ * Who a message to a class goes to: every student enrolled in it whose
+ * account is on and who has not withdrawn from the course, less anybody the
+ * teacher leaves out by name or id. Names are matched whole, ignoring case
+ * and accents, so "Megan Kelly-Buggy" leaves out that one student only.
+ */
+export async function classRecipients(classId, { exclude = [] } = {}) {
+  const rows = await query(
+    `SELECT u.id, u.name, u.email FROM class_students cs JOIN users u ON u.id=cs.student_id
+      WHERE cs.class_id=$1 AND cs.active AND u.role='student' AND u.active AND u.withdrawn_at IS NULL
+      ORDER BY u.name`,
+    [classId],
+  );
+  const fold = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const out = new Set(exclude.map(fold));
+  return rows.rows.filter((u) => !out.has(fold(u.name)) && !out.has(fold(u.id)) && !out.has(fold(u.email)));
+}
+
+/**
+ * Write one message for each student in a class, to be sent at `sendAt`.
+ * With `dryRun` nothing is written: the recipients and the first student's
+ * copy come back, to be looked over first.
+ */
+export async function scheduleClassMessage(teacher, { classId, body, sendAt, exclude = [], dryRun = false }) {
+  const text = String(body || '').trim();
+  if (!text) throw Object.assign(new Error('Write the message first.'), { status: 400 });
+  if (text.length > MESSAGE_MAX) throw Object.assign(new Error('That message is too long.'), { status: 400 });
+  const when = new Date(sendAt);
+  if (Number.isNaN(when.getTime())) throw Object.assign(new Error('Say when it should be sent.'), { status: 400 });
+  const klass = await one(`SELECT id, programme_name FROM classes WHERE id=$1`, [classId]);
+  if (!klass) throw Object.assign(new Error('There is no such class.'), { status: 404 });
+  const students = await classRecipients(classId, { exclude });
+  if (!students.length) throw Object.assign(new Error('Nobody in that class would get this message.'), { status: 409 });
+  const preview = students.map((s) => ({ id: s.id, name: s.name, body: personalise(text, s.name) }));
+  if (dryRun) return { className: klass.programme_name, sendAt: when.toISOString(), recipients: preview, scheduled: false };
+  const batch = await one(`SELECT gen_random_uuid() id`);
+  for (const s of preview) {
+    await query(
+      `INSERT INTO private_message_schedule(batch_id,student_id,teacher_id,body,send_at) VALUES ($1,$2,$3,$4,$5)`,
+      [batch.id, s.id, teacher.id, s.body, when],
+    );
+  }
+  return { className: klass.programme_name, sendAt: when.toISOString(), recipients: preview, scheduled: true, batchId: batch.id };
+}
+
+/** What is written and waiting, newest batch first. */
+export async function scheduledMessages() {
+  const rows = await query(
+    `SELECT s.id, s.batch_id, s.student_id, u.name student_name, s.body, s.send_at, s.sent_at, s.cancelled_at, s.created_at
+       FROM private_message_schedule s JOIN users u ON u.id=s.student_id
+      WHERE s.sent_at IS NULL AND s.cancelled_at IS NULL ORDER BY s.send_at, u.name`,
+  );
+  return rows.rows.map((r) => ({ id: r.id, batchId: r.batch_id, studentId: r.student_id, studentName: r.student_name, body: r.body, sendAt: r.send_at, createdAt: r.created_at }));
+}
+
+/** Take back a whole batch, or one student's copy, before it goes. */
+export async function cancelScheduled({ batchId = null, id = null } = {}) {
+  const res = await query(
+    `UPDATE private_message_schedule SET cancelled_at=now()
+      WHERE sent_at IS NULL AND cancelled_at IS NULL AND (($1::uuid IS NOT NULL AND batch_id=$1) OR ($2::uuid IS NOT NULL AND id=$2))`,
+    [batchId, id],
+  );
+  return { cancelled: res.rowCount || 0 };
+}
+
+/**
+ * Send what is due. Each copy is claimed first (sent_at set in the same
+ * statement that picks it), so two sweeps cannot send the same one twice; a
+ * copy that fails is left claimed with no message_id and is written to the log
+ * rather than tried over and over.
+ */
+export async function sendDueMessages({ now = new Date(), send = teacherSends } = {}) {
+  const due = await query(
+    `UPDATE private_message_schedule SET sent_at=$1
+      WHERE id IN (SELECT id FROM private_message_schedule WHERE send_at <= $1 AND sent_at IS NULL AND cancelled_at IS NULL ORDER BY send_at LIMIT 200)
+      RETURNING id, student_id, teacher_id, body`,
+    [now],
+  );
+  let sent = 0;
+  for (const row of due.rows) {
+    try {
+      const teacher = await one(`SELECT id, name FROM users WHERE id=$1`, [row.teacher_id]);
+      const message = await send(teacher || { id: row.teacher_id, name: 'Teacher' }, row.student_id, row.body, [], { burst: false });
+      await query(`UPDATE private_message_schedule SET message_id=$2 WHERE id=$1`, [row.id, message.id]);
+      sent += 1;
+    } catch (error) {
+      console.error('Scheduled private message not sent', row.id, error?.message);
+    }
+  }
+  return { due: due.rows.length, sent };
 }
 
 /* ---- telling the other side, by email ---------------------------------- */
@@ -324,7 +422,9 @@ export async function announceMessages({ now = new Date() } = {}) {
 }
 
 export function startMessageNotifier() {
-  cron.schedule('* * * * *', () => {
-    announceMessages().catch((error) => console.error('Private message sweep failed', error));
+  cron.schedule('* * * * *', async () => {
+    // what is due goes out first, so the same sweep's emails say it is there
+    await sendDueMessages().catch((error) => console.error('Scheduled private message sweep failed', error));
+    await announceMessages().catch((error) => console.error('Private message sweep failed', error));
   }, { noOverlap: true });
 }
