@@ -1181,7 +1181,7 @@ router.post('/community/threads', asyncRoute(async (req, res) => {
     attachments: [...parsed.data.attachments, ...video.attachments],
   });
   await audit({ actorId: req.user.id, action: 'community.thread_created', entityType: 'thread', entityId: row.id, ip: req.ip });
-  res.status(201).json(row);
+  res.status(201).json(forStudentView(row));
 
   /* Draft a suggested reply now, so one is waiting rather than being written
      while an administrator watches a spinner.

@@ -3343,13 +3343,16 @@ router.patch('/community/thread/:id/content', asyncRoute(async (req, res) => {
 }));
 
 router.patch('/community/thread/:id', asyncRoute(async (req, res) => {
-  const parsed = z.object({ pinned: z.boolean().optional(), locked: z.boolean().optional() }).safeParse(req.body);
+  /* `handled` is the teacher's private tick (dealt with / needs a look) and is
+     never shown to a student; `locked` is the public close that stops replies. */
+  const parsed = z.object({ pinned: z.boolean().optional(), locked: z.boolean().optional(), handled: z.boolean().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Invalid thread change.') });
   const current = await one('SELECT * FROM discussion_threads WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Thread not found.' });
+  const handledAt = parsed.data.handled === undefined ? current.handled_at : (parsed.data.handled ? (current.handled_at || new Date()) : null);
   const row = await one(
-    `UPDATE discussion_threads SET pinned=$1,locked=$2,updated_at=now() WHERE id=$3 RETURNING *`,
-    [parsed.data.pinned ?? current.pinned, parsed.data.locked ?? current.locked, current.id],
+    `UPDATE discussion_threads SET pinned=$1,locked=$2,handled_at=$4,updated_at=now() WHERE id=$3 RETURNING *`,
+    [parsed.data.pinned ?? current.pinned, parsed.data.locked ?? current.locked, current.id, handledAt],
   );
   await audit({ actorId: req.user.id, action: 'community.thread_updated', entityType: 'thread', entityId: row.id, metadata: parsed.data, ip: req.ip });
   res.json(row);

@@ -67,6 +67,7 @@ const HOT_SCORE = `
 const THREAD_COLUMNS = `
   t.id, t.class_id, t.title, t.body, t.pinned, t.locked, t.created_at,
   t.last_activity_at, t.deleted_at, t.category_id, t.published_at, t.edited_at,
+  t.handled_at,
   t.published_at > now() scheduled,
   t.ai_draft, t.ai_draft_state, t.ai_drafted_at,
   ${AUTHOR} author,
@@ -137,7 +138,7 @@ export function withPlayableVideos(thread) {
  */
 export function forStudentView(thread) {
   if (!thread) return thread;
-  const { ai_draft: _d, ai_draft_state: _s, ai_drafted_at: _a, ...rest } = thread;
+  const { ai_draft: _d, ai_draft_state: _s, ai_drafted_at: _a, handled_at: _h, ...rest } = thread;
   return rest;
 }
 
@@ -290,7 +291,15 @@ export async function createPost({ threadId, authorId, body, parentId = null }) 
     [threadId, authorId, body, parent ? (parent.parent_id || parent.id) : null],
   );
   // Sorting the feed by activity is only honest if commenting counts as activity.
-  await query('UPDATE discussion_threads SET last_activity_at=now(),updated_at=now() WHERE id=$1', [threadId]);
+  /* A conversation the teacher had marked as dealt with is open again the moment
+     a student writes in it, wherever in the thread they write. The teacher's own
+     comments do not reopen it: answering is not the same as being answered. */
+  await query(
+    `UPDATE discussion_threads SET last_activity_at=now(), updated_at=now(),
+       handled_at = CASE WHEN EXISTS (SELECT 1 FROM users WHERE id=$2 AND role='student') THEN NULL ELSE handled_at END
+     WHERE id=$1`,
+    [threadId, authorId],
+  );
   return post;
 }
 

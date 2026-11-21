@@ -14,7 +14,7 @@ import { DuoButton } from "@/components/app/duo";
 import { DuoDialog, FieldLabel } from "@/components/app/duo-dialog";
 import { EmojiPicker, insertAtCursor } from "@/components/app/emoji-picker";
 import { Avatar } from "@/components/app/hub-parts";
-import { Calendar, Check, Edit05, Microphone01, Smile, Trash01, UploadCloud02, X } from "@/components/app/ic";
+import { Calendar, Check, CheckCircle, Edit05, Microphone01, Smile, Trash01, UploadCloud02, X } from "@/components/app/ic";
 import { Page, PageHeader } from "@/components/app/page-parts";
 import { Segmented } from "@/components/app/segmented";
 import { toast } from "@/components/app/toast";
@@ -49,7 +49,10 @@ export type Thread = {
     title: string;
     body: string;
     pinned: boolean;
+    /** replies switched off for students (they see it as closed to new replies) */
     locked: boolean;
+    /** the teacher's private tick: dealt with. Only ever present on the teacher's copy. */
+    handled_at?: string | null;
     created_at: string;
     published_at?: string;
     edited_at?: string | null;
@@ -336,7 +339,30 @@ const Name = ({ a }: { a?: Author | null }) => (
 );
 
 /** One post in the feed. */
-const PostCard = ({ t, base, admin, tz, onOpen }: { t: Thread; base: string; admin: boolean; tz: string; onOpen: () => void }) => (
+type ThreadChange = { pinned?: boolean; locked?: boolean; handled?: boolean };
+
+/** The teacher's open/closed tick on a post. Students never see it: the column is stripped before their copy leaves the server. */
+const HandledToggle = ({ t, onMod, size = "xs" }: { t: Thread; onMod: (change: ThreadChange) => void; size?: "xs" | "sm" }) => {
+    const closed = Boolean(t.handled_at);
+    return (
+        <button
+            type="button"
+            onClick={() => onMod({ handled: !closed })}
+            aria-pressed={closed}
+            title={closed ? "Closed: dealt with. Press to reopen. It reopens itself if a student writes again." : "Close: mark as dealt with"}
+            className={cx(
+                "inline-flex items-center gap-1.5 rounded-full border-2 font-bold whitespace-nowrap outline-focus-ring transition duration-100 ease-linear focus-visible:outline-2",
+                size === "xs" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+                closed ? "border-utility-success-200 bg-utility-success-50 text-utility-success-700 hover:bg-utility-success-100" : "border-secondary bg-primary text-tertiary hover:border-primary hover:text-primary",
+            )}
+        >
+            <CheckCircle aria-hidden="true" className={cx(size === "xs" ? "size-3.5" : "size-4", closed ? "text-utility-success-600" : "text-fg-quaternary")} />
+            {closed ? "Closed" : "Close"}
+        </button>
+    );
+};
+
+const PostCard = ({ t, base, admin, tz, onOpen, onMod }: { t: Thread; base: string; admin: boolean; tz: string; onOpen: () => void; onMod?: (change: ThreadChange) => void }) => (
     <article
         // About to be opened: start reading its comments now, so they are there when it is.
         onPointerEnter={() => prefetchThread(base, t.id)}
@@ -356,7 +382,7 @@ const PostCard = ({ t, base, admin, tz, onOpen }: { t: Thread; base: string; adm
                     {t.scheduled && t.published_at ? <b className="rounded-md bg-warning-primary px-1.5 py-0.5 text-warning-primary">Scheduled {scheduledFor(t.published_at, tz)}</b> : timeAgo(t.published_at || t.created_at, tz)}
                     {t.pinned ? <> · <b className="text-secondary">Pinned</b></> : ""}
                     {t.edited_at ? " · edited" : ""}
-                    {t.locked && admin ? " · Closed" : ""}
+                    {t.locked && admin ? " · Replies off" : ""}
                     {t.deleted_at && admin ? <> · <b className="text-error-primary">Removed</b></> : ""}
                     {/* On a phone the category joins this line so the author's name is not squeezed by the chip. */}
                     {t.category_name ? <span className="sm:hidden"> · {t.category_name}</span> : ""}
@@ -375,11 +401,12 @@ const PostCard = ({ t, base, admin, tz, onOpen }: { t: Thread; base: string; adm
                 {t.comment_count || 0} {t.comment_count === 1 ? "comment" : "comments"}
             </button>
             {t.last_comment && (
-                <span className="ml-auto flex items-center gap-1.5 text-xs text-quaternary">
+                <span className={cx("flex items-center gap-1.5 text-xs text-quaternary", !(admin && onMod) && "ml-auto")}>
                     <Avatar who={{ id: t.last_comment.id, name: t.last_comment.name, role: "student", avatar: t.last_comment.avatar ? `/api/media/avatar/${t.last_comment.id}` : undefined }} size="xs" />
                     Last comment {timeAgo(t.last_comment.at, tz)}
                 </span>
             )}
+            {admin && onMod && <span className="ml-auto"><HandledToggle t={t} onMod={onMod} /></span>}
         </div>
     </article>
 );
@@ -1184,7 +1211,7 @@ const ThreadDialog = ({ id, base, admin, tz, withdrawn, draftingOn, version = 0,
             setBusy(false);
         }
     };
-    const mod = async (change: { pinned?: boolean; locked?: boolean }) => {
+    const mod = async (change: ThreadChange) => {
         try {
             await api(`/api/admin/community/thread/${id}`, { method: "PATCH", json: change });
             await refresh();
@@ -1249,9 +1276,9 @@ const ThreadDialog = ({ id, base, admin, tz, withdrawn, draftingOn, version = 0,
                                         <DuoButton size="xs" color="ghost" onPress={() => mod({ pinned: !t.pinned })}>
                                             {t.pinned ? "Unpin" : "Pin"}
                                         </DuoButton>
-                                        {/* "Close thread", not "Close": the X beside it closes the sheet. */}
+                                        {/* Replies off is the public lock students notice; Open/Closed on the right is the teacher's own tick. */}
                                         <DuoButton size="xs" color="ghost" onPress={() => mod({ locked: !t.locked })}>
-                                            {t.locked ? "Reopen thread" : "Close thread"}
+                                            {t.locked ? "Turn replies on" : "Turn replies off"}
                                         </DuoButton>
                                         <DuoButton size="xs" color="ghost" onPress={() => setScheduleOpen(true)}>
                                             {t.scheduled ? "Reschedule" : "Schedule"}
@@ -1259,6 +1286,7 @@ const ThreadDialog = ({ id, base, admin, tz, withdrawn, draftingOn, version = 0,
                                         <DuoButton size="xs" color={t.deleted_at ? "ghost" : "danger"} onPress={removal}>
                                             {t.deleted_at ? "Restore" : "Remove"}
                                         </DuoButton>
+                                        <span className="ml-auto"><HandledToggle t={t} onMod={mod} /></span>
                                     </div>
                                 )}
                                 {t.scheduled && t.published_at && <p className="mx-5 mt-4 rounded-xl bg-warning-primary px-4 py-2 text-sm font-semibold text-warning-primary md:mx-6">Not visible to students yet. Appears {fmtWhen(t.published_at, tz)}.</p>}
@@ -1753,7 +1781,23 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
     const [threadVersion, setThreadVersion] = useState(0);
     const [cat, setCat] = useState("");
     const [sort, setSort] = useState<"new" | "hot">("new");
-    const [state, setState] = useState<"" | "open" | "closed">("");
+    /* The teacher's Open/Closed view is remembered between visits: it is how the board is worked, not a one-off search. */
+    const [state, setStateRaw] = useState<"" | "open" | "closed">(() => {
+        try {
+            const kept = localStorage.getItem("gg.board.state");
+            return kept === "open" || kept === "closed" ? kept : "";
+        } catch {
+            return "";
+        }
+    });
+    const setState = (next: "" | "open" | "closed") => {
+        setStateRaw(next);
+        try {
+            localStorage.setItem("gg.board.state", next);
+        } catch {
+            /* a private window; the choice simply lasts the visit */
+        }
+    };
     /* The feed is drawn a page at a time (the board arrives whole, 100+ posts on an old class). A new
        filter or sort starts again from the top. Deep links are unaffected: the thread sheet loads its
        post by id, whether or not that post is among the cards on screen. */
@@ -1811,8 +1855,19 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
     }, [load]);
 
     const all = board?.threads ?? [];
-    /* Filtered here rather than on the server: the board is one class's posts and already all in hand. Students never set this. */
-    const threads = admin && state ? all.filter((t) => (state === "closed" ? t.locked : !t.locked)) : all;
+    /* Filtered here rather than on the server: the board is one class's posts and already all in hand. Students never set this,
+       and never could: their copy of a post does not carry handled_at. */
+    const openCount = admin ? all.filter((t) => !t.handled_at && !t.deleted_at).length : 0;
+    const closedCount = admin ? all.filter((t) => t.handled_at && !t.deleted_at).length : 0;
+    const threads = admin && state ? all.filter((t) => (state === "closed" ? Boolean(t.handled_at) : !t.handled_at)) : all;
+    const modThread = async (threadId: string, change: ThreadChange) => {
+        try {
+            await api(`/api/admin/community/thread/${threadId}`, { method: "PATCH", json: change });
+            await load();
+        } catch (e) {
+            toast((e as Error).message);
+        }
+    };
     const contributors = board?.contributors ?? [];
 
     const ctx = { board, reload: load, openCategories: () => setCats(true), openSchedulePlan: () => setPlan(true) };
@@ -1855,7 +1910,19 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
                             ))}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            {admin && <Segmented size="sm" label="Open or closed" value={state} onChange={setState} items={[{ id: "", label: "All" }, { id: "open", label: "Open" }, { id: "closed", label: "Closed" }]} />}
+                            {admin && (
+                                <Segmented
+                                    size="sm"
+                                    label="Open or closed"
+                                    value={state}
+                                    onChange={setState}
+                                    items={[
+                                        { id: "", label: "All" },
+                                        { id: "open", label: <>Open <span className="ml-0.5 text-[11px] font-bold tabular-nums opacity-70">{openCount}</span></>, aria: `Open, ${openCount}` },
+                                        { id: "closed", label: <>Closed <span className="ml-0.5 text-[11px] font-bold tabular-nums opacity-70">{closedCount}</span></>, aria: `Closed, ${closedCount}` },
+                                    ]}
+                                />
+                            )}
                             <Segmented size="sm" label="Sort" value={sort} onChange={setSort} items={[{ id: "new", label: "Latest" }, { id: "hot", label: "Hot" }]} />
                         </div>
                     </div>
@@ -1867,8 +1934,8 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
                         <div className="rounded-2xl border-2 border-dashed border-secondary p-8 text-center">
                             {admin && state ? (
                                 <>
-                                    <h3 className="text-lg font-bold text-primary">Nothing {state}</h3>
-                                    <p className="mt-1 text-sm text-tertiary">No posts on this board are {state} at the moment.</p>
+                                    <h3 className="text-lg font-bold text-primary">{state === "open" ? "Nothing open" : "Nothing closed"}</h3>
+                                    <p className="mt-1 text-sm text-tertiary">{state === "open" ? "Every post on this board is marked as dealt with. A post reopens itself when a student writes in it." : "Nothing is marked as dealt with yet. Press Open on a post once you have answered it."}</p>
                                 </>
                             ) : (
                                 <>
@@ -1884,7 +1951,7 @@ export const CommunityBoard = ({ admin, classId, openId, onOpen, head }: { admin
                     ) : (
                         <>
                             {threads.slice(0, shown).map((t) => (
-                                <PostCard key={t.id} t={t} base={base} admin={admin} tz={tz} onOpen={() => onOpen(t.id)} />
+                                <PostCard key={t.id} t={t} base={base} admin={admin} tz={tz} onOpen={() => onOpen(t.id)} onMod={admin ? (change) => modThread(t.id, change) : undefined} />
                             ))}
                             {threads.length > shown && (
                                 <DuoButton color="secondary" full onPress={() => setShown((n) => n + PAGE)}>
