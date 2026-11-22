@@ -3,6 +3,7 @@
 // its sentence, the way a word in HeyRua opens (without HeyRua's play button: Eamon's call). The script, the timings and the glosses come ready
 // made in /aural/<year>_<cuid>.json (built from the SEC marking scheme and the recording itself).
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Button as AriaButton } from "react-aria-components";
 import { ChevronDown, X } from "@/components/app/ic";
@@ -223,34 +224,45 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
     );
 };
 
-/** The small card that opens under a tapped word. It sits inside the panel, under the word, and never off its edge. */
+/** The small card that opens under a tapped word. Drawn at page level, fixed to the window, so no
+    panel edge or scroll box can cut it off: under the word when there is room, above it otherwise. */
 const GlossCard = ({ data, i, box, onClose }: { data: Script; i: number; box: RefObject<HTMLDivElement | null>; onClose: () => void }) => {
     const g = data.gloss?.[i];
     const word = data.words[i].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const card = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
     useEffect(() => {
         const el = box.current;
         const w = el?.querySelector<HTMLElement>(`[data-w="${i}"]`);
         if (!el || !w) return;
         const place = () => {
             const r = w.getBoundingClientRect();
-            const p = el.parentElement!.getBoundingClientRect();
-            const width = Math.min(300, p.width - 16);
-            const left = Math.min(Math.max(8, r.left - p.left), p.width - width - 8);
-            setPos({ top: r.bottom - p.top + 6, left });
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const width = Math.min(300, vw - 16);
+            const height = card.current?.offsetHeight ?? 180;
+            const left = Math.min(Math.max(8, r.left), vw - width - 8);
+            const below = r.bottom + 6;
+            const top = below + height <= vh - 8 ? below : Math.max(8, r.top - 6 - height);
+            setPos({ top, left, width });
         };
         place();
         el.addEventListener("scroll", place);
-        return () => el.removeEventListener("scroll", place);
+        window.addEventListener("scroll", place, true);
+        window.addEventListener("resize", place);
+        return () => {
+            el.removeEventListener("scroll", place);
+            window.removeEventListener("scroll", place, true);
+            window.removeEventListener("resize", place);
+        };
     }, [i, box]);
-    if (!pos) return null;
-    return (
+    return createPortal(
         <div
+            ref={card}
             data-gloss
             role="dialog"
             aria-label={`${word}, meaning`}
-            className="absolute z-20 w-[min(300px,calc(100%-16px))] rounded-xl border-2 border-secondary bg-primary p-4 text-left shadow-lg duration-150 animate-in fade-in zoom-in-95"
-            style={{ top: pos.top, left: pos.left }}
+            className={cx("fixed z-50 rounded-xl border-2 border-secondary bg-primary p-4 text-left shadow-lg duration-150 animate-in fade-in zoom-in-95", !pos && "invisible")}
+            style={pos ? { top: pos.top, left: pos.left, width: pos.width } : { top: 0, left: 0, width: 300 }}
         >
             <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
@@ -279,6 +291,7 @@ const GlossCard = ({ data, i, box, onClose }: { data: Script; i: number; box: Re
             ) : (
                 <p className="mt-3 border-t border-secondary pt-3 text-sm text-tertiary">No note for this word yet.</p>
             )}
-        </div>
+        </div>,
+        document.body,
     );
 };
