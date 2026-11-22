@@ -1,12 +1,12 @@
 // The listening recording: a proper player rather than the browser's default strip. Play button,
 // a scrubbable brand-coloured track, elapsed and total time, skip back ten seconds and a speed toggle.
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { Play, RefreshCcw01 } from "@/components/app/ic";
 import { Button as AriaButton } from "react-aria-components";
 import { mmss } from "@/lib/data";
 import { cx } from "@/utils/cx";
 
-export const AudioPlayer = ({ src, title, seconds, meta }: { src: string; title: string; seconds: number; meta: string }) => {
+export const AudioPlayer = ({ src, title, seconds, meta, audioRef }: { src: string; title: string; seconds: number; meta: string; /** handed the <audio> element, for anything that follows the recording (the script panel) */ audioRef?: RefObject<HTMLAudioElement | null> }) => {
     const el = useRef<HTMLAudioElement>(null);
     const [playing, setPlaying] = useState(false);
     const [t, setT] = useState(0);
@@ -19,6 +19,7 @@ export const AudioPlayer = ({ src, title, seconds, meta }: { src: string; title:
 
     useEffect(() => {
         const a = el.current!;
+        if (audioRef) audioRef.current = a;
         const on = () => setPlaying(true), off = () => setPlaying(false);
         const time = () => {
             if (!scrub.current) setT(a.currentTime);

@@ -1,6 +1,6 @@
 // One exam question: header and actions, the paper itself (typed on directly), checking, the official
 // marking scheme and any H1 sample answers.
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { AlertCircle, ArrowRight, Bookmark, Check, CheckSquare, ChevronDown, FileCheck02, InfoCircle, LayoutRight, Minus, Plus, Printer, Square, X } from "@/components/app/ic";
 import { motion } from "motion/react";
 import { Button as AriaButton } from "react-aria-components";
@@ -13,6 +13,7 @@ import { openSample, openScheme, printQuestions } from "./overlays";
 import { SOON } from "@/lib/soon";
 import { AnswerParts } from "./answer-parts";
 import { AudioPlayer } from "./audio-player";
+import { AuralScript } from "./aural-script";
 import { DuoButton } from "./duo";
 import { Segmented } from "./segmented";
 import { HomeworkTags, SetHomeworkButton } from "./set-homework";
@@ -227,7 +228,18 @@ const Audio = ({ q }: { q: Question }) => {
             </div>
         );
     const cuid = q.title.match(/Cuid ([ABC])/)?.[1] || "";
-    return <AudioPlayer src={q.audio.src} title={`Cuid ${cuid} recording`} seconds={q.audio.seconds} meta={`official SEC audio, ${q.year}${q.deferred ? " deferred" : ""}`} />;
+    return <AudioWithScript src={q.audio.src} title={`Cuid ${cuid} recording`} seconds={q.audio.seconds} meta={`official SEC audio, ${q.year}${q.deferred ? " deferred" : ""}`} />;
+};
+
+/* The player and, under it, the script that follows it word by word. */
+const AudioWithScript = (props: { src: string; title: string; seconds: number; meta: string }) => {
+    const audio = useRef<HTMLAudioElement | null>(null);
+    return (
+        <>
+            <AudioPlayer {...props} audioRef={audio} />
+            <AuralScript src={props.src} audioRef={audio} />
+        </>
+    );
 };
 
 /* ---------------- checking ---------------- */

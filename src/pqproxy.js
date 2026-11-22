@@ -23,7 +23,7 @@ export const PQ_EXACT = new Set([
   '/grammar.json', '/oral.json', '/subjects.json',
   '/api/check', '/api/grade', '/api/tutor', '/api/speak',
 ]);
-export const PQ_PREFIXES = ['/papers/', '/oral/sp/', '/crops/', '/aud/', '/audio/', '/subjects/'];
+export const PQ_PREFIXES = ['/papers/', '/oral/sp/', '/crops/', '/aud/', '/audio/', '/aural/', '/subjects/'];
 
 export function isPastQuestionsPath(pathname) {
   return PQ_EXACT.has(pathname) || PQ_PREFIXES.some((prefix) => pathname.startsWith(prefix));

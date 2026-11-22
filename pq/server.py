@@ -547,6 +547,10 @@ class Handler(SimpleHTTPRequestHandler):
         in_site = super().translate_path(path)
         if clean != '/' and os.path.isfile(in_site):
             return in_site
+        # The listening scripts (aural/<year>_<cuid>.json) ship with the code as well as with the
+        # data, so a service whose disk has not had them uploaded yet still answers.
+        if clean.startswith('/aural/') and os.path.isfile(os.path.join(HERE, 'aural', os.path.basename(clean))):
+            return os.path.join(HERE, 'aural', os.path.basename(clean))
         if os.path.isdir(DIST):
             rel = clean.lstrip('/')
             in_dist = os.path.join(DIST, rel)
