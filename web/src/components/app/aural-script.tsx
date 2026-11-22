@@ -2,7 +2,7 @@
 // any word can be tapped for what it means here and what it is in
 // the dictionary, the way a word in HeyRua opens (no play button and no sentence note: Eamon's call). The script, the timings and the glosses come ready
 // made in /aural/<year>_<cuid>.json (built from the SEC marking scheme and the recording itself).
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Button as AriaButton } from "react-aria-components";
@@ -231,7 +231,10 @@ const GlossCard = ({ data, i, box, onClose }: { data: Script; i: number; box: Re
     const word = data.words[i].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
     const card = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
-    useEffect(() => {
+    /* Placed before the first paint (a layout effect), so the card is never seen anywhere but under
+       its word: the fade-in only starts once the position is known. */
+    useLayoutEffect(() => {
+        setPos(null);
         const el = box.current;
         const w = el?.querySelector<HTMLElement>(`[data-w="${i}"]`);
         if (!el || !w) return;
@@ -261,7 +264,7 @@ const GlossCard = ({ data, i, box, onClose }: { data: Script; i: number; box: Re
             data-gloss
             role="dialog"
             aria-label={`${word}, meaning`}
-            className={cx("fixed z-50 rounded-xl border-2 border-secondary bg-primary p-4 text-left shadow-lg duration-150 animate-in fade-in zoom-in-95", !pos && "invisible")}
+            className={cx("fixed z-50 rounded-xl border-2 border-secondary bg-primary p-4 text-left shadow-lg", pos ? "duration-150 animate-in fade-in zoom-in-95" : "invisible")}
             style={pos ? { top: pos.top, left: pos.left, width: pos.width } : { top: 0, left: 0, width: 300 }}
         >
             <div className="flex items-start gap-3">
