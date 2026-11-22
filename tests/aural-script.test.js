@@ -22,7 +22,7 @@ test('the panel follows the recording and opens a word the way HeyRua does', () 
   assert.match(panel, /scriptUrlFor = \(audioSrc: string\) => audioSrc\.replace\(\/\^\\\/\?aud\\\/\/, "\/aural\/"\)/);
   assert.match(panel, /requestAnimationFrame\(tick\)/, 'the lit word is read every frame while the recording plays');
   assert.match(panel, /<Label>Meaning<\/Label>/);
-  assert.match(panel, /<Label>In this sentence<\/Label>/);
+  assert.doesNotMatch(panel, /In this sentence/, 'the sentence note was dropped from the card');
   assert.doesNotMatch(panel, /—/, 'no em dashes');
   const card = read('../web/src/components/app/question-card.tsx');
   assert.match(card, /<AuralScript src=\{props\.src\} audioRef=\{audio\} \/>/, 'mounted under every listening player');

@@ -1,6 +1,6 @@
 // The script of a listening recording, under its player: every word lights up as it is spoken, and
-// any word can be tapped for what it means, what it is in the dictionary and what it is doing in
-// its sentence, the way a word in HeyRua opens (without HeyRua's play button: Eamon's call). The script, the timings and the glosses come ready
+// any word can be tapped for what it means here and what it is in
+// the dictionary, the way a word in HeyRua opens (no play button and no sentence note: Eamon's call). The script, the timings and the glosses come ready
 // made in /aural/<year>_<cuid>.json (built from the SEC marking scheme and the recording itself).
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -279,12 +279,6 @@ const GlossCard = ({ data, i, box, onClose }: { data: Script; i: number; box: Re
                         <div>
                             <Label>Meaning</Label>
                             <p className="mt-0.5 text-sm leading-6 text-primary">{g.meaning}</p>
-                        </div>
-                    )}
-                    {g.ctx && (
-                        <div>
-                            <Label>In this sentence</Label>
-                            <p className="mt-0.5 text-sm leading-6 text-primary">{g.ctx}</p>
                         </div>
                     )}
                 </div>
