@@ -185,6 +185,8 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
                                                                 {l.speaker && <b className="mr-1 font-bold text-secondary">{l.speaker}:</b>}
                                                                 {data.words.slice(l.from, l.to).map((w, k) => {
                                                                     const i = l.from + k;
+                                                                    // a dash standing on its own is punctuation, not a word to tap
+                                                                    if (!/[\p{L}\p{N}]/u.test(w)) return <span key={i}>{w} </span>;
                                                                     return (
                                                                         <span key={i} className="inline">
                                                                             <button
