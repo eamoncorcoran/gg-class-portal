@@ -30,10 +30,10 @@ const VERD: Record<Verdict, { icon: typeof Check; word: string; dot: string; sof
     blank: { icon: Minus, word: "Not answered", dot: "bg-fg-quaternary", soft: "bg-tertiary text-fg-quaternary", fill: "bg-secondary" },
 };
 
-/* An answer space looks exactly like the box printed on the paper, only typed in: the same thin
-   black line, square corners, white inside, "Type your answer" in grey until something is written.
-   No colour of its own, on the listening paper and under a reading comprehension alike. */
-const SPACE = "bg-white";
+/* An answer space is the box printed on the paper, only typed in. It draws no line of its own: it
+   sits just inside the printed one, see-through, with "Type your answer" in grey until something is
+   written. No colour of its own, on the listening paper and under a reading comprehension alike. */
+const SPACE = "bg-transparent";
 function HalfIcon({ className }: { className?: string }) {
     return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} aria-hidden="true">
@@ -95,9 +95,9 @@ const fit = (el: HTMLTextAreaElement | null, open: boolean) => {
     if (line > 0 && inner > line) el.style.lineHeight = `${inner / Math.floor(inner / line)}px`;
 };
 
-/* The space sits a little outside the box printed on the paper, so its edge covers the printed line
-   rather than drawing a second one inside it. */
-const OUT = 1;
+/* The space sits a little inside the box printed on the paper, so the printed line is never covered
+   and nothing is drawn beside it: one stroke, the paper's own. */
+const IN = 2;
 
 const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx: number | "rc"; maxpt: number; check?: CheckT }) => {
     const answers = useStore((s) => s.answers[q.id]);
@@ -132,16 +132,16 @@ const PaperImage = ({ q, img, idx, maxpt, check }: { q: Question; img: Img; idx:
                                 }
                             }}
                             placeholder="Type your answer"
-                            data-h={`calc(${(b[3] - b[1]) * 100}% + ${2 * OUT}px)`}
+                            data-h={`calc(${(b[3] - b[1]) * 100}% - ${2 * IN}px)`}
                             className={cx(
-                                "absolute resize-none overflow-hidden rounded-none border border-black px-1.5 pt-[3px] leading-tight text-primary caret-black outline-hidden transition duration-150 ease-out placeholder:text-quaternary/80 focus:z-10 focus:bg-primary focus:shadow-md focus:placeholder:text-transparent",
+                                "absolute resize-none overflow-hidden rounded-none border-0 px-1.5 pt-[3px] leading-tight text-primary caret-black outline-hidden transition duration-150 ease-out placeholder:text-quaternary/80 focus:z-10 focus:bg-primary focus:shadow-md focus:placeholder:text-transparent",
                                 r ? cx("pr-[clamp(2.4rem,7cqw,4rem)]", VERD[r.verdict].fill) : SPACE,
                             )}
                             style={{
-                                left: `calc(${b[0] * 100}% - ${OUT}px)`,
-                                top: `calc(${b[1] * 100}% - ${OUT}px)`,
-                                width: `calc(${(b[2] - b[0]) * 100}% + ${2 * OUT}px)`,
-                                height: `calc(${(b[3] - b[1]) * 100}% + ${2 * OUT}px)`,
+                                left: `calc(${b[0] * 100}% + ${IN}px)`,
+                                top: `calc(${b[1] * 100}% + ${IN}px)`,
+                                width: `calc(${(b[2] - b[0]) * 100}% - ${2 * IN}px)`,
+                                height: `calc(${(b[3] - b[1]) * 100}% - ${2 * IN}px)`,
                                 fontFamily: "Calibri, Carlito, 'Segoe UI', sans-serif",
                                 fontSize: `min(${K * 10.5}px, ${(1050 / maxpt).toFixed(3)}cqw)`,
                             }}
