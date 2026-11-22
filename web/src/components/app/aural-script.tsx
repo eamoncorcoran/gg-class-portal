@@ -1,11 +1,11 @@
 // The script of a listening recording, under its player: every word lights up as it is spoken, and
 // any word can be tapped for what it means, what it is in the dictionary and what it is doing in
-// its sentence, the way a word in HeyRua opens. The script, the timings and the glosses come ready
+// its sentence, the way a word in HeyRua opens (without HeyRua's play button: Eamon's call). The script, the timings and the glosses come ready
 // made in /aural/<year>_<cuid>.json (built from the SEC marking scheme and the recording itself).
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Button as AriaButton } from "react-aria-components";
-import { ChevronDown, Play, X } from "@/components/app/ic";
+import { ChevronDown, X } from "@/components/app/ic";
 import { cx } from "@/utils/cx";
 
 type Line = { speaker: string | null; from: number; to: number };
@@ -38,7 +38,10 @@ const load = (url: string) => {
 /** /aud/2024_A.mp3 → /aural/2024_A.json */
 export const scriptUrlFor = (audioSrc: string) => audioSrc.replace(/^\/?aud\//, "/aural/").replace(/\.mp3$/i, ".json");
 
-/** The word being spoken at `t`: the last one to have started, as long as it has not been over for a while. */
+/** The word being spoken at `t`: the last one to have started. Through a pause it stays lit, never
+    moving on until the next word is actually heard; only a long silence (between the two readings)
+    turns it off. */
+const HOLD = 1.5;
 const wordAt = (spans: Span[], t: number) => {
     let lo = 0,
         hi = spans.length - 1,
@@ -52,7 +55,7 @@ const wordAt = (spans: Span[], t: number) => {
     }
     if (found < 0) return -1;
     const span = spans[found];
-    return t <= span.e + 0.35 ? span.i : -1;
+    return t <= span.e + HOLD ? span.i : -1;
 };
 
 const Label = ({ children }: { children: string }) => <p className="text-[11px] font-bold tracking-wide text-quaternary uppercase">{children}</p>;
@@ -63,7 +66,6 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
     const [current, setCurrent] = useState(-1);
     const [picked, setPicked] = useState<number | null>(null);
     const box = useRef<HTMLDivElement>(null);
-    const stopAt = useRef<number | null>(null);
     const url = scriptUrlFor(src);
 
     useEffect(() => {
@@ -87,10 +89,6 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
         const tick = () => {
             const a = audioRef.current;
             if (a) {
-                if (stopAt.current !== null && a.currentTime >= stopAt.current) {
-                    a.pause();
-                    stopAt.current = null;
-                }
                 const i = wordAt(spans, a.currentTime);
                 if (i !== last) {
                     last = i;
@@ -144,16 +142,6 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
             document.removeEventListener("keydown", close);
         };
     }, [picked]);
-
-    const playWord = (i: number) => {
-        const a = audioRef.current;
-        const span = data?.times[i]?.[0];
-        if (!a || !span) return;
-        document.querySelectorAll("audio").forEach((x) => x !== a && x.pause());
-        stopAt.current = span[1] + 0.05;
-        a.currentTime = Math.max(0, span[0] - 0.05);
-        a.play();
-    };
 
     return (
         <div className="mb-4 -mt-2">
@@ -222,7 +210,7 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
                                             </section>
                                         ))}
                                     </div>
-                                    {picked !== null && <GlossCard data={data} i={picked} box={box} onPlay={() => playWord(picked)} onClose={() => setPicked(null)} />}
+                                    {picked !== null && <GlossCard data={data} i={picked} box={box} onClose={() => setPicked(null)} />}
                                 </>
                             )}
                         </div>
@@ -234,7 +222,7 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
 };
 
 /** The small card that opens under a tapped word. It sits inside the panel, under the word, and never off its edge. */
-const GlossCard = ({ data, i, box, onPlay, onClose }: { data: Script; i: number; box: RefObject<HTMLDivElement | null>; onPlay: () => void; onClose: () => void }) => {
+const GlossCard = ({ data, i, box, onClose }: { data: Script; i: number; box: RefObject<HTMLDivElement | null>; onClose: () => void }) => {
     const g = data.gloss?.[i];
     const word = data.words[i].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -267,13 +255,6 @@ const GlossCard = ({ data, i, box, onPlay, onClose }: { data: Script; i: number;
                     <p className="text-lg leading-tight font-bold text-primary">{word}</p>
                     {g?.lit && <p className="mt-1 text-md font-bold text-brand-secondary">{g.lit}</p>}
                 </div>
-                <AriaButton
-                    onPress={onPlay}
-                    aria-label={`Play ${word}`}
-                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-primary text-brand-secondary outline-focus-ring transition duration-100 ease-linear hover:bg-brand-secondary focus-visible:outline-2 pressed:scale-95"
-                >
-                    <Play aria-hidden="true" className="ml-0.5 size-4 fill-current" />
-                </AriaButton>
                 <AriaButton onPress={onClose} aria-label="Close" className="-mt-1 -mr-1 flex size-7 items-center justify-center rounded-full text-fg-quaternary outline-focus-ring hover:bg-secondary hover:text-fg-secondary focus-visible:outline-2">
                     <X aria-hidden="true" className="size-4" />
                 </AriaButton>
