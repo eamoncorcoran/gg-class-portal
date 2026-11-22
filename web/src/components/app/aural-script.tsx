@@ -69,10 +69,14 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
     const box = useRef<HTMLDivElement>(null);
     const url = scriptUrlFor(src);
 
+    /* The words are fetched the first time the link is pressed, and the panel only opens once they
+       are in hand (a moment), so it unfolds in one smooth movement at its full height rather than
+       opening on "Loading…" and jumping when the script lands. */
     useEffect(() => {
         if (!open || data !== undefined) return;
         load(url).then(setData);
     }, [open, url, data]);
+    const ready = open && data !== undefined;
 
     /* Every spoken span in time order, so the word under the playhead is a binary search. */
     const spans = useMemo(() => {
@@ -155,16 +159,15 @@ export const AuralScript = ({ src, audioRef }: { src: string; audioRef: RefObjec
                 <ChevronDown aria-hidden="true" className={cx("size-4 stroke-[2.5px] transition-transform duration-200 ease-out", open && "-scale-y-100")} />
             </AriaButton>
             <AnimatePresence initial={false}>
-                {open && (
+                {ready && (
                     <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}
+                        transition={{ duration: 0.32, ease: [0.2, 0.8, 0.2, 1] }}
                         className="overflow-hidden"
                     >
                         <div className="relative mt-3 rounded-xl border-2 border-secondary bg-primary">
-                            {data === undefined && <p className="px-4 py-6 text-center text-sm text-tertiary">Loading the script…</p>}
                             {data === null && <p className="px-4 py-6 text-center text-sm text-tertiary">The script for this recording isn't ready yet.</p>}
                             {data && (
                                 <>
@@ -230,24 +233,24 @@ const GlossCard = ({ data, i, box, onClose }: { data: Script; i: number; box: Re
     const g = data.gloss?.[i];
     const word = data.words[i].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
     const card = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
-    /* Placed before the first paint (a layout effect), so the card is never seen anywhere but under
-       its word: the fade-in only starts once the position is known. */
+    /* Where the card goes: under the word, or above it when the bottom of the window is near. Worked
+       out from the word's own box, so it is known on the very first render and never seen elsewhere. */
+    const placeFor = (height: number) => {
+        const w = box.current?.querySelector<HTMLElement>(`[data-w="${i}"]`);
+        if (!w) return null;
+        const r = w.getBoundingClientRect();
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const width = Math.min(300, vw - 16);
+        const left = Math.min(Math.max(8, r.left), vw - width - 8);
+        const below = r.bottom + 6;
+        const top = below + height <= vh - 8 ? below : Math.max(8, r.top - 6 - height);
+        return { top, left, width };
+    };
+    const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(() => placeFor(170));
     useLayoutEffect(() => {
-        setPos(null);
         const el = box.current;
-        const w = el?.querySelector<HTMLElement>(`[data-w="${i}"]`);
-        if (!el || !w) return;
-        const place = () => {
-            const r = w.getBoundingClientRect();
-            const vw = window.innerWidth, vh = window.innerHeight;
-            const width = Math.min(300, vw - 16);
-            const height = card.current?.offsetHeight ?? 180;
-            const left = Math.min(Math.max(8, r.left), vw - width - 8);
-            const below = r.bottom + 6;
-            const top = below + height <= vh - 8 ? below : Math.max(8, r.top - 6 - height);
-            setPos({ top, left, width });
-        };
+        if (!el) return;
+        const place = () => setPos(placeFor(card.current?.offsetHeight ?? 170));
         place();
         el.addEventListener("scroll", place);
         window.addEventListener("scroll", place, true);
@@ -264,7 +267,7 @@ const GlossCard = ({ data, i, box, onClose }: { data: Script; i: number; box: Re
             data-gloss
             role="dialog"
             aria-label={`${word}, meaning`}
-            className={cx("fixed z-50 rounded-xl border-2 border-secondary bg-primary p-4 text-left shadow-lg", pos ? "duration-150 animate-in fade-in zoom-in-95" : "invisible")}
+            className={cx("fixed z-50 rounded-xl border-2 border-secondary bg-primary p-4 text-left shadow-lg transition-none", pos ? "duration-150 animate-in fade-in zoom-in-95" : "invisible")}
             style={pos ? { top: pos.top, left: pos.left, width: pos.width } : { top: 0, left: 0, width: 300 }}
         >
             <div className="flex items-start gap-3">
