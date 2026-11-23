@@ -43,7 +43,7 @@ import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, r
 import { bunnyConfigured, bunnySigning, createVideo, uploadTicket } from '../bunny.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
 import { COURSE_TYPES, COURSE_TYPE_KEYS, forgetAccess, isOnDemand, taughtClass } from '../coursetypes.js';
-import { checkPackage, importCourse, importProgress, readPackage, retryFailedImports } from '../courseimport.js';
+import { checkPackage, importCourse, importProgress, readPackage, retryFailedImports, warmCourse } from '../courseimport.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -3479,6 +3479,18 @@ router.get('/course-imports/:courseId', asyncRoute(async (req, res) => {
 
 router.post('/course-imports/:courseId/retry', requireSuperAdmin, asyncRoute(async (req, res) => {
   res.json({ retried: await retryFailedImports(req.params.courseId) });
+}));
+
+/* Every video of a course fetched once onto the video network, so its first
+   viewers do not wait for pieces to come from storage. Runs in the background. */
+const warming = new Set();
+router.post('/course-imports/:courseId/warm', requireSuperAdmin, asyncRoute(async (req, res) => {
+  const id = req.params.courseId;
+  if (!warming.has(id)) {
+    warming.add(id);
+    warmCourse(id).catch((error) => console.error('Warming a course failed', error)).finally(() => warming.delete(id));
+  }
+  res.status(202).json({ warming: true });
 }));
 
 /** The kinds of course a class can be, for the class form and the filters. */

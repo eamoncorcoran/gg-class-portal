@@ -98,3 +98,10 @@ test('the Hibernia course package, if present, is whole and has no em dashes', (
   const lessons = pkg.modules.flatMap((m) => m.lessons);
   assert.equal(lessons.length, 47);
 });
+
+test('an imported video is fetched once onto the video network as soon as it can be played', () => {
+  const imp = read('../src/courseimport.js');
+  assert.match(imp, /switched \+= 1;\s+warmVideo\(row\.bunny_ref\)/);
+  assert.match(imp, /const PLAYER_REFERER = 'https:\/\/iframe\.mediadelivery\.net\/';/);
+  assert.match(read('../src/routes/admin.js'), /router\.post\('\/course-imports\/:courseId\/warm', requireSuperAdmin/);
+});

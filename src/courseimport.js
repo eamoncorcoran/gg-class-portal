@@ -19,7 +19,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { one, query, transaction } from './db.js';
-import { bunnyConfigured, createVideo, deleteVideo, getBunnyVideo, uploadVideo } from './bunny.js';
+import { bunnyConfigured, createVideo, deleteVideo, embedUrl, getBunnyVideo, uploadVideo } from './bunny.js';
 import { config } from './config.js';
 import { audit } from './audit.js';
 
@@ -231,9 +231,86 @@ export async function finishVideoImports() {
     );
     await query(`UPDATE lesson_video_imports SET status='done', error=NULL, finished_at=now() WHERE lesson_id=$1`, [row.lesson_id]);
     switched += 1;
+    warmVideo(row.bunny_ref).catch((error) => console.error('Warming a video failed', row.bunny_ref, error.message));
   }
   if (switched) (await import('./routes/hub.js')).forgetHubExport();
   return waiting;
+}
+
+/* ---- warming ------------------------------------------------------------
+   A video that has never been watched is not yet on Bunny's network: the first
+   viewer of every few seconds of it waits while that piece is fetched from
+   storage, which on a new upload was measured at up to twelve seconds a piece,
+   so the player starts late and jumps between qualities. A class recording
+   gets past that by being watched by the class; an imported course has no
+   such first viewers. So once a video can be played, this server asks for
+   every piece of every quality once, as the player would, and throws it away.
+   The pieces are protected by referrer, not by a signature, so the player's
+   own referrer is sent. */
+const PLAYER_REFERER = 'https://iframe.mediadelivery.net/';
+// Read from a player page on first use; BUNNY_CDN_HOST names it outright where no page can be signed (a laptop).
+let cdnHost = process.env.BUNNY_CDN_HOST || null;
+
+/** The library's delivery host (vz-....b-cdn.net), read once from a player page. */
+async function deliveryHost(libraryId, videoId) {
+  if (cdnHost) return cdnHost;
+  const page = await (await fetch(embedUrl(videoId, { libraryId }))).text();
+  const found = page.match(/https:\/\/(vz-[a-z0-9-]+\.b-cdn\.net)\//);
+  if (!found) throw new Error('The player page did not name its delivery host.');
+  cdnHost = found[1];
+  return cdnHost;
+}
+
+const lines = (text) => String(text).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+
+export async function warmVideo(bunnyRef, { concurrency = 4, listOnly = false } = {}) {
+  const [libraryId, videoId] = String(bunnyRef).split('/');
+  if (!libraryId || !videoId) return { pieces: 0 };
+  const host = await deliveryHost(libraryId, videoId);
+  const base = `https://${host}/${videoId}/`;
+  const get = (url) => fetch(url, { headers: { Referer: PLAYER_REFERER } });
+  const master = await get(`${base}playlist.m3u8`);
+  if (!master.ok) throw new Error(`The playlist was refused (${master.status}).`);
+  const urls = [];
+  for (const rendition of lines(await master.text())) {
+    const list = await get(base + rendition);
+    if (!list.ok) continue;
+    const dir = base + rendition.replace(/[^/]*$/, '');
+    for (const piece of lines(await list.text())) urls.push(dir + piece);
+  }
+  if (listOnly) return { pieces: urls.length, sample: urls.slice(0, 2) };
+  let next = 0;
+  let bytes = 0;
+  await Promise.all(Array.from({ length: concurrency }, async () => {
+    while (next < urls.length) {
+      const url = urls[next++];
+      try {
+        const res = await get(url);
+        bytes += (await res.arrayBuffer()).byteLength;
+      } catch { /* one piece missed is one piece fetched later by a viewer */ }
+    }
+  }));
+  return { pieces: urls.length, bytes };
+}
+
+/** Every video of a course, warmed one after another (the teacher's button, or after an import). */
+export async function warmCourse(courseId) {
+  const rows = (await query(
+    `SELECT l.video_ref FROM course_lessons l JOIN course_modules m ON m.id=l.module_id
+     WHERE m.course_id=$1 AND l.video_provider='bunny' ORDER BY m.position, l.position`, [courseId])).rows;
+  let pieces = 0;
+  let bytes = 0;
+  for (const row of rows) {
+    try {
+      const r = await warmVideo(row.video_ref);
+      pieces += r.pieces;
+      bytes += r.bytes || 0;
+    } catch (error) {
+      console.error('Warming a video failed', row.video_ref, error.message);
+    }
+  }
+  console.log(`Warmed ${rows.length} video(s) of course ${courseId}: ${pieces} pieces, ${Math.round(bytes / 1e6)} MB`);
+  return { videos: rows.length, pieces, bytes };
 }
 
 /** Failed copies, given another go (from the teacher's button). */
