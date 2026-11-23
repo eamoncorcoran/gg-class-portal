@@ -4,7 +4,7 @@ import { syncAttendance } from './zoomattendance.js';
 import { finishMoves } from './lessonmoves.js';
 import { zoomConfigured } from './zoom.js';
 import { config } from './config.js';
-import { finishVideoImports } from './courseimport.js';
+import { finishVideoImports, warmPending } from './courseimport.js';
 
 /**
  * A safety net rather than the main route.
@@ -41,6 +41,7 @@ export function startZoomScheduler() {
     try { await finishMoves(); } catch (error) { console.error('Finishing lesson video moves failed', error); }
     // And the videos of an imported course, the same way.
     try { await finishVideoImports(); } catch (error) { console.error('Finishing course video imports failed', error); }
+    try { await warmPending(); } catch (error) { console.error('Warming imported videos failed', error); }
     if (zoomConfigured()) {
       try {
         const result = await syncAttendance();

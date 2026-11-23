@@ -29,7 +29,7 @@ import { startBackupScheduler } from './src/backup.js';
 import { startZoomScheduler } from './src/zoomscheduler.js';
 import { releaseInterruptedImports } from './src/zoomimport.js';
 import { resumeMoves } from './src/lessonmoves.js';
-import { resumeVideoImports } from './src/courseimport.js';
+import { resumeVideoImports, warmPending } from './src/courseimport.js';
 import { refreshZoomApi } from './src/zoom.js';
 import { refreshBunny } from './src/bunny.js';
 import sraithRoutes from './src/routes/sraith.js';
@@ -403,6 +403,8 @@ async function start() {
   resumeVideoImports()
     .then((pending) => { if (pending) console.log(`Course video imports: ${pending} carrying on`); })
     .catch((error) => console.error('Could not resume course video imports', error?.message));
+  // Imported videos not yet on the delivery network are fetched onto it, three minutes after boot.
+  setTimeout(() => { warmPending().catch((error) => console.error('Warming imported videos failed', error?.message)); }, 3 * 60 * 1000).unref?.();
   // Lessons copied to Bunny before their Zoom link was kept are given it, two minutes after boot and then daily.
   const sweepZoomLinks = () => fillZoomLinks()
     .then((r) => { if (r.filled) console.log(`Zoom links filled in on ${r.filled} lesson(s)`); })

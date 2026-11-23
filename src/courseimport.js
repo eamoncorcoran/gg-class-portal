@@ -231,8 +231,8 @@ export async function finishVideoImports() {
     );
     await query(`UPDATE lesson_video_imports SET status='done', error=NULL, finished_at=now() WHERE lesson_id=$1`, [row.lesson_id]);
     switched += 1;
-    warmVideo(row.bunny_ref).catch((error) => console.error('Warming a video failed', row.bunny_ref, error.message));
   }
+  if (switched) warmPending().catch((error) => console.error('Warming imported videos failed', error.message));
   if (switched) (await import('./routes/hub.js')).forgetHubExport();
   return waiting;
 }
@@ -293,7 +293,37 @@ export async function warmVideo(bunnyRef, { concurrency = 4, listOnly = false } 
   return { pieces: urls.length, bytes };
 }
 
-/** Every video of a course, warmed one after another (the teacher's button, or after an import). */
+/** Every imported video that can be played and has not been warmed yet, one after another. One run at a time. */
+let warmingNow = null;
+export function warmPending() {
+  if (!bunnyConfigured()) return Promise.resolve(0);
+  warmingNow ||= (async () => {
+    let count = 0;
+    try {
+      for (;;) {
+        const row = await one(
+          `SELECT i.lesson_id, l.video_ref FROM lesson_video_imports i JOIN course_lessons l ON l.id=i.lesson_id
+           WHERE i.status='done' AND i.warmed_at IS NULL AND l.video_provider='bunny' ORDER BY i.finished_at LIMIT 1`);
+        if (!row) break;
+        try {
+          await warmVideo(row.video_ref);
+        } catch (error) {
+          console.error('Warming a video failed', row.video_ref, error.message);
+        }
+        // Marked either way, so one stubborn video is not fetched again on every sweep.
+        await query('UPDATE lesson_video_imports SET warmed_at=now() WHERE lesson_id=$1', [row.lesson_id]);
+        count += 1;
+      }
+      if (count) console.log(`Warmed ${count} imported video(s) onto the delivery network`);
+    } finally {
+      warmingNow = null;
+    }
+    return count;
+  })();
+  return warmingNow;
+}
+
+/** Every video of a course, warmed one after another (the teacher's button). */
 export async function warmCourse(courseId) {
   const rows = (await query(
     `SELECT l.video_ref FROM course_lessons l JOIN course_modules m ON m.id=l.module_id

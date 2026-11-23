@@ -101,7 +101,10 @@ test('the Hibernia course package, if present, is whole and has no em dashes', (
 
 test('an imported video is fetched once onto the video network as soon as it can be played', () => {
   const imp = read('../src/courseimport.js');
-  assert.match(imp, /switched \+= 1;\s+warmVideo\(row\.bunny_ref\)/);
+  assert.match(imp, /if \(switched\) warmPending\(\)/);
+  assert.match(imp, /WHERE i\.status='done' AND i\.warmed_at IS NULL/);
+  assert.match(read('../server.js'), /warmPending\(\)\.catch/);
+  assert.match(read('../migrations/068_lesson_video_warmed.sql'), /ADD COLUMN IF NOT EXISTS warmed_at timestamptz/);
   assert.match(imp, /const PLAYER_REFERER = 'https:\/\/iframe\.mediadelivery\.net\/';/);
   assert.match(read('../src/routes/admin.js'), /router\.post\('\/course-imports\/:courseId\/warm', requireSuperAdmin/);
 });
