@@ -37,7 +37,8 @@ export const Welcome = () => {
         const t = setTimeout(() => setOpen(true), 600); // after the page has settled
         return () => clearTimeout(t);
     }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-    if (!me) return null;
+    // The card is about past questions and the listening; an on-demand (Hibernia) student has neither.
+    if (!me || me.coursesOnly) return null;
     const close = () => {
         remember(me.id);
         setOpen(false);

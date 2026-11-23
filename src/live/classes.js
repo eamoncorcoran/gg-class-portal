@@ -7,6 +7,7 @@
  * disagree with it.
  */
 import { query } from '../db.js';
+import { taughtClass } from '../coursetypes.js';
 
 /**
  * Zoom writes webinar links as /w/<id> and meeting links as /j/<id>, either
@@ -52,7 +53,8 @@ export function classForLive(row) {
 
 export async function liveClasses() {
   const rows = (await query(
-    'SELECT * FROM classes WHERE active=true ORDER BY programme_name, day_of_week, start_time')).rows;
+    // An on-demand class (Hibernia) is never taught live.
+    `SELECT * FROM classes c WHERE c.active=true AND ${taughtClass('c')} ORDER BY programme_name, day_of_week, start_time`)).rows;
   return rows.map(classForLive);
 }
 

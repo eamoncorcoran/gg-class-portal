@@ -257,14 +257,21 @@ export async function sendEmail({ to, subject, text, html, attachments = [], met
   return { provider: 'console', id: `sim-${Date.now()}`, simulated: true };
 }
 
-export async function sendStudentInvite({ student, temporaryPassword }) {
+export async function sendStudentInvite({ student, temporaryPassword, courseType, courseName }) {
   const loginUrl = config.appUrl;
   const firstName = student.name.split(' ')[0];
+  /* An on-demand course (Hibernia) has no check-ins, homework or class: the
+     hub is where its lessons are, so the letter says that instead. */
+  const onDemand = courseType === 'hibernia';
+  const what = onDemand
+    ? `This is where you will find ${escapeHtml(courseName || 'your course')}: every lesson, in order, to watch whenever suits you. If you have a question, send me a private message from the menu.`
+    : 'This is where you will find your weekly check-in, your homework, and the corrections and feedback I send back to you.';
+  const signOff = onDemand ? 'Tá Gaeilge bhriste níos fearr ná Béarla cliste. Go n-éirí leat!' : 'Tá Gaeilge bhriste níos fearr ná Béarla cliste. See you in class.';
   // The address and password are repeated as plain text below the button, because
   // plenty of mail clients block the styled block and some students will be
   // reading this on a phone that will not let them copy from a button.
   const body = `<p>Hi ${escapeHtml(firstName)},</p>
-  <p>Your Gaeilgeoir Guides Class Portal account is ready. This is where you will find your weekly check-in, your homework, and the corrections and feedback I send back to you.</p>
+  <p>Your Gaeilgeoir Guides Class Portal account is ready. ${what}</p>
   <table cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:20px 0;border:1px solid #dfe8da;border-radius:10px;background:#f8fbf6">
     <tr><td style="padding:16px 18px;font-size:14px;line-height:1.8;color:#243322">
       <strong style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#748171">Sign in at</strong>
@@ -278,7 +285,7 @@ export async function sendStudentInvite({ student, temporaryPassword }) {
     </td></tr>
   </table>
   <p>You will be asked to choose your own password the first time you sign in, so you do not need to keep this one. Stay signed in on your own phone or laptop and you will not have to type it again.</p>
-  <p>Tá Gaeilge bhriste níos fearr ná Béarla cliste. See you in class.</p>`;
+  <p>${signOff}</p>`;
   return sendEmail({
     to: student.email,
     subject: 'Your Gaeilgeoir Guides Class Portal login',
@@ -293,7 +300,7 @@ export async function sendStudentInvite({ student, temporaryPassword }) {
       '',
       'You will be asked to choose your own password the first time you sign in.',
       '',
-      'Tá Gaeilge bhriste níos fearr ná Béarla cliste. See you in class.',
+      signOff,
     ].join('\n'),
     html: layout({
       title: 'Your Class Portal login',

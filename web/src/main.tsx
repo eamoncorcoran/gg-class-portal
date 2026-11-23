@@ -9,7 +9,7 @@ import { ToastRegion } from "@/components/app/toast";
 import { pageKey } from "@/components/app/page-parts";
 import { loadData } from "@/lib/data";
 import { loadHub } from "@/lib/hub";
-import { loadMe, useMe } from "@/lib/portal";
+import { isCoursesOnly, loadMe, useMe } from "@/lib/portal";
 import { HomePage } from "@/pages/hub-home";
 import { QuestionsPage } from "@/pages/questions-page";
 import { CommunityPage } from "@/pages/community-page";
@@ -68,6 +68,26 @@ const ResetForward = () => {
     if (go) return <Navigate to="/" replace />; // "calendar" and anything else: Home has the calendar
     return <HomePage />;
 };
+
+/* A Hibernia student's hub: their courses and the private line to the teacher, and nothing else.
+   No home, no board, no past questions or papers. Any other address lands on Courses. */
+const CoursesOnlyApp = () => (
+    <AppShell>
+        <PageChange />
+        <Routes>
+            <Route path="/courses" element={<CoursesPage />} />
+            <Route path="/courses/:id" element={<CoursePage />} />
+            <Route path="/courses/:id/:lesson" element={<CoursePage />} />
+            <Route path="/message" element={<MessagePage />} />
+            <Route path="/account" element={<AccountPage />} />
+            <Route path="/forgot" element={<ForgotPage />} />
+            <Route path="/reset" element={<ResetPage />} />
+            <Route path="*" element={<Navigate to="/courses" replace />} />
+        </Routes>
+        <ToastRegion />
+        <ConfirmRegion />
+    </AppShell>
+);
 
 const App = () => (
     <AppShell>
@@ -180,8 +200,10 @@ const draw = (app: React.ReactNode) =>
 
 loadMe().then(async (me) => {
     if (!me) return draw(<SignedOut />);
+    const coursesOnly = isCoursesOnly(me);
     try {
-        await Promise.all([loadData(), loadHub()]);
+        // The past questions are not part of an on-demand course, so they are not asked for.
+        await Promise.all([coursesOnly ? Promise.resolve() : loadData(), loadHub()]);
     } catch (e) {
         // The session ended between the two questions: start again and show the sign-in form.
         if ((e as { status?: number }).status === 401) return window.location.reload();
@@ -198,7 +220,7 @@ loadMe().then(async (me) => {
     draw(
         <>
             <SessionWatch />
-            <App />
+            {coursesOnly ? <CoursesOnlyApp /> : <App />}
         </>,
     );
 });

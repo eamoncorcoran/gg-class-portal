@@ -242,6 +242,16 @@ export const SidebarContent = ({ active, topicSlug = "", onClose }: { active: st
             </div>
 
             <nav aria-label="Main" className="flex-1 px-4 pt-2 pb-6">
+                {me?.role === "student" && me.coursesOnly ? (
+                    /* An on-demand (Hibernia) student: their courses, and the private line below. */
+                    <ul className="flex flex-col gap-1.5">
+                        <li>
+                            <NavRow href="/courses" icon={DuoBooks} current={active === "courses"}>
+                                Courses
+                            </NavRow>
+                        </li>
+                    </ul>
+                ) : (
                 <ul className="flex flex-col gap-1.5">
                     <li>
                         <NavRow href="/" icon={DuoHome} current={active === "home"}>
@@ -289,6 +299,7 @@ export const SidebarContent = ({ active, topicSlug = "", onClose }: { active: st
                         </NavRow>
                     </li>
                 </ul>
+                )}
             </nav>
             {hasLine && (
                 <div className="shrink-0 border-t-2 border-secondary px-4 py-3">

@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon';
 import { query, one } from './db.js';
+import { isOnDemand } from './coursetypes.js';
 
 /* Students see a check-in from Friday morning and have until Sunday night.
    Five to midnight rather than midnight itself: a deadline written as 00:00
@@ -38,6 +39,9 @@ export async function weekForDeadline(classId, deadlineAt, db = { query }) {
 }
 
 export async function ensureWeeksForClass(classRow, count = 18) {
+  /* An on-demand course (Hibernia) has no teaching weeks: no check-ins, no
+     tracker, nothing for the reminders to chase. */
+  if (isOnDemand(classRow.course_type)) return { total: 0, created: 0, updated: 0, skipped: 0 };
   const zone = classRow.timezone || 'Europe/Dublin';
   const monday = DateTime.now().setZone(zone).startOf('week');
 

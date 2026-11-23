@@ -10,6 +10,8 @@ import { DuoDialog, DuoInput } from "@/components/app/duo-dialog";
 import { Avatar } from "@/components/app/hub-parts";
 import { ArrowLeft, Mail01, Plus } from "@/components/app/ic";
 import { Segmented } from "@/components/app/segmented";
+import { DuoSelect } from "@/components/app/duo-select";
+import { COURSE_TYPES } from "@/lib/portal";
 import { toast } from "@/components/app/toast";
 import { Thread } from "@/components/app/message-thread";
 import { type Inbox, type Outgoing, TEACHER_ACCEPT, type TeacherThread, sendMessage, setUnread, whenLabel } from "@/lib/messages";
@@ -152,7 +154,9 @@ export const MessagesSection = () => {
     /* All, or only what is waiting (a new message, or one you marked unread), or only what is dealt with. */
     const [show, setShow] = useState<"all" | "unread" | "read">("all");
     const waiting = (c: Inbox["conversations"][number]) => c.unread > 0 || Boolean(c.markedUnread);
-    const everything = inbox?.conversations || [];
+    // And by course type: Irish for Primary Teaching or Hibernia, by the class each student is in.
+    const [courseType, setCourseType] = useState("all");
+    const everything = (inbox?.conversations || []).filter((c) => courseType === "all" || (c.courseType || "irish_for_primary") === courseType);
     const list = show === "all" ? everything : everything.filter((c) => (show === "unread" ? waiting(c) : !waiting(c)));
     const waitingCount = everything.filter(waiting).length;
     return (
@@ -171,8 +175,15 @@ export const MessagesSection = () => {
             <div className="@container">
             <div className="flex h-[calc(100dvh-19rem)] min-h-[28rem] overflow-hidden rounded-3xl border-2 border-secondary bg-primary">
                 <aside className={cx("w-full shrink-0 flex-col overflow-y-auto @3xl:flex @3xl:w-80 @3xl:border-r-2 @3xl:border-secondary", id ? "hidden" : "flex")} aria-label="Conversations">
-                    {inbox && everything.length > 0 && (
-                        <div className="shrink-0 border-b-2 border-secondary p-3">
+                    {inbox && inbox.conversations.length > 0 && (
+                        <div className="flex shrink-0 flex-col gap-2 border-b-2 border-secondary p-3">
+                            <DuoSelect
+                                label="Course type"
+                                value={courseType}
+                                onChange={setCourseType}
+                                className="w-full py-1.5 text-sm"
+                                items={[{ id: "all", label: "All courses" }, ...COURSE_TYPES.map((t) => ({ id: t.key, label: t.label }))]}
+                            />
                             <Segmented
                                 size="sm"
                                 label="Show"
@@ -189,8 +200,10 @@ export const MessagesSection = () => {
                     )}
                     {!inbox ? (
                         <p className="p-5 text-sm text-quaternary">Loading…</p>
-                    ) : everything.length === 0 ? (
+                    ) : inbox.conversations.length === 0 ? (
                         <p className="p-5 text-md text-tertiary">No private messages yet. When a student writes, the conversation appears here.</p>
+                    ) : everything.length === 0 ? (
+                        <p className="p-5 text-md text-tertiary">No conversations with students on this course yet.</p>
                     ) : list.length === 0 ? (
                         <p className="p-5 text-md text-tertiary">{show === "unread" ? "Nothing unread. You are up to date." : "Nothing here yet."}</p>
                     ) : (

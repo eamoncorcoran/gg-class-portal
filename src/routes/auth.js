@@ -14,6 +14,7 @@ import { generateStrongPassword, hashPassword, hashToken, passwordProblems, rand
 import { sendPasswordChanged, sendPasswordReset } from '../email.js';
 import { audit } from '../audit.js';
 import { removeAvatarThumb } from '../avatars.js';
+import { studentAccess } from '../coursetypes.js';
 
 const router = Router();
 /* Both answer in JSON and say how long the wait is. In plain text the client had
@@ -31,7 +32,11 @@ const resetLimiter = rateLimit({
 
 router.get('/me', asyncRoute(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Not signed in.' });
-  res.json({ user: req.user });
+  /* Which kind of hub to draw: a student whose every course is on demand
+     (Hibernia) sees Courses and the private line, nothing else. */
+  if (req.user.role !== 'student') return res.json({ user: req.user });
+  const access = await studentAccess(req.user.id);
+  res.json({ user: { ...req.user, courseTypes: access.courseTypes, coursesOnly: access.coursesOnly } });
 }));
 
 /* A face rather than two grey initials.

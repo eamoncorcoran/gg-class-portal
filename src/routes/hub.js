@@ -20,14 +20,17 @@ import { query } from '../db.js';
 import { asyncRoute } from '../middleware.js';
 import { requireAuth } from '../session.js';
 import { bunnySigning, embedUrl as bunnyEmbedUrl } from '../bunny.js';
+import { ON_DEMAND_TYPES, studentAccess, taughtClass } from '../coursetypes.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLAN_FILE = path.join(__dirname, '..', '..', 'data', 'irish-primary-teaching-plan.json');
 
 const CACHE_MS = 60 * 1000;
-/* One cached answer per audience: the signed-in one and the public one differ. */
-const cache = { full: null, public: null };
+/* One cached answer per audience. The teachers see every course; a student sees
+   the courses of the classes they are in, so students in the same classes
+   share an answer. */
+const cache = new Map();
 
 const rows = async (sql, args = []) => (await query(sql, args)).rows;
 
@@ -72,7 +75,13 @@ const liveVideoUrl = (live) => (live.video_id ? `/api/live/video/${encodeURIComp
    nothing it shows and keeps the answer the size it would be anyway. */
 const junk = (s) => !s || (!/\s/.test(s.trim()) && s.trim().length < 6 && !/[áéíóú]/i.test(s));
 
-async function buildExport({ signedIn }) {
+/**
+ * `viewer`: who is asking. `admin` sees every published course. A student sees
+ * the courses linked to their own classes (and any open to all). A student
+ * whose courses are all on demand (Hibernia) gets no class, no board and no
+ * timetable: only their courses.
+ */
+async function buildExport({ signedIn, viewer = { admin: true, classIds: [], coursesOnly: false } }) {
   const users = await rows('SELECT id, name, role, avatar_path FROM users');
   const who = new Map(users.map((u) => [u.id, {
     id: u.id,
@@ -84,9 +93,9 @@ async function buildExport({ signedIn }) {
 
   /* One class is the class: the Irish for Primary Teaching programme when
      there is one, otherwise the first active class. */
-  const classes = await rows(`SELECT id, programme_name, day_of_week, start_time, timezone, join_url, join_note,
+  const classes = viewer.coursesOnly ? [] : await rows(`SELECT id, programme_name, day_of_week, start_time, timezone, join_url, join_note,
                                      starts_on::text AS starts_on, ends_on::text AS ends_on
-                              FROM classes WHERE active ORDER BY created_at, id`);
+                              FROM classes c WHERE c.active AND ${taughtClass('c')} ORDER BY created_at, id`);
   const klass = classes.find((k) => /irish/i.test(k.programme_name)) || classes[0] || null;
   const classId = klass?.id;
 
@@ -99,16 +108,33 @@ async function buildExport({ signedIn }) {
           FROM assignments WHERE class_id=$1 ORDER BY deadline_at`, [classId]),
   ]) : [[], [], [], []];
 
-  // Courses, modules and lessons: published only, and only lessons with a video.
-  const [courses, modules, lessons, live] = await Promise.all([
-    rows('SELECT id, title, description, cover_url, position FROM courses WHERE published ORDER BY position, id'),
+  /* Courses, modules and lessons: published only. A course is on demand when it
+     belongs to an on-demand (Hibernia) class; those keep their own sections
+     and may have lessons that are reading only. A class recording without a
+     video is left out, as before. */
+  const [allCourses, modules, lessons, live, importing] = await Promise.all([
+    rows(`SELECT c.id, c.title, c.description, c.cover_url, c.position, c.open_to_all,
+                 COALESCE(array_agg(cc.class_id) FILTER (WHERE cc.class_id IS NOT NULL), '{}') AS class_ids,
+                 COALESCE(bool_or(k.course_type = ANY($1)), false) AS on_demand
+          FROM courses c
+          LEFT JOIN course_classes cc ON cc.course_id=c.id
+          LEFT JOIN classes k ON k.id=cc.class_id
+          WHERE c.published GROUP BY c.id ORDER BY c.position, c.id`, [ON_DEMAND_TYPES]),
     rows('SELECT id, course_id, title, position FROM course_modules ORDER BY course_id, position, id'),
     rows(`SELECT id, module_id, title, notes, video_provider, video_ref, video_passcode, duration_seconds,
                  zoom_link, zoom_link_passcode, recorded_on::text AS recorded_on, position
           FROM course_lessons WHERE published ORDER BY module_id, position, id`),
     rows('SELECT id, title, course, course_id, video_id, phrases FROM live_lessons ORDER BY title'),
+    // A lesson whose video is still on its way into the library is not shown yet.
+    rows(`SELECT lesson_id FROM lesson_video_imports WHERE status <> 'done'`),
   ]);
   const liveById = new Map(live.map((l) => [l.id, l]));
+  const waiting = new Set(importing.map((r) => r.lesson_id));
+  const mine = new Set(viewer.classIds || []);
+  const courses = allCourses.filter((c) => viewer.admin
+    || (c.open_to_all && !viewer.coursesOnly)
+    || (c.class_ids || []).some((id) => mine.has(id)));
+  const shown = (l, course) => !waiting.has(l.id) && (l.video_provider || (course.on_demand && String(l.notes || '').trim()));
 
   const courseOut = courses
     .map((course) => ({
@@ -116,13 +142,14 @@ async function buildExport({ signedIn }) {
       title: course.title,
       description: course.description || '',
       cover: course.cover_url || undefined,
+      onDemand: course.on_demand || undefined,
       modules: modules
         .filter((m) => m.course_id === course.id)
         .map((m) => ({
           id: String(m.id),
           title: m.title,
           lessons: lessons
-            .filter((l) => l.module_id === m.id && l.video_provider)
+            .filter((l) => l.module_id === m.id && shown(l, course))
             .map((l) => ({
               id: String(l.id),
               title: l.title,
@@ -143,7 +170,7 @@ async function buildExport({ signedIn }) {
     ? await rows('SELECT id, name, position FROM discussion_categories WHERE class_id=$1 ORDER BY position', [classId])
     : [];
   let threadOut = [];
-  if (signedIn && classId) {
+  if (signedIn && classId && !viewer.coursesOnly) {
     const threads = await rows(`SELECT * FROM discussion_threads
                                 WHERE class_id=$1 AND deleted_at IS NULL AND (published_at IS NULL OR published_at <= now())
                                 ORDER BY pinned DESC, COALESCE(last_activity_at, created_at) DESC`, [classId]);
@@ -220,13 +247,25 @@ async function buildExport({ signedIn }) {
 
 router.get('/export', requireAuth, asyncRoute(async (req, res) => {
   const signedIn = true;
-  const slot = 'full';
+  let viewer = { admin: true, classIds: [], coursesOnly: false };
+  if (req.user.role !== 'admin') {
+    const access = await studentAccess(req.user.id);
+    viewer = { admin: false, classIds: access.classIds, coursesOnly: access.coursesOnly };
+  }
+  const slot = viewer.admin ? 'admin' : `student:${viewer.coursesOnly ? 'courses' : 'hub'}:${viewer.classIds.join(',')}`;
   const now = Date.now();
-  if (!cache[slot] || now - cache[slot].at > CACHE_MS) {
-    cache[slot] = { at: now, body: JSON.stringify(await buildExport({ signedIn })) };
+  const hit = cache.get(slot);
+  if (!hit || now - hit.at > CACHE_MS) {
+    if (cache.size > 200) cache.clear();
+    cache.set(slot, { at: now, body: JSON.stringify(await buildExport({ signedIn, viewer })) });
   }
   res.setHeader('Cache-Control', 'private, no-store');
-  res.type('application/json').send(cache[slot].body);
+  res.type('application/json').send(cache.get(slot).body);
 }));
+
+/** After a course changes (an import finishing), so nobody waits a minute to see it. */
+export function forgetHubExport() {
+  cache.clear();
+}
 
 export default router;

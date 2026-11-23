@@ -2,7 +2,28 @@
 // media routes go to the hub on :3121; the session cookie is shared because both are localhost).
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-export type Me = { id: string; name: string; email: string; role: "admin" | "student"; hasAvatar?: boolean; mustChangePassword?: boolean; mustSetAvatar?: boolean; isSuperAdmin?: boolean };
+export type Me = {
+    id: string;
+    name: string;
+    email: string;
+    role: "admin" | "student";
+    hasAvatar?: boolean;
+    mustChangePassword?: boolean;
+    mustSetAvatar?: boolean;
+    isSuperAdmin?: boolean;
+    /** a student's course types, by the classes they are in: "irish_for_primary", "hibernia" */
+    courseTypes?: string[];
+    /** every course this student has is on demand (Hibernia): the hub is Courses and the private line, nothing else */
+    coursesOnly?: boolean;
+};
+/** The kinds of course a class can be, as the teacher sees them. */
+export const COURSE_TYPES = [
+    { key: "irish_for_primary", label: "Irish for Primary Teaching" },
+    { key: "hibernia", label: "Hibernia" },
+] as const;
+export const courseTypeLabel = (key?: string | null) => COURSE_TYPES.find((t) => t.key === key)?.label ?? "No class";
+/** A student who sees only their courses (Hibernia). */
+export const isCoursesOnly = (me: Me | null | undefined) => Boolean(me && me.role === "student" && me.coursesOnly);
 
 let me: Me | null | undefined; // undefined = not asked yet, null = signed out
 let pending: Promise<Me | null> | null = null;
@@ -102,7 +123,7 @@ export const useApi = <T,>(path: string | null, deps: unknown[] = []): { data: T
     return { data, error, loading, reload, set: (next) => setData((prev) => (typeof next === "function" ? (next as (p: T | undefined) => T)(prev) : next)) };
 };
 
-export type AdminClass = { id: string; programme_name: string; day_of_week: number; start_time: string; timezone?: string; has_community?: boolean; archived?: boolean; [k: string]: unknown };
+export type AdminClass = { id: string; programme_name: string; day_of_week: number; start_time: string; timezone?: string; has_community?: boolean; archived?: boolean; course_type?: string; [k: string]: unknown };
 export type AdminBootstrap = { classes: AdminClass[]; liveRoom?: boolean; drafting?: Record<string, boolean> | null };
 let adminBoot: AdminBootstrap | undefined;
 let adminPending: Promise<AdminBootstrap> | null = null;

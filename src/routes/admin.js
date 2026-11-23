@@ -42,6 +42,8 @@ import { zoomConfigured } from '../zoom.js';
 import { zoomClasses, attendanceOverview, syncAttendance, syncClassAttendance, rememberIdentity, rematchSittings } from '../zoomattendance.js';
 import { bunnyConfigured, bunnySigning, createVideo, uploadTicket } from '../bunny.js';
 import { FIELD_NAMES, problemFrom } from '../validation.js';
+import { COURSE_TYPES, COURSE_TYPE_KEYS, forgetAccess, isOnDemand, taughtClass } from '../coursetypes.js';
+import { checkPackage, importCourse, importProgress, readPackage, retryFailedImports } from '../courseimport.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -108,6 +110,8 @@ const diskUpload = multer({
 });
 
 function classLabel(row) {
+  // An on-demand course has no class day or time worth printing.
+  if (isOnDemand(row.course_type)) return `${row.programme_name} | On demand`;
   const day = ['','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][Number(row.day_of_week)] || '';
   return `${row.programme_name} | ${day} | ${String(row.start_time).slice(0,5)}`;
 }
@@ -143,20 +147,24 @@ async function createStudent({ name, email, classId, actorId, ip }) {
   if (existing) throw Object.assign(new Error(`A user already exists for ${email}.`), { status: 409 });
   const temporaryPassword = generateStrongPassword();
   const passwordHash = await hashPassword(temporaryPassword);
+  const klass = await one('SELECT id, programme_name, course_type FROM classes WHERE id=$1', [classId]);
+  if (!klass) throw Object.assign(new Error('That class does not exist.'), { status: 400 });
+  // The photograph is for the class board; an on-demand course (Hibernia) has none.
+  const askForPhoto = !isOnDemand(klass.course_type);
   const student = await transaction(async (client) => {
     const inserted = await client.query(
       // Everybody created from here on is asked for a photograph on first login.
       // Students already on the course are left alone by migration 013.
       `INSERT INTO users(role,name,email,password_hash,must_change_password,must_set_avatar)
-       VALUES ('student',$1,$2,$3,true,true) RETURNING id,name,email,role,must_change_password,must_set_avatar`,
-      [name, email, passwordHash],
+       VALUES ('student',$1,$2,$3,true,$4) RETURNING id,name,email,role,must_change_password,must_set_avatar`,
+      [name, email, passwordHash, askForPhoto],
     );
     await client.query('INSERT INTO class_students(class_id,student_id) VALUES ($1,$2)', [classId, inserted.rows[0].id]);
     return inserted.rows[0];
   });
   let emailStatus = 'sent';
   let emailError = null;
-  try { await sendStudentInvite({ student, temporaryPassword }); }
+  try { await sendStudentInvite({ student, temporaryPassword, courseType: klass.course_type, courseName: klass.programme_name }); }
   catch (error) { emailStatus = 'failed'; emailError = error.message; console.error(error); }
   await audit({ actorId, action: 'student.created', entityType: 'user', entityId: student.id, metadata: { classId, emailStatus, emailError }, ip });
   return { ...student, emailStatus };
@@ -187,8 +195,11 @@ router.get('/classes', asyncRoute(async (_req, res) => {
 router.post('/classes', asyncRoute(async (req, res) => {
   const parsed = z.object({
     programmeName: z.string().min(2).max(120),
-    dayOfWeek: z.coerce.number().int().min(1).max(7),
-    startTime: z.string().regex(/^\d{2}:\d{2}$/),
+    /* Irish for Primary Teaching (taught weekly) or Hibernia (on demand). An
+       on-demand class has no day or time, so those are only needed otherwise. */
+    courseType: z.enum(COURSE_TYPE_KEYS).optional().default('irish_for_primary'),
+    dayOfWeek: z.coerce.number().int().min(1).max(7).optional(),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     timezone: z.string().min(3).default(config.defaultTimezone),
     // Not every group wants a board. A class set up without one never shows
     // Community at all, rather than showing an empty one.
@@ -199,11 +210,17 @@ router.post('/classes', asyncRoute(async (req, res) => {
     endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Enter a programme name, day, time and timezone.') });
+  const onDemand = isOnDemand(parsed.data.courseType);
+  if (!onDemand && (!parsed.data.dayOfWeek || !parsed.data.startTime)) {
+    return res.status(400).json({ error: 'Enter the day and time the class meets.' });
+  }
   const row = await one(
-    `INSERT INTO classes(programme_name,day_of_week,start_time,timezone,has_community,starts_on,ends_on)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [parsed.data.programmeName, parsed.data.dayOfWeek, parsed.data.startTime, parsed.data.timezone,
-     parsed.data.hasCommunity, parsed.data.startsOn || null, parsed.data.endsOn || null],
+    `INSERT INTO classes(programme_name,day_of_week,start_time,timezone,has_community,starts_on,ends_on,course_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [parsed.data.programmeName, parsed.data.dayOfWeek || 1, parsed.data.startTime || '00:00', parsed.data.timezone,
+     // An on-demand course has no board, whatever the form said.
+     onDemand ? false : parsed.data.hasCommunity, onDemand ? null : parsed.data.startsOn || null, onDemand ? null : parsed.data.endsOn || null,
+     parsed.data.courseType],
   );
   for (const courseId of parsed.data.courseIds) {
     await query('INSERT INTO course_classes(course_id,class_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
@@ -426,9 +443,11 @@ router.get('/students', asyncRoute(async (req, res) => {
   const params = [];
   let classWhere = '';
   if (req.query.classId) { params.push(req.query.classId); classWhere = `AND cs.class_id=$${params.length}`; }
+  // Irish for Primary Teaching or Hibernia: the type of the class they are in.
+  if (COURSE_TYPE_KEYS.includes(req.query.courseType)) { params.push(req.query.courseType); classWhere += ` AND c.course_type=$${params.length}`; }
   const result = await query(
     `SELECT u.id,u.name,u.email,u.phone,u.active,u.must_change_password,u.last_login_at,
-            c.id class_id,c.programme_name,c.day_of_week,c.start_time,c.timezone
+            c.id class_id,c.programme_name,c.day_of_week,c.start_time,c.timezone,c.course_type
      FROM users u
      LEFT JOIN class_students cs ON cs.student_id=u.id AND cs.active=true
      LEFT JOIN classes c ON c.id=cs.class_id
@@ -566,6 +585,7 @@ router.patch('/students/:id', asyncRoute(async (req, res) => {
       await client.query(`INSERT INTO class_students(class_id,student_id,active) VALUES ($1,$2,true) ON CONFLICT (class_id,student_id) DO UPDATE SET active=true,enrolled_at=now()`, [parsed.data.classId, student.id]);
     }
   });
+  forgetAccess(student.id);
   await audit({ actorId: req.user.id, action: 'student.updated', entityType: 'user', entityId: student.id, metadata: parsed.data, ip: req.ip });
   res.json({ ok: true });
 }));
@@ -579,7 +599,10 @@ router.post('/students/:id/reset-password', asyncRoute(async (req, res) => {
     await client.query('UPDATE users SET password_hash=$1,must_change_password=true,updated_at=now() WHERE id=$2', [passwordHash, student.id]);
     await client.query('DELETE FROM sessions WHERE user_id=$1', [student.id]);
   });
-  await sendStudentInvite({ student, temporaryPassword });
+  const klass = await one(
+    `SELECT c.programme_name, c.course_type FROM classes c JOIN class_students cs ON cs.class_id=c.id
+     WHERE cs.student_id=$1 AND cs.active=true ORDER BY ${taughtClass('c')} DESC, cs.enrolled_at DESC LIMIT 1`, [student.id]);
+  await sendStudentInvite({ student, temporaryPassword, courseType: klass?.course_type, courseName: klass?.programme_name });
   await audit({ actorId: req.user.id, action: 'student.password_reset', entityType: 'user', entityId: student.id, ip: req.ip });
   res.json({ ok: true, message: 'A new temporary password was emailed to the student.' });
 }));
@@ -774,6 +797,7 @@ router.post('/students/:id/remove-from-class', asyncRoute(async (req, res) => {
   if (!enrolment) return res.status(404).json({ error: `${student.name} is not in that class.` });
 
   await query('UPDATE class_students SET active=false WHERE student_id=$1 AND class_id=$2', [student.id, enrolment.class_id]);
+  forgetAccess(student.id);
   await audit({ actorId: req.user.id, action: 'student.removed_from_class', entityType: 'user', entityId: student.id, metadata: { classId: enrolment.class_id }, ip: req.ip });
   res.json({ ok: true, message: `${student.name} was taken off the class. Their account and their work are kept.` });
 }));
@@ -1166,8 +1190,9 @@ router.get('/assignments', asyncRoute(async (req, res) => {
 router.get('/class-dates', asyncRoute(async (req, res) => {
   const params = [];
   let scope = '';
-  if (req.query.classId) { params.push(req.query.classId), scope = `AND id=$${params.length}`; }
-  const classes = await query(`SELECT * FROM classes WHERE active=true ${scope}`, params);
+  if (req.query.classId) { params.push(req.query.classId), scope = `AND c.id=$${params.length}`; }
+  // An on-demand class (Hibernia) has no sittings to put on a calendar.
+  const classes = await query(`SELECT * FROM classes c WHERE c.active=true AND ${taughtClass('c')} ${scope}`, params);
 
   const out = [];
   for (const klass of classes.rows) {
@@ -3412,6 +3437,54 @@ router.post('/community/post/:id/removal', asyncRoute(async (req, res) => {
 /* ------------------------------------------------------------------
    Courses
    ------------------------------------------------------------------ */
+
+/* ---- Bringing a course in from elsewhere ------------------------------
+   A course built somewhere else (the Hibernia course, in GoHighLevel) arrives
+   as a package in data/course-packages. Importing it writes the course for one
+   class only and copies its videos into the video library in the background.
+   The lead teacher only: it creates a whole course in one press. */
+router.post('/course-imports', requireSuperAdmin, asyncRoute(async (req, res) => {
+  /* The course itself in the body, or the name of a package file on the server. A course
+     sent in the body is never written to the repository, which is public: it carries the
+     addresses of paid videos. */
+  const parsed = z.object({
+    package: z.string().min(1).max(80).optional(),
+    course: z.object({ title: z.string(), modules: z.array(z.any()) }).passthrough().optional(),
+    classId: z.string().uuid(),
+    dryRun: z.boolean().optional(),
+  }).refine((d) => d.package || d.course, { message: 'Send the course or name its package.' }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: problemFrom(parsed.error, FIELD_NAMES, 'Send the course and the class it is for.') });
+  const pkg = parsed.data.course || await readPackage(parsed.data.package);
+  if (parsed.data.dryRun) {
+    return res.json({
+      title: pkg.title,
+      problems: checkPackage(pkg),
+      sections: pkg.modules?.length || 0,
+      lessons: (pkg.modules || []).reduce((n, m) => n + (m.lessons?.length || 0), 0),
+      videos: (pkg.modules || []).reduce((n, m) => n + (m.lessons || []).filter((l) => l.video).length, 0),
+    });
+  }
+  try {
+    const result = await importCourse({ pkg, classId: parsed.data.classId, actorId: req.user.id });
+    res.status(201).json(result);
+  } catch (error) {
+    if (!error.status) throw error;
+    res.status(error.status).json({ error: error.message, courseId: error.courseId });
+  }
+}));
+
+router.get('/course-imports/:courseId', asyncRoute(async (req, res) => {
+  res.json(await importProgress(req.params.courseId));
+}));
+
+router.post('/course-imports/:courseId/retry', requireSuperAdmin, asyncRoute(async (req, res) => {
+  res.json({ retried: await retryFailedImports(req.params.courseId) });
+}));
+
+/** The kinds of course a class can be, for the class form and the filters. */
+router.get('/course-types', asyncRoute(async (_req, res) => {
+  res.json(COURSE_TYPES);
+}));
 
 router.get('/courses', asyncRoute(async (_req, res) => {
   res.json({ courses: await listCoursesForAdmin() });

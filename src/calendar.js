@@ -19,6 +19,7 @@ import { config } from './config.js';
 import { one, query } from './db.js';
 import { ORAL_MINUTES, SLOTS, capacity, slotStartsAt } from './mockoral.js';
 import { randomToken } from './security.js';
+import { taughtClass } from './coursetypes.js';
 
 /** RFC 5545 wants CRLF, escaped commas and semicolons, and folded long lines. */
 function escapeText(value = '') {
@@ -224,7 +225,7 @@ export async function feedForUser(user) {
 
   const klass = await one(
     `SELECT c.* FROM classes c JOIN class_students cs ON cs.class_id=c.id
-     WHERE cs.student_id=$1 AND cs.active=true AND c.active=true
+     WHERE cs.student_id=$1 AND cs.active=true AND c.active=true AND ${taughtClass('c')}
      ORDER BY cs.enrolled_at DESC LIMIT 1`,
     [user.id],
   );

@@ -270,6 +270,9 @@ const HeaderSearch = () => {
 
 export const AppShell = ({ children }: { children: ReactNode }) => {
     const { active, crumbs, topicSlug } = useWhere();
+    const me = useMe();
+    // An on-demand (Hibernia) student has no past questions, so there is nothing for the search to find.
+    const searchable = !(me?.role === "student" && me.coursesOnly);
     const sideOpen = useStore((s) => s.side);
     const isDesktop = useBreakpoint("lg");
     const [drawer, setDrawer] = useState(false);
@@ -358,7 +361,7 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
                         <div className="flex flex-1 md:hidden">
                             <Wordmark />
                         </div>
-                        <HeaderSearch />
+                        {searchable && <HeaderSearch />}
                         <ProfileMenu />
                     </div>
                 </header>

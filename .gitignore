@@ -30,3 +30,6 @@ pq/site/
 pq/tts/
 pq/dist/
 pq/__pycache__/
+
+# Course packages carry the addresses of paid videos; this repository is public.
+data/course-packages/

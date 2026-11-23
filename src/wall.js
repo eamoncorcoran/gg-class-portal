@@ -16,6 +16,7 @@
 import { config } from './config.js';
 import { sessionUser, sessionTokenFromCookieHeader } from './session.js';
 import { isPastQuestionsPath } from './pqproxy.js';
+import { studentAccess } from './coursetypes.js';
 
 /* Answered to anybody, exactly these. */
 const OPEN_EXACT = new Set([
@@ -69,16 +70,16 @@ const REMEMBER_MS = 20 * 1000;
 const seen = new Map();
 
 async function signedIn(req) {
-  if (req.user) return true;
+  if (req.user) return req.user;
   const token = req.cookies?.[config.sessionCookieName] || sessionTokenFromCookieHeader(req.headers.cookie);
-  if (!token) return false;
+  if (!token) return null;
   const now = Date.now();
   const hit = seen.get(token);
-  if (hit && now - hit.at < REMEMBER_MS) return hit.ok;
-  const ok = Boolean(await sessionUser(token));
+  if (hit && now - hit.at < REMEMBER_MS) return hit.user;
+  const user = await sessionUser(token);
   if (seen.size > 5000) seen.clear();
-  seen.set(token, { ok, at: now });
-  return ok;
+  seen.set(token, { user, at: now });
+  return user;
 }
 
 /** Signing out takes effect on files at once, not when the short memory lapses. */
@@ -88,10 +89,19 @@ export function forgetSession(token) {
 
 export function wall(req, res, next) {
   if (openToAll(req)) return next();
-  signedIn(req).then((ok) => {
-    if (ok) return next();
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(401).json({ error: 'Sign in to see this.' });
+  signedIn(req).then(async (user) => {
+    if (!user) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(401).json({ error: 'Sign in to see this.' });
+    }
+    /* A student whose only course is on demand (Hibernia) has no past
+       questions or papers: the menu does not offer them, and the files are
+       closed to them here too. */
+    if (user.role === 'student' && isPastQuestionsPath(req.path) && (await studentAccess(user.id)).coursesOnly) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(403).json({ error: 'Past questions are not part of your course.' });
+    }
+    return next();
   }).catch(next);
   return undefined;
 }

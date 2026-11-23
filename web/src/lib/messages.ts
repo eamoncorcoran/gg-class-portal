@@ -10,8 +10,8 @@ export type Outgoing = { body: string; files: File[]; voice: { blob: Blob; secon
 export type Teacher = { name: string; firstName: string; avatar?: string };
 export type StudentThread = { teacher: Teacher; messages: Message[] };
 export type TeacherThread = { student: { id: string; name: string; email: string; avatar?: string; className: string | null; active: boolean }; messages: Message[] };
-export type Conversation = { studentId: string; name: string; email: string; avatar?: string; className: string | null; active: boolean; lastBody: string; lastAt: string; lastFromTeacher: boolean; unread: number; /** the teacher marked it unread to come back to; students never see this */ markedUnread?: boolean };
-export type Inbox = { unread: number; conversations: Conversation[]; students: { id: string; name: string; className: string | null }[] };
+export type Conversation = { studentId: string; name: string; email: string; avatar?: string; className: string | null; active: boolean; lastBody: string; lastAt: string; lastFromTeacher: boolean; unread: number; /** "irish_for_primary" or "hibernia", by their class */ courseType?: string | null; /** the teacher marked it unread to come back to; students never see this */ markedUnread?: boolean };
+export type Inbox = { unread: number; conversations: Conversation[]; students: { id: string; name: string; className: string | null; courseType?: string | null }[] };
 
 export const MESSAGE_MAX = 5000;
 export const MAX_FILES = 5;

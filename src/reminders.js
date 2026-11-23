@@ -5,6 +5,7 @@ import { getSetting } from './settings.js';
 import { sendDeadlineReminder, sendCheckinReminder, sendClassReminder } from './email.js';
 import { classSittings } from './classtime.js';
 import { runMockOralReminders } from './mockoral.js';
+import { taughtClass } from './coursetypes.js';
 
 /* Two hours before a class, give or take the width of one cycle. */
 const CLASS_REMINDER_MS = 2 * 60 * 60 * 1000;
@@ -181,7 +182,8 @@ export async function runClassReminders() {
   const settings = await getSetting('reminders', { enabled: true });
   if (settings.enabled === false || settings.classSoon?.enabled === false) return 0;
 
-  const classes = await query('SELECT * FROM classes WHERE active=true');
+  // On-demand classes (Hibernia) have no sittings to be reminded of.
+  const classes = await query(`SELECT * FROM classes c WHERE c.active=true AND ${taughtClass('c')}`);
   /* Two hours: enough notice to move something and be there, late enough that
      it is about today rather than an item on a list. The cycle runs every five
      minutes, so the window is wide enough that a sitting cannot fall between

@@ -53,7 +53,8 @@ export const Console = ({ children }: { children: ReactNode }) => {
     const me = useMe();
     const { section, id } = useParams();
     const nav = useNavigate();
-    const classes: AdminClass[] = boot?.classes ?? [];
+    // On-demand classes (Hibernia) have no tracker: no weeks, check-ins or homework.
+    const classes: AdminClass[] = (boot?.classes ?? []).filter((k) => k.course_type !== "hibernia");
     const sections = CONSOLE_SECTIONS.filter((s) => !s.superOnly || me?.isSuperAdmin);
     const unread = useUnreadMessages();
     return (

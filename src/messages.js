@@ -147,7 +147,9 @@ export async function teacherInbox() {
             (SELECT count(*)::int FROM private_messages x WHERE x.student_id=u.id AND x.from_teacher=false AND x.read_at IS NULL) unread,
             EXISTS (SELECT 1 FROM private_message_marks k WHERE k.student_id=u.id) marked_unread,
             (SELECT c.programme_name FROM classes c JOIN class_students cs ON cs.class_id=c.id
-              WHERE cs.student_id=u.id AND cs.active=true ORDER BY cs.enrolled_at DESC LIMIT 1) class_name
+              WHERE cs.student_id=u.id AND cs.active=true ORDER BY cs.enrolled_at DESC LIMIT 1) class_name,
+            (SELECT c.course_type FROM classes c JOIN class_students cs ON cs.class_id=c.id
+              WHERE cs.student_id=u.id AND cs.active=true ORDER BY cs.enrolled_at DESC LIMIT 1) course_type
      FROM users u
      JOIN LATERAL (SELECT COALESCE(NULLIF(m.body,''),
                             (SELECT string_agg(CASE WHEN f.kind='voice' THEN 'Voice note' ELSE f.file_name END, ', ') FROM private_message_files f WHERE f.message_id=m.id),
@@ -158,7 +160,9 @@ export async function teacherInbox() {
   const students = await query(
     `SELECT u.id, u.name,
             (SELECT c.programme_name FROM classes c JOIN class_students cs ON cs.class_id=c.id
-              WHERE cs.student_id=u.id AND cs.active=true ORDER BY cs.enrolled_at DESC LIMIT 1) class_name
+              WHERE cs.student_id=u.id AND cs.active=true ORDER BY cs.enrolled_at DESC LIMIT 1) class_name,
+            (SELECT c.course_type FROM classes c JOIN class_students cs ON cs.class_id=c.id
+              WHERE cs.student_id=u.id AND cs.active=true ORDER BY cs.enrolled_at DESC LIMIT 1) course_type
      FROM users u WHERE u.role='student' AND u.active=true ORDER BY u.name`,
   );
   const face = (row) => (row.avatar_path ? `/api/media/avatar/${row.id}` : undefined);
@@ -167,11 +171,12 @@ export async function teacherInbox() {
     unread: conversations.rows.reduce((sum, row) => sum + (row.unread || (row.marked_unread ? 1 : 0)), 0),
     conversations: conversations.rows.map((row) => ({
       studentId: row.id, name: row.name, email: row.email, avatar: face(row), className: row.class_name || null, active: row.active,
+      courseType: row.course_type || null,
       lastBody: String(row.last_body).slice(0, 200), lastAt: row.last_at, lastFromTeacher: row.last_from_teacher, unread: row.unread,
       // The teacher's own "come back to this". Never sent to a student, and no part of what a student sees.
       markedUnread: row.marked_unread,
     })),
-    students: students.rows.map((row) => ({ id: row.id, name: row.name, className: row.class_name || null })),
+    students: students.rows.map((row) => ({ id: row.id, name: row.name, className: row.class_name || null, courseType: row.course_type || null })),
   };
 }
 

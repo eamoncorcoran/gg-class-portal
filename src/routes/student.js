@@ -32,6 +32,7 @@ import { FIELD_NAMES, problemFrom } from '../validation.js';
 import { MESSAGE_MAX, studentThread, studentUnread, studentSends } from '../messages.js';
 import { receiveMessageFiles, checkMessageFiles } from '../messagefiles.js';
 import { allMarkable, markPastQuestions, returnMarked } from '../pqhomework.js';
+import { taughtClass } from '../coursetypes.js';
 
 const router = Router();
 router.use(requireStudent);
@@ -75,6 +76,8 @@ async function studentClass(studentId) {
     `SELECT c.*, cs.enrolled_at FROM classes c
      JOIN class_students cs ON cs.class_id=c.id
      WHERE cs.student_id=$1 AND cs.active=true AND c.active=true
+       -- the taught class: an on-demand (Hibernia) enrolment has no weeks, homework or board
+       AND ${taughtClass('c')}
      ORDER BY cs.enrolled_at DESC LIMIT 1`,
     [studentId],
   );

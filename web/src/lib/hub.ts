@@ -170,8 +170,12 @@ const shape = (r: Raw): Hub => {
         monday = addDays(monday, 7);
         i++;
     }
+    /* An on-demand course (Hibernia) keeps its own sections and order; only the taught class's
+       recordings are folded into the weeks of the plan. */
+    const taught = r.courses.filter((c) => !c.onDemand);
+    const onDemand = r.courses.filter((c) => c.onDemand).map((c) => ({ ...c, onDemand: true }));
     // the portal's own lessons: which plan week each one belongs to, by its number, else its date, else its place
-    const dbLessons = r.courses.flatMap((c) => c.modules.flatMap((m) => m.lessons)).filter((l) => l.video?.type !== "practice");
+    const dbLessons = taught.flatMap((c) => c.modules.flatMap((m) => m.lessons)).filter((l) => l.video?.type !== "practice");
     const weekOf = (l: Lesson, i: number) => {
         const m = l.title.match(/(?:Ceacht|Week|Lesson|Seachtain)\s*(\d+)/i);
         if (m) return Number(m[1]);
@@ -199,13 +203,15 @@ const shape = (r: Raw): Hub => {
     for (const [n, list] of byWeek) if (!weeks.some((w) => w.n === n)) modules[2].lessons.push(...list);
     const recordings: Course = {
         id: REC_COURSE,
-        title: r.courses[0]?.title || klass.name,
-        description: r.courses[0]?.description || "Every class recording, in the order we taught them.",
+        title: taught[0]?.title || klass.name,
+        description: taught[0]?.description || "Every class recording, in the order we taught them.",
         modules: modules.filter((m) => m.lessons.length),
     };
-    const practice = r.courses.flatMap((c) => c.modules.flatMap((m) => m.lessons)).filter((l) => l.video?.type === "practice");
-    const courses: Course[] = [recordings];
+    const practice = taught.flatMap((c) => c.modules.flatMap((m) => m.lessons)).filter((l) => l.video?.type === "practice");
+    // The class recordings come first wherever there is a class; a student with only an on-demand course has none.
+    const courses: Course[] = r.class || taught.length ? [recordings] : [];
     if (practice.length) courses.push({ id: PRACTICE_COURSE, title: "Say it: phrase practice", description: "Short videos that pause on each phrase so you can say it back.", onDemand: true, modules: [{ id: "p", title: "Practice", lessons: practice }] });
+    courses.push(...onDemand);
 
     // sittings: the weekly class (on its moved day when the portal moved it), skipped days, break weeks, extra sessions
     const sittings: Sitting[] = weeks.map((w) => {

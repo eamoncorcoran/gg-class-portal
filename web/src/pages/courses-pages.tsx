@@ -11,6 +11,7 @@ import { toast } from "@/components/app/toast";
 import { type Course, type Lesson, type Phrase, findLesson, fmtDur, fmtShort, initials, lessonsOf, refreshHub, useHub } from "@/lib/hub";
 import { say } from "@/lib/sfx";
 import { get, set, useStore } from "@/lib/store";
+import { useMe } from "@/lib/portal";
 import { cx } from "@/utils/cx";
 import { NotFound } from "./not-found";
 
@@ -59,10 +60,17 @@ const CourseCard = ({ c }: { c: Course }) => {
 
 export const CoursesPage = () => {
     const hub = useHub();
+    const me = useMe();
     if (!hub) return <Page>{null}</Page>;
+    // An on-demand (Hibernia) student has no class: their courses are lessons to work through in order.
+    const onDemandOnly = me?.role === "student" && me.coursesOnly;
     return (
         <Page wide>
-            <PageHeader icon={<DuoBooks aria-hidden="true" className="size-14" />} kicker={hub.klass.name} title="Courses" sub="Every class recording, in the order we taught them, with what each week covered and the homework that went with it." />
+            {onDemandOnly ? (
+                <PageHeader icon={<DuoBooks aria-hidden="true" className="size-14" />} title="Courses" sub="Every lesson in order, to watch whenever suits you." />
+            ) : (
+                <PageHeader icon={<DuoBooks aria-hidden="true" className="size-14" />} kicker={hub.klass.name} title="Courses" sub="Every class recording, in the order we taught them, with what each week covered and the homework that went with it." />
+            )}
             <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {hub.courses.map((c) => (
                     <CourseCard key={c.id} c={c} />
@@ -129,6 +137,82 @@ const PracticePlayer = ({ phrases, videoUrl }: { phrases: Phrase[]; videoUrl?: s
         </div>
     );
 };
+
+/* A lesson's notes, as plain text written the way a teacher writes them: a blank line between
+   paragraphs, an English gloss in brackets on its own line under the Irish, "- " for a point,
+   "1. " for a numbered one, a short line ending in a colon as a heading, and [words](address)
+   alone on a line as a button. Addresses written out in a line are links. */
+const LINK_LINE = /^\[([^\]]+)\]\(((?:https?:\/\/|\/)[^\s)]+)\)$/;
+const URL_IN = /(https?:\/\/[^\s)]+)/g;
+const withLinks = (line: string) =>
+    line.split(URL_IN).map((part, i) =>
+        i % 2 ? (
+            <a key={i} href={part} target="_blank" rel="noreferrer" className="font-semibold break-all text-brand-secondary underline-offset-2 hover:underline">
+                {part}
+            </a>
+        ) : (
+            part
+        ),
+    );
+const NoteLine = ({ line }: { line: string }) => {
+    const t = line.trim();
+    const link = t.match(LINK_LINE);
+    if (link) {
+        const outside = /^https?:/.test(link[2]);
+        return (
+            <a href={link[2]} target={outside ? "_blank" : undefined} rel={outside ? "noreferrer" : undefined} className="mt-1 inline-flex h-12 items-center gap-2 self-start rounded-2xl border-2 border-transparent border-b-4 border-b-brand-700 bg-brand-500 px-5 text-[15px] font-bold text-white outline-focus-ring transition duration-100 hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 active:translate-y-0.5 active:border-b-2">
+                {link[1]}
+                {outside && <ArrowSquareOut aria-hidden="true" className="size-4" />}
+            </a>
+        );
+    }
+    if (/^\(.*\)$/.test(t)) return <span className="block text-tertiary italic">{withLinks(t)}</span>;
+    const point = t.match(/^-\s+(.*)$/);
+    if (point)
+        return (
+            <span className="flex gap-3">
+                <span aria-hidden="true" className="mt-3 size-1.5 shrink-0 rounded-full bg-fg-quaternary" />
+                <span>{withLinks(point[1])}</span>
+            </span>
+        );
+    const num = t.match(/^(\d+)\.\s+(.*)$/);
+    if (num)
+        return (
+            <span className="flex gap-3">
+                <span className="w-5 shrink-0 font-bold text-brand-secondary tabular-nums">{num[1]}.</span>
+                <span lang="ga">{withLinks(num[2])}</span>
+            </span>
+        );
+    if (t.endsWith(":") && t.length <= 40) return <span className="block font-bold text-primary">{t}</span>;
+    return <span className="block">{withLinks(t)}</span>;
+};
+const Notes = ({ text }: { text: string }) => (
+    <div className="flex max-w-2xl flex-col gap-5 text-md leading-8 text-secondary">
+        {text
+            .trim()
+            .split(/\n\s*\n/)
+            .map((block, i) => {
+                const lines = block.split("\n").filter((l) => l.trim());
+                // a gloss line sits under the line before it, so a numbered point and its English stay together
+                const rows: string[][] = [];
+                for (const l of lines) {
+                    if (/^\(.*\)$/.test(l.trim()) && rows.length) rows[rows.length - 1].push(l);
+                    else rows.push([l]);
+                }
+                return (
+                    <div key={i} className="flex flex-col gap-1.5">
+                        {rows.map((row, j) => (
+                            <div key={j} className={cx("flex flex-col", /^\d+\.\s/.test(row[0].trim()) && "[&>span:nth-child(2)]:pl-8")}>
+                                {row.map((l, k) => (
+                                    <NoteLine key={k} line={l} />
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                );
+            })}
+    </div>
+);
 
 /** A Bunny player address with autoplay and preload switched off, whatever it arrived with. Other players are left alone. */
 const waitToBePlayed = (src: string) => {
@@ -225,7 +309,7 @@ const Contents = ({ c, current }: { c: Course; current: string }) => {
                                     <Link to={`/courses/${c.id}/${l.id}`} aria-current={on ? "page" : undefined} className={cx("flex items-center gap-3 border-l-4 px-4 py-2.5 text-sm outline-focus-ring transition duration-100 ease-linear focus-visible:-outline-offset-2 focus-visible:outline-2", on ? "border-brand bg-brand-primary" : "border-transparent hover:bg-primary_hover")}>
                                         <span className={cx("flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold", ok ? "bg-brand-solid text-white" : "bg-secondary text-tertiary")}>{ok ? <Check className="size-3.5" aria-hidden="true" /> : (l.week ?? ls.indexOf(l) + 1)}</span>
                                         <span className={cx("min-w-0 flex-1 truncate font-semibold", on ? "text-brand-secondary" : "text-secondary")}>{l.title}</span>
-                                        <span className="shrink-0 text-xs text-quaternary">{l.video ? fmtDur(l.durationSeconds) : l.recordedOn && +new Date(l.recordedOn) < Date.now() ? "no video" : "soon"}</span>
+                                        <span className="shrink-0 text-xs text-quaternary">{l.video ? fmtDur(l.durationSeconds) : c.onDemand ? "read" : l.recordedOn && +new Date(l.recordedOn) < Date.now() ? "no video" : "soon"}</span>
                                     </Link>
                                 </li>
                             );
@@ -266,6 +350,8 @@ export const CoursePage = () => {
     const i = ls.indexOf(l);
     const next = ls[i + 1];
     const done = !!p[l.id]?.done;
+    // A lesson of an on-demand course with no video is a page to read: its notes are the lesson.
+    const reading = !l.video && c.onDemand;
     return (
         <Page wide>
             <div className="mb-6">
@@ -275,15 +361,15 @@ export const CoursePage = () => {
             </div>
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
                 <div className="min-w-0">
-                    <Player key={l.id} l={l} />
+                    {!reading && <Player key={l.id} l={l} />}
                     {l.zoomLink && l.video?.type !== "link" && <ZoomLinkRow link={l.zoomLink} />}
-                    <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className={cx("flex flex-col gap-4 md:flex-row md:items-start md:justify-between", !reading && "mt-6")}>
                         <div className="min-w-0">
                             {l.week && <p className="text-sm font-semibold text-brand-secondary">Week {l.week}</p>}
                             <h1 className="mt-1 text-display-xs font-bold tracking-tight text-primary">{l.title}</h1>
                             <p className="mt-1.5 text-sm text-tertiary">
                                 {l.name && !/^(Ceacht|Week|Lesson|Seachtain)\s*\d+$/i.test(l.name.trim()) ? `${l.name} · ` : ""}
-                                {l.video ? fmtDur(l.durationSeconds) : "No recording yet"}
+                                {l.video ? fmtDur(l.durationSeconds) : reading ? "Read" : "No recording yet"}
                             </p>
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
@@ -304,9 +390,9 @@ export const CoursePage = () => {
                         </section>
                     )}
                     {l.notes && (
-                        <section className="mt-8">
-                            <h2 className="duo-label text-quaternary">Notes</h2>
-                            <p className="mt-2 max-w-2xl text-md leading-8 whitespace-pre-line text-secondary">{l.notes}</p>
+                        <section className={cx(reading ? "mt-6 rounded-2xl border-2 border-secondary bg-primary p-5 md:p-7" : "mt-8")}>
+                            {!reading && <h2 className="mb-2 duo-label text-quaternary">Notes</h2>}
+                            <Notes text={l.notes} />
                         </section>
                     )}
                     {l.video?.type === "practice" && (

@@ -79,7 +79,7 @@ test('the hub export is for somebody signed in, and no copy of it ships with the
 test('signed out, the app asks for no class data and shows the sign-in form in place', () => {
   const main = read('../web/src/main.tsx');
   assert.match(main, /loadMe\(\)\.then\(async \(me\) => \{\s+if \(!me\) return draw\(<SignedOut \/>\);/);
-  assert.ok(main.indexOf('if (!me) return draw(<SignedOut />);') < main.indexOf('await Promise.all([loadData(), loadHub()]);'));
+  assert.ok(main.indexOf('if (!me) return draw(<SignedOut />);') < main.indexOf('await Promise.all([coursesOnly ? Promise.resolve() : loadData(), loadHub()]);'));
   assert.match(main, /<Route path="\*" element=\{<SignInPage \/>\} \/>/);
   const signin = read('../web/src/pages/signin-page.tsx');
   assert.match(signin, /window\.location\.replace\(/, 'signing in loads the app afresh, now that it may have the data');

@@ -156,6 +156,8 @@ export type StudentRow = {
     day_of_week: number | null;
     start_time: string | null;
     timezone: string | null;
+    /** the type of the class they are in: "irish_for_primary" or "hibernia" */
+    course_type?: string | null;
     classLabel: string | null;
 };
 

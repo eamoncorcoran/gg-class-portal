@@ -14,6 +14,7 @@ import { Segmented } from "@/components/app/segmented";
 import { toast } from "@/components/app/toast";
 import { Checkbox } from "@/components/base/checkbox/checkbox";
 import { DAY_NAMES, api, loadAdminBootstrap, upload, useApi } from "@/lib/portal";
+import { COURSE_TYPES, courseTypeLabel } from "@/lib/portal";
 import { type ClassImpact, type ClassRow, type ImportResult, type PhoneImportResult, type Settings, type StudentImpact, type StudentRow, type Tone, classLabel, errMsg, fmtDate } from "@/lib/teach";
 import { cx } from "@/utils/cx";
 import { ClassSetupDialog } from "./class-setup";
@@ -71,8 +72,13 @@ export const PeopleSection = () => {
         await Promise.all([classes.reload(), students.reload(), loadAdminBootstrap(true).catch(() => undefined)]);
     };
 
-    const klasses = classes.data || [];
-    const rows = students.data || [];
+    /* Filter by course type: Irish for Primary Teaching or Hibernia. Kept in the address, so a
+       reload or a link back here keeps it. */
+    const courseType = params.get("type") || "all";
+    const ofType = (t?: string | null) => courseType === "all" || (t || "irish_for_primary") === courseType;
+    const klasses = (classes.data || []).filter((k) => ofType(k.course_type));
+    const allClasses = classes.data || [];
+    const rows = (students.data || []).filter((s) => courseType === "all" || (s.class_id ? ofType(s.course_type) : false));
     const consoleMode = !settings.data?.email?.provider || settings.data.email.provider === "console";
 
     const moveStudent = async (id: string, classId: string) => {
@@ -158,6 +164,15 @@ export const PeopleSection = () => {
                     { id: "students", label: "Students" },
                 ]}
             />
+            <div className="mt-3">
+                <Segmented
+                    label="Course type"
+                    value={courseType}
+                    onChange={(t) => setParam("type", t === "all" ? null : t)}
+                    size="sm"
+                    items={[{ id: "all", label: "All courses" }, ...COURSE_TYPES.map((t) => ({ id: t.key, label: t.label }))]}
+                />
+            </div>
 
             {tab === "classes" && (
                 <section className="mt-5">
@@ -170,17 +185,24 @@ export const PeopleSection = () => {
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <h3 className="truncate text-lg font-bold text-primary">{classLabel(k)}</h3>
-                                            <p className="text-sm text-tertiary">Separate tracker, attendance and homework.</p>
+                                            <p className="text-sm text-tertiary">{k.course_type === "hibernia" ? "On demand: the course and private messages only." : "Separate tracker, attendance and homework."}</p>
                                         </div>
-                                        <DuoButton color="secondary" size="xs" href={`/teach/tracker/${k.id}`}>
-                                            Open Tracker
-                                        </DuoButton>
+                                        {k.course_type !== "hibernia" && (
+                                            <DuoButton color="secondary" size="xs" href={`/teach/tracker/${k.id}`}>
+                                                Open Tracker
+                                            </DuoButton>
+                                        )}
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
+                                        <Pill tone={k.course_type === "hibernia" ? "orange" : "green"}>{courseTypeLabel(k.course_type || "irish_for_primary")}</Pill>
                                         <Pill>{k.student_count || 0} students</Pill>
-                                        <Pill>{k.timezone}</Pill>
-                                        <Pill tone={k.join_url ? "green" : "grey"}>{k.join_url ? "Class link set" : "No class link"}</Pill>
-                                        <Pill>{k.has_community === false ? "No board" : "Has a board"}</Pill>
+                                        {k.course_type !== "hibernia" && (
+                                            <>
+                                                <Pill>{k.timezone}</Pill>
+                                                <Pill tone={k.join_url ? "green" : "grey"}>{k.join_url ? "Class link set" : "No class link"}</Pill>
+                                                <Pill>{k.has_community === false ? "No board" : "Has a board"}</Pill>
+                                            </>
+                                        )}
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                         <DuoButton color="secondary" size="xs" iconLeading={SettingsIcon} onPress={() => setModal({ kind: "setup", id: k.id })}>
@@ -231,7 +253,7 @@ export const PeopleSection = () => {
                                                 value={s.class_id || "none"}
                                                 onChange={(v) => moveStudent(s.id, v === "none" ? "" : v)}
                                                 className="min-w-48 py-1.5 text-sm"
-                                                items={[{ id: "none", label: "Not in a class" }, ...klasses.map((k) => ({ id: k.id, label: classLabel(k) }))]}
+                                                items={[{ id: "none", label: "Not in a class" }, ...allClasses.map((k) => ({ id: k.id, label: classLabel(k) }))]}
                                             />
                                         </td>
                                         <td className="px-3 py-2">{s.last_login_at ? <Pill tone="green">Last login {fmtDate(s.last_login_at)}</Pill> : <Pill tone="orange">Invite pending</Pill>}</td>
@@ -308,17 +330,21 @@ export const PeopleSection = () => {
 type CourseRow = { id: string; title: string };
 const AddClassDialog = ({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (k: ClassRow) => void | Promise<void> }) => {
     const courses = useApi<{ courses: CourseRow[] }>(open ? "/api/admin/courses" : null);
-    const [f, setF] = useState({ programmeName: "Irish for Primary Teaching", dayOfWeek: "1", startTime: "19:00", timezone: "Europe/Dublin", startsOn: "", endsOn: "", hasCommunity: true, courseIds: new Set<string>() });
+    const [f, setF] = useState({ courseType: "irish_for_primary", programmeName: "Irish for Primary Teaching", dayOfWeek: "1", startTime: "19:00", timezone: "Europe/Dublin", startsOn: "", endsOn: "", hasCommunity: true, courseIds: new Set<string>() });
     const [busy, setBusy] = useState(false);
     useEffect(() => {
-        if (open) setF({ programmeName: "Irish for Primary Teaching", dayOfWeek: "1", startTime: "19:00", timezone: "Europe/Dublin", startsOn: "", endsOn: "", hasCommunity: true, courseIds: new Set() });
+        if (open) setF({ courseType: "irish_for_primary", programmeName: "Irish for Primary Teaching", dayOfWeek: "1", startTime: "19:00", timezone: "Europe/Dublin", startsOn: "", endsOn: "", hasCommunity: true, courseIds: new Set() });
     }, [open]);
+    // An on-demand course (Hibernia) has no day, time, term or board: only a name and its courses.
+    const onDemand = f.courseType === "hibernia";
     const save = async () => {
         setBusy(true);
         try {
             const k = await api<ClassRow>("/api/admin/classes", {
                 method: "POST",
-                json: { programmeName: f.programmeName, dayOfWeek: f.dayOfWeek, startTime: f.startTime, timezone: f.timezone, hasCommunity: f.hasCommunity, startsOn: f.startsOn || null, endsOn: f.endsOn || null, courseIds: [...f.courseIds] },
+                json: onDemand
+                    ? { courseType: f.courseType, programmeName: f.programmeName, timezone: f.timezone, hasCommunity: false, courseIds: [...f.courseIds] }
+                    : { courseType: f.courseType, programmeName: f.programmeName, dayOfWeek: f.dayOfWeek, startTime: f.startTime, timezone: f.timezone, hasCommunity: f.hasCommunity, startsOn: f.startsOn || null, endsOn: f.endsOn || null, courseIds: [...f.courseIds] },
             });
             await onCreated(k);
         } catch (e) {
@@ -330,9 +356,21 @@ const AddClassDialog = ({ open, onClose, onCreated }: { open: boolean; onClose: 
     return (
         <DuoDialog open={open} onClose={onClose} title="Add class" sub="Creates a separate weekly tracker and assignment stream." className="max-w-lg max-h-[92dvh] overflow-y-auto">
             <div className="flex flex-col gap-4">
+                <Field label="Course type">
+                    <DuoSelect
+                        label="Course type"
+                        value={f.courseType}
+                        onChange={(v) => setF({ ...f, courseType: v, programmeName: v === "hibernia" ? "Hibernia Irish Interview" : "Irish for Primary Teaching" })}
+                        className="w-full"
+                        items={COURSE_TYPES.map((t) => ({ id: t.key, label: t.label }))}
+                    />
+                </Field>
+                {onDemand && <Note>Hibernia students see their course and private messages only: no home, board, homework, past questions or papers.</Note>}
                 <Field label="Programme name">
                     <input required value={f.programmeName} onChange={(e) => setF({ ...f, programmeName: e.target.value })} aria-label="Programme name" className={INPUT} />
                 </Field>
+                {!onDemand && (
+                <>
                 <Field label="Day">
                     <DuoSelect label="Day" value={f.dayOfWeek} onChange={(v) => setF({ ...f, dayOfWeek: v })} className="w-full" items={DAY_NAMES.slice(1).map((d, i) => ({ id: String(i + 1), label: d }))} />
                 </Field>
@@ -355,6 +393,8 @@ const AddClassDialog = ({ open, onClose, onCreated }: { open: boolean; onClose: 
                 <Note>Weekly check-ins are only created between these dates.</Note>
                 <Checkbox label="Give this class a community board" isSelected={f.hasCommunity} onChange={(v) => setF({ ...f, hasCommunity: v })} />
                 <Note>Without one, Community never appears in these students’ menu. It can be turned on later.</Note>
+                </>
+                )}
                 {courses.data?.courses?.length ? (
                     <Field label="Courses">
                         <div className="flex flex-col gap-2">
