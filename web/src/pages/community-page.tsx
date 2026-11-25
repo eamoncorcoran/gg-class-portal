@@ -241,11 +241,13 @@ const Rich = ({ text, clamp, small }: { text: string; clamp?: boolean; small?: b
 
 /* In the feed an attachment is a hint that there is more inside: a GIF plays, a video is a player
    (Bunny's, on an address the server signed for this reader), and a PDF is a line you can open. */
-const Attachments = ({ list }: { list: Attachment[] }) =>
-    list?.length ? (
-        <div className="mt-3 flex flex-col gap-3">
+const Attachments = ({ list }: { list: Attachment[] }) => {
+    /* Several GIFs sit beside one another, smaller; one on its own gets the full width. */
+    const gifs = list?.filter((a) => a.kind === "gif").length ?? 0;
+    return list?.length ? (
+        <div className="mt-3 flex flex-row flex-wrap items-start gap-3">
             {list.map((a, i) => {
-                if (a.kind === "gif") return <img key={i} src={a.url} alt="GIF" loading="lazy" className="max-w-[400px] rounded-xl border-2 border-secondary" />;
+                if (a.kind === "gif") return <img key={i} src={a.url} alt="GIF" loading="lazy" className={cx("rounded-xl border-2 border-secondary", gifs > 1 ? "w-[calc(50%-6px)] max-w-[260px]" : "max-w-[400px]")} />;
                 if (a.kind === "bunny") {
                     if (!/^https:\/\/iframe\.mediadelivery\.net\//.test(a.url || "")) return null;
                     return (
@@ -267,6 +269,7 @@ const Attachments = ({ list }: { list: Attachment[] }) =>
             })}
         </div>
     ) : null;
+};
 
 /** The reaction row: 👍 always, the others as they appear, and the picker with the eight reactions. */
 const Reactions = ({ type, id, given, base, size = "md", onChange }: { type: "thread" | "post"; id: string; given: Reaction[]; base: string; size?: "sm" | "md"; onChange?: (r: Reaction[]) => void }) => {
