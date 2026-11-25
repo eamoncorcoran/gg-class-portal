@@ -21,7 +21,7 @@ test('signed out, the doors that are meant to be open are open', () => {
     '/', '/signin', '/forgot', '/reset', '/tracker', '/t/aural-fogra-announcement', '/legacy',
     '/api/health', '/api/auth/login', '/api/auth/me', '/api/auth/forgot-password', '/api/auth/reset-password',
     '/api/zoom/webhook', '/api/mock-oral/public', '/api/mock-oral/public/book', '/mock-oral', '/mock-oral.js',
-    '/calendar/abc123.ics', '/robots.txt', '/logo.webp', '/styles.css', '/app.js', '/assets/index-abc.js', '/icons/x.svg',
+    '/calendar/abc123.ics', '/robots.txt', '/logo.webp', '/manifest.webmanifest', '/apple-touch-icon.png', '/icon-192.png', '/styles.css', '/app.js', '/assets/index-abc.js', '/icons/x.svg',
   ]) assert.equal(ask(path), true, `${path} should be open`);
   assert.equal(ask('/api/auth/login', 'POST'), true);
   assert.equal(ask('/api/mock-oral/public/book', 'POST'), true);

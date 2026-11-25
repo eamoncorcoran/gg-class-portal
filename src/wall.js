@@ -24,6 +24,11 @@ const OPEN_EXACT = new Set([
   '/robots.txt',
   '/favicon.ico',
   '/logo.webp',         // on the sign-in and booking pages
+  '/manifest.webmanifest',    // the phone reads these without a session when the hub is added to a home screen
+  '/apple-touch-icon.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-512.png',
   '/styles.css',        // the booking page and the old interface's sign-in
   '/app.js',            // the old interface's sign-in (code, no content)
   '/mock-oral',         // the mock oral booking page: public by design, name and email, no sign-in
